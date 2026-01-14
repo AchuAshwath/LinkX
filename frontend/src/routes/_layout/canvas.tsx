@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router"
 
-import { PostSchedulePicker } from "@/components/PostInput"
+import { PostInputBox } from "@/components/PostInput"
 
 export const Route = createFileRoute("/_layout/canvas")({
   component: CanvasPage,
@@ -23,13 +23,10 @@ function CanvasPage() {
             Blank canvas for experimenting with components
           </p>
         </div>
-        <div className="max-w-md">
-          <PostSchedulePicker />
-        </div>
+        <PostInputBox username="Jane Doe" />
       </div>
     </div>
   )
 }
 
 export default CanvasPage
-
