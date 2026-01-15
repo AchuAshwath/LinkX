@@ -1,14 +1,14 @@
 "use client"
 
 import { Link } from "@tanstack/react-router"
+import { ChevronsUpDown, LogOut, Settings, User, HelpCircle } from "lucide-react"
 
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
   Bell,
   MessageCircle,
   Bookmark,
-  User,
-  Settings,
   X,
   Palette,
   Home,
@@ -22,24 +22,52 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { type Theme, useTheme } from "@/components/theme-provider"
+import { useTheme } from "@/components/theme-provider"
+import { getInitials } from "@/utils"
 
 interface TimelineSidebarProps {
   sidebarOpen: boolean
   onClose: () => void
 }
 
-const ICON_MAP: Record<Theme, typeof Sun> = {
-  system: Monitor,
-  light: Sun,
-  dark: Moon,
+function UserInfo({ fullName, email }: { fullName?: string; email?: string }) {
+  return (
+    <div className="flex items-center gap-3 w-full min-w-0 max-w-full">
+      <Avatar className="size-8 shrink-0">
+        <AvatarFallback className="bg-zinc-600 text-white text-xs">
+          {getInitials(fullName || "User")}
+        </AvatarFallback>
+      </Avatar>
+      <div className="flex flex-col justify-center items-start min-w-0 flex-1 overflow-hidden text-left">
+        <p className="text-sm font-medium text-foreground truncate w-full leading-5 text-left">{fullName}</p>
+        <p className="text-xs text-muted-foreground truncate w-full leading-4 text-left">{email}</p>
+      </div>
+    </div>
+  )
 }
 
 export function TimelineSidebar({ sidebarOpen, onClose }: TimelineSidebarProps) {
-  const { setTheme, theme } = useTheme()
-  const Icon = ICON_MAP[theme]
+  const { setTheme } = useTheme()
+
+  // Mock user data for development
+  const mockUser = {
+    full_name: "John Doe",
+    email: "john.doe@example.com",
+  }
+
+  const handleMenuClick = () => {
+    if (sidebarOpen) {
+      onClose()
+    }
+  }
+
+  const handleLogout = () => {
+    console.log("Logout clicked")
+  }
 
   return (
     <div
@@ -102,19 +130,45 @@ export function TimelineSidebar({ sidebarOpen, onClose }: TimelineSidebarProps) 
         <Button className="mt-6 w-full text-base">Create Post</Button>
       </div>
 
-      {/* Bottom section: Theme Selector + Profile */}
+      {/* Bottom section: Profile */}
       <div className="p-4">
+        {/* Profile Dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              className="mb-3 w-full justify-start text-base"
+              className="w-full justify-start text-base h-auto py-2 px-3 data-[state=open]:bg-accent data-[state=open]:text-accent-foreground"
             >
-              <Icon className="mr-2 h-4 w-4" />
-              Appearance
+              <UserInfo 
+                fullName={mockUser.full_name} 
+                email={mockUser.email} 
+              />
+              <ChevronsUpDown className="ml-auto size-4 text-muted-foreground shrink-0" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuContent
+            className="w-[--radix-dropdown-menu-trigger-width] min-w-56 max-w-64 rounded-lg"
+            side="top"
+            align="end"
+            sideOffset={4}
+          >
+            <DropdownMenuLabel className="p-0 font-normal">
+              <UserInfo 
+                fullName={mockUser.full_name} 
+                email={mockUser.email} 
+              />
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <Link to="/settings" onClick={handleMenuClick}>
+              <DropdownMenuItem>
+                <Settings className="mr-2 h-4 w-4" />
+                User Settings
+              </DropdownMenuItem>
+            </Link>
+            <DropdownMenuItem>
+              <User className="mr-2 h-4 w-4" />
+              Profile
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setTheme("light")}>
               <Sun className="mr-2 h-4 w-4" />
               Light
@@ -127,12 +181,17 @@ export function TimelineSidebar({ sidebarOpen, onClose }: TimelineSidebarProps) 
               <Monitor className="mr-2 h-4 w-4" />
               System
             </DropdownMenuItem>
+            <DropdownMenuItem>
+              <HelpCircle className="mr-2 h-4 w-4" />
+              Help & Support
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleLogout}>
+              <LogOut className="mr-2 h-4 w-4" />
+              Log Out
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button variant="ghost" className="w-full justify-start text-base">
-          <User className="mr-2 h-4 w-4" />
-          Profile
-        </Button>
       </div>
     </div>
   )
