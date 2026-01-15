@@ -26,6 +26,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Logo } from "@/components/Common/Logo"
 import { useTheme } from "@/components/theme-provider"
 import { getInitials } from "@/utils"
 
@@ -71,10 +72,15 @@ export function TimelineSidebar({ sidebarOpen, onClose }: TimelineSidebarProps) 
 
   return (
     <div
-      className={`border-border fixed left-0 top-14 z-40 flex h-[calc(100vh-3.5rem)] w-64 flex-col border-r bg-background transition-transform lg:top-0 lg:h-screen lg:sticky lg:translate-x-0 ${
+      className={`fixed left-0 top-14 z-40 flex h-[calc(100vh-3.5rem)] w-64 flex-col bg-background transition-transform lg:top-0 lg:h-screen lg:sticky lg:translate-x-0 ${
         sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
       }`}
     >
+      {/* Logo Header */}
+      <div className="p-4">
+        <Logo variant="full" className="h-6" />
+      </div>
+
       <div className="flex-1 overflow-y-auto p-4">
         <div className="mb-4 flex items-center justify-between lg:hidden">
           <h2 className="text-2xl font-semibold">Menu</h2>

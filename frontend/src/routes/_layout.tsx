@@ -1,9 +1,8 @@
-import * as React from "react"
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router"
-
-import { Button } from "@/components/ui/button"
 import { Menu, X } from "lucide-react"
+import * as React from "react"
 import { TimelineSidebar } from "@/components/Sidebar/TimelineSidebar"
+import { Button } from "@/components/ui/button"
 import { isLoggedIn } from "@/hooks/useAuth"
 
 export const Route = createFileRoute("/_layout")({
@@ -29,7 +28,11 @@ function Layout() {
           size="icon"
           onClick={() => setSidebarOpen(!sidebarOpen)}
         >
-          {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          {sidebarOpen ? (
+            <X className="h-5 w-5" />
+          ) : (
+            <Menu className="h-5 w-5" />
+          )}
         </Button>
         <h1 className="text-lg font-semibold">LinkX</h1>
       </header>

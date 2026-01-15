@@ -1,8 +1,8 @@
 "use client"
 
-import * as React from "react"
 import { parseDate } from "chrono-node"
 import { CalendarIcon } from "lucide-react"
+import * as React from "react"
 
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -55,10 +55,12 @@ interface PostSchedulePickerProps {
   onChangeDateTime?: (dateTime: Date | undefined) => void
 }
 
-export function PostSchedulePicker({ onChangeDateTime }: PostSchedulePickerProps) {
+export function PostSchedulePicker({
+  onChangeDateTime,
+}: PostSchedulePickerProps) {
   // Initialize with current time
   const now = React.useMemo(() => new Date(), [])
-  
+
   // Initialize dateTime to current time, then parse "In 4 hours" for the date part
   const initialDateTime = React.useMemo(() => {
     const parsed = parseDate("In 4 hours")
@@ -95,11 +97,11 @@ export function PostSchedulePicker({ onChangeDateTime }: PostSchedulePickerProps
     if (!parsed) return
 
     // Update date AND time based on parsed result
-    setDateTime((prev) => {
+    setDateTime((_prev) => {
       return new Date(parsed)
     })
     setMonth(parsed)
-  }, [value, now])
+  }, [value])
 
   const time = React.useMemo(() => formatTime(dateTime), [dateTime])
 
@@ -173,7 +175,12 @@ export function PostSchedulePicker({ onChangeDateTime }: PostSchedulePickerProps
               <span className="sr-only">Select date</span>
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-auto overflow-hidden p-0" align="start" side="bottom" sideOffset={4}>
+          <PopoverContent
+            className="w-auto overflow-hidden p-0"
+            align="start"
+            side="bottom"
+            sideOffset={4}
+          >
             <Calendar
               mode="single"
               selected={dateTime}
