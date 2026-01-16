@@ -1,23 +1,29 @@
 "use client"
 
 import { Link } from "@tanstack/react-router"
-import { ChevronsUpDown, LogOut, Settings, User, HelpCircle } from "lucide-react"
-
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
 import {
   Bell,
-  MessageCircle,
   Bookmark,
-  X,
-  Palette,
+  ChevronsUpDown,
+  HelpCircle,
   Home,
+  Layers,
+  LogOut,
+  MessageCircle,
   Monitor,
   Moon,
-  Sun,
-  Shield,
   Package,
+  Palette,
+  Settings,
+  Shield,
+  Sun,
+  User,
+  X,
 } from "lucide-react"
+import { Logo } from "@/components/Common/Logo"
+import { useTheme } from "@/components/theme-provider"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,8 +32,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Logo } from "@/components/Common/Logo"
-import { useTheme } from "@/components/theme-provider"
 import { getInitials } from "@/utils"
 
 interface TimelineSidebarProps {
@@ -44,14 +48,21 @@ function UserInfo({ fullName, email }: { fullName?: string; email?: string }) {
         </AvatarFallback>
       </Avatar>
       <div className="flex flex-col justify-center items-start min-w-0 flex-1 overflow-hidden text-left">
-        <p className="text-sm font-medium text-foreground truncate w-full leading-5 text-left">{fullName}</p>
-        <p className="text-xs text-muted-foreground truncate w-full leading-4 text-left">{email}</p>
+        <p className="text-sm font-medium text-foreground truncate w-full leading-5 text-left">
+          {fullName}
+        </p>
+        <p className="text-xs text-muted-foreground truncate w-full leading-4 text-left">
+          {email}
+        </p>
       </div>
     </div>
   )
 }
 
-export function TimelineSidebar({ sidebarOpen, onClose }: TimelineSidebarProps) {
+export function TimelineSidebar({
+  sidebarOpen,
+  onClose,
+}: TimelineSidebarProps) {
   const { setTheme } = useTheme()
 
   // Mock user data for development
@@ -72,12 +83,12 @@ export function TimelineSidebar({ sidebarOpen, onClose }: TimelineSidebarProps) 
 
   return (
     <div
-      className={`fixed left-0 top-14 z-40 flex h-[calc(100vh-3.5rem)] w-64 flex-col bg-background transition-transform lg:top-0 lg:h-screen lg:sticky lg:translate-x-0 ${
+      className={`border-border fixed left-0 top-14 z-40 flex h-[calc(100vh-3.5rem)] w-64 flex-col border-r bg-background transition-transform lg:top-0 lg:h-screen lg:sticky lg:translate-x-0 ${
         sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
       }`}
     >
       {/* Logo Header */}
-      <div className="p-4">
+      <div className="px-4 pt-6 pb-4">
         <Logo variant="full" className="h-6" />
       </div>
 
@@ -89,31 +100,61 @@ export function TimelineSidebar({ sidebarOpen, onClose }: TimelineSidebarProps) 
           </Button>
         </div>
         <nav className="space-y-2">
-          <Button variant="ghost" className="w-full justify-start text-base" asChild>
+          <Button
+            variant="ghost"
+            className="w-full justify-start text-base"
+            asChild
+          >
             <Link to="/">
               <Home className="mr-2 h-4 w-4" />
               Timeline
             </Link>
           </Button>
-          <Button variant="ghost" className="w-full justify-start text-base" asChild>
+          <Button
+            variant="ghost"
+            className="w-full justify-start text-base"
+            asChild
+          >
             <Link to="/canvas">
               <Palette className="mr-2 h-4 w-4" />
               Canvas
             </Link>
           </Button>
-          <Button variant="ghost" className="w-full justify-start text-base" asChild>
+          <Button
+            variant="ghost"
+            className="w-full justify-start text-base"
+            asChild
+          >
+            <Link to="/brandkit">
+              <Layers className="mr-2 h-4 w-4" />
+              Brand Kit
+            </Link>
+          </Button>
+          <Button
+            variant="ghost"
+            className="w-full justify-start text-base"
+            asChild
+          >
             <Link to="/items">
               <Package className="mr-2 h-4 w-4" />
               Items
             </Link>
           </Button>
-          <Button variant="ghost" className="w-full justify-start text-base" asChild>
+          <Button
+            variant="ghost"
+            className="w-full justify-start text-base"
+            asChild
+          >
             <Link to="/admin">
               <Shield className="mr-2 h-4 w-4" />
               Admin
             </Link>
           </Button>
-          <Button variant="ghost" className="w-full justify-start text-base" asChild>
+          <Button
+            variant="ghost"
+            className="w-full justify-start text-base"
+            asChild
+          >
             <Link to="/settings">
               <Settings className="mr-2 h-4 w-4" />
               Settings
@@ -145,10 +186,7 @@ export function TimelineSidebar({ sidebarOpen, onClose }: TimelineSidebarProps) 
               variant="ghost"
               className="w-full justify-start text-base h-auto py-2 px-3 data-[state=open]:bg-accent data-[state=open]:text-accent-foreground"
             >
-              <UserInfo 
-                fullName={mockUser.full_name} 
-                email={mockUser.email} 
-              />
+              <UserInfo fullName={mockUser.full_name} email={mockUser.email} />
               <ChevronsUpDown className="ml-auto size-4 text-muted-foreground shrink-0" />
             </Button>
           </DropdownMenuTrigger>
@@ -159,10 +197,7 @@ export function TimelineSidebar({ sidebarOpen, onClose }: TimelineSidebarProps) 
             sideOffset={4}
           >
             <DropdownMenuLabel className="p-0 font-normal">
-              <UserInfo 
-                fullName={mockUser.full_name} 
-                email={mockUser.email} 
-              />
+              <UserInfo fullName={mockUser.full_name} email={mockUser.email} />
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <Link to="/settings" onClick={handleMenuClick}>

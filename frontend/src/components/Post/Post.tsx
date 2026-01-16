@@ -1,5 +1,11 @@
+import {
+  Heart,
+  MessageCircle,
+  MoreHorizontal,
+  Repeat2,
+  Share,
+} from "lucide-react"
 import * as React from "react"
-import { Heart, Repeat2, Share, MoreHorizontal, MessageCircle } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -9,7 +15,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { formatRelativeTime, formatFullDateTime, getInitials } from "@/utils"
+import { formatFullDateTime, formatRelativeTime, getInitials } from "@/utils"
 
 export interface PostData {
   id: string
@@ -77,9 +83,14 @@ export function Post({
           <div className="flex-shrink-0">
             <Avatar className="h-10 w-10 cursor-pointer transition-transform hover:scale-105 sm:h-10 sm:w-10">
               {post.author.avatarUrl ? (
-                <AvatarImage src={post.author.avatarUrl} alt={post.author.name} />
+                <AvatarImage
+                  src={post.author.avatarUrl}
+                  alt={post.author.name}
+                />
               ) : null}
-              <AvatarFallback className="text-sm sm:text-base">{initials}</AvatarFallback>
+              <AvatarFallback className="text-sm sm:text-base">
+                {initials}
+              </AvatarFallback>
             </Avatar>
           </div>
 
@@ -96,7 +107,9 @@ export function Post({
                 </button>
                 <div className="flex items-center gap-1.5 text-sm text-muted-foreground sm:text-base">
                   <span className="shrink-0">@{post.author.username}</span>
-                  <span className="shrink-0" aria-hidden="true">·</span>
+                  <span className="shrink-0" aria-hidden="true">
+                    ·
+                  </span>
                   <time
                     dateTime={
                       typeof post.createdAt === "string"
@@ -136,7 +149,9 @@ export function Post({
 
             {/* Post Content */}
             <div>
-              <p className="break-words text-base leading-relaxed">{post.content}</p>
+              <p className="break-words text-base leading-relaxed">
+                {post.content}
+              </p>
             </div>
 
             {/* Image */}
@@ -153,48 +168,48 @@ export function Post({
 
             {/* Actions */}
             <div className="flex items-center gap-1 sm:gap-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="group/btn h-9 flex-1 justify-start gap-2 text-muted-foreground transition-colors hover:bg-blue-500/10 hover:text-blue-500 active:scale-95 sm:h-8 sm:flex-initial"
-              onClick={handleLike}
-              aria-label={`${isLiked ? "Unlike" : "Like"} post`}
-              aria-pressed={isLiked}
-            >
-              <Heart
-                className={`h-4 w-4 transition-colors sm:h-3.5 sm:w-3.5 ${
-                  isLiked ? "fill-red-500 text-red-500" : ""
-                }`}
-              />
-              <span className="text-base">{likeCount}</span>
-            </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="group/btn h-9 flex-1 justify-start gap-2 text-muted-foreground transition-colors hover:bg-blue-500/10 hover:text-blue-500 active:scale-95 sm:h-8 sm:flex-initial"
+                onClick={handleLike}
+                aria-label={`${isLiked ? "Unlike" : "Like"} post`}
+                aria-pressed={isLiked}
+              >
+                <Heart
+                  className={`h-4 w-4 transition-colors sm:h-3.5 sm:w-3.5 ${
+                    isLiked ? "fill-red-500 text-red-500" : ""
+                  }`}
+                />
+                <span className="text-base">{likeCount}</span>
+              </Button>
 
-            <Button
-              variant="ghost"
-              size="sm"
-              className="group/btn h-9 flex-1 justify-start gap-2 text-muted-foreground transition-colors hover:bg-green-500/10 hover:text-green-500 active:scale-95 sm:h-8 sm:flex-initial"
-              onClick={handleRepost}
-              aria-label={`${isReposted ? "Undo repost" : "Repost"}`}
-              aria-pressed={isReposted}
-            >
-              <Repeat2
-                className={`h-4 w-4 transition-colors sm:h-3.5 sm:w-3.5 ${
-                  isReposted ? "text-green-500" : ""
-                }`}
-              />
-              <span className="text-base">{repostCount}</span>
-            </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="group/btn h-9 flex-1 justify-start gap-2 text-muted-foreground transition-colors hover:bg-green-500/10 hover:text-green-500 active:scale-95 sm:h-8 sm:flex-initial"
+                onClick={handleRepost}
+                aria-label={`${isReposted ? "Undo repost" : "Repost"}`}
+                aria-pressed={isReposted}
+              >
+                <Repeat2
+                  className={`h-4 w-4 transition-colors sm:h-3.5 sm:w-3.5 ${
+                    isReposted ? "text-green-500" : ""
+                  }`}
+                />
+                <span className="text-base">{repostCount}</span>
+              </Button>
 
-            <Button
-              variant="ghost"
-              size="sm"
-              className="group/btn h-9 flex-1 justify-start gap-2 text-muted-foreground transition-colors hover:bg-blue-500/10 hover:text-blue-500 active:scale-95 sm:h-8 sm:flex-initial"
-              onClick={() => onComment?.(post.id)}
-              aria-label="Comment on post"
-            >
-              <MessageCircle className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
-              <span className="text-base">{post.comments}</span>
-            </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="group/btn h-9 flex-1 justify-start gap-2 text-muted-foreground transition-colors hover:bg-blue-500/10 hover:text-blue-500 active:scale-95 sm:h-8 sm:flex-initial"
+                onClick={() => onComment?.(post.id)}
+                aria-label="Comment on post"
+              >
+                <MessageCircle className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
+                <span className="text-base">{post.comments}</span>
+              </Button>
 
               <Button
                 variant="ghost"

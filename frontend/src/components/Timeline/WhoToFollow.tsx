@@ -62,10 +62,14 @@ export function WhoToFollow({
                     {user.avatarUrl ? (
                       <AvatarImage src={user.avatarUrl} alt={user.name} />
                     ) : null}
-                    <AvatarFallback className="text-sm">{initials}</AvatarFallback>
+                    <AvatarFallback className="text-sm">
+                      {initials}
+                    </AvatarFallback>
                   </Avatar>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-base font-semibold">{user.name}</p>
+                    <p className="truncate text-base font-semibold">
+                      {user.name}
+                    </p>
                     <p className="truncate text-sm text-muted-foreground">
                       @{user.username}
                     </p>
@@ -76,7 +80,11 @@ export function WhoToFollow({
                   size="sm"
                   className="shrink-0 h-8 px-4 text-sm font-medium transition-colors"
                   onClick={() => handleFollow(user.id)}
-                  aria-label={isFollowing ? `Unfollow ${user.name}` : `Follow ${user.name}`}
+                  aria-label={
+                    isFollowing
+                      ? `Unfollow ${user.name}`
+                      : `Follow ${user.name}`
+                  }
                 >
                   {isFollowing ? "Following" : "Follow"}
                 </Button>

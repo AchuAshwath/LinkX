@@ -1,2 +1,10 @@
-export { WhoToFollow, type UserToFollow, type WhoToFollowProps } from "./WhoToFollow"
-export { TrendingTopics, type TrendingTopic, type TrendingTopicsProps } from "./TrendingTopics"
+export {
+  type TrendingTopic,
+  TrendingTopics,
+  type TrendingTopicsProps,
+} from "./TrendingTopics"
+export {
+  type UserToFollow,
+  WhoToFollow,
+  type WhoToFollowProps,
+} from "./WhoToFollow"

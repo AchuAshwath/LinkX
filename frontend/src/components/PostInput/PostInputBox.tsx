@@ -1,7 +1,7 @@
 "use client"
 
-import * as React from "react"
 import { ImageIcon, Smile } from "lucide-react"
+import * as React from "react"
 import { FaLinkedinIn } from "react-icons/fa"
 import { FaXTwitter } from "react-icons/fa6"
 import { useTheme } from "@/components/theme-provider"
@@ -10,7 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 
-import { PostSchedulePicker, formatDateTime } from "./PostSchedulePicker"
+import { formatDateTime, PostSchedulePicker } from "./PostSchedulePicker"
 
 interface PostInputBoxProps {
   username: string
@@ -31,7 +31,7 @@ export function PostInputBox({ username, avatarUrl }: PostInputBoxProps) {
       .join("")
       .toUpperCase() || "U"
 
-  const faviconSrc = isDark 
+  const faviconSrc = isDark
     ? "/assets/images/favicon-32x32-light.png"
     : "/assets/images/favicon-32x32.png"
 
@@ -42,9 +42,13 @@ export function PostInputBox({ username, avatarUrl }: PostInputBoxProps) {
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <Avatar className="h-10 w-10 shrink-0 sm:h-10 sm:w-10">
             {avatarUrl ? <AvatarImage src={avatarUrl} alt={username} /> : null}
-            <AvatarFallback className="text-sm sm:text-base">{initials}</AvatarFallback>
+            <AvatarFallback className="text-sm sm:text-base">
+              {initials}
+            </AvatarFallback>
           </Avatar>
-          <span className="truncate text-base font-semibold sm:text-base">{username}</span>
+          <span className="truncate text-base font-semibold sm:text-base">
+            {username}
+          </span>
         </div>
 
         {/* Channel Selector - Larger touch targets on mobile */}
@@ -65,15 +69,13 @@ export function PostInputBox({ username, avatarUrl }: PostInputBoxProps) {
             type="button"
             onClick={() => setChannel("all")}
             className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors active:scale-95 sm:h-6 sm:w-6 ${
-              channel === "all"
-                ? "bg-muted"
-                : "active:bg-muted"
+              channel === "all" ? "bg-muted" : "active:bg-muted"
             }`}
             aria-label="Post to all channels"
           >
-            <img 
-              src={faviconSrc} 
-              alt="LinkX" 
+            <img
+              src={faviconSrc}
+              alt="LinkX"
               className="h-4 w-4 sm:h-3.5 sm:w-3.5"
             />
           </button>
@@ -107,7 +109,7 @@ export function PostInputBox({ username, avatarUrl }: PostInputBoxProps) {
           <div className="w-full min-w-0 sm:min-w-[8rem] sm:flex-1">
             <PostSchedulePicker onChangeDateTime={setScheduledAt} />
           </div>
-          
+
           {/* Media Buttons + Post Button */}
           <div className="flex items-center justify-between gap-2 sm:justify-end sm:gap-1.5">
             <div className="flex items-center gap-1 sm:gap-1.5">
@@ -140,7 +142,7 @@ export function PostInputBox({ username, avatarUrl }: PostInputBoxProps) {
             </Button>
           </div>
         </div>
-        
+
         {/* Schedule Info */}
         {scheduledAt && (
           <p className="text-sm leading-relaxed text-muted-foreground sm:text-sm">
@@ -154,4 +156,3 @@ export function PostInputBox({ username, avatarUrl }: PostInputBoxProps) {
     </div>
   )
 }
-

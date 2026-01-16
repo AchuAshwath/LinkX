@@ -1,13 +1,17 @@
-import * as React from "react"
 import { createFileRoute, redirect } from "@tanstack/react-router"
-
-import { Button } from "@/components/ui/button"
 import { Menu, X } from "lucide-react"
-import { isLoggedIn } from "@/hooks/useAuth"
-import { TimelineSidebar } from "@/components/Sidebar/TimelineSidebar"
-import { PostInputBox } from "@/components/PostInput"
+import * as React from "react"
 import { Post, type PostData } from "@/components/Post"
-import { WhoToFollow, TrendingTopics, type UserToFollow, type TrendingTopic } from "@/components/Timeline"
+import { PostInputBox } from "@/components/PostInput"
+import { TimelineSidebar } from "@/components/Sidebar/TimelineSidebar"
+import {
+  type TrendingTopic,
+  TrendingTopics,
+  type UserToFollow,
+  WhoToFollow,
+} from "@/components/Timeline"
+import { Button } from "@/components/ui/button"
+import { isLoggedIn } from "@/hooks/useAuth"
 
 export const Route = createFileRoute("/timeline")({
   component: TimelinePage,
@@ -124,7 +128,11 @@ function TimelinePage() {
           size="icon"
           onClick={() => setSidebarOpen(!sidebarOpen)}
         >
-          {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          {sidebarOpen ? (
+            <X className="h-5 w-5" />
+          ) : (
+            <Menu className="h-5 w-5" />
+          )}
         </Button>
         <h1 className="text-xl font-semibold">Timeline</h1>
       </header>
@@ -162,7 +170,10 @@ function TimelinePage() {
         {/* Right Sidebar */}
         <div className="hidden w-80 space-y-6 p-4 md:block">
           <WhoToFollow users={usersToFollow} onFollow={handleFollow} />
-          <TrendingTopics topics={trendingTopics} onTopicClick={handleTopicClick} />
+          <TrendingTopics
+            topics={trendingTopics}
+            onTopicClick={handleTopicClick}
+          />
         </div>
       </div>
       {/* Mobile Sidebar Overlay */}

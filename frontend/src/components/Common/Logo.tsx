@@ -11,15 +11,17 @@ interface LogoProps {
   variant?: "full" | "icon" | "responsive"
   className?: string
   asLink?: boolean
+  forceTheme?: "light" | "dark"
 }
 
 export function Logo({
   variant = "full",
   className,
   asLink = true,
+  forceTheme,
 }: LogoProps) {
   const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === "dark"
+  const isDark = forceTheme ? forceTheme === "dark" : resolvedTheme === "dark"
 
   const fullLogo = isDark ? logoLight : logo
   const iconLogo = isDark ? iconLight : icon

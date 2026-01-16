@@ -290,6 +290,31 @@ height: 36px;
 
 ---
 
+## 10. Asset Checklist
+
+### Favicons & Browser Icons
+
+- [ ] `favicon.ico` (16x16, 32x32 multi-size ICO)
+- [ ] `favicon-16x16.png` (16x16 PNG)
+- [ ] `favicon-32x32.png` (32x32 PNG)
+- [ ] `apple-touch-icon.png` (180x180 PNG)
+- [ ] `android-chrome-192x192.png` (192x192 PNG)
+- [ ] `android-chrome-512x512.png` (512x512 PNG)
+
+### Social & Open Graph
+
+- [ ] `og-image.png` (1200x630 PNG) - For Facebook, LinkedIn link previews
+- [ ] `twitter-card.png` (1200x600 PNG) - For Twitter/X card previews
+
+### GitHub & Docker
+
+- [ ] `github-social-preview.png` (1280x640 PNG) - Repository social card
+- [ ] `docker-icon.png` (256x256 PNG) - Docker Hub profile image
+
+**Destination**: `frontend/public/assets/images/`
+
+---
+
 ## Notes
 
 - All colors use OKLCH color space for perceptually uniform adjustments
