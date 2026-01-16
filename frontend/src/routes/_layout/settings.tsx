@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router"
 
+import AppearanceSettings from "@/components/UserSettings/AppearanceSettings"
 import ChangePassword from "@/components/UserSettings/ChangePassword"
 import DeleteAccount from "@/components/UserSettings/DeleteAccount"
 import UserInformation from "@/components/UserSettings/UserInformation"
@@ -8,6 +9,7 @@ import useAuth from "@/hooks/useAuth"
 
 const tabsConfig = [
   { value: "my-profile", title: "My profile", component: UserInformation },
+  { value: "appearance", title: "Appearance", component: AppearanceSettings },
   { value: "password", title: "Password", component: ChangePassword },
   { value: "danger-zone", title: "Danger zone", component: DeleteAccount },
 ]
@@ -28,10 +30,6 @@ function UserSettings() {
   const finalTabs = currentUser?.is_superuser
     ? tabsConfig.slice(0, 3)
     : tabsConfig
-
-  if (!currentUser) {
-    return null
-  }
 
   return (
     <div className="flex flex-col gap-6">

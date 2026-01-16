@@ -2,26 +2,19 @@
 
 import { Link } from "@tanstack/react-router"
 import {
-  Bell,
   Bookmark,
   ChevronsUpDown,
   HelpCircle,
   Home,
   Layers,
   LogOut,
-  MessageCircle,
-  Monitor,
-  Moon,
   Package,
   Palette,
   Settings,
   Shield,
-  Sun,
-  User,
   X,
 } from "lucide-react"
 import { Logo } from "@/components/Common/Logo"
-import { useTheme } from "@/components/theme-provider"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -63,8 +56,6 @@ export function TimelineSidebar({
   sidebarOpen,
   onClose,
 }: TimelineSidebarProps) {
-  const { setTheme } = useTheme()
-
   // Mock user data for development
   const mockUser = {
     full_name: "John Doe",
@@ -137,37 +128,10 @@ export function TimelineSidebar({
           >
             <Link to="/items">
               <Package className="mr-2 h-4 w-4" />
-              Items
+              Posts
             </Link>
           </Button>
-          <Button
-            variant="ghost"
-            className="w-full justify-start text-base"
-            asChild
-          >
-            <Link to="/admin">
-              <Shield className="mr-2 h-4 w-4" />
-              Admin
-            </Link>
-          </Button>
-          <Button
-            variant="ghost"
-            className="w-full justify-start text-base"
-            asChild
-          >
-            <Link to="/settings">
-              <Settings className="mr-2 h-4 w-4" />
-              Settings
-            </Link>
-          </Button>
-          <Button variant="ghost" className="w-full justify-start text-base">
-            <Bell className="mr-2 h-4 w-4" />
-            Notifications
-          </Button>
-          <Button variant="ghost" className="w-full justify-start text-base">
-            <MessageCircle className="mr-2 h-4 w-4" />
-            Messages
-          </Button>
+         
           <Button variant="ghost" className="w-full justify-start text-base">
             <Bookmark className="mr-2 h-4 w-4" />
             Bookmarks
@@ -206,22 +170,12 @@ export function TimelineSidebar({
                 User Settings
               </DropdownMenuItem>
             </Link>
-            <DropdownMenuItem>
-              <User className="mr-2 h-4 w-4" />
-              Profile
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setTheme("light")}>
-              <Sun className="mr-2 h-4 w-4" />
-              Light
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setTheme("dark")}>
-              <Moon className="mr-2 h-4 w-4" />
-              Dark
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setTheme("system")}>
-              <Monitor className="mr-2 h-4 w-4" />
-              System
-            </DropdownMenuItem>
+            <Link to="/admin" onClick={handleMenuClick}>
+              <DropdownMenuItem>
+                <Shield className="mr-2 h-4 w-4" />
+                Admin
+              </DropdownMenuItem>
+            </Link>
             <DropdownMenuItem>
               <HelpCircle className="mr-2 h-4 w-4" />
               Help & Support
