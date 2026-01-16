@@ -4,3 +4,7 @@ node_modules/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Ignore .af files in all directories and subdirectories
+**/*.af
+*.af
