@@ -9,7 +9,6 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as TimelineRouteImport } from './routes/timeline'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
@@ -22,11 +21,6 @@ import { Route as LayoutItemsRouteImport } from './routes/_layout/items'
 import { Route as LayoutCanvasRouteImport } from './routes/_layout/canvas'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
 
-const TimelineRoute = TimelineRouteImport.update({
-  id: '/timeline',
-  path: '/timeline',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
@@ -88,7 +82,6 @@ export interface FileRoutesByFullPath {
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
-  '/timeline': typeof TimelineRoute
   '/admin': typeof LayoutAdminRoute
   '/canvas': typeof LayoutCanvasRoute
   '/items': typeof LayoutItemsRoute
@@ -101,7 +94,6 @@ export interface FileRoutesByTo {
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
-  '/timeline': typeof TimelineRoute
   '/admin': typeof LayoutAdminRoute
   '/canvas': typeof LayoutCanvasRoute
   '/items': typeof LayoutItemsRoute
@@ -116,7 +108,6 @@ export interface FileRoutesById {
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
-  '/timeline': typeof TimelineRoute
   '/_layout/admin': typeof LayoutAdminRoute
   '/_layout/canvas': typeof LayoutCanvasRoute
   '/_layout/items': typeof LayoutItemsRoute
@@ -131,7 +122,6 @@ export interface FileRouteTypes {
     | '/recover-password'
     | '/reset-password'
     | '/signup'
-    | '/timeline'
     | '/admin'
     | '/canvas'
     | '/items'
@@ -144,7 +134,6 @@ export interface FileRouteTypes {
     | '/recover-password'
     | '/reset-password'
     | '/signup'
-    | '/timeline'
     | '/admin'
     | '/canvas'
     | '/items'
@@ -158,7 +147,6 @@ export interface FileRouteTypes {
     | '/recover-password'
     | '/reset-password'
     | '/signup'
-    | '/timeline'
     | '/_layout/admin'
     | '/_layout/canvas'
     | '/_layout/items'
@@ -173,18 +161,10 @@ export interface RootRouteChildren {
   RecoverPasswordRoute: typeof RecoverPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
-  TimelineRoute: typeof TimelineRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/timeline': {
-      id: '/timeline'
-      path: '/timeline'
-      fullPath: '/timeline'
-      preLoaderRoute: typeof TimelineRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/signup': {
       id: '/signup'
       path: '/signup'
@@ -291,7 +271,6 @@ const rootRouteChildren: RootRouteChildren = {
   RecoverPasswordRoute: RecoverPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
-  TimelineRoute: TimelineRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

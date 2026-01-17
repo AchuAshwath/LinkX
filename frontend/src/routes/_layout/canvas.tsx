@@ -8,7 +8,6 @@ import {
   User,
 } from "lucide-react"
 import { PostInputBox } from "@/components/PostInput"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -18,7 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { getInitials } from "@/utils"
+import { UserInfo } from "@/components/Common/UserInfo"
 
 export const Route = createFileRoute("/_layout/canvas")({
   component: CanvasPage,
@@ -30,26 +29,6 @@ export const Route = createFileRoute("/_layout/canvas")({
     ],
   }),
 })
-
-function UserInfo({ fullName, email }: { fullName?: string; email?: string }) {
-  return (
-    <div className="flex items-center gap-3 w-full min-w-0 max-w-full">
-      <Avatar className="size-8 shrink-0">
-        <AvatarFallback className="bg-zinc-600 text-white text-xs">
-          {getInitials(fullName || "User")}
-        </AvatarFallback>
-      </Avatar>
-      <div className="flex flex-col justify-center items-start min-w-0 flex-1 overflow-hidden text-left">
-        <p className="text-sm font-medium text-foreground truncate w-full leading-5 text-left">
-          {fullName}
-        </p>
-        <p className="text-xs text-muted-foreground truncate w-full leading-4 text-left">
-          {email}
-        </p>
-      </div>
-    </div>
-  )
-}
 
 function CanvasPage() {
   // Mock user data for development
@@ -63,7 +42,8 @@ function CanvasPage() {
   }
 
   return (
-    <div className="min-h-[60vh] rounded-lg border border-dashed bg-background/40 p-6">
+    <div className="p-3 sm:p-4 md:p-6">
+      <div className="min-h-[60vh] rounded-lg border border-dashed bg-background/40 p-6">
       <div className="space-y-6">
         <div>
           <h1 className="text-xl font-semibold">Canvas</h1>
@@ -135,6 +115,7 @@ function CanvasPage() {
 
         <PostInputBox username="Jane Doe" />
       </div>
+    </div>
     </div>
   )
 }

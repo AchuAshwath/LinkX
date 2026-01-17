@@ -1,7 +1,8 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router"
 import { Menu, X } from "lucide-react"
 import * as React from "react"
-import { TimelineSidebar } from "@/components/Sidebar/TimelineSidebar"
+import { Logo } from "@/components/Common/Logo"
+import { Sidebar } from "@/components/Sidebar/Sidebar"
 import { Button } from "@/components/ui/button"
 import { isLoggedIn } from "@/hooks/useAuth"
 
@@ -34,21 +35,19 @@ function Layout() {
             <Menu className="h-5 w-5" />
           )}
         </Button>
-        <h1 className="text-lg font-semibold">LinkX</h1>
+        <Logo variant="full" className="h-6" />
       </header>
 
       <div className="mx-auto flex w-full max-w-7xl px-4 lg:px-6">
         {/* Left Sidebar */}
-        <TimelineSidebar
+        <Sidebar
           sidebarOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
         />
 
-        {/* Main Content */}
-        <main className="min-w-0 flex-1 border-r md:max-w-2xl">
-          <div className="p-3 sm:p-4 md:p-6">
-            <Outlet />
-          </div>
+        {/* Main Content - Flexible for different page layouts */}
+        <main className="min-w-0 flex-1 min-h-[calc(100vh-3.5rem)] lg:min-h-screen">
+          <Outlet />
         </main>
       </div>
 
