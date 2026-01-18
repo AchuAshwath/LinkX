@@ -1,5 +1,7 @@
 import { type PostData } from "@/components/Post"
 
+// TODO: Remove this file once backend API is implemented
+// This is temporary mock data for development
 export const timelinePosts: PostData[] = [
   {
     id: "1",

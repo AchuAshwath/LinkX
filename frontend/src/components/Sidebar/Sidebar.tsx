@@ -88,7 +88,7 @@ export function Sidebar({
             className="w-full justify-start text-base"
             asChild
           >
-            <Link to="/items">
+            <Link to="/posts">
               <Package className="mr-2 h-4 w-4" />
               Posts
             </Link>

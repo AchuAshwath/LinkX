@@ -22,7 +22,8 @@ export const Route = createFileRoute("/_layout/")({
 })
 
 function TimelinePage() {
-  // Use the posts data structure
+  // TODO: Replace with API call once backend is implemented
+  // Currently using mock data from timelineData.ts
   const posts = timelinePosts
 
   // Sample users to follow
