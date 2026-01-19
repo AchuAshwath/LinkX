@@ -43,7 +43,7 @@ function CanvasPage() {
 
   return (
     <div className="p-3 sm:p-4 md:p-6">
-      <div className="min-h-[60vh] rounded-lg border border-dashed bg-background/40 p-6">
+    <div className="min-h-[60vh] rounded-lg border border-dashed bg-background/40 p-6">
       <div className="space-y-6">
         <div>
           <h1 className="text-xl font-semibold">Canvas</h1>
@@ -115,7 +115,7 @@ function CanvasPage() {
 
         <PostInputBox username="Jane Doe" />
       </div>
-    </div>
+      </div>
     </div>
   )
 }

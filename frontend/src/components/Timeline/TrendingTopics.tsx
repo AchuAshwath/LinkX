@@ -6,7 +6,7 @@ export interface TrendingTopic {
   postCount: number
 }
 
-interface TrendingTopicsProps {
+export interface TrendingTopicsProps {
   topics: TrendingTopic[]
   title?: string
   onTopicClick?: (topicId: string, hashtag: string) => void

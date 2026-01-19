@@ -8,7 +8,7 @@ import {
   type UserToFollow,
   WhoToFollow,
 } from "@/components/Timeline"
-import { timelinePosts } from "./timelineData"
+import { timelinePosts } from "./-timelineData"
 
 export const Route = createFileRoute("/_layout/")({
   component: TimelinePage,

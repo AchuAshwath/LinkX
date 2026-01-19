@@ -21,15 +21,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { type PostData } from "@/components/Post"
-import { scheduledPosts, postedPosts } from "./postsData"
+import { scheduledPosts, postedPosts } from "./-postsData"
 import { formatFullDateTime } from "@/utils"
-
-// Extended PostData with scheduling info
-interface ScheduledPostData extends PostData {
-  scheduledAt: Date | string
-  status: "scheduled" | "published" | "failed"
-}
 
 export const Route = createFileRoute("/_layout/posts")({
   component: PostsPage,

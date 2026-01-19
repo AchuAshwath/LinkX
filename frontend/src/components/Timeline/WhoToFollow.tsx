@@ -11,7 +11,7 @@ export interface UserToFollow {
   avatarUrl?: string
 }
 
-interface WhoToFollowProps {
+export interface WhoToFollowProps {
   users: UserToFollow[]
   onFollow?: (userId: string) => void
   title?: string

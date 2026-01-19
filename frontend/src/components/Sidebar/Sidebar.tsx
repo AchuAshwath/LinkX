@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 import { Logo } from "@/components/Common/Logo"
 import { Button } from "@/components/ui/button"
+import useAuth from "@/hooks/useAuth"
 import { SidebarProfile } from "./SidebarProfile"
 
 interface SidebarProps {
@@ -22,11 +23,7 @@ export function Sidebar({
   sidebarOpen,
   onClose,
 }: SidebarProps) {
-  // Mock user data for development
-  const mockUser = {
-    full_name: "John Doe",
-    email: "john.doe@example.com",
-  }
+  const { logout, user } = useAuth()
 
   const handleMenuClick = () => {
     if (sidebarOpen) {
@@ -105,9 +102,10 @@ export function Sidebar({
 
       {/* Bottom section: Profile */}
       <SidebarProfile
-        fullName={mockUser.full_name}
-        email={mockUser.email}
+        fullName={user?.full_name ?? undefined}
+        email={user?.email ?? undefined}
         onMenuClick={handleMenuClick}
+        onLogout={logout}
       />
     </div>
   )
