@@ -53,16 +53,21 @@ export function formatDateTime(date: Date | undefined) {
 
 interface PostSchedulePickerProps {
   onChangeDateTime?: (dateTime: Date | undefined) => void
+  initialValue?: Date
 }
 
 export function PostSchedulePicker({
   onChangeDateTime,
+  initialValue,
 }: PostSchedulePickerProps) {
   // Initialize with current time
   const now = React.useMemo(() => new Date(), [])
 
-  // Initialize dateTime to current time, then parse "In 4 hours" for the date part
+  // Initialize dateTime - use initialValue if provided, otherwise parse "In 4 hours"
   const initialDateTime = React.useMemo(() => {
+    if (initialValue) {
+      return initialValue
+    }
     const parsed = parseDate("In 4 hours")
     if (parsed) {
       const result = new Date(parsed)
@@ -71,15 +76,29 @@ export function PostSchedulePicker({
       return result
     }
     return now
-  }, [now])
+  }, [now, initialValue])
 
   const [open, setOpen] = React.useState(false)
-  const [value, setValue] = React.useState("In 4 hours")
+  const [value, setValue] = React.useState(() => {
+    if (initialValue) {
+      return formatDateTime(initialValue)
+    }
+    return "In 4 hours"
+  })
   const [dateTime, setDateTime] = React.useState<Date | undefined>(
     initialDateTime,
   )
   const [month, setMonth] = React.useState<Date | undefined>(initialDateTime)
   const skipNextEffectRef = React.useRef(false)
+
+  // Update when initialValue changes
+  React.useEffect(() => {
+    if (initialValue) {
+      setDateTime(initialValue)
+      setValue(formatDateTime(initialValue))
+      setMonth(initialValue)
+    }
+  }, [initialValue])
 
   React.useEffect(() => {
     if (!onChangeDateTime) return

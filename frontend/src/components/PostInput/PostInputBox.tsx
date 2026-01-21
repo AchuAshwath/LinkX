@@ -2,13 +2,11 @@
 
 import { ImageIcon, Smile } from "lucide-react"
 import * as React from "react"
-import { FaLinkedinIn } from "react-icons/fa"
-import { FaXTwitter } from "react-icons/fa6"
-import { useTheme } from "@/components/theme-provider"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { PlatformSelector, type Platform } from "@/components/Common/PlatformSelector"
 
 import { formatDateTime, PostSchedulePicker } from "./PostSchedulePicker"
 
@@ -20,9 +18,7 @@ interface PostInputBoxProps {
 export function PostInputBox({ username, avatarUrl }: PostInputBoxProps) {
   const [content, setContent] = React.useState("")
   const [scheduledAt, setScheduledAt] = React.useState<Date | undefined>()
-  const [channel, setChannel] = React.useState<"all" | "linkedin" | "x">("all")
-  const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === "dark"
+  const [channel, setChannel] = React.useState<Platform>("all")
 
   const initials =
     username
@@ -30,10 +26,6 @@ export function PostInputBox({ username, avatarUrl }: PostInputBoxProps) {
       .map((part) => part[0])
       .join("")
       .toUpperCase() || "U"
-
-  const faviconSrc = isDark
-    ? "/assets/images/favicon-32x32-light.png"
-    : "/assets/images/favicon-32x32.png"
 
   return (
     <div className="w-full space-y-3 sm:space-y-4">
@@ -51,47 +43,13 @@ export function PostInputBox({ username, avatarUrl }: PostInputBoxProps) {
           </span>
         </div>
 
-        {/* Channel Selector - Larger touch targets on mobile */}
-        <div className="flex shrink-0 items-center gap-0.5 rounded-full border bg-card px-0.5 py-0.5 sm:gap-1 sm:px-1 sm:py-0.5">
-          <button
-            type="button"
-            onClick={() => setChannel("linkedin")}
-            className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors active:scale-95 sm:h-6 sm:w-6 ${
-              channel === "linkedin"
-                ? "bg-muted text-[#0A66C2]"
-                : "text-[#0A66C2] active:bg-muted"
-            }`}
-            aria-label="Post to LinkedIn"
-          >
-            <FaLinkedinIn className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setChannel("all")}
-            className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors active:scale-95 sm:h-6 sm:w-6 ${
-              channel === "all" ? "bg-muted" : "active:bg-muted"
-            }`}
-            aria-label="Post to all channels"
-          >
-            <img
-              src={faviconSrc}
-              alt="LinkX"
-              className="h-4 w-4 sm:h-3.5 sm:w-3.5"
-            />
-          </button>
-          <button
-            type="button"
-            onClick={() => setChannel("x")}
-            className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors active:scale-95 sm:h-6 sm:w-6 ${
-              channel === "x"
-                ? "bg-muted text-foreground"
-                : "text-muted-foreground active:bg-muted"
-            }`}
-            aria-label="Post to X"
-          >
-            <FaXTwitter className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
-          </button>
-        </div>
+        {/* Channel Selector */}
+        <PlatformSelector
+          value={channel}
+          onChange={setChannel}
+          size="md"
+          className="shrink-0"
+        />
       </div>
 
       {/* Textarea - Mobile optimized */}
