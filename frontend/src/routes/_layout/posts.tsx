@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router"
+import { useMutation } from "@tanstack/react-query"
 import {
   Calendar,
   CheckCircle2,
@@ -7,9 +8,12 @@ import {
   Clock,
   TrendingUp,
   BarChart3,
+  FileText,
 } from "lucide-react"
 import * as React from "react"
-import { Post } from "@/components/Post"
+import { Posted } from "@/components/Post/Posted"
+import { DraftPost } from "@/components/Post/DraftPost"
+import { ScheduledPost } from "@/components/Post/ScheduledPost"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -21,8 +25,25 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { scheduledPosts, postedPosts } from "./-postsData"
-import { formatFullDateTime } from "@/utils"
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { LoadingButton } from "@/components/ui/loading-button"
+import { ItemsService } from "@/client"
+import useCustomToast from "@/hooks/useCustomToast"
+import { handleError } from "@/utils"
+import { draftPosts as initialDraftPosts, scheduledPosts as initialScheduledPosts, postedPosts as initialPostedPosts } from "./-postsData"
+import type { PostedData } from "@/components/Post/Posted"
+import type { ScheduledPostData } from "@/components/Post/ScheduledPost"
+import type { DraftPostData } from "@/components/Post/DraftPost"
+import { PostPreviewDialog, type PreviewPostData } from "@/components/Post/Previews"
+import { type Platform } from "@/components/Common/PlatformSelector"
 
 export const Route = createFileRoute("/_layout/posts")({
   component: PostsPage,
@@ -36,15 +57,201 @@ export const Route = createFileRoute("/_layout/posts")({
 })
 
 function PostsPage() {
-  const [activeTab, setActiveTab] = React.useState<"scheduled" | "posted">(
-    "scheduled",
+  const [activeTab, setActiveTab] = React.useState<"drafts" | "scheduled" | "posted">(
+    "drafts",
   )
   const [dateFilter, setDateFilter] = React.useState<string>("all")
   const [sortBy, setSortBy] = React.useState<string>("newest")
   const [hasFilters, setHasFilters] = React.useState(false)
+  const [editingPostId, setEditingPostId] = React.useState<string | null>(null)
+  
+  // State for posts data
+  const [draftPosts, setDraftPosts] = React.useState<DraftPostData[]>(initialDraftPosts)
+  const [scheduledPosts, setScheduledPosts] = React.useState<ScheduledPostData[]>(initialScheduledPosts)
+  const [postedPosts, setPostedPosts] = React.useState<PostedData[]>(initialPostedPosts)
+  
+  // Delete confirmation dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
+  const [postToDelete, setPostToDelete] = React.useState<{
+    id: string
+    type: "draft" | "scheduled" | "posted"
+  } | null>(null)
+  
+  // Preview dialog state
+  const [previewDialogOpen, setPreviewDialogOpen] = React.useState(false)
+  const [previewPost, setPreviewPost] = React.useState<PreviewPostData | null>(null)
+  const [previewPostPlatform, setPreviewPostPlatform] = React.useState<Platform>("all")
+  
+  const { showSuccessToast, showErrorToast } = useCustomToast()
+
+  const deleteItem = async (id: string) => {
+    await ItemsService.deleteItem({ id })
+  }
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteItem,
+    onSuccess: () => {
+      if (postToDelete) {
+        const { id, type } = postToDelete
+        
+        if (type === "draft") {
+          setDraftPosts((prev) => prev.filter((post) => post.id !== id))
+        } else if (type === "scheduled") {
+          setScheduledPosts((prev) => prev.filter((post) => post.id !== id))
+        } else if (type === "posted") {
+          setPostedPosts((prev) => prev.filter((post) => post.id !== id))
+        }
+        
+        showSuccessToast("Post deleted successfully")
+        setDeleteDialogOpen(false)
+        setPostToDelete(null)
+      }
+    },
+    onError: handleError.bind(showErrorToast),
+  })
+
+  const handleDelete = (postId: string, type: "draft" | "scheduled" | "posted") => {
+    setPostToDelete({ id: postId, type })
+    setDeleteDialogOpen(true)
+  }
+
+  const confirmDelete = () => {
+    if (postToDelete) {
+      deleteMutation.mutate(postToDelete.id)
+    }
+  }
 
   const handlePostAction = (action: string, postId: string) => {
-    console.log(`${action} post ${postId}`)
+    if (action === "delete") {
+      handleDelete(postId, "posted")
+    } else if (action === "preview") {
+      handlePreview(postId)
+    } else {
+      console.log(`${action} post ${postId}`)
+    }
+  }
+
+  const handleDraftAction = (action: string, postId: string) => {
+    if (action === "edit") {
+      setEditingPostId(postId)
+    } else if (action === "delete") {
+      handleDelete(postId, "draft")
+    } else if (action === "preview") {
+      handlePreview(postId)
+    } else {
+      console.log(`${action} draft ${postId}`)
+    }
+  }
+
+  const handleScheduledAction = (action: string, postId: string) => {
+    if (action === "edit") {
+      setEditingPostId(postId)
+    } else if (action === "cancel" || action === "delete") {
+      handleDelete(postId, "scheduled")
+    } else if (action === "preview") {
+      handlePreview(postId)
+    } else {
+      console.log(`${action} scheduled post ${postId}`)
+    }
+  }
+
+  const handlePostEdit = (postId: string) => {
+    setEditingPostId(postId)
+  }
+
+  const handleSave = (postId: string) => {
+    // TODO: Save changes to backend
+    console.log(`Saving post ${postId}`)
+    setEditingPostId(null)
+  }
+
+  const handleCancel = () => {
+    setEditingPostId(null)
+  }
+
+  const handlePlatformChange = (
+    postId: string,
+    platform: Platform,
+  ) => {
+    // Update platform in state based on active tab
+    if (activeTab === "drafts") {
+      setDraftPosts((prev) =>
+        prev.map((post) =>
+          post.id === postId ? { ...post, platform } : post
+        )
+      )
+    } else if (activeTab === "scheduled") {
+      setScheduledPosts((prev) =>
+        prev.map((post) =>
+          post.id === postId ? { ...post, platform } : post
+        )
+      )
+    } else if (activeTab === "posted") {
+      setPostedPosts((prev) =>
+        prev.map((post) =>
+          post.id === postId ? { ...post, platform } : post
+        )
+      )
+    }
+  }
+
+  const convertToPreviewData = (
+    post: DraftPostData | ScheduledPostData | PostedData
+  ): PreviewPostData => {
+    if ("likes" in post && "reposts" in post && "comments" in post) {
+      // PostedData
+      return {
+        id: post.id,
+        author: post.author,
+        content: post.content,
+        imageUrl: post.imageUrl,
+        createdAt: post.createdAt,
+        likes: post.likes,
+        reposts: post.reposts,
+        comments: post.comments,
+      }
+    } else if ("scheduledAt" in post) {
+      // ScheduledPostData
+      return {
+        id: post.id,
+        author: post.author,
+        content: post.content,
+        imageUrl: post.imageUrl,
+        createdAt: post.createdAt,
+        scheduledAt: post.scheduledAt,
+      }
+    } else {
+      // DraftPostData
+      return {
+        id: post.id,
+        author: post.author,
+        content: post.content,
+        imageUrl: post.imageUrl,
+        createdAt: post.createdAt,
+      }
+    }
+  }
+
+  const handlePreview = (postId: string) => {
+    let post: DraftPostData | ScheduledPostData | PostedData | undefined
+    let platform: Platform = "all"
+
+    if (activeTab === "drafts") {
+      post = draftPosts.find((p) => p.id === postId)
+      platform = post?.platform || "all"
+    } else if (activeTab === "scheduled") {
+      post = scheduledPosts.find((p) => p.id === postId)
+      platform = post?.platform || "all"
+    } else if (activeTab === "posted") {
+      post = postedPosts.find((p) => p.id === postId)
+      platform = post?.platform || "all"
+    }
+
+    if (post) {
+      setPreviewPost(convertToPreviewData(post))
+      setPreviewPostPlatform(platform)
+      setPreviewDialogOpen(true)
+    }
   }
 
   const handleClearFilters = () => {
@@ -65,19 +272,36 @@ function PostsPage() {
           <div className="px-4 py-3">
             <h1 className="text-xl font-bold">Posts</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Manage your scheduled and published posts
+              Manage your drafts, scheduled, and published posts
             </p>
           </div>
 
-          {/* Tabs - X-style clean underline tabs */}
+          {/* Tabs - Three tabs: Drafts, Scheduled, Posted */}
           <Tabs
             value={activeTab}
             onValueChange={(value) =>
-              setActiveTab(value as "scheduled" | "posted")
+              setActiveTab(value as "drafts" | "scheduled" | "posted")
             }
             className="w-full"
           >
-            <TabsList className="w-full h-auto p-0 bg-transparent rounded-none border-0 grid grid-cols-2">
+            <TabsList className="w-full h-auto p-0 bg-transparent rounded-none border-0 grid grid-cols-3">
+              <TabsTrigger
+                value="drafts"
+                className="relative flex-1 h-14 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none font-semibold text-base transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  <span>Drafts</span>
+                  {draftPosts.length > 0 && (
+                    <Badge
+                      variant="secondary"
+                      className="ml-1 h-5 min-w-5 px-1.5 text-xs font-normal"
+                    >
+                      {draftPosts.length}
+                    </Badge>
+                  )}
+                </div>
+              </TabsTrigger>
               <TabsTrigger
                 value="scheduled"
                 className="relative flex-1 h-14 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none font-semibold text-base transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
@@ -114,6 +338,40 @@ function PostsPage() {
               </TabsTrigger>
             </TabsList>
 
+            {/* Drafts Tab */}
+            <TabsContent value="drafts" className="mt-0">
+              {draftPosts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center text-center py-16 px-4">
+                  <div className="rounded-full bg-muted/50 p-6 mb-4">
+                    <FileText className="h-10 w-10 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-xl font-semibold mb-1">No drafts</h3>
+                  <p className="text-muted-foreground text-sm max-w-sm">
+                    Your draft posts will appear here. Start writing to save your
+                    ideas for later.
+                  </p>
+                </div>
+              ) : (
+                <div className="w-full">
+                  {draftPosts.map((post) => (
+                    <DraftPost
+                      key={post.id}
+                      post={post}
+                      isEditing={editingPostId === post.id}
+                      onEdit={(id) => handleDraftAction("edit", id)}
+                      onDelete={(id) => handleDraftAction("delete", id)}
+                      onSave={(id) => handleSave(id)}
+                      onCancel={handleCancel}
+                      onPlatformChange={handlePlatformChange}
+                      onPreview={(id) => handleDraftAction("preview", id)}
+                      onMore={(id) => handleDraftAction("more", id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Scheduled Tab */}
             <TabsContent value="scheduled" className="mt-0">
               {scheduledPosts.length === 0 ? (
                 <div className="flex flex-col items-center justify-center text-center py-16 px-4">
@@ -130,38 +388,25 @@ function PostsPage() {
                 </div>
               ) : (
                 <div className="w-full">
-                  {scheduledPosts.map((post, index) => (
-                    <div key={post.id} className="relative">
-                      {index === 0 && (
-                        <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-primary z-0" />
-                      )}
-                      <div className="relative border-b">
-                        <div className="px-4 py-3 border-b bg-muted/30">
-                          <Badge
-                            variant="outline"
-                            className="gap-1.5 text-xs font-medium"
-                          >
-                            <Calendar className="h-3 w-3" />
-                            <span>
-                              Scheduled for {formatFullDateTime(post.createdAt)}
-                            </span>
-                          </Badge>
-                        </div>
-                        <Post
-                          post={post}
-                          onLike={(id) => handlePostAction("like", id)}
-                          onRepost={(id) => handlePostAction("repost", id)}
-                          onComment={(id) => handlePostAction("comment", id)}
-                          onShare={(id) => handlePostAction("share", id)}
-                          onMore={(id) => handlePostAction("more", id)}
-                        />
-                      </div>
-                    </div>
+                  {scheduledPosts.map((post) => (
+                    <ScheduledPost
+                      key={post.id}
+                      post={post}
+                      isEditing={editingPostId === post.id}
+                      onEdit={(id) => handleScheduledAction("edit", id)}
+                      onDelete={(id) => handleScheduledAction("cancel", id)}
+                      onSave={(id) => handleSave(id)}
+                      onCancel={handleCancel}
+                      onPlatformChange={handlePlatformChange}
+                      onPreview={(id) => handleScheduledAction("preview", id)}
+                      onMore={(id) => handleScheduledAction("more", id)}
+                    />
                   ))}
                 </div>
               )}
             </TabsContent>
 
+            {/* Posted Tab */}
             <TabsContent value="posted" className="mt-0">
               {postedPosts.length === 0 ? (
                 <div className="flex flex-col items-center justify-center text-center py-16 px-4">
@@ -179,14 +424,20 @@ function PostsPage() {
               ) : (
                 <div className="w-full">
                   {postedPosts.map((post) => (
-                    <Post
+                    <Posted
                       key={post.id}
                       post={post}
+                      isEditing={editingPostId === post.id}
                       onLike={(id) => handlePostAction("like", id)}
                       onRepost={(id) => handlePostAction("repost", id)}
                       onComment={(id) => handlePostAction("comment", id)}
                       onShare={(id) => handlePostAction("share", id)}
-                      onMore={(id) => handlePostAction("more", id)}
+                      onEdit={(id) => handlePostEdit(id)}
+                      onSave={(id) => handleSave(id)}
+                      onCancel={handleCancel}
+                      onPreview={(id) => handlePostAction("preview", id)}
+                      onDelete={(id) => handlePostAction("delete", id)}
+                      onPlatformChange={handlePlatformChange}
                     />
                   ))}
                 </div>
@@ -254,8 +505,12 @@ function PostsPage() {
                   <SelectContent>
                     <SelectItem value="newest">Newest First</SelectItem>
                     <SelectItem value="oldest">Oldest First</SelectItem>
-                    <SelectItem value="scheduled">Scheduled Date</SelectItem>
-                    <SelectItem value="engagement">Engagement</SelectItem>
+                    {activeTab === "scheduled" && (
+                      <SelectItem value="scheduled">Scheduled Date</SelectItem>
+                    )}
+                    {activeTab === "posted" && (
+                      <SelectItem value="engagement">Engagement</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -311,6 +566,12 @@ function PostsPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Drafts</span>
+                <Badge variant="secondary" className="font-semibold">
+                  {draftPosts.length}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">
                   Scheduled
                 </span>
@@ -327,13 +588,50 @@ function PostsPage() {
               <div className="flex items-center justify-between pt-2 border-t">
                 <span className="text-sm font-medium">Total</span>
                 <span className="text-sm font-semibold">
-                  {scheduledPosts.length + postedPosts.length}
+                  {draftPosts.length + scheduledPosts.length + postedPosts.length}
                 </span>
               </div>
             </CardContent>
           </Card>
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Post</DialogTitle>
+            <DialogDescription>
+              This post will be permanently deleted. Are you sure? You will not
+              be able to undo this action.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4">
+            <DialogClose asChild>
+              <Button variant="outline" disabled={deleteMutation.isPending}>
+                Cancel
+              </Button>
+            </DialogClose>
+            <LoadingButton
+              variant="destructive"
+              onClick={confirmDelete}
+              loading={deleteMutation.isPending}
+            >
+              Delete
+            </LoadingButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Preview Dialog */}
+      {previewPost && (
+        <PostPreviewDialog
+          open={previewDialogOpen}
+          onOpenChange={setPreviewDialogOpen}
+          post={previewPost}
+          platform={previewPostPlatform}
+        />
+      )}
     </div>
   )
 }
