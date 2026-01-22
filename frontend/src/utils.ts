@@ -79,3 +79,45 @@ export const formatFullDateTime = (date: Date | string): string => {
     minute: "2-digit",
   })
 }
+
+/**
+ * Format a future date as relative time (e.g., "In 2h", "In 4 days")
+ * For past dates, returns formatRelativeTime result
+ */
+export const formatRelativeTimeWithFuture = (date: Date | string): string => {
+  const now = new Date()
+  const then = typeof date === "string" ? new Date(date) : date
+  const diffInSeconds = Math.floor((then.getTime() - now.getTime()) / 1000)
+
+  // If date is in the past, use the regular relative time formatter
+  if (diffInSeconds < 0) {
+    return formatRelativeTime(date)
+  }
+
+  // Future dates
+  if (diffInSeconds < 60) {
+    return "soon"
+  }
+
+  const diffInMinutes = Math.floor(diffInSeconds / 60)
+  if (diffInMinutes < 60) {
+    return `In ${diffInMinutes}m`
+  }
+
+  const diffInHours = Math.floor(diffInMinutes / 60)
+  if (diffInHours < 24) {
+    return `In ${diffInHours}h`
+  }
+
+  const diffInDays = Math.floor(diffInHours / 24)
+  if (diffInDays < 7) {
+    return `In ${diffInDays} ${diffInDays === 1 ? "day" : "days"}`
+  }
+
+  // For dates more than a week away, show formatted date
+  return then.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: then.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+  })
+}

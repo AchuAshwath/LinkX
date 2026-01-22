@@ -12,7 +12,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { PlatformSelector, type Platform } from "@/components/Common/PlatformSelector"
 import { PostSchedulePicker } from "@/components/PostInput/PostSchedulePicker"
-import { formatFullDateTime, formatRelativeTime, getInitials } from "@/utils"
+import { formatFullDateTime, formatRelativeTime, formatRelativeTimeWithFuture, getInitials } from "@/utils"
 
 export interface ScheduledPostData {
   id: string
@@ -25,6 +25,7 @@ export interface ScheduledPostData {
   imageUrl?: string
   createdAt: Date | string
   scheduledAt: Date | string
+  relativeDate?: string // e.g., "In 4 days", "In 2h"
   platform: Platform
 }
 
@@ -86,7 +87,7 @@ export function ScheduledPost({
   }, [isEditing])
 
   const scheduledDateTime = formatFullDateTime(post.scheduledAt)
-  const relativeTime = formatRelativeTime(post.createdAt)
+  const relativeTime = formatRelativeTimeWithFuture(post.scheduledAt)
   const initials = getInitials(post.author.name)
 
   const handlePlatformChange = (newPlatform: Platform) => {
@@ -186,7 +187,7 @@ export function ScheduledPost({
                     }
                     className="shrink-0 text-xs sm:text-sm"
                   >
-                    {relativeTime}
+                    {post.relativeDate || relativeTime}
                   </time>
                 </div>
               </div>

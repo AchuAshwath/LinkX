@@ -23,6 +23,7 @@ export interface DraftPostData {
   content: string
   imageUrl?: string
   createdAt: Date | string
+  relativeDate?: string // e.g., "1 day ago"
   platform: Platform
 }
 
@@ -142,7 +143,7 @@ export function DraftPost({
                     }
                     className="shrink-0 text-xs sm:text-sm"
                   >
-                    {relativeTime}
+                    {post.relativeDate || relativeTime}
                   </time>
                 </div>
               </div>

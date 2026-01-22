@@ -34,6 +34,7 @@ export interface PostedData {
   content: string
   imageUrl?: string
   createdAt: Date | string
+  relativeDate?: string // e.g., "2h ago", "1 day ago"
   likes: number
   reposts: number
   comments: number
@@ -182,7 +183,7 @@ export function Posted({
                     className="shrink-0 text-xs sm:text-sm"
                     title={fullDateTime}
                   >
-                    {relativeTime}
+                    {post.relativeDate || relativeTime}
                   </time>
                 </div>
               </div>
