@@ -38,8 +38,8 @@ export const timelinePosts: TimelinePost[] = [
     },
     content:
       "Excited to announce our new product launch next week! 🚀 Stay tuned for more updates. #ProductLaunch #Innovation",
-    createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), // Created 1 day ago
-    scheduledAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000), // Scheduled for 2 days from now
+    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // Drafted 2 days ago
+    scheduledAt: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000), // Scheduled to publish tomorrow
     platform: "all",
   },
   // Posted post
@@ -103,8 +103,8 @@ export const timelinePosts: TimelinePost[] = [
     content:
       "Just finished reading an amazing book on design systems. Can't wait to share my thoughts! 📚 #DesignSystems #Reading",
     imageUrl: "https://bundui-images.netlify.app/blog/02.jpg",
-    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // Created 2 days ago
-    scheduledAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000), // Scheduled for 5 days from now
+    createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), // Drafted 5 days ago
+    scheduledAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), // Scheduled to publish in 3 days
     platform: "linkedin",
   },
   // Posted post
