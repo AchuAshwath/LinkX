@@ -12,7 +12,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { PlatformSelector, type Platform } from "@/components/Common/PlatformSelector"
 import { PostSchedulePicker } from "@/components/PostInput/PostSchedulePicker"
-import { formatFullDateTime, formatRelativeTime, formatRelativeTimeWithFuture, getInitials } from "@/utils"
+import { formatFullDateTime, formatRelativeTimeWithFuture, getInitials } from "@/utils"
 
 export interface ScheduledPostData {
   id: string
@@ -50,7 +50,6 @@ export function ScheduledPost({
   onCancel,
   onPlatformChange,
   onPreview,
-  onMore,
 }: ScheduledPostProps) {
   const [platform, setPlatform] = React.useState<Platform>(
     post.platform || "all"

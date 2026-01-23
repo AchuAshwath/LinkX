@@ -48,7 +48,6 @@ export function DraftPost({
   onCancel,
   onPlatformChange,
   onPreview,
-  onMore,
 }: DraftPostProps) {
   const [platform, setPlatform] = React.useState<Platform>(
     post.platform || "all"
