@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { useMutation } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Calendar,
   CheckCircle2,
@@ -9,6 +9,7 @@ import {
   TrendingUp,
   BarChart3,
   FileText,
+  Loader2,
 } from "lucide-react"
 import * as React from "react"
 import { Posted } from "@/components/Post/Posted"
@@ -35,10 +36,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { LoadingButton } from "@/components/ui/loading-button"
-import { ItemsService } from "@/client"
+import { PostsService } from "@/client"
 import useCustomToast from "@/hooks/useCustomToast"
-import { handleError } from "@/utils"
-import { draftPosts as initialDraftPosts, scheduledPosts as initialScheduledPosts, postedPosts as initialPostedPosts } from "./-postsData"
+import { handleError, transformToDraftPost, transformToScheduledPost, transformToPostedPost } from "@/utils"
 import type { PostedData } from "@/components/Post/Posted"
 import type { ScheduledPostData } from "@/components/Post/ScheduledPost"
 import type { DraftPostData } from "@/components/Post/DraftPost"
@@ -57,6 +57,7 @@ export const Route = createFileRoute("/_layout/posts")({
 })
 
 function PostsPage() {
+  const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = React.useState<"drafts" | "scheduled" | "posted">(
     "drafts",
   )
@@ -64,11 +65,6 @@ function PostsPage() {
   const [sortBy, setSortBy] = React.useState<string>("newest")
   const [hasFilters, setHasFilters] = React.useState(false)
   const [editingPostId, setEditingPostId] = React.useState<string | null>(null)
-  
-  // State for posts data
-  const [draftPosts, setDraftPosts] = React.useState<DraftPostData[]>(initialDraftPosts)
-  const [scheduledPosts, setScheduledPosts] = React.useState<ScheduledPostData[]>(initialScheduledPosts)
-  const [postedPosts, setPostedPosts] = React.useState<PostedData[]>(initialPostedPosts)
   
   // Delete confirmation dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
@@ -84,28 +80,123 @@ function PostsPage() {
   
   const { showSuccessToast, showErrorToast } = useCustomToast()
 
-  const deleteItem = async (id: string) => {
-    await ItemsService.deleteItem({ id })
-  }
+  // Map activeTab to API status filter
+  const statusFilter = React.useMemo(() => {
+    if (activeTab === "drafts") return "draft"
+    if (activeTab === "scheduled") return "scheduled"
+    if (activeTab === "posted") return "published"
+    return undefined
+  }, [activeTab])
 
+  // Fetch posts from API - refetch when tab changes
+  const {
+    data: postsData,
+    isLoading: isLoadingPosts,
+    error: postsError,
+  } = useQuery({
+    queryKey: ["posts", statusFilter],
+    queryFn: async () => {
+      return await PostsService.readPosts({
+        status: statusFilter,
+        skip: 0,
+        limit: 100,
+      })
+    },
+    enabled: true, // Always fetch when component mounts
+    staleTime: 30000, // Consider data fresh for 30 seconds
+  })
+
+  // Transform API data to component types
+  const draftPosts = React.useMemo(() => {
+    if (!postsData || activeTab !== "drafts") return []
+    return postsData.data
+      .filter((p) => p.status === "draft")
+      .map((p) => {
+        const author = p.author as { name: string; username: string; avatarUrl?: string | null } | null
+        return transformToDraftPost({
+          id: p.id,
+          author,
+          content: p.content,
+          image_url: p.image_url ?? null,
+          created_at: p.created_at,
+          platform: p.platform ?? "all",
+        })
+      })
+  }, [postsData, activeTab])
+
+  const scheduledPosts = React.useMemo(() => {
+    if (!postsData || activeTab !== "scheduled") return []
+    return postsData.data
+      .filter((p) => p.status === "scheduled" && p.scheduled_at)
+      .map((p) => {
+        const author = p.author as { name: string; username: string; avatarUrl?: string | null } | null
+        return transformToScheduledPost({
+          id: p.id,
+          author,
+          content: p.content,
+          image_url: p.image_url ?? null,
+          created_at: p.created_at,
+          scheduled_at: p.scheduled_at,
+          platform: p.platform ?? "all",
+        })
+      })
+  }, [postsData, activeTab])
+
+  const postedPosts = React.useMemo(() => {
+    if (!postsData || activeTab !== "posted") return []
+    return postsData.data
+      .filter((p) => p.status === "published")
+      .map((p) => {
+        const author = p.author as { name: string; username: string; avatarUrl?: string | null } | null
+        return transformToPostedPost({
+          id: p.id,
+          author,
+          content: p.content,
+          image_url: p.image_url ?? null,
+          created_at: p.created_at,
+          likes: p.likes,
+          reposts: p.reposts,
+          comments: p.comments,
+          platform: p.platform ?? "all",
+        })
+      })
+  }, [postsData, activeTab])
+
+  // Delete mutation
   const deleteMutation = useMutation({
-    mutationFn: deleteItem,
+    mutationFn: async (postId: string) => {
+      await PostsService.deletePost({ postId })
+    },
     onSuccess: () => {
       if (postToDelete) {
-        const { id, type } = postToDelete
-        
-        if (type === "draft") {
-          setDraftPosts((prev) => prev.filter((post) => post.id !== id))
-        } else if (type === "scheduled") {
-          setScheduledPosts((prev) => prev.filter((post) => post.id !== id))
-        } else if (type === "posted") {
-          setPostedPosts((prev) => prev.filter((post) => post.id !== id))
-        }
-        
         showSuccessToast("Post deleted successfully")
         setDeleteDialogOpen(false)
         setPostToDelete(null)
+        // Invalidate and refetch posts
+        queryClient.invalidateQueries({ queryKey: ["posts"] })
       }
+    },
+    onError: handleError.bind(showErrorToast),
+  })
+
+  // Update mutation
+  const updateMutation = useMutation({
+    mutationFn: async ({
+      postId,
+      data,
+    }: {
+      postId: string
+      data: { content?: string; image_url?: string; platform?: string; scheduled_at?: string; status?: string }
+    }) => {
+      return await PostsService.updatePost({
+        postId,
+        requestBody: data,
+      })
+    },
+    onSuccess: () => {
+      showSuccessToast("Post updated successfully")
+      setEditingPostId(null)
+      queryClient.invalidateQueries({ queryKey: ["posts"] })
     },
     onError: handleError.bind(showErrorToast),
   })
@@ -160,9 +251,44 @@ function PostsPage() {
   }
 
   const handleSave = (postId: string) => {
-    // TODO: Save changes to backend
-    console.log(`Saving post ${postId}`)
-    setEditingPostId(null)
+    // Find the post being edited
+    let postToUpdate: DraftPostData | ScheduledPostData | PostedData | undefined
+    
+    if (activeTab === "drafts") {
+      postToUpdate = draftPosts.find((p) => p.id === postId)
+    } else if (activeTab === "scheduled") {
+      postToUpdate = scheduledPosts.find((p) => p.id === postId)
+    } else if (activeTab === "posted") {
+      postToUpdate = postedPosts.find((p) => p.id === postId)
+    }
+
+    if (!postToUpdate) {
+      showErrorToast("Post not found")
+      return
+    }
+
+    // Prepare update data
+    const updateData: {
+      content?: string
+      image_url?: string
+      platform?: string
+      scheduled_at?: string
+      status?: string
+    } = {
+      content: postToUpdate.content,
+      image_url: postToUpdate.imageUrl || undefined,
+      platform: postToUpdate.platform,
+    }
+
+    // Add scheduled_at for scheduled posts
+    if ("scheduledAt" in postToUpdate && postToUpdate.scheduledAt) {
+      updateData.scheduled_at =
+        typeof postToUpdate.scheduledAt === "string"
+          ? postToUpdate.scheduledAt
+          : postToUpdate.scheduledAt.toISOString()
+    }
+
+    updateMutation.mutate({ postId, data: updateData })
   }
 
   const handleCancel = () => {
@@ -173,26 +299,11 @@ function PostsPage() {
     postId: string,
     platform: Platform,
   ) => {
-    // Update platform in state based on active tab
-    if (activeTab === "drafts") {
-      setDraftPosts((prev) =>
-        prev.map((post) =>
-          post.id === postId ? { ...post, platform } : post
-        )
-      )
-    } else if (activeTab === "scheduled") {
-      setScheduledPosts((prev) =>
-        prev.map((post) =>
-          post.id === postId ? { ...post, platform } : post
-        )
-      )
-    } else if (activeTab === "posted") {
-      setPostedPosts((prev) =>
-        prev.map((post) =>
-          post.id === postId ? { ...post, platform } : post
-        )
-      )
-    }
+    // Update platform via API
+    updateMutation.mutate({
+      postId,
+      data: { platform },
+    })
   }
 
   const convertToPreviewData = (
@@ -254,6 +365,13 @@ function PostsPage() {
     }
   }
 
+  // Handle query errors
+  React.useEffect(() => {
+    if (postsError) {
+      handleError.bind(showErrorToast)(postsError as any)
+    }
+  }, [postsError, showErrorToast])
+
   const handleClearFilters = () => {
     setDateFilter("all")
     setSortBy("newest")
@@ -266,24 +384,16 @@ function PostsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-7xl min-h-[calc(100vh-3.5rem)] lg:min-h-screen">
-      <div className="border-border min-w-0 flex-1 border-r md:max-w-2xl">
-        {/* Header */}
-        <div className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur-sm">
-          <div className="px-4 py-3">
-            <h1 className="text-xl font-bold">Posts</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Manage your drafts, scheduled, and published posts
-            </p>
-          </div>
-
-          {/* Tabs - Three tabs: Drafts, Scheduled, Posted */}
-          <Tabs
-            value={activeTab}
-            onValueChange={(value) =>
-              setActiveTab(value as "drafts" | "scheduled" | "posted")
-            }
-            className="w-full"
-          >
+      <div className="border-border min-w-0 flex-1 border-r md:max-w-2xl flex flex-col h-[calc(100vh-3.5rem)] lg:h-screen">
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) =>
+            setActiveTab(value as "drafts" | "scheduled" | "posted")
+          }
+          className="w-full h-full flex flex-col"
+        >
+          {/* Tabs Header - Sticky */}
+          <div className="sticky top-0 z-10 shrink-0 border-b bg-background/80 backdrop-blur-sm">
             <TabsList className="w-full h-auto p-0 bg-transparent rounded-none border-0 border-b border-border grid grid-cols-3 relative">
               <TabsTrigger
                 value="drafts"
@@ -337,10 +447,18 @@ function PostsPage() {
                 </div>
               </TabsTrigger>
             </TabsList>
+          </div>
 
+          {/* Scrollable Content Area */}
+          <div className="flex-1 min-h-0 overflow-y-auto">
             {/* Drafts Tab */}
             <TabsContent value="drafts" className="mt-0">
-              {draftPosts.length === 0 ? (
+              {isLoadingPosts ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  <p className="mt-4 text-sm text-muted-foreground">Loading posts...</p>
+                </div>
+              ) : draftPosts.length === 0 ? (
                 <div className="flex flex-col items-center justify-center text-center py-16 px-4">
                   <div className="rounded-full bg-muted/50 p-6 mb-4">
                     <FileText className="h-10 w-10 text-muted-foreground" />
@@ -352,7 +470,7 @@ function PostsPage() {
                   </p>
                 </div>
               ) : (
-                <div className="w-full">
+                <div className="w-full pb-20">
                   {draftPosts.map((post) => (
                     <DraftPost
                       key={post.id}
@@ -364,7 +482,6 @@ function PostsPage() {
                       onCancel={handleCancel}
                       onPlatformChange={handlePlatformChange}
                       onPreview={(id) => handleDraftAction("preview", id)}
-                      onMore={(id) => handleDraftAction("more", id)}
                     />
                   ))}
                 </div>
@@ -373,7 +490,12 @@ function PostsPage() {
 
             {/* Scheduled Tab */}
             <TabsContent value="scheduled" className="mt-0">
-              {scheduledPosts.length === 0 ? (
+              {isLoadingPosts ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  <p className="mt-4 text-sm text-muted-foreground">Loading posts...</p>
+                </div>
+              ) : scheduledPosts.length === 0 ? (
                 <div className="flex flex-col items-center justify-center text-center py-16 px-4">
                   <div className="rounded-full bg-muted/50 p-6 mb-4">
                     <Calendar className="h-10 w-10 text-muted-foreground" />
@@ -387,7 +509,7 @@ function PostsPage() {
                   </p>
                 </div>
               ) : (
-                <div className="w-full">
+                <div className="w-full pb-20">
                   {scheduledPosts.map((post) => (
                     <ScheduledPost
                       key={post.id}
@@ -399,7 +521,6 @@ function PostsPage() {
                       onCancel={handleCancel}
                       onPlatformChange={handlePlatformChange}
                       onPreview={(id) => handleScheduledAction("preview", id)}
-                      onMore={(id) => handleScheduledAction("more", id)}
                     />
                   ))}
                 </div>
@@ -408,7 +529,12 @@ function PostsPage() {
 
             {/* Posted Tab */}
             <TabsContent value="posted" className="mt-0">
-              {postedPosts.length === 0 ? (
+              {isLoadingPosts ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  <p className="mt-4 text-sm text-muted-foreground">Loading posts...</p>
+                </div>
+              ) : postedPosts.length === 0 ? (
                 <div className="flex flex-col items-center justify-center text-center py-16 px-4">
                   <div className="rounded-full bg-muted/50 p-6 mb-4">
                     <CheckCircle2 className="h-10 w-10 text-muted-foreground" />
@@ -422,7 +548,7 @@ function PostsPage() {
                   </p>
                 </div>
               ) : (
-                <div className="w-full">
+                <div className="w-full pb-20">
                   {postedPosts.map((post) => (
                     <Posted
                       key={post.id}
@@ -443,8 +569,8 @@ function PostsPage() {
                 </div>
               )}
             </TabsContent>
-          </Tabs>
-        </div>
+          </div>
+        </Tabs>
       </div>
 
       {/* Right Sidebar - Filters */}
