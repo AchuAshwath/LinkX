@@ -1,24 +1,119 @@
 "use client"
 
-import { ImageIcon, Smile } from "lucide-react"
+import { ImageIcon, Smile, ChevronDown, FileText, Calendar, Send } from "lucide-react"
 import * as React from "react"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu"
 import { PlatformSelector, type Platform } from "@/components/Common/PlatformSelector"
+import { PostsService } from "@/client"
+import useCustomToast from "@/hooks/useCustomToast"
+import { handleError } from "@/utils"
 
 import { formatDateTime, PostSchedulePicker } from "./PostSchedulePicker"
 
 interface PostInputBoxProps {
   username: string
   avatarUrl?: string
+  onSubmit?: () => void
+  onCancel?: () => void
 }
 
-export function PostInputBox({ username, avatarUrl }: PostInputBoxProps) {
+export function PostInputBox({
+  username,
+  avatarUrl,
+  onSubmit,
+  onCancel,
+}: PostInputBoxProps) {
+  const queryClient = useQueryClient()
+  const { showSuccessToast, showErrorToast } = useCustomToast()
   const [content, setContent] = React.useState("")
   const [scheduledAt, setScheduledAt] = React.useState<Date | undefined>()
   const [channel, setChannel] = React.useState<Platform>("all")
+  const [actionType, setActionType] = React.useState<"draft" | "schedule" | "post">("post")
+
+  const createPostMutation = useMutation({
+    mutationFn: async (data: {
+      content: string
+      platform: string
+      scheduled_at?: string
+      status: string
+    }) => {
+      return await PostsService.createPost({ requestBody: data })
+    },
+    onSuccess: (_, variables) => {
+      const statusMessages = {
+        draft: "Draft saved successfully",
+        scheduled: "Post scheduled successfully",
+        published: "Post published successfully",
+      }
+      showSuccessToast(statusMessages[variables.status as keyof typeof statusMessages] || "Post created successfully")
+      // Reset form
+      setContent("")
+      setScheduledAt(undefined)
+      setChannel("all")
+      setActionType("post")
+      // Invalidate queries to refetch posts
+      queryClient.invalidateQueries({ queryKey: ["posts"] })
+      // Call onSubmit callback if provided
+      onSubmit?.()
+    },
+    onError: handleError.bind(showErrorToast),
+  })
+
+  const handleSubmit = (action: "draft" | "schedule" | "post") => {
+    if (content.trim().length === 0) return
+
+    // Validate schedule action
+    if (action === "schedule" && !scheduledAt) {
+      showErrorToast("Please select a date and time to schedule the post")
+      return
+    }
+
+    const postData: {
+      content: string
+      platform: string
+      scheduled_at?: string
+      status: string
+    } = {
+      content: content.trim(),
+      platform: channel,
+      status: action === "draft" ? "draft" : action === "schedule" ? "scheduled" : "published",
+    }
+
+    if (action === "schedule" && scheduledAt) {
+      postData.scheduled_at = scheduledAt.toISOString()
+    }
+
+    createPostMutation.mutate(postData)
+  }
+
+  const getButtonLabel = () => {
+    if (createPostMutation.isPending) {
+      if (actionType === "draft") return "Saving..."
+      if (actionType === "schedule") return "Scheduling..."
+      return "Posting..."
+    }
+    if (actionType === "draft") return "Save as Draft"
+    if (actionType === "schedule") return "Schedule"
+    return "Post"
+  }
+
+  const getButtonIcon = () => {
+    if (createPostMutation.isPending) return null
+    if (actionType === "draft") return <FileText className="h-4 w-4" />
+    if (actionType === "schedule") return <Calendar className="h-4 w-4" />
+    return <Send className="h-4 w-4" />
+  }
 
   const initials =
     username
@@ -90,14 +185,72 @@ export function PostInputBox({ username, avatarUrl }: PostInputBoxProps) {
                 <Smile className="h-5 w-5 sm:h-4 sm:w-4" />
               </Button>
             </div>
-            <Button
-              type="button"
-              size="sm"
-              className="h-9 shrink-0 bg-primary px-4 text-base font-medium text-primary-foreground transition-all hover:bg-primary/90 active:scale-95 disabled:opacity-50 sm:h-8"
-              disabled={content.trim().length === 0}
-            >
-              Post
-            </Button>
+            <div className="flex items-center gap-2">
+              {onCancel && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={onCancel}
+                  className="h-9 shrink-0 px-4 text-base sm:h-8"
+                  disabled={createPostMutation.isPending}
+                >
+                  Cancel
+                </Button>
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-9 shrink-0 bg-primary px-4 text-base font-medium text-primary-foreground transition-all hover:bg-primary/90 active:scale-95 disabled:opacity-50 sm:h-8"
+                    disabled={content.trim().length === 0 || createPostMutation.isPending}
+                  >
+                    <span className="flex items-center gap-2">
+                      {getButtonIcon()}
+                      {getButtonLabel()}
+                      <ChevronDown className="h-3 w-3 opacity-70" />
+                    </span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setActionType("draft")
+                      handleSubmit("draft")
+                    }}
+                    disabled={content.trim().length === 0 || createPostMutation.isPending}
+                    className="cursor-pointer"
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    <span>Save as Draft</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setActionType("schedule")
+                      handleSubmit("schedule")
+                    }}
+                    disabled={content.trim().length === 0 || createPostMutation.isPending}
+                    className="cursor-pointer"
+                  >
+                    <Calendar className="mr-2 h-4 w-4" />
+                    <span>Schedule</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setActionType("post")
+                      handleSubmit("post")
+                    }}
+                    disabled={content.trim().length === 0 || createPostMutation.isPending}
+                    className="cursor-pointer"
+                  >
+                    <Send className="mr-2 h-4 w-4" />
+                    <span>Post Now</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </div>
 
