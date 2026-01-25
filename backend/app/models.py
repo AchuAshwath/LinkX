@@ -1,6 +1,7 @@
 import uuid
+from datetime import datetime
 
-from pydantic import EmailStr
+from pydantic import EmailStr, model_validator
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -111,3 +112,86 @@ class TokenPayload(SQLModel):
 class NewPassword(SQLModel):
     token: str
     new_password: str = Field(min_length=8, max_length=128)
+
+
+# Shared post properties
+class PostBase(SQLModel):
+    content: str = Field(min_length=1, max_length=3000)
+    image_url: str | None = Field(default=None, max_length=500)
+    platform: str = Field(default="all", max_length=50)  # "linkedin", "x", "all"
+    status: str = Field(default="draft", max_length=50)  # "draft", "scheduled", "published", "failed"
+
+
+# Properties to receive via API on creation
+class PostCreate(PostBase):
+    scheduled_at: datetime | None = Field(default=None)
+
+    @model_validator(mode="after")
+    def validate_scheduled_post(self) -> "PostCreate":
+        """Validate that scheduled posts have scheduled_at."""
+        if self.status == "scheduled" and self.scheduled_at is None:
+            raise ValueError("scheduled_at is required when status is 'scheduled'")
+        if self.status == "published" and self.scheduled_at is not None:
+            # If publishing immediately, don't require scheduled_at
+            pass
+        return self
+
+
+# Properties to receive via API on update
+class PostUpdate(SQLModel):
+    content: str | None = Field(default=None, min_length=1, max_length=3000)
+    image_url: str | None = Field(default=None, max_length=500)
+    platform: str | None = Field(default=None, max_length=50)
+    scheduled_at: datetime | None = None
+    status: str | None = Field(default=None, max_length=50)
+
+    @model_validator(mode="after")
+    def validate_scheduled_post(self) -> "PostUpdate":
+        """Validate that scheduled posts have scheduled_at."""
+        if self.status == "scheduled" and self.scheduled_at is None:
+            raise ValueError("scheduled_at is required when status is 'scheduled'")
+        return self
+
+
+# Database model - actual table
+class Post(PostBase, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    owner_id: uuid.UUID = Field(
+        foreign_key="user.id", nullable=False, ondelete="CASCADE"
+    )
+
+    # Scheduling
+    scheduled_at: datetime | None = None
+    published_at: datetime | None = None
+
+    # Engagement metrics (only for published posts)
+    likes: int = Field(default=0)
+    reposts: int = Field(default=0)
+    comments: int = Field(default=0)
+
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    # Relationships
+    owner: User | None = Relationship()
+
+
+# Properties to return via API
+class PostPublic(PostBase):
+    id: uuid.UUID
+    owner_id: uuid.UUID
+    scheduled_at: datetime | None
+    published_at: datetime | None
+    likes: int
+    reposts: int
+    comments: int
+    created_at: datetime
+    updated_at: datetime
+    # Author info will be populated in API layer
+    author: dict | None = None
+
+
+class PostsPublic(SQLModel):
+    data: list[PostPublic]
+    count: int
