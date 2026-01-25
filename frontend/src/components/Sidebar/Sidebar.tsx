@@ -2,11 +2,8 @@
 
 import { Link } from "@tanstack/react-router"
 import {
-  Bookmark,
   Home,
-  Layers,
   Package,
-  Palette,
   X,
 } from "lucide-react"
 import * as React from "react"
@@ -73,35 +70,10 @@ export function Sidebar({
             className="w-full justify-start text-base"
             asChild
           >
-            <Link to="/canvas">
-              <Palette className="mr-2 h-4 w-4" />
-              Canvas
-            </Link>
-          </Button>
-          <Button
-            variant="ghost"
-            className="w-full justify-start text-base"
-            asChild
-          >
-            <Link to="/brandkit">
-              <Layers className="mr-2 h-4 w-4" />
-              Brand Kit
-            </Link>
-          </Button>
-          <Button
-            variant="ghost"
-            className="w-full justify-start text-base"
-            asChild
-          >
             <Link to="/posts">
               <Package className="mr-2 h-4 w-4" />
               Posts
             </Link>
-          </Button>
-         
-          <Button variant="ghost" className="w-full justify-start text-base">
-            <Bookmark className="mr-2 h-4 w-4" />
-            Bookmarks
           </Button>
         </nav>
 

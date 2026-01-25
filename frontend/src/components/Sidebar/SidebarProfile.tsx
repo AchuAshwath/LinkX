@@ -2,10 +2,12 @@ import { Link } from "@tanstack/react-router"
 import {
   ChevronsUpDown,
   HelpCircle,
+  Layers,
   LogOut,
   Settings,
   Shield,
 } from "lucide-react"
+import { UserInfo } from "@/components/Common/UserInfo"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -15,7 +17,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { UserInfo } from "@/components/Common/UserInfo"
 
 interface SidebarProfileProps {
   fullName?: string
@@ -71,6 +72,13 @@ export function SidebarProfile({
             <DropdownMenuItem>
               <Shield className="mr-2 h-4 w-4" />
               Admin
+            </DropdownMenuItem>
+          </Link>
+          <DropdownMenuSeparator />
+          <Link to="/about" onClick={onMenuClick}>
+            <DropdownMenuItem>
+              <Layers className="mr-2 h-4 w-4" />
+              Brand Kit
             </DropdownMenuItem>
           </Link>
           <DropdownMenuItem>

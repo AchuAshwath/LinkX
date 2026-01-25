@@ -439,27 +439,27 @@ function TimelinePage() {
                 />
               </div>
 
-              {/* Timeline Posts - Mixed scheduled and posted */}
-              <div className="w-full pb-20">
-                {isLoadingPosts ? (
-                  <div className="flex flex-col items-center justify-center py-16">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                    <p className="mt-4 text-sm text-muted-foreground">Loading posts...</p>
-                  </div>
-                ) : sortedPosts.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center text-center py-16 px-4">
-                    <div className="rounded-full bg-muted/50 p-6 mb-4">
+        {/* Timeline Posts - Mixed scheduled and posted */}
+        <div className="w-full pb-20">
+          {isLoadingPosts ? (
+            <div className="flex flex-col items-center justify-center py-16">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <p className="mt-4 text-sm text-muted-foreground">Loading posts...</p>
+            </div>
+          ) : sortedPosts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center text-center py-16 px-4">
+              <div className="rounded-full bg-muted/50 p-6 mb-4">
                       <HomeIcon className="h-10 w-10 text-muted-foreground" />
-                    </div>
-                    <h3 className="text-xl font-semibold mb-1">No posts yet</h3>
-                    <p className="text-muted-foreground text-sm max-w-sm">
-                      Your scheduled and published posts will appear here. Create a post above to get started.
-                    </p>
-                  </div>
-                ) : (
-                  sortedPosts.map(renderPost)
-                )}
               </div>
+              <h3 className="text-xl font-semibold mb-1">No posts yet</h3>
+              <p className="text-muted-foreground text-sm max-w-sm">
+                      Your scheduled and published posts will appear here. Create a post above to get started.
+              </p>
+            </div>
+          ) : (
+            sortedPosts.map(renderPost)
+          )}
+        </div>
             </TabsContent>
           </div>
         </Tabs>

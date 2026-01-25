@@ -4,11 +4,11 @@ import { Logo } from "@/components/Common/Logo"
 import { useTheme } from "@/components/theme-provider"
 import { Button } from "@/components/ui/button"
 
-export const Route = createFileRoute("/brandkit")({
-  component: BrandKitPage,
+export const Route = createFileRoute("/_layout/about")({
+  component: AboutPage,
   head: () => ({
     meta: [
-      { title: "Brand Kit - LinkX" },
+      { title: "About - LinkX" },
       {
         name: "description",
         content: "LinkX brand guidelines and specifications",
@@ -17,7 +17,7 @@ export const Route = createFileRoute("/brandkit")({
   }),
 })
 
-function BrandKitPage() {
+function AboutPage() {
   const { setTheme, resolvedTheme } = useTheme()
 
   return (
