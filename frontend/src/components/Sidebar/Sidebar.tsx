@@ -9,9 +9,11 @@ import {
   Palette,
   X,
 } from "lucide-react"
+import * as React from "react"
 import { Logo } from "@/components/Common/Logo"
 import { Button } from "@/components/ui/button"
 import useAuth from "@/hooks/useAuth"
+import { CreatePostDialog } from "@/components/PostInput/CreatePostDialog"
 import { SidebarProfile } from "./SidebarProfile"
 
 interface SidebarProps {
@@ -24,11 +26,17 @@ export function Sidebar({
   onClose,
 }: SidebarProps) {
   const { logout, user } = useAuth()
+  const [createPostDialogOpen, setCreatePostDialogOpen] = React.useState(false)
 
   const handleMenuClick = () => {
     if (sidebarOpen) {
       onClose()
     }
+  }
+
+  const handlePostCreated = () => {
+    // Posts will be refetched automatically via query invalidation
+    setCreatePostDialogOpen(false)
   }
 
   return (
@@ -55,9 +63,9 @@ export function Sidebar({
             className="w-full justify-start text-base"
             asChild
           >
-            <Link to="/">
+            <Link to="/home">
               <Home className="mr-2 h-4 w-4" />
-              Timeline
+              Home
             </Link>
           </Button>
           <Button
@@ -97,7 +105,12 @@ export function Sidebar({
           </Button>
         </nav>
 
-        <Button className="mt-6 w-full text-base">Create Post</Button>
+        <Button
+          className="mt-6 w-full text-base"
+          onClick={() => setCreatePostDialogOpen(true)}
+        >
+          Create Post
+        </Button>
       </div>
 
       {/* Bottom section: Profile */}
@@ -106,6 +119,13 @@ export function Sidebar({
         email={user?.email ?? undefined}
         onMenuClick={handleMenuClick}
         onLogout={logout}
+      />
+
+      {/* Create Post Dialog */}
+      <CreatePostDialog
+        open={createPostDialogOpen}
+        onOpenChange={setCreatePostDialogOpen}
+        onPostCreated={handlePostCreated}
       />
     </div>
   )
