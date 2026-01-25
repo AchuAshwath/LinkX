@@ -121,3 +121,100 @@ export const formatRelativeTimeWithFuture = (date: Date | string): string => {
     year: then.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
   })
 }
+
+import type { DraftPostData } from "@/components/Post/DraftPost"
+import type { ScheduledPostData } from "@/components/Post/ScheduledPost"
+import type { PostedData } from "@/components/Post/Posted"
+import type { Platform } from "@/components/Common/PlatformSelector"
+
+/**
+ * Transform API PostPublic response to DraftPostData
+ */
+export function transformToDraftPost(post: {
+  id: string
+  author: { name: string; username: string; avatarUrl?: string | null } | null
+  content: string
+  image_url: string | null
+  created_at: string
+  platform: string
+}): DraftPostData {
+  const author = post.author || { name: "", username: "" }
+  return {
+    id: post.id,
+    author: {
+      name: author.name,
+      username: author.username,
+      avatarUrl: author.avatarUrl ?? undefined,
+    },
+    content: post.content,
+    imageUrl: post.image_url || undefined,
+    createdAt: post.created_at,
+    relativeDate: formatRelativeTime(post.created_at),
+    platform: post.platform as Platform,
+  }
+}
+
+/**
+ * Transform API PostPublic response to ScheduledPostData
+ */
+export function transformToScheduledPost(post: {
+  id: string
+  author: { name: string; username: string; avatarUrl?: string | null } | null
+  content: string
+  image_url: string | null
+  created_at: string
+  scheduled_at: string | null
+  platform: string
+}): ScheduledPostData {
+  if (!post.scheduled_at) {
+    throw new Error("scheduled_at is required for scheduled posts")
+  }
+  const author = post.author || { name: "", username: "" }
+  return {
+    id: post.id,
+    author: {
+      name: author.name,
+      username: author.username,
+      avatarUrl: author.avatarUrl ?? undefined,
+    },
+    content: post.content,
+    imageUrl: post.image_url || undefined,
+    createdAt: post.created_at,
+    scheduledAt: post.scheduled_at,
+    relativeDate: formatRelativeTimeWithFuture(post.scheduled_at),
+    platform: post.platform as Platform,
+  }
+}
+
+/**
+ * Transform API PostPublic response to PostedData
+ */
+export function transformToPostedPost(post: {
+  id: string
+  author: { name: string; username: string; avatarUrl?: string | null } | null
+  content: string
+  image_url: string | null
+  created_at: string
+  likes: number
+  reposts: number
+  comments: number
+  platform: string
+}): PostedData {
+  const author = post.author || { name: "", username: "" }
+  return {
+    id: post.id,
+    author: {
+      name: author.name,
+      username: author.username,
+      avatarUrl: author.avatarUrl ?? undefined,
+    },
+    content: post.content,
+    imageUrl: post.image_url || undefined,
+    createdAt: post.created_at,
+    relativeDate: formatRelativeTime(post.created_at),
+    likes: post.likes,
+    reposts: post.reposts,
+    comments: post.comments,
+    platform: post.platform as Platform,
+  }
+}
