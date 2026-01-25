@@ -44,6 +44,46 @@ export type NewPassword = {
     new_password: string;
 };
 
+export type PostCreate = {
+    content: string;
+    image_url?: (string | null);
+    platform?: string;
+    status?: string;
+    scheduled_at?: (string | null);
+};
+
+export type PostPublic = {
+    content: string;
+    image_url?: (string | null);
+    platform?: string;
+    status?: string;
+    id: string;
+    owner_id: string;
+    scheduled_at: (string | null);
+    published_at: (string | null);
+    likes: number;
+    reposts: number;
+    comments: number;
+    created_at: string;
+    updated_at: string;
+    author?: ({
+    [key: string]: unknown;
+} | null);
+};
+
+export type PostsPublic = {
+    data: Array<PostPublic>;
+    count: number;
+};
+
+export type PostUpdate = {
+    content?: (string | null);
+    image_url?: (string | null);
+    platform?: (string | null);
+    scheduled_at?: (string | null);
+    status?: (string | null);
+};
+
 export type PrivateUserCreate = {
     email: string;
     password: string;
@@ -164,6 +204,42 @@ export type LoginRecoverPasswordHtmlContentData = {
 };
 
 export type LoginRecoverPasswordHtmlContentResponse = (string);
+
+export type PostsReadPostsData = {
+    limit?: number;
+    skip?: number;
+    /**
+     * Filter by status: draft, scheduled, published, failed
+     */
+    status?: (string | null);
+};
+
+export type PostsReadPostsResponse = (PostsPublic);
+
+export type PostsCreatePostData = {
+    requestBody: PostCreate;
+};
+
+export type PostsCreatePostResponse = (PostPublic);
+
+export type PostsReadPostData = {
+    postId: string;
+};
+
+export type PostsReadPostResponse = (PostPublic);
+
+export type PostsUpdatePostData = {
+    postId: string;
+    requestBody: PostUpdate;
+};
+
+export type PostsUpdatePostResponse = (PostPublic);
+
+export type PostsDeletePostData = {
+    postId: string;
+};
+
+export type PostsDeletePostResponse = (Message);
 
 export type PrivateCreateUserData = {
     requestBody: PrivateUserCreate;

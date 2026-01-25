@@ -212,6 +212,249 @@ export const NewPasswordSchema = {
     title: 'NewPassword'
 } as const;
 
+export const PostCreateSchema = {
+    properties: {
+        content: {
+            type: 'string',
+            maxLength: 3000,
+            minLength: 1,
+            title: 'Content'
+        },
+        image_url: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 500
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Image Url'
+        },
+        platform: {
+            type: 'string',
+            maxLength: 50,
+            title: 'Platform',
+            default: 'all'
+        },
+        status: {
+            type: 'string',
+            maxLength: 50,
+            title: 'Status',
+            default: 'draft'
+        },
+        scheduled_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Scheduled At'
+        }
+    },
+    type: 'object',
+    required: ['content'],
+    title: 'PostCreate'
+} as const;
+
+export const PostPublicSchema = {
+    properties: {
+        content: {
+            type: 'string',
+            maxLength: 3000,
+            minLength: 1,
+            title: 'Content'
+        },
+        image_url: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 500
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Image Url'
+        },
+        platform: {
+            type: 'string',
+            maxLength: 50,
+            title: 'Platform',
+            default: 'all'
+        },
+        status: {
+            type: 'string',
+            maxLength: 50,
+            title: 'Status',
+            default: 'draft'
+        },
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        owner_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Owner Id'
+        },
+        scheduled_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Scheduled At'
+        },
+        published_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Published At'
+        },
+        likes: {
+            type: 'integer',
+            title: 'Likes'
+        },
+        reposts: {
+            type: 'integer',
+            title: 'Reposts'
+        },
+        comments: {
+            type: 'integer',
+            title: 'Comments'
+        },
+        created_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Created At'
+        },
+        updated_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Updated At'
+        },
+        author: {
+            anyOf: [
+                {
+                    additionalProperties: true,
+                    type: 'object'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Author'
+        }
+    },
+    type: 'object',
+    required: ['content', 'id', 'owner_id', 'scheduled_at', 'published_at', 'likes', 'reposts', 'comments', 'created_at', 'updated_at'],
+    title: 'PostPublic'
+} as const;
+
+export const PostUpdateSchema = {
+    properties: {
+        content: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 3000,
+                    minLength: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Content'
+        },
+        image_url: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 500
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Image Url'
+        },
+        platform: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 50
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Platform'
+        },
+        scheduled_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Scheduled At'
+        },
+        status: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 50
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Status'
+        }
+    },
+    type: 'object',
+    title: 'PostUpdate'
+} as const;
+
+export const PostsPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/PostPublic'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count'],
+    title: 'PostsPublic'
+} as const;
+
 export const PrivateUserCreateSchema = {
     properties: {
         email: {
