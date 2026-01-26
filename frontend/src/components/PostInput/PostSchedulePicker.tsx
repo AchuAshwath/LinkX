@@ -165,13 +165,13 @@ export function PostSchedulePicker({
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
-      <div className="relative w-full shrink-0 sm:w-[200px]">
+    <div className="flex min-w-0 items-center gap-3">
+      <div className="relative shrink-0 flex-1 min-w-0 max-w-xs">
         <Input
           id="schedule-input"
           value={value}
-          placeholder="In 4 hours, tomorrow"
-          className="h-9 bg-background pr-10 text-sm sm:h-8 sm:text-xs"
+          placeholder="In 4 hours, tomorrow…"
+          className="h-10 w-full bg-background pr-10 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 sm:h-9"
           onChange={(e) => {
             setValue(e.target.value)
           }}
@@ -187,10 +187,11 @@ export function PostSchedulePicker({
             <Button
               id="date-picker"
               variant="ghost"
-              className="absolute top-1/2 right-2 h-6 w-6 -translate-y-1/2 active:scale-95 sm:right-1 sm:size-5"
+              size="icon"
+              className="absolute top-1/2 right-2 h-6 w-6 -translate-y-1/2 rounded-full hover:bg-accent active:scale-95 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 sm:right-2 sm:size-6"
               aria-label="Open calendar"
             >
-              <CalendarIcon className="h-3.5 w-3.5 sm:size-3" />
+              <CalendarIcon className="h-4 w-4" />
               <span className="sr-only">Select date</span>
             </Button>
           </PopoverTrigger>
@@ -211,14 +212,14 @@ export function PostSchedulePicker({
           </PopoverContent>
         </Popover>
       </div>
-      <div className="w-full shrink-0 sm:w-32">
+      <div className="shrink-0 w-32">
         <Input
           type="time"
           id="time-picker"
           step="1"
           value={time}
           onChange={(e) => handleTimeChange(e.target.value)}
-          className="h-9 bg-background text-sm appearance-none sm:h-8 sm:text-xs [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+          className="h-10 w-full bg-background text-sm font-medium appearance-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none sm:h-9"
         />
       </div>
     </div>

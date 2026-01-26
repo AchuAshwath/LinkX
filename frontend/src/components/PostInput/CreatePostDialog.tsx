@@ -1,11 +1,8 @@
 "use client"
 
-import {
-  Dialog,
-  DialogContent,
-} from "@/components/ui/dialog"
-import { PostInputBox } from "./PostInputBox"
+import { Dialog, DialogContent } from "@/components/ui/dialog"
 import useAuth from "@/hooks/useAuth"
+import { PostInputBox } from "./PostInputBox"
 
 interface CreatePostDialogProps {
   open: boolean
