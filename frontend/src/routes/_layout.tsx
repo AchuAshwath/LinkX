@@ -47,7 +47,7 @@ function Layout() {
 
         {/* Main Content - Flexible for different page layouts */}
         <main className="min-w-0 flex-1 min-h-[calc(100vh-3.5rem)] lg:min-h-screen">
-            <Outlet />
+          <Outlet />
         </main>
       </div>
 

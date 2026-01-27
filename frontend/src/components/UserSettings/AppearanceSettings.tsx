@@ -1,4 +1,4 @@
-import { Monitor, Moon, Sun, type LucideIcon } from "lucide-react"
+import { type LucideIcon, Monitor, Moon, Sun } from "lucide-react"
 
 import { type Theme, useTheme } from "@/components/theme-provider"
 import { Button } from "@/components/ui/button"
@@ -67,9 +67,7 @@ const AppearanceSettings = () => {
                       {option.description}
                     </span>
                   </div>
-                  {isSelected && (
-                    <span className="ml-auto text-xs">✓</span>
-                  )}
+                  {isSelected && <span className="ml-auto text-xs">✓</span>}
                 </Button>
               )
             })}

@@ -122,10 +122,10 @@ export const formatRelativeTimeWithFuture = (date: Date | string): string => {
   })
 }
 
-import type { DraftPostData } from "@/components/Post/DraftPost"
-import type { ScheduledPostData } from "@/components/Post/ScheduledPost"
-import type { PostedData } from "@/components/Post/Posted"
 import type { Platform } from "@/components/Common/PlatformSelector"
+import type { DraftPostData } from "@/components/Post/DraftPost"
+import type { PostedData } from "@/components/Post/Posted"
+import type { ScheduledPostData } from "@/components/Post/ScheduledPost"
 
 /**
  * Transform API PostPublic response to DraftPostData

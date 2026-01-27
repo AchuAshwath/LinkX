@@ -1,4 +1,8 @@
 export {
+  TimelineFilters,
+  type TimelineFiltersProps,
+} from "./TimelineFilters"
+export {
   type TrendingTopic,
   TrendingTopics,
   type TrendingTopicsProps,
@@ -8,7 +12,3 @@ export {
   WhoToFollow,
   type WhoToFollowProps,
 } from "./WhoToFollow"
-export {
-  TimelineFilters,
-  type TimelineFiltersProps,
-} from "./TimelineFilters"

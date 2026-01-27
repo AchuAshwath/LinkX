@@ -1,16 +1,24 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
+import { Home as HomeIcon, Loader2, Sparkles } from "lucide-react"
 import * as React from "react"
+import { PostsService } from "@/client"
+import type { Platform } from "@/components/Common/PlatformSelector"
+import type { PostedData } from "@/components/Post/Posted"
 import { Posted } from "@/components/Post/Posted"
-import { ScheduledPost } from "@/components/Post/ScheduledPost"
 import {
+  PostPreviewDialog,
+  type PreviewPostData,
+} from "@/components/Post/Previews"
+import type { ScheduledPostData } from "@/components/Post/ScheduledPost"
+import { ScheduledPost } from "@/components/Post/ScheduledPost"
+import { PostInputBox } from "@/components/PostInput/PostInputBox"
+import {
+  TimelineFilters,
   type TrendingTopic,
   TrendingTopics,
-  TimelineFilters,
 } from "@/components/Timeline"
-import type { PostedData } from "@/components/Post/Posted"
-import type { ScheduledPostData } from "@/components/Post/ScheduledPost"
-import { type Platform } from "@/components/Common/PlatformSelector"
+import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogClose,
@@ -21,18 +29,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { LoadingButton } from "@/components/ui/loading-button"
-import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { PostsService } from "@/client"
-import useCustomToast from "@/hooks/useCustomToast"
-import { handleError, transformToScheduledPost, transformToPostedPost } from "@/utils"
-import { PostPreviewDialog, type PreviewPostData } from "@/components/Post/Previews"
-import { Loader2, Home as HomeIcon, Sparkles } from "lucide-react"
-import { PostInputBox } from "@/components/PostInput/PostInputBox"
 import useAuth from "@/hooks/useAuth"
+import useCustomToast from "@/hooks/useCustomToast"
+import {
+  handleError,
+  transformToPostedPost,
+  transformToScheduledPost,
+} from "@/utils"
 
 // Union type for timeline posts
-type TimelinePost = 
+type TimelinePost =
   | (PostedData & { type: "posted" })
   | (ScheduledPostData & { type: "scheduled" })
 
@@ -52,7 +59,7 @@ function TimelinePage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const [activeTab] = React.useState<"timeline" | "ai">("timeline")
-  
+
   // Filter state
   const [dateFilter, setDateFilter] = React.useState<string>("all")
   const [sortBy, setSortBy] = React.useState<string>("newest")
@@ -66,11 +73,13 @@ function TimelinePage() {
     id: string
     type: "draft" | "scheduled" | "posted"
   } | null>(null)
-  
+
   // Preview dialog state
   const [previewDialogOpen, setPreviewDialogOpen] = React.useState(false)
-  const [previewPost, setPreviewPost] = React.useState<PreviewPostData | null>(null)
-  
+  const [previewPost, setPreviewPost] = React.useState<PreviewPostData | null>(
+    null,
+  )
+
   const { showSuccessToast, showErrorToast } = useCustomToast()
 
   // Fetch scheduled and published posts for timeline
@@ -100,25 +109,33 @@ function TimelinePage() {
   const posts: TimelinePost[] = React.useMemo(() => {
     const scheduled: TimelinePost[] = (scheduledData?.data || [])
       .filter((p) => p.status === "scheduled" && p.scheduled_at)
-      .map((p) => ({ 
+      .map((p) => ({
         ...transformToScheduledPost({
           id: p.id,
-          author: p.author as { name: string; username: string; avatarUrl?: string | null } | null,
+          author: p.author as {
+            name: string
+            username: string
+            avatarUrl?: string | null
+          } | null,
           content: p.content,
           image_url: p.image_url ?? null,
           created_at: p.created_at,
           scheduled_at: p.scheduled_at ?? null,
           platform: p.platform ?? "all",
-        }), 
-        type: "scheduled" as const 
+        }),
+        type: "scheduled" as const,
       }))
-    
+
     const posted: TimelinePost[] = (publishedData?.data || [])
       .filter((p) => p.status === "published")
-      .map((p) => ({ 
+      .map((p) => ({
         ...transformToPostedPost({
           id: p.id,
-          author: p.author as { name: string; username: string; avatarUrl?: string | null } | null,
+          author: p.author as {
+            name: string
+            username: string
+            avatarUrl?: string | null
+          } | null,
           content: p.content,
           image_url: p.image_url ?? null,
           created_at: p.created_at,
@@ -126,10 +143,10 @@ function TimelinePage() {
           reposts: p.reposts,
           comments: p.comments,
           platform: p.platform ?? "all",
-        }), 
-        type: "posted" as const 
+        }),
+        type: "posted" as const,
       }))
-    
+
     return [...scheduled, ...posted]
   }, [scheduledData, publishedData])
 
@@ -159,7 +176,13 @@ function TimelinePage() {
       data,
     }: {
       postId: string
-      data: { content?: string; image_url?: string; platform?: string; scheduled_at?: string; status?: string }
+      data: {
+        content?: string
+        image_url?: string
+        platform?: string
+        scheduled_at?: string
+        status?: string
+      }
     }) => {
       return await PostsService.updatePost({
         postId,
@@ -179,7 +202,10 @@ function TimelinePage() {
     // Errors are handled by React Query's onError in useQuery
   }, [])
 
-  const handleDelete = (postId: string, type: "draft" | "scheduled" | "posted") => {
+  const handleDelete = (
+    postId: string,
+    type: "draft" | "scheduled" | "posted",
+  ) => {
     setPostToDelete({ id: postId, type })
     setDeleteDialogOpen(true)
   }
@@ -231,7 +257,7 @@ function TimelinePage() {
   const handleSave = (postId: string) => {
     // Find the post being edited
     const postToUpdate = posts.find((p) => p.id === postId)
-    
+
     if (!postToUpdate) {
       showErrorToast("Post not found")
       return
@@ -265,10 +291,7 @@ function TimelinePage() {
     setEditingPostId(null)
   }
 
-  const handlePlatformChange = (
-    postId: string,
-    platform: Platform,
-  ) => {
+  const handlePlatformChange = (postId: string, platform: Platform) => {
     // Update platform via API
     updateMutation.mutate({
       postId,
@@ -288,16 +311,15 @@ function TimelinePage() {
         reposts: post.reposts,
         comments: post.comments,
       }
-    } else {
-      // scheduled
-      return {
-        id: post.id,
-        author: post.author,
-        content: post.content,
-        imageUrl: post.imageUrl,
-        createdAt: post.createdAt,
-        scheduledAt: post.scheduledAt,
-      }
+    }
+    // scheduled
+    return {
+      id: post.id,
+      author: post.author,
+      content: post.content,
+      imageUrl: post.imageUrl,
+      createdAt: post.createdAt,
+      scheduledAt: post.scheduledAt,
     }
   }
 
@@ -324,13 +346,11 @@ function TimelinePage() {
 
     // Sort by relevant date: scheduledAt for scheduled posts, createdAt for posted posts
     const sorted = [...posts].sort((a, b) => {
-      const aTime = a.type === "scheduled" 
-        ? toTime(a.scheduledAt) 
-        : toTime(a.createdAt)
-      const bTime = b.type === "scheduled" 
-        ? toTime(b.scheduledAt) 
-        : toTime(b.createdAt)
-      
+      const aTime =
+        a.type === "scheduled" ? toTime(a.scheduledAt) : toTime(a.createdAt)
+      const bTime =
+        b.type === "scheduled" ? toTime(b.scheduledAt) : toTime(b.createdAt)
+
       // Apply sort order based on sortBy filter
       if (sortBy === "oldest") {
         return aTime - bTime // Ascending: oldest first
@@ -439,27 +459,30 @@ function TimelinePage() {
                 />
               </div>
 
-        {/* Timeline Posts - Mixed scheduled and posted */}
-        <div className="w-full pb-20">
-          {isLoadingPosts ? (
-            <div className="flex flex-col items-center justify-center py-16">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              <p className="mt-4 text-sm text-muted-foreground">Loading posts...</p>
-            </div>
-          ) : sortedPosts.length === 0 ? (
-            <div className="flex flex-col items-center justify-center text-center py-16 px-4">
-              <div className="rounded-full bg-muted/50 p-6 mb-4">
+              {/* Timeline Posts - Mixed scheduled and posted */}
+              <div className="w-full pb-20">
+                {isLoadingPosts ? (
+                  <div className="flex flex-col items-center justify-center py-16">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                    <p className="mt-4 text-sm text-muted-foreground">
+                      Loading posts...
+                    </p>
+                  </div>
+                ) : sortedPosts.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center text-center py-16 px-4">
+                    <div className="rounded-full bg-muted/50 p-6 mb-4">
                       <HomeIcon className="h-10 w-10 text-muted-foreground" />
+                    </div>
+                    <h3 className="text-xl font-semibold mb-1">No posts yet</h3>
+                    <p className="text-muted-foreground text-sm max-w-sm">
+                      Your scheduled and published posts will appear here.
+                      Create a post above to get started.
+                    </p>
+                  </div>
+                ) : (
+                  sortedPosts.map(renderPost)
+                )}
               </div>
-              <h3 className="text-xl font-semibold mb-1">No posts yet</h3>
-              <p className="text-muted-foreground text-sm max-w-sm">
-                      Your scheduled and published posts will appear here. Create a post above to get started.
-              </p>
-            </div>
-          ) : (
-            sortedPosts.map(renderPost)
-          )}
-        </div>
             </TabsContent>
           </div>
         </Tabs>
@@ -515,10 +538,11 @@ function TimelinePage() {
           open={previewDialogOpen}
           onOpenChange={setPreviewDialogOpen}
           post={previewPost}
-          platform={posts.find((p) => p.id === previewPost.id)?.platform || "all"}
+          platform={
+            posts.find((p) => p.id === previewPost.id)?.platform || "all"
+          }
         />
       )}
-
     </div>
   )
 }

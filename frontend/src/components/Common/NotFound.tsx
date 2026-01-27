@@ -20,7 +20,7 @@ const NotFound = () => {
         The page you are looking for was not found.
       </p>
       <div className="z-10">
-        <Link to="/">
+        <Link to="/home">
           <Button className="mt-4">Go Back</Button>
         </Link>
       </div>

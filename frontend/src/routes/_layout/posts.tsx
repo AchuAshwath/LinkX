@@ -1,30 +1,31 @@
-import { createFileRoute } from "@tanstack/react-router"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { createFileRoute } from "@tanstack/react-router"
 import {
+  BarChart3,
   Calendar,
   CheckCircle2,
-  Filter,
-  X,
   Clock,
-  TrendingUp,
-  BarChart3,
   FileText,
+  Filter,
   Loader2,
+  TrendingUp,
+  X,
 } from "lucide-react"
 import * as React from "react"
-import { Posted } from "@/components/Post/Posted"
+import { PostsService } from "@/client"
+import type { Platform } from "@/components/Common/PlatformSelector"
+import type { DraftPostData } from "@/components/Post/DraftPost"
 import { DraftPost } from "@/components/Post/DraftPost"
+import type { PostedData } from "@/components/Post/Posted"
+import { Posted } from "@/components/Post/Posted"
+import {
+  PostPreviewDialog,
+  type PreviewPostData,
+} from "@/components/Post/Previews"
+import type { ScheduledPostData } from "@/components/Post/ScheduledPost"
 import { ScheduledPost } from "@/components/Post/ScheduledPost"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Dialog,
@@ -36,14 +37,21 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { LoadingButton } from "@/components/ui/loading-button"
-import { PostsService } from "@/client"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import useCustomToast from "@/hooks/useCustomToast"
-import { handleError, transformToDraftPost, transformToScheduledPost, transformToPostedPost } from "@/utils"
-import type { PostedData } from "@/components/Post/Posted"
-import type { ScheduledPostData } from "@/components/Post/ScheduledPost"
-import type { DraftPostData } from "@/components/Post/DraftPost"
-import { PostPreviewDialog, type PreviewPostData } from "@/components/Post/Previews"
-import { type Platform } from "@/components/Common/PlatformSelector"
+import {
+  handleError,
+  transformToDraftPost,
+  transformToPostedPost,
+  transformToScheduledPost,
+} from "@/utils"
 
 export const Route = createFileRoute("/_layout/posts")({
   component: PostsPage,
@@ -58,26 +66,29 @@ export const Route = createFileRoute("/_layout/posts")({
 
 function PostsPage() {
   const queryClient = useQueryClient()
-  const [activeTab, setActiveTab] = React.useState<"drafts" | "scheduled" | "posted">(
-    "drafts",
-  )
+  const [activeTab, setActiveTab] = React.useState<
+    "drafts" | "scheduled" | "posted"
+  >("drafts")
   const [dateFilter, setDateFilter] = React.useState<string>("all")
   const [sortBy, setSortBy] = React.useState<string>("newest")
   const [hasFilters, setHasFilters] = React.useState(false)
   const [editingPostId, setEditingPostId] = React.useState<string | null>(null)
-  
+
   // Delete confirmation dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
   const [postToDelete, setPostToDelete] = React.useState<{
     id: string
     type: "draft" | "scheduled" | "posted"
   } | null>(null)
-  
+
   // Preview dialog state
   const [previewDialogOpen, setPreviewDialogOpen] = React.useState(false)
-  const [previewPost, setPreviewPost] = React.useState<PreviewPostData | null>(null)
-  const [previewPostPlatform, setPreviewPostPlatform] = React.useState<Platform>("all")
-  
+  const [previewPost, setPreviewPost] = React.useState<PreviewPostData | null>(
+    null,
+  )
+  const [previewPostPlatform, setPreviewPostPlatform] =
+    React.useState<Platform>("all")
+
   const { showSuccessToast, showErrorToast } = useCustomToast()
 
   // Map activeTab to API status filter
@@ -112,7 +123,11 @@ function PostsPage() {
     return postsData.data
       .filter((p) => p.status === "draft")
       .map((p) => {
-        const author = p.author as { name: string; username: string; avatarUrl?: string | null } | null
+        const author = p.author as {
+          name: string
+          username: string
+          avatarUrl?: string | null
+        } | null
         return transformToDraftPost({
           id: p.id,
           author,
@@ -129,7 +144,11 @@ function PostsPage() {
     return postsData.data
       .filter((p) => p.status === "scheduled" && p.scheduled_at)
       .map((p) => {
-        const author = p.author as { name: string; username: string; avatarUrl?: string | null } | null
+        const author = p.author as {
+          name: string
+          username: string
+          avatarUrl?: string | null
+        } | null
         return transformToScheduledPost({
           id: p.id,
           author,
@@ -147,7 +166,11 @@ function PostsPage() {
     return postsData.data
       .filter((p) => p.status === "published")
       .map((p) => {
-        const author = p.author as { name: string; username: string; avatarUrl?: string | null } | null
+        const author = p.author as {
+          name: string
+          username: string
+          avatarUrl?: string | null
+        } | null
         return transformToPostedPost({
           id: p.id,
           author,
@@ -186,7 +209,13 @@ function PostsPage() {
       data,
     }: {
       postId: string
-      data: { content?: string; image_url?: string; platform?: string; scheduled_at?: string; status?: string }
+      data: {
+        content?: string
+        image_url?: string
+        platform?: string
+        scheduled_at?: string
+        status?: string
+      }
     }) => {
       return await PostsService.updatePost({
         postId,
@@ -201,7 +230,10 @@ function PostsPage() {
     onError: handleError.bind(showErrorToast),
   })
 
-  const handleDelete = (postId: string, type: "draft" | "scheduled" | "posted") => {
+  const handleDelete = (
+    postId: string,
+    type: "draft" | "scheduled" | "posted",
+  ) => {
     setPostToDelete({ id: postId, type })
     setDeleteDialogOpen(true)
   }
@@ -253,7 +285,7 @@ function PostsPage() {
   const handleSave = (postId: string) => {
     // Find the post being edited
     let postToUpdate: DraftPostData | ScheduledPostData | PostedData | undefined
-    
+
     if (activeTab === "drafts") {
       postToUpdate = draftPosts.find((p) => p.id === postId)
     } else if (activeTab === "scheduled") {
@@ -295,10 +327,7 @@ function PostsPage() {
     setEditingPostId(null)
   }
 
-  const handlePlatformChange = (
-    postId: string,
-    platform: Platform,
-  ) => {
+  const handlePlatformChange = (postId: string, platform: Platform) => {
     // Update platform via API
     updateMutation.mutate({
       postId,
@@ -307,7 +336,7 @@ function PostsPage() {
   }
 
   const convertToPreviewData = (
-    post: DraftPostData | ScheduledPostData | PostedData
+    post: DraftPostData | ScheduledPostData | PostedData,
   ): PreviewPostData => {
     if ("likes" in post && "reposts" in post && "comments" in post) {
       // PostedData
@@ -321,7 +350,8 @@ function PostsPage() {
         reposts: post.reposts,
         comments: post.comments,
       }
-    } else if ("scheduledAt" in post) {
+    }
+    if ("scheduledAt" in post) {
       // ScheduledPostData
       return {
         id: post.id,
@@ -331,15 +361,14 @@ function PostsPage() {
         createdAt: post.createdAt,
         scheduledAt: post.scheduledAt,
       }
-    } else {
-      // DraftPostData
-      return {
-        id: post.id,
-        author: post.author,
-        content: post.content,
-        imageUrl: post.imageUrl,
-        createdAt: post.createdAt,
-      }
+    }
+    // DraftPostData
+    return {
+      id: post.id,
+      author: post.author,
+      content: post.content,
+      imageUrl: post.imageUrl,
+      createdAt: post.createdAt,
     }
   }
 
@@ -456,7 +485,9 @@ function PostsPage() {
               {isLoadingPosts ? (
                 <div className="flex flex-col items-center justify-center py-16">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  <p className="mt-4 text-sm text-muted-foreground">Loading posts...</p>
+                  <p className="mt-4 text-sm text-muted-foreground">
+                    Loading posts...
+                  </p>
                 </div>
               ) : draftPosts.length === 0 ? (
                 <div className="flex flex-col items-center justify-center text-center py-16 px-4">
@@ -465,8 +496,8 @@ function PostsPage() {
                   </div>
                   <h3 className="text-xl font-semibold mb-1">No drafts</h3>
                   <p className="text-muted-foreground text-sm max-w-sm">
-                    Your draft posts will appear here. Start writing to save your
-                    ideas for later.
+                    Your draft posts will appear here. Start writing to save
+                    your ideas for later.
                   </p>
                 </div>
               ) : (
@@ -493,7 +524,9 @@ function PostsPage() {
               {isLoadingPosts ? (
                 <div className="flex flex-col items-center justify-center py-16">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  <p className="mt-4 text-sm text-muted-foreground">Loading posts...</p>
+                  <p className="mt-4 text-sm text-muted-foreground">
+                    Loading posts...
+                  </p>
                 </div>
               ) : scheduledPosts.length === 0 ? (
                 <div className="flex flex-col items-center justify-center text-center py-16 px-4">
@@ -532,7 +565,9 @@ function PostsPage() {
               {isLoadingPosts ? (
                 <div className="flex flex-col items-center justify-center py-16">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  <p className="mt-4 text-sm text-muted-foreground">Loading posts...</p>
+                  <p className="mt-4 text-sm text-muted-foreground">
+                    Loading posts...
+                  </p>
                 </div>
               ) : postedPosts.length === 0 ? (
                 <div className="flex flex-col items-center justify-center text-center py-16 px-4">
@@ -688,7 +723,9 @@ function PostsPage() {
           {/* Quick Stats Card */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold">Quick Stats</CardTitle>
+              <CardTitle className="text-base font-semibold">
+                Quick Stats
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between">
@@ -698,9 +735,7 @@ function PostsPage() {
                 </Badge>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">
-                  Scheduled
-                </span>
+                <span className="text-sm text-muted-foreground">Scheduled</span>
                 <Badge variant="secondary" className="font-semibold">
                   {scheduledPosts.length}
                 </Badge>
@@ -714,7 +749,9 @@ function PostsPage() {
               <div className="flex items-center justify-between pt-2 border-t">
                 <span className="text-sm font-medium">Total</span>
                 <span className="text-sm font-semibold">
-                  {draftPosts.length + scheduledPosts.length + postedPosts.length}
+                  {draftPosts.length +
+                    scheduledPosts.length +
+                    postedPosts.length}
                 </span>
               </div>
             </CardContent>

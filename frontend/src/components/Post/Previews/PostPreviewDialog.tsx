@@ -1,12 +1,11 @@
 import { X } from "lucide-react"
+import type { Platform } from "@/components/Common/PlatformSelector"
+import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog"
 import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-} from "@/components/ui/dialog"
-import { LinkedInPostPreview, type PreviewPostData } from "./LinkedInPostPreview"
+  LinkedInPostPreview,
+  type PreviewPostData,
+} from "./LinkedInPostPreview"
 import { XPostPreview } from "./XPostPreview"
-import { type Platform } from "@/components/Common/PlatformSelector"
 
 interface PostPreviewDialogProps {
   open: boolean

@@ -36,10 +36,7 @@ export function PlatformSelector({
     size === "sm"
       ? "gap-0.5 px-0.5 py-0.5"
       : "gap-0.5 px-0.5 py-0.5 sm:gap-1 sm:px-1 sm:py-0.5"
-  const buttonClasses =
-    size === "sm"
-      ? "h-6 w-6"
-      : "h-8 w-8 sm:h-6 sm:w-6"
+  const buttonClasses = size === "sm" ? "h-6 w-6" : "h-8 w-8 sm:h-6 sm:w-6"
   const iconClasses = size === "sm" ? "h-3 w-3" : "h-4 w-4 sm:h-3.5 sm:w-3.5"
   const imageClasses = size === "sm" ? "h-3 w-3" : "h-4 w-4 sm:h-3.5 sm:w-3.5"
 

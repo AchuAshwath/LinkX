@@ -13,15 +13,14 @@ import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as BrandkitRouteImport } from './routes/brandkit'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
 import { Route as LayoutPostsRouteImport } from './routes/_layout/posts'
 import { Route as LayoutItemsRouteImport } from './routes/_layout/items'
 import { Route as LayoutHomeRouteImport } from './routes/_layout/home'
-import { Route as LayoutCanvasRouteImport } from './routes/_layout/canvas'
 import { Route as LayoutAiRouteImport } from './routes/_layout/ai'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
+import { Route as LayoutAboutRouteImport } from './routes/_layout/about'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -41,11 +40,6 @@ const RecoverPasswordRoute = RecoverPasswordRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const BrandkitRoute = BrandkitRouteImport.update({
-  id: '/brandkit',
-  path: '/brandkit',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LayoutRoute = LayoutRouteImport.update({
@@ -72,11 +66,6 @@ const LayoutHomeRoute = LayoutHomeRouteImport.update({
   path: '/home',
   getParentRoute: () => LayoutRoute,
 } as any)
-const LayoutCanvasRoute = LayoutCanvasRouteImport.update({
-  id: '/canvas',
-  path: '/canvas',
-  getParentRoute: () => LayoutRoute,
-} as any)
 const LayoutAiRoute = LayoutAiRouteImport.update({
   id: '/ai',
   path: '/ai',
@@ -87,30 +76,33 @@ const LayoutAdminRoute = LayoutAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutAboutRoute = LayoutAboutRouteImport.update({
+  id: '/about',
+  path: '/about',
+  getParentRoute: () => LayoutRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
-  '/brandkit': typeof BrandkitRoute
   '/login': typeof LoginRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/about': typeof LayoutAboutRoute
   '/admin': typeof LayoutAdminRoute
   '/ai': typeof LayoutAiRoute
-  '/canvas': typeof LayoutCanvasRoute
   '/home': typeof LayoutHomeRoute
   '/items': typeof LayoutItemsRoute
   '/posts': typeof LayoutPostsRoute
   '/settings': typeof LayoutSettingsRoute
 }
 export interface FileRoutesByTo {
-  '/brandkit': typeof BrandkitRoute
   '/login': typeof LoginRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/about': typeof LayoutAboutRoute
   '/admin': typeof LayoutAdminRoute
   '/ai': typeof LayoutAiRoute
-  '/canvas': typeof LayoutCanvasRoute
   '/home': typeof LayoutHomeRoute
   '/items': typeof LayoutItemsRoute
   '/posts': typeof LayoutPostsRoute
@@ -119,14 +111,13 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_layout': typeof LayoutRouteWithChildren
-  '/brandkit': typeof BrandkitRoute
   '/login': typeof LoginRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/_layout/about': typeof LayoutAboutRoute
   '/_layout/admin': typeof LayoutAdminRoute
   '/_layout/ai': typeof LayoutAiRoute
-  '/_layout/canvas': typeof LayoutCanvasRoute
   '/_layout/home': typeof LayoutHomeRoute
   '/_layout/items': typeof LayoutItemsRoute
   '/_layout/posts': typeof LayoutPostsRoute
@@ -135,28 +126,26 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    | '/brandkit'
     | '/login'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
+    | '/about'
     | '/admin'
     | '/ai'
-    | '/canvas'
     | '/home'
     | '/items'
     | '/posts'
     | '/settings'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/brandkit'
     | '/login'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
+    | '/about'
     | '/admin'
     | '/ai'
-    | '/canvas'
     | '/home'
     | '/items'
     | '/posts'
@@ -164,14 +153,13 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_layout'
-    | '/brandkit'
     | '/login'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
+    | '/_layout/about'
     | '/_layout/admin'
     | '/_layout/ai'
-    | '/_layout/canvas'
     | '/_layout/home'
     | '/_layout/items'
     | '/_layout/posts'
@@ -180,7 +168,6 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   LayoutRoute: typeof LayoutRouteWithChildren
-  BrandkitRoute: typeof BrandkitRoute
   LoginRoute: typeof LoginRoute
   RecoverPasswordRoute: typeof RecoverPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
@@ -215,13 +202,6 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/brandkit': {
-      id: '/brandkit'
-      path: '/brandkit'
-      fullPath: '/brandkit'
-      preLoaderRoute: typeof BrandkitRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_layout': {
@@ -259,13 +239,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutHomeRouteImport
       parentRoute: typeof LayoutRoute
     }
-    '/_layout/canvas': {
-      id: '/_layout/canvas'
-      path: '/canvas'
-      fullPath: '/canvas'
-      preLoaderRoute: typeof LayoutCanvasRouteImport
-      parentRoute: typeof LayoutRoute
-    }
     '/_layout/ai': {
       id: '/_layout/ai'
       path: '/ai'
@@ -280,13 +253,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutAdminRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/about': {
+      id: '/_layout/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof LayoutAboutRouteImport
+      parentRoute: typeof LayoutRoute
+    }
   }
 }
 
 interface LayoutRouteChildren {
+  LayoutAboutRoute: typeof LayoutAboutRoute
   LayoutAdminRoute: typeof LayoutAdminRoute
   LayoutAiRoute: typeof LayoutAiRoute
-  LayoutCanvasRoute: typeof LayoutCanvasRoute
   LayoutHomeRoute: typeof LayoutHomeRoute
   LayoutItemsRoute: typeof LayoutItemsRoute
   LayoutPostsRoute: typeof LayoutPostsRoute
@@ -294,9 +274,9 @@ interface LayoutRouteChildren {
 }
 
 const LayoutRouteChildren: LayoutRouteChildren = {
+  LayoutAboutRoute: LayoutAboutRoute,
   LayoutAdminRoute: LayoutAdminRoute,
   LayoutAiRoute: LayoutAiRoute,
-  LayoutCanvasRoute: LayoutCanvasRoute,
   LayoutHomeRoute: LayoutHomeRoute,
   LayoutItemsRoute: LayoutItemsRoute,
   LayoutPostsRoute: LayoutPostsRoute,
@@ -308,7 +288,6 @@ const LayoutRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   LayoutRoute: LayoutRouteWithChildren,
-  BrandkitRoute: BrandkitRoute,
   LoginRoute: LoginRoute,
   RecoverPasswordRoute: RecoverPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,

@@ -1,13 +1,13 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
+import { Bot, Home as HomeIcon, Send, Sparkles, User } from "lucide-react"
 import * as React from "react"
-import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Sparkles, Home as HomeIcon, Send, Bot, User } from "lucide-react"
-import { mockChatConversations, type ChatConversation } from "./-aiChatData"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Textarea } from "@/components/ui/textarea"
 import { formatRelativeTime } from "@/utils"
+import { type ChatConversation, mockChatConversations } from "./-aiChatData"
 
 export const Route = createFileRoute("/_layout/ai")({
   component: AIPage,
@@ -23,9 +23,8 @@ export const Route = createFileRoute("/_layout/ai")({
 function AIPage() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = React.useState<"timeline" | "ai">("ai")
-  const [selectedConversation, setSelectedConversation] = React.useState<ChatConversation | null>(
-    mockChatConversations[0] || null,
-  )
+  const [selectedConversation, setSelectedConversation] =
+    React.useState<ChatConversation | null>(mockChatConversations[0] || null)
   const [input, setInput] = React.useState("")
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
 
@@ -35,7 +34,7 @@ function AIPage() {
 
   React.useEffect(() => {
     scrollToBottom()
-  }, [selectedConversation])
+  }, [scrollToBottom])
 
   const handleSend = () => {
     if (!input.trim()) return
@@ -102,7 +101,9 @@ function AIPage() {
                       <div
                         key={index}
                         className={`flex gap-3 ${
-                          message.role === "user" ? "justify-end" : "justify-start"
+                          message.role === "user"
+                            ? "justify-end"
+                            : "justify-start"
                         }`}
                       >
                         {message.role === "assistant" && (
@@ -119,7 +120,9 @@ function AIPage() {
                               : "bg-muted"
                           }`}
                         >
-                          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                          <p className="text-sm whitespace-pre-wrap">
+                            {message.content}
+                          </p>
                           <p className="text-xs mt-1 opacity-70">
                             {formatRelativeTime(message.timestamp)}
                           </p>
@@ -140,10 +143,12 @@ function AIPage() {
                     <div className="rounded-full bg-muted/50 p-6 mb-4">
                       <Sparkles className="h-10 w-10 text-muted-foreground" />
                     </div>
-                    <h3 className="text-xl font-semibold mb-1">Start a conversation</h3>
+                    <h3 className="text-xl font-semibold mb-1">
+                      Start a conversation
+                    </h3>
                     <p className="text-muted-foreground text-sm max-w-sm">
-                      Select a conversation from the sidebar or start a new one to begin chatting
-                      with the AI assistant.
+                      Select a conversation from the sidebar or start a new one
+                      to begin chatting with the AI assistant.
                     </p>
                   </div>
                 )}
@@ -184,7 +189,9 @@ function AIPage() {
                 <Card
                   key={conversation.id}
                   className={`cursor-pointer transition-colors hover:bg-accent ${
-                    selectedConversation?.id === conversation.id ? "bg-accent" : ""
+                    selectedConversation?.id === conversation.id
+                      ? "bg-accent"
+                      : ""
                   }`}
                   onClick={() => setSelectedConversation(conversation)}
                 >

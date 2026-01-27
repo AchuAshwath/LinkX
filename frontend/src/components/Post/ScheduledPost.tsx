@@ -1,6 +1,18 @@
-import { Calendar, Check, Eye, MoreHorizontal, Pencil, Trash2, X } from "lucide-react"
+import {
+  Calendar,
+  Check,
+  Eye,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  X,
+} from "lucide-react"
 import * as React from "react"
-
+import {
+  type Platform,
+  PlatformSelector,
+} from "@/components/Common/PlatformSelector"
+import { PostSchedulePicker } from "@/components/PostInput/PostSchedulePicker"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -10,9 +22,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Textarea } from "@/components/ui/textarea"
-import { PlatformSelector, type Platform } from "@/components/Common/PlatformSelector"
-import { PostSchedulePicker } from "@/components/PostInput/PostSchedulePicker"
-import { formatFullDateTime, formatRelativeTimeWithFuture, getInitials } from "@/utils"
+import {
+  formatFullDateTime,
+  formatRelativeTimeWithFuture,
+  getInitials,
+} from "@/utils"
 
 export interface ScheduledPostData {
   id: string
@@ -52,7 +66,7 @@ export function ScheduledPost({
   onPreview,
 }: ScheduledPostProps) {
   const [platform, setPlatform] = React.useState<Platform>(
-    post.platform || "all"
+    post.platform || "all",
   )
   const [editedContent, setEditedContent] = React.useState(post.content)
   const [editedScheduledAt, setEditedScheduledAt] = React.useState<Date>(
@@ -71,7 +85,7 @@ export function ScheduledPost({
         ? new Date(post.scheduledAt)
         : post.scheduledAt,
     )
-  }, [post.content, post.platform, post.scheduledAt, isEditing])
+  }, [post.content, post.platform, post.scheduledAt])
 
   // Focus textarea when entering edit mode
   React.useEffect(() => {
@@ -113,9 +127,7 @@ export function ScheduledPost({
   return (
     <article
       className={`group border-b transition-colors ${
-        isEditing
-          ? "border-primary bg-muted/30"
-          : "hover:bg-accent/50"
+        isEditing ? "border-primary bg-muted/30" : "hover:bg-accent/50"
       }`}
       aria-label={`Scheduled post by ${post.author.name}`}
     >

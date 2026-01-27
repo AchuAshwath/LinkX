@@ -19,7 +19,7 @@ const ErrorComponent = () => {
       <p className="text-lg text-muted-foreground mb-4 text-center z-10">
         Something went wrong. Please try again.
       </p>
-      <Link to="/">
+      <Link to="/home">
         <Button>Go Home</Button>
       </Link>
     </div>

@@ -1,16 +1,12 @@
 "use client"
 
 import { Link } from "@tanstack/react-router"
-import {
-  Home,
-  Package,
-  X,
-} from "lucide-react"
+import { Home, Package, X } from "lucide-react"
 import * as React from "react"
 import { Logo } from "@/components/Common/Logo"
+import { CreatePostDialog } from "@/components/PostInput/CreatePostDialog"
 import { Button } from "@/components/ui/button"
 import useAuth from "@/hooks/useAuth"
-import { CreatePostDialog } from "@/components/PostInput/CreatePostDialog"
 import { SidebarProfile } from "./SidebarProfile"
 
 interface SidebarProps {
@@ -18,10 +14,7 @@ interface SidebarProps {
   onClose: () => void
 }
 
-export function Sidebar({
-  sidebarOpen,
-  onClose,
-}: SidebarProps) {
+export function Sidebar({ sidebarOpen, onClose }: SidebarProps) {
   const { logout, user } = useAuth()
   const [createPostDialogOpen, setCreatePostDialogOpen] = React.useState(false)
 

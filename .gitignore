@@ -5,6 +5,17 @@ node_modules/
 /blob-report/
 /playwright/.cache/
 
+# Editor / tool metadata
+.cursor/
+frontend/.cursor/
+.agents/
+frontend/.agents/
+.opencode/
+frontend/.opencode/
+
+# Generated API schema
+openapi.json
+
 # Ignore .af files in all directories and subdirectories
 **/*.af
 *.af

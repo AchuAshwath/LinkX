@@ -49,7 +49,7 @@ const useAuth = () => {
     mutationFn: login,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["currentUser"] })
-      navigate({ to: "/" })
+      navigate({ to: "/home" })
     },
     onError: handleError.bind(showErrorToast),
   })

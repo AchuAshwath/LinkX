@@ -35,7 +35,9 @@ export function LinkedInPostPreview({ post }: LinkedInPostPreviewProps) {
   const relativeTime = formatRelativeTime(post.createdAt)
   const initials = getInitials(post.author.name)
   const hasEngagement =
-    post.likes !== undefined || post.comments !== undefined || post.reposts !== undefined
+    post.likes !== undefined ||
+    post.comments !== undefined ||
+    post.reposts !== undefined
 
   const maxChars = 240
   const shouldTruncate = post.content.length > maxChars
@@ -56,7 +58,10 @@ export function LinkedInPostPreview({ post }: LinkedInPostPreviewProps) {
           <div className="flex items-start gap-3">
             <Avatar className="h-12 w-12 shrink-0 ring-1 ring-black/5 dark:ring-white/10">
               {post.author.avatarUrl ? (
-                <AvatarImage src={post.author.avatarUrl} alt={post.author.name} />
+                <AvatarImage
+                  src={post.author.avatarUrl}
+                  alt={post.author.name}
+                />
               ) : null}
               <AvatarFallback className="text-sm bg-[#0A66C2] text-white">
                 {initials}
