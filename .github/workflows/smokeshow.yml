@@ -1,9 +1,9 @@
 name: Smokeshow
 
+# Temporarily disable automatic CI triggers during active development.
+# This workflow can still be run manually from the Actions tab.
 on:
-  workflow_run:
-    workflows: [Test Backend]
-    types: [completed]
+  workflow_dispatch:
 
 jobs:
   smokeshow:

@@ -1,10 +1,9 @@
 name: Generate Client
 
+# Temporarily disable automatic CI triggers during active development.
+# This workflow can still be run manually from the Actions tab.
 on:
-  pull_request:
-    types:
-    - opened
-    - synchronize
+  workflow_dispatch:
 
 jobs:
   generate-client:

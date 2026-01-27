@@ -1,17 +1,8 @@
 name: Issue Manager
 
+# Temporarily disable automatic CI triggers during active development.
+# This workflow can still be run manually from the Actions tab.
 on:
-  schedule:
-    - cron: "21 17 * * *"
-  issue_comment:
-    types:
-      - created
-  issues:
-    types:
-      - labeled
-  pull_request_target:
-    types:
-      - labeled
   workflow_dispatch:
 
 permissions:

@@ -1,11 +1,9 @@
 name: Add to Project
 
+# Temporarily disable automatic CI triggers during active development.
+# This workflow can still be run manually from the Actions tab.
 on:
-  pull_request_target:
-  issues:
-    types:
-      - opened
-      - reopened
+  workflow_dispatch:
 
 jobs:
   add-to-project:

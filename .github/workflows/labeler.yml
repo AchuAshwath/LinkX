@@ -1,13 +1,9 @@
 name: Labels
+
+# Temporarily disable automatic CI triggers during active development.
+# This workflow can still be run manually from the Actions tab.
 on:
-  pull_request_target:
-    types:
-      - opened
-      - synchronize
-      - reopened
-      # For label-checker
-      - labeled
-      - unlabeled
+  workflow_dispatch:
 
 jobs:
   labeler:

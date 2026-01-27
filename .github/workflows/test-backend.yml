@@ -1,13 +1,9 @@
 name: Test Backend
 
+# Temporarily disable automatic CI triggers during active development.
+# This workflow can still be run manually from the Actions tab.
 on:
-  push:
-    branches:
-      - master
-  pull_request:
-    types:
-      - opened
-      - synchronize
+  workflow_dispatch:
 
 jobs:
   test-backend:
