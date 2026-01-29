@@ -1,4 +1,4 @@
-# Full Stack FastAPI Template
+# LinkX – Social Posting & Scheduling
 
 <a href="https://github.com/fastapi/full-stack-fastapi-template/actions?query=workflow%3A%22Test+Docker+Compose%22" target="_blank"><img src="https://github.com/fastapi/full-stack-fastapi-template/workflows/Test%20Docker%20Compose/badge.svg" alt="Test Docker Compose"></a>
 <a href="https://github.com/fastapi/full-stack-fastapi-template/actions?query=workflow%3A%22Test+Backend%22" target="_blank"><img src="https://github.com/fastapi/full-stack-fastapi-template/workflows/Test%20Backend/badge.svg" alt="Test Backend"></a>
@@ -25,6 +25,14 @@
 - 📞 [Traefik](https://traefik.io) as a reverse proxy / load balancer.
 - 🚢 Deployment instructions using Docker Compose, including how to set up a frontend Traefik proxy to handle automatic HTTPS certificates.
 - 🏭 CI (continuous integration) and CD (continuous deployment) based on GitHub Actions.
+
+### Social Integrations (LinkX)
+
+- **LinkedIn member posting**: connect a personal LinkedIn account and publish or delete text posts from LinkX.
+  - OAuth 2.0 with scopes `openid profile email w_member_social`.
+  - Tokens stored server-side only; no secrets in the frontend.
+  - See [`docs/LINKEDIN_SETUP.md`](./docs/LINKEDIN_SETUP.md) for step‑by‑step app configuration.
+- **Planned**: X (Twitter) integration and richer media/scheduling flows, tracked in [`docs/specs/SOCIAL_MEDIA_INTEGRATION.md`](./docs/specs/SOCIAL_MEDIA_INTEGRATION.md) and related specs.
 
 ### Dashboard Login
 
