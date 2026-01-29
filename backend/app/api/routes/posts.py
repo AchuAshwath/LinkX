@@ -1,14 +1,25 @@
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlmodel import Session
+from fastapi import APIRouter, HTTPException, Query, status as http_status
 
 from app import crud
 from app.api.deps import CurrentUser, SessionDep
-from app.models import Message, Post, PostCreate, PostPublic, PostsPublic, PostUpdate
+from app.models import (
+    Message,
+    Post,
+    PostCreate,
+    PostPublic,
+    PostsPublic,
+    PostUpdate,
+    SocialAccount,
+)
+from app.services.linkedin_posts import LinkedInPostClient, LinkedInPostError
+from sqlmodel import select
 
 router = APIRouter(prefix="/posts", tags=["posts"])
+
+_linkedin_client = LinkedInPostClient()
 
 
 def enrich_post_with_author(post: Post, user: Any) -> PostPublic:
@@ -36,7 +47,7 @@ def read_posts(
 ) -> Any:
     """
     Retrieve posts for current user.
-    
+
     - **status**: Optional filter by post status
     - **skip**: Number of posts to skip (for pagination)
     - **limit**: Maximum number of posts to return (1-100)
@@ -56,10 +67,10 @@ def read_posts(
         ]
 
         return PostsPublic(data=enriched_posts, count=count)
-    except Exception as e:
+    except Exception as exc:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error retrieving posts: {str(e)}",
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving posts: {str(exc)}",
         )
 
 
@@ -77,21 +88,21 @@ def read_post(
     post = crud.get_post(session=session, post_id=post_id)
     if not post:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Post not found"
         )
     
     # Check permissions: user must own the post or be a superuser
     if post.owner_id != current_user.id and not current_user.is_superuser:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=http_status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions to access this post",
         )
 
     return enrich_post_with_author(post, current_user)
 
 
-@router.post("/", response_model=PostPublic, status_code=status.HTTP_201_CREATED)
-def create_post(
+@router.post("/", response_model=PostPublic, status_code=http_status.HTTP_201_CREATED)
+async def create_post(
     *,
     session: SessionDep,
     current_user: CurrentUser,
@@ -110,7 +121,7 @@ def create_post(
         # Validate business rules
         if post_in.status == "scheduled" and post_in.scheduled_at is None:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail="scheduled_at is required when status is 'scheduled'",
             )
 
@@ -119,21 +130,75 @@ def create_post(
             post_in=post_in,
             owner_id=current_user.id,
         )
+
+        # If this is a LinkedIn post published immediately, mirror it to LinkedIn
+        if post.platform == "linkedin" and post.status == "published":
+            # Find the user's LinkedIn social account to get external_user_id
+            account = session.exec(
+                select(SocialAccount).where(
+                    SocialAccount.user_id == current_user.id,
+                    SocialAccount.platform == "linkedin",
+                )
+            ).first()
+
+            if not account or not account.external_user_id:
+                # Mark as failed and surface a clear error
+                post = crud.update_post(
+                    session=session,
+                    db_post=post,
+                    post_in=PostUpdate(status="failed"),
+                )
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail="LinkedIn account not fully connected. Please reconnect LinkedIn and try again.",
+                )
+
+            try:
+                linkedin_post_urn = await _linkedin_client.create_text_post(
+                    user_id=str(current_user.id),
+                    linkedin_person_id=account.external_user_id,
+                    content=post.content,
+                )
+            except LinkedInPostError as e:
+                # Mark local post as failed when LinkedIn rejects it
+                post = crud.update_post(
+                    session=session,
+                    db_post=post,
+                    post_in=PostUpdate(status="failed"),
+                )
+                raise e
+            except Exception as e:
+                post = crud.update_post(
+                    session=session,
+                    db_post=post,
+                    post_in=PostUpdate(status="failed"),
+                )
+                raise HTTPException(
+                    status_code=http_status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Unexpected error publishing to LinkedIn: {str(e)}",
+                )
+
+            # Persist external post id directly on the model
+            post.external_post_id = linkedin_post_urn
+            session.add(post)
+            session.commit()
+            session.refresh(post)
+
         return enrich_post_with_author(post, current_user)
     except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=http_status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error creating post: {str(e)}",
         )
 
 
 @router.patch("/{post_id}", response_model=PostPublic)
-def update_post(
+async def update_post(
     *,
     session: SessionDep,
     current_user: CurrentUser,
@@ -149,13 +214,13 @@ def update_post(
     db_post = crud.get_post(session=session, post_id=post_id)
     if not db_post:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Post not found"
         )
     
     # Check permissions: user must own the post or be a superuser
     if db_post.owner_id != current_user.id and not current_user.is_superuser:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=http_status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions to update this post",
         )
 
@@ -165,26 +230,46 @@ def update_post(
             # Check if scheduled_at is provided or already exists
             if post_in.scheduled_at is None and db_post.scheduled_at is None:
                 raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
                     detail="scheduled_at is required when status is 'scheduled'",
+                )
+
+        # If this is a LinkedIn post and content is being updated, mirror change
+        if (
+            db_post.platform == "linkedin"
+            and db_post.external_post_id
+            and post_in.content is not None
+        ):
+            try:
+                await _linkedin_client.update_text_post(
+                    user_id=str(current_user.id),
+                    linkedin_post_urn=db_post.external_post_id,
+                    content=post_in.content,
+                )
+            except LinkedInPostError as e:
+                raise e
+            except Exception as e:
+                raise HTTPException(
+                    status_code=http_status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Unexpected error updating LinkedIn post: {str(e)}",
                 )
 
         db_post = crud.update_post(session=session, db_post=db_post, post_in=post_in)
         return enrich_post_with_author(db_post, current_user)
     except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=http_status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error updating post: {str(e)}",
         )
 
 
 @router.delete("/{post_id}", response_model=Message)
-def delete_post(
+async def delete_post(
     session: SessionDep,
     current_user: CurrentUser,
     post_id: uuid.UUID,
@@ -197,21 +282,35 @@ def delete_post(
     post = crud.get_post(session=session, post_id=post_id)
     if not post:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Post not found"
         )
     
     # Check permissions: user must own the post or be a superuser
     if post.owner_id != current_user.id and not current_user.is_superuser:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=http_status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions to delete this post",
         )
 
     try:
+        # If this is a LinkedIn post with an external id, delete it from LinkedIn as well.
+        if post.platform == "linkedin" and post.external_post_id:
+            try:
+                await _linkedin_client.delete_post(
+                    user_id=str(current_user.id),
+                    linkedin_post_urn=post.external_post_id,
+                )
+            except LinkedInPostError:
+                # Ignore LinkedIn-specific errors on delete to keep operation idempotent
+                pass
+            except Exception:
+                # Swallow unexpected LinkedIn errors as well; local delete should still succeed
+                pass
+
         crud.delete_post(session=session, post_id=post_id)
         return Message(message="Post deleted successfully")
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error deleting post: {str(e)}",
         )

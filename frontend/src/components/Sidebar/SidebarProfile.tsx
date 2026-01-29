@@ -1,8 +1,8 @@
 import { Link } from "@tanstack/react-router"
 import {
   ChevronsUpDown,
-  HelpCircle,
   Layers,
+  Link2,
   LogOut,
   Settings,
   Shield,
@@ -81,10 +81,12 @@ export function SidebarProfile({
               Brand Kit
             </DropdownMenuItem>
           </Link>
-          <DropdownMenuItem>
-            <HelpCircle className="mr-2 h-4 w-4" />
-            Help & Support
-          </DropdownMenuItem>
+          <Link to="/social-accounts" onClick={onMenuClick}>
+            <DropdownMenuItem>
+              <Link2 className="mr-2 h-4 w-4" />
+              Social Accounts
+            </DropdownMenuItem>
+          </Link>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleLogout}>
             <LogOut className="mr-2 h-4 w-4" />
