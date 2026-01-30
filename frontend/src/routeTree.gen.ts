@@ -14,10 +14,12 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LayoutRouteImport } from './routes/_layout'
+import { Route as LayoutSocialAccountsRouteImport } from './routes/_layout/social-accounts'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
 import { Route as LayoutPostsRouteImport } from './routes/_layout/posts'
 import { Route as LayoutItemsRouteImport } from './routes/_layout/items'
 import { Route as LayoutHomeRouteImport } from './routes/_layout/home'
+import { Route as LayoutChatRouteImport } from './routes/_layout/chat'
 import { Route as LayoutAiRouteImport } from './routes/_layout/ai'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
 import { Route as LayoutAboutRouteImport } from './routes/_layout/about'
@@ -46,6 +48,11 @@ const LayoutRoute = LayoutRouteImport.update({
   id: '/_layout',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LayoutSocialAccountsRoute = LayoutSocialAccountsRouteImport.update({
+  id: '/social-accounts',
+  path: '/social-accounts',
+  getParentRoute: () => LayoutRoute,
+} as any)
 const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -64,6 +71,11 @@ const LayoutItemsRoute = LayoutItemsRouteImport.update({
 const LayoutHomeRoute = LayoutHomeRouteImport.update({
   id: '/home',
   path: '/home',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutChatRoute = LayoutChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
   getParentRoute: () => LayoutRoute,
 } as any)
 const LayoutAiRoute = LayoutAiRouteImport.update({
@@ -90,10 +102,12 @@ export interface FileRoutesByFullPath {
   '/about': typeof LayoutAboutRoute
   '/admin': typeof LayoutAdminRoute
   '/ai': typeof LayoutAiRoute
+  '/chat': typeof LayoutChatRoute
   '/home': typeof LayoutHomeRoute
   '/items': typeof LayoutItemsRoute
   '/posts': typeof LayoutPostsRoute
   '/settings': typeof LayoutSettingsRoute
+  '/social-accounts': typeof LayoutSocialAccountsRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -103,10 +117,12 @@ export interface FileRoutesByTo {
   '/about': typeof LayoutAboutRoute
   '/admin': typeof LayoutAdminRoute
   '/ai': typeof LayoutAiRoute
+  '/chat': typeof LayoutChatRoute
   '/home': typeof LayoutHomeRoute
   '/items': typeof LayoutItemsRoute
   '/posts': typeof LayoutPostsRoute
   '/settings': typeof LayoutSettingsRoute
+  '/social-accounts': typeof LayoutSocialAccountsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -118,10 +134,12 @@ export interface FileRoutesById {
   '/_layout/about': typeof LayoutAboutRoute
   '/_layout/admin': typeof LayoutAdminRoute
   '/_layout/ai': typeof LayoutAiRoute
+  '/_layout/chat': typeof LayoutChatRoute
   '/_layout/home': typeof LayoutHomeRoute
   '/_layout/items': typeof LayoutItemsRoute
   '/_layout/posts': typeof LayoutPostsRoute
   '/_layout/settings': typeof LayoutSettingsRoute
+  '/_layout/social-accounts': typeof LayoutSocialAccountsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -133,10 +151,12 @@ export interface FileRouteTypes {
     | '/about'
     | '/admin'
     | '/ai'
+    | '/chat'
     | '/home'
     | '/items'
     | '/posts'
     | '/settings'
+    | '/social-accounts'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -146,10 +166,12 @@ export interface FileRouteTypes {
     | '/about'
     | '/admin'
     | '/ai'
+    | '/chat'
     | '/home'
     | '/items'
     | '/posts'
     | '/settings'
+    | '/social-accounts'
   id:
     | '__root__'
     | '/_layout'
@@ -160,10 +182,12 @@ export interface FileRouteTypes {
     | '/_layout/about'
     | '/_layout/admin'
     | '/_layout/ai'
+    | '/_layout/chat'
     | '/_layout/home'
     | '/_layout/items'
     | '/_layout/posts'
     | '/_layout/settings'
+    | '/_layout/social-accounts'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -211,6 +235,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_layout/social-accounts': {
+      id: '/_layout/social-accounts'
+      path: '/social-accounts'
+      fullPath: '/social-accounts'
+      preLoaderRoute: typeof LayoutSocialAccountsRouteImport
+      parentRoute: typeof LayoutRoute
+    }
     '/_layout/settings': {
       id: '/_layout/settings'
       path: '/settings'
@@ -237,6 +268,13 @@ declare module '@tanstack/react-router' {
       path: '/home'
       fullPath: '/home'
       preLoaderRoute: typeof LayoutHomeRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/chat': {
+      id: '/_layout/chat'
+      path: '/chat'
+      fullPath: '/chat'
+      preLoaderRoute: typeof LayoutChatRouteImport
       parentRoute: typeof LayoutRoute
     }
     '/_layout/ai': {
@@ -267,20 +305,24 @@ interface LayoutRouteChildren {
   LayoutAboutRoute: typeof LayoutAboutRoute
   LayoutAdminRoute: typeof LayoutAdminRoute
   LayoutAiRoute: typeof LayoutAiRoute
+  LayoutChatRoute: typeof LayoutChatRoute
   LayoutHomeRoute: typeof LayoutHomeRoute
   LayoutItemsRoute: typeof LayoutItemsRoute
   LayoutPostsRoute: typeof LayoutPostsRoute
   LayoutSettingsRoute: typeof LayoutSettingsRoute
+  LayoutSocialAccountsRoute: typeof LayoutSocialAccountsRoute
 }
 
 const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutAboutRoute: LayoutAboutRoute,
   LayoutAdminRoute: LayoutAdminRoute,
   LayoutAiRoute: LayoutAiRoute,
+  LayoutChatRoute: LayoutChatRoute,
   LayoutHomeRoute: LayoutHomeRoute,
   LayoutItemsRoute: LayoutItemsRoute,
   LayoutPostsRoute: LayoutPostsRoute,
   LayoutSettingsRoute: LayoutSettingsRoute,
+  LayoutSocialAccountsRoute: LayoutSocialAccountsRoute,
 }
 
 const LayoutRouteWithChildren =
