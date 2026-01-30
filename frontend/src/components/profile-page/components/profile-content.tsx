@@ -1,19 +1,22 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { type LucideIcon, Key, Monitor, Moon, Sun, Trash2 } from "lucide-react"
-import { useState, useEffect } from "react"
-import { useForm, Controller } from "react-hook-form"
+import { Key, type LucideIcon, Monitor, Moon, Sun, Trash2 } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Controller, useForm } from "react-hook-form"
 import { z } from "zod"
 
-import {
-  type UpdatePassword,
-  type UserUpdateMe,
-  UsersService,
-} from "@/client"
-import { useTheme } from "@/components/theme-provider"
+import { type UpdatePassword, UsersService, type UserUpdateMe } from "@/client"
 import type { Theme } from "@/components/theme-provider"
+import { useTheme } from "@/components/theme-provider"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import {
   Dialog,
   DialogClose,
@@ -29,7 +32,6 @@ import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
 import useAuth from "@/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
 import { handleError } from "@/utils"
@@ -73,7 +75,8 @@ export default function ProfileContent() {
 
   const [accountVisibility, setAccountVisibility] = useState(true)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [changePasswordDialogOpen, setChangePasswordDialogOpen] = useState(false)
+  const [changePasswordDialogOpen, setChangePasswordDialogOpen] =
+    useState(false)
 
   const personalForm = useForm<PersonalFormData>({
     resolver: zodResolver(personalSchema),
@@ -90,7 +93,7 @@ export default function ProfileContent() {
       email: user?.email ?? "",
       personality: personalForm.getValues("personality") || "",
     })
-  }, [user?.full_name, user?.email])
+  }, [user?.full_name, user?.email, personalForm.getValues, personalForm.reset])
 
   const passwordForm = useForm<PasswordFormData>({
     resolver: zodResolver(passwordSchema),
@@ -178,7 +181,9 @@ export default function ProfileContent() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle>Personal Information</CardTitle>
-                <CardDescription>Update your personal details and profile information.</CardDescription>
+                <CardDescription>
+                  Update your personal details and profile information.
+                </CardDescription>
               </div>
               {!isEditMode && (
                 <Button
@@ -198,7 +203,9 @@ export default function ProfileContent() {
             >
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="fullName" className="text-base">Full name</Label>
+                  <Label htmlFor="fullName" className="text-base">
+                    Full name
+                  </Label>
                   <Controller
                     name="full_name"
                     control={personalForm.control}
@@ -207,7 +214,11 @@ export default function ProfileContent() {
                         id="fullName"
                         {...field}
                         disabled={!isEditMode}
-                        className={!isEditMode ? "bg-muted cursor-not-allowed opacity-60" : ""}
+                        className={
+                          !isEditMode
+                            ? "bg-muted cursor-not-allowed opacity-60"
+                            : ""
+                        }
                       />
                     )}
                   />
@@ -218,7 +229,9 @@ export default function ProfileContent() {
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="email" className="text-base">Email</Label>
+                  <Label htmlFor="email" className="text-base">
+                    Email
+                  </Label>
                   <Controller
                     name="email"
                     control={personalForm.control}
@@ -228,7 +241,11 @@ export default function ProfileContent() {
                         type="email"
                         {...field}
                         disabled={!isEditMode}
-                        className={!isEditMode ? "bg-muted cursor-not-allowed opacity-60" : ""}
+                        className={
+                          !isEditMode
+                            ? "bg-muted cursor-not-allowed opacity-60"
+                            : ""
+                        }
                       />
                     )}
                   />
@@ -240,7 +257,9 @@ export default function ProfileContent() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="personality" className="text-base">Personality</Label>
+                <Label htmlFor="personality" className="text-base">
+                  Personality
+                </Label>
                 <Textarea
                   id="personality"
                   placeholder="Tell us about yourself..."
@@ -257,9 +276,14 @@ export default function ProfileContent() {
                 <div className="flex gap-2">
                   <Button
                     type="submit"
-                    disabled={updateUserMutation.isPending || !personalForm.formState.isDirty}
+                    disabled={
+                      updateUserMutation.isPending ||
+                      !personalForm.formState.isDirty
+                    }
                   >
-                    {updateUserMutation.isPending ? "Saving..." : "Save changes"}
+                    {updateUserMutation.isPending
+                      ? "Saving..."
+                      : "Save changes"}
                   </Button>
                   <Button
                     type="button"
@@ -269,7 +293,8 @@ export default function ProfileContent() {
                       personalForm.reset({
                         full_name: user?.full_name ?? undefined,
                         email: user?.email ?? "",
-                        personality: personalForm.getValues("personality") || "",
+                        personality:
+                          personalForm.getValues("personality") || "",
                       })
                     }}
                     disabled={updateUserMutation.isPending}
@@ -288,16 +313,23 @@ export default function ProfileContent() {
         <Card>
           <CardHeader>
             <CardTitle>Account Settings</CardTitle>
-            <CardDescription>Manage your account preferences and subscription.</CardDescription>
+            <CardDescription>
+              Manage your account preferences and subscription.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
                   <Label className="text-base">Account Status</Label>
-                  <p className="text-muted-foreground text-sm">Your account is currently active</p>
+                  <p className="text-muted-foreground text-sm">
+                    Your account is currently active
+                  </p>
                 </div>
-                <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950 dark:text-green-400">
+                <Badge
+                  variant="outline"
+                  className="border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950 dark:text-green-400"
+                >
                   {user?.is_active !== false ? "Active" : "Inactive"}
                 </Badge>
               </div>
@@ -305,7 +337,9 @@ export default function ProfileContent() {
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
                   <Label className="text-base">Subscription Plan</Label>
-                  <p className="text-muted-foreground text-sm">Pro Plan - $29/month</p>
+                  <p className="text-muted-foreground text-sm">
+                    Pro Plan - $29/month
+                  </p>
                 </div>
                 <Button variant="outline" disabled>
                   Coming soon
@@ -319,13 +353,19 @@ export default function ProfileContent() {
                     Make your profile visible to other users
                   </p>
                 </div>
-                <Switch checked={accountVisibility} onCheckedChange={setAccountVisibility} disabled />
+                <Switch
+                  checked={accountVisibility}
+                  onCheckedChange={setAccountVisibility}
+                  disabled
+                />
               </div>
               <Separator />
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
                   <Label className="text-base">Data Export</Label>
-                  <p className="text-muted-foreground text-sm">Download a copy of your data</p>
+                  <p className="text-muted-foreground text-sm">
+                    Download a copy of your data
+                  </p>
                 </div>
                 <Button variant="outline" disabled>
                   Coming soon
@@ -338,7 +378,9 @@ export default function ProfileContent() {
         <Card className="border-destructive/50">
           <CardHeader>
             <CardTitle className="text-destructive">Danger Zone</CardTitle>
-            <CardDescription>Irreversible and destructive actions</CardDescription>
+            <CardDescription>
+              Irreversible and destructive actions
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="flex items-center justify-between">
@@ -365,14 +407,18 @@ export default function ProfileContent() {
         <Card>
           <CardHeader>
             <CardTitle>Security Settings</CardTitle>
-            <CardDescription>Manage your account security and authentication.</CardDescription>
+            <CardDescription>
+              Manage your account security and authentication.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
                   <Label className="text-base">Password</Label>
-                  <p className="text-muted-foreground text-sm">Last changed 3 months ago</p>
+                  <p className="text-muted-foreground text-sm">
+                    Last changed 3 months ago
+                  </p>
                 </div>
                 <Button
                   variant="outline"
@@ -423,7 +469,10 @@ export default function ProfileContent() {
         </Card>
       </TabsContent>
 
-      <Dialog open={changePasswordDialogOpen} onOpenChange={setChangePasswordDialogOpen}>
+      <Dialog
+        open={changePasswordDialogOpen}
+        onOpenChange={setChangePasswordDialogOpen}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Change Password</DialogTitle>
@@ -479,15 +528,18 @@ export default function ProfileContent() {
             </div>
             <DialogFooter className="mt-4">
               <DialogClose asChild>
-                <Button type="button" variant="outline" disabled={updatePasswordMutation.isPending}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={updatePasswordMutation.isPending}
+                >
                   Cancel
                 </Button>
               </DialogClose>
-              <Button
-                type="submit"
-                disabled={updatePasswordMutation.isPending}
-              >
-                {updatePasswordMutation.isPending ? "Updating..." : "Update Password"}
+              <Button type="submit" disabled={updatePasswordMutation.isPending}>
+                {updatePasswordMutation.isPending
+                  ? "Updating..."
+                  : "Update Password"}
               </Button>
             </DialogFooter>
           </form>
@@ -500,8 +552,9 @@ export default function ProfileContent() {
             <DialogTitle>Confirmation Required</DialogTitle>
             <DialogDescription>
               All your account data will be{" "}
-              <strong>permanently deleted.</strong> If you are sure, please click{" "}
-              <strong>Delete</strong> to proceed. This action cannot be undone.
+              <strong>permanently deleted.</strong> If you are sure, please
+              click <strong>Delete</strong> to proceed. This action cannot be
+              undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-4">
@@ -526,7 +579,9 @@ export default function ProfileContent() {
         <Card>
           <CardHeader>
             <CardTitle>Appearance</CardTitle>
-            <CardDescription>Choose your preferred theme for the application.</CardDescription>
+            <CardDescription>
+              Choose your preferred theme for the application.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-4">
@@ -534,10 +589,15 @@ export default function ProfileContent() {
                 const Icon = THEME_ICONS[option.value]
                 const isSelected = theme === option.value
                 const elements = [
-                  <div key={option.value} className="flex items-center justify-between">
+                  <div
+                    key={option.value}
+                    className="flex items-center justify-between"
+                  >
                     <div className="space-y-1">
                       <Label className="text-base">{option.label}</Label>
-                      <p className="text-muted-foreground text-sm">{option.description}</p>
+                      <p className="text-muted-foreground text-sm">
+                        {option.description}
+                      </p>
                     </div>
                     <Button
                       variant={isSelected ? "default" : "outline"}

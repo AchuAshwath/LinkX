@@ -50,10 +50,10 @@ export function TimelineFilters({
       <CardContent className="space-y-4">
         {/* Date Range Filter */}
         <div className="space-y-2">
-          <label className="text-sm font-medium flex items-center gap-2">
+          <span className="text-sm font-medium flex items-center gap-2">
             <Clock className="h-3.5 w-3.5 text-muted-foreground" />
             Date Range
-          </label>
+          </span>
           <Select value={dateFilter} onValueChange={onDateFilterChange}>
             <SelectTrigger className="w-full">
               <SelectValue placeholder="Select date range" />
@@ -71,10 +71,10 @@ export function TimelineFilters({
 
         {/* Sort By Filter */}
         <div className="space-y-2">
-          <label className="text-sm font-medium flex items-center gap-2">
+          <span className="text-sm font-medium flex items-center gap-2">
             <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
             Sort By
-          </label>
+          </span>
           <Select value={sortBy} onValueChange={onSortByChange}>
             <SelectTrigger className="w-full">
               <SelectValue placeholder="Sort by" />

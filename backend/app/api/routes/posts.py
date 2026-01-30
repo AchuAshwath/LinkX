@@ -1,7 +1,9 @@
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, status as http_status
+from fastapi import APIRouter, HTTPException, Query
+from fastapi import status as http_status
+from sqlmodel import select
 
 from app import crud
 from app.api.deps import CurrentUser, SessionDep
@@ -15,7 +17,6 @@ from app.models import (
     SocialAccount,
 )
 from app.services.linkedin_posts import LinkedInPostClient, LinkedInPostError
-from sqlmodel import select
 
 router = APIRouter(prefix="/posts", tags=["posts"])
 
@@ -62,9 +63,7 @@ def read_posts(
         )
 
         # Enrich with author info
-        enriched_posts = [
-            enrich_post_with_author(post, current_user) for post in posts
-        ]
+        enriched_posts = [enrich_post_with_author(post, current_user) for post in posts]
 
         return PostsPublic(data=enriched_posts, count=count)
     except Exception as exc:
@@ -82,7 +81,7 @@ def read_post(
 ) -> Any:
     """
     Get a specific post by ID.
-    
+
     - **post_id**: UUID of the post to retrieve
     """
     post = crud.get_post(session=session, post_id=post_id)
@@ -90,7 +89,7 @@ def read_post(
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Post not found"
         )
-    
+
     # Check permissions: user must own the post or be a superuser
     if post.owner_id != current_user.id and not current_user.is_superuser:
         raise HTTPException(
@@ -110,7 +109,7 @@ async def create_post(
 ) -> Any:
     """
     Create a new post.
-    
+
     - **content**: Post content (1-3000 characters, required)
     - **image_url**: Optional image URL
     - **platform**: Platform to post to (linkedin, x, all)
@@ -207,7 +206,7 @@ async def update_post(
 ) -> Any:
     """
     Update a post.
-    
+
     - **post_id**: UUID of the post to update
     - All fields are optional - only provided fields will be updated
     """
@@ -216,7 +215,7 @@ async def update_post(
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Post not found"
         )
-    
+
     # Check permissions: user must own the post or be a superuser
     if db_post.owner_id != current_user.id and not current_user.is_superuser:
         raise HTTPException(
@@ -276,7 +275,7 @@ async def delete_post(
 ) -> Message:
     """
     Delete a post.
-    
+
     - **post_id**: UUID of the post to delete
     """
     post = crud.get_post(session=session, post_id=post_id)
@@ -284,7 +283,7 @@ async def delete_post(
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Post not found"
         )
-    
+
     # Check permissions: user must own the post or be a superuser
     if post.owner_id != current_user.id and not current_user.is_superuser:
         raise HTTPException(

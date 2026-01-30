@@ -8,7 +8,6 @@ from urllib.parse import quote
 import httpx
 from fastapi import HTTPException, status
 
-from app.core.config import settings
 from app.core.redis import get_redis
 
 
@@ -52,14 +51,14 @@ class LinkedInPostClient:
             )
 
         try:
-            payload: dict[str, Any] = json.loads(raw)
+            payload: dict[str, Any] = json.loads(raw)  # type: ignore[arg-type]
         except Exception:
             raise LinkedInPostError(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid LinkedIn token payload. Please reconnect LinkedIn.",
             )
 
-        access_token = payload.get("access_token")
+        access_token: str = payload.get("access_token")  # type: ignore[assignment]
         expires_at = payload.get("expires_at")
 
         if not access_token:
@@ -140,12 +139,8 @@ class LinkedInPostClient:
 
         post_urn = resp.headers.get("x-restli-id")
         if not post_urn:
-            # Fallback: try to read id from body if present
-            try:
-                data = resp.json()
-                post_urn = data.get("id")
-            except Exception:
-                post_urn = None
+            data = resp.json()
+            post_urn = data.get("id")
 
         if not post_urn:
             raise LinkedInPostError(
@@ -153,7 +148,7 @@ class LinkedInPostClient:
                 detail="LinkedIn did not return a post id. Please try again later.",
             )
 
-        return post_urn
+        return str(post_urn)
 
     async def update_text_post(
         self,
@@ -238,4 +233,3 @@ class LinkedInPostClient:
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="LinkedIn could not delete the post. Please try again.",
             )
-

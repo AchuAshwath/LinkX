@@ -36,7 +36,7 @@ export interface PostedData {
   content: string
   imageUrl?: string
   createdAt: Date | string
-  relativeDate?: string // e.g., "2h ago", "1 day ago"
+  relativeDate?: string
   likes: number
   reposts: number
   comments: number
@@ -60,7 +60,7 @@ export interface PostedProps {
   onPlatformChange?: (postId: string, platform: Platform) => void
 }
 
-export function Posted({
+const Posted = React.memo(function Posted({
   post,
   isEditing = false,
   onLike,
@@ -84,17 +84,14 @@ export function Posted({
   const [editedContent, setEditedContent] = React.useState(post.content)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
 
-  // Reset edited content when post changes or edit mode is toggled
   React.useEffect(() => {
     setEditedContent(post.content)
     setPlatform(post.platform || "linkedin")
   }, [post.content, post.platform])
 
-  // Focus textarea when entering edit mode
   React.useEffect(() => {
     if (isEditing && textareaRef.current) {
       textareaRef.current.focus()
-      // Move cursor to end
       textareaRef.current.setSelectionRange(
         textareaRef.current.value.length,
         textareaRef.current.value.length,
@@ -102,33 +99,35 @@ export function Posted({
     }
   }, [isEditing])
 
-  const handlePlatformChange = (newPlatform: Platform) => {
-    setPlatform(newPlatform)
-    onPlatformChange?.(post.id, newPlatform)
-  }
+  const handlePlatformChange = React.useCallback(
+    (newPlatform: Platform) => {
+      setPlatform(newPlatform)
+      onPlatformChange?.(post.id, newPlatform)
+    },
+    [onPlatformChange, post.id],
+  )
 
-  const handleSave = () => {
-    // TODO: Update post with editedContent and platform
+  const handleSave = React.useCallback(() => {
     onSave?.(post.id)
-  }
+  }, [onSave, post.id])
 
-  const handleCancel = () => {
+  const handleCancel = React.useCallback(() => {
     setEditedContent(post.content)
     setPlatform(post.platform || "linkedin")
     onCancel?.()
-  }
+  }, [onCancel, post.content, post.platform])
 
-  const handleLike = () => {
+  const handleLike = React.useCallback(() => {
     setIsLiked(!isLiked)
     setLikeCount((prev) => (isLiked ? prev - 1 : prev + 1))
     onLike?.(post.id)
-  }
+  }, [isLiked, onLike, post.id])
 
-  const handleRepost = () => {
+  const handleRepost = React.useCallback(() => {
     setIsReposted(!isReposted)
     setRepostCount((prev) => (isReposted ? prev - 1 : prev + 1))
     onRepost?.(post.id)
-  }
+  }, [isReposted, onRepost, post.id])
 
   const fullDateTime = formatFullDateTime(post.createdAt)
   const relativeTime = formatRelativeTime(post.createdAt)
@@ -143,7 +142,6 @@ export function Posted({
     >
       <div className="p-3 sm:p-4">
         <div className="flex gap-2 sm:gap-3">
-          {/* Avatar - Left side, full height */}
           <div className="flex-shrink-0">
             <Avatar className="h-10 w-10 cursor-pointer transition-transform hover:scale-105 sm:h-10 sm:w-10">
               {post.author.avatarUrl ? (
@@ -158,12 +156,11 @@ export function Posted({
             </Avatar>
           </div>
 
-          {/* Content - Right side, flows in line */}
           <div className="min-w-0 flex-1 space-y-3 sm:space-y-4">
-            {/* Header: Username + More Menu */}
             <div className="flex items-start justify-between gap-2 sm:gap-3">
               <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-1.5">
                 <button
+                  type="button"
                   className="truncate text-base font-semibold hover:underline focus:outline-none focus:underline sm:text-base"
                   aria-label={`View ${post.author.name}'s profile`}
                 >
@@ -242,7 +239,6 @@ export function Posted({
               )}
             </div>
 
-            {/* Post Content - Editable in edit mode */}
             {isEditing ? (
               <Textarea
                 ref={textareaRef}
@@ -260,8 +256,7 @@ export function Posted({
               </div>
             )}
 
-            {/* Image */}
-            {post.imageUrl && !isEditing && (
+            {post.imageUrl && !isEditing ? (
               <div className="overflow-hidden rounded-2xl">
                 <img
                   src={post.imageUrl}
@@ -270,9 +265,8 @@ export function Posted({
                   loading="lazy"
                 />
               </div>
-            )}
+            ) : null}
 
-            {/* Actions and Platform Selector */}
             {isEditing ? (
               <div className="flex items-center justify-end pt-2">
                 <PlatformSelector
@@ -338,7 +332,6 @@ export function Posted({
                   </Button>
                 </div>
 
-                {/* Platform Selector */}
                 <PlatformSelector
                   value={platform}
                   onChange={handlePlatformChange}
@@ -351,4 +344,7 @@ export function Posted({
       </div>
     </article>
   )
-}
+})
+
+export { Posted }
+export default Posted

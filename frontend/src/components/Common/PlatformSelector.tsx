@@ -33,7 +33,8 @@ export function PlatformSelector({
   }
 
   // Only LinkedIn is selectable; X and All are disabled (greyed out)
-  const linkedinSelected = value === "linkedin" || value === "all" || value === "x"
+  const linkedinSelected =
+    value === "linkedin" || value === "all" || value === "x"
 
   // Size classes
   const containerClasses =

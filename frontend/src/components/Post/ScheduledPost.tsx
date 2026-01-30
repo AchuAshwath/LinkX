@@ -39,7 +39,7 @@ export interface ScheduledPostData {
   imageUrl?: string
   createdAt: Date | string
   scheduledAt: Date | string
-  relativeDate?: string // e.g., "In 4 days", "In 2h"
+  relativeDate?: string
   platform: Platform
 }
 
@@ -55,7 +55,7 @@ export interface ScheduledPostProps {
   onMore?: (postId: string) => void
 }
 
-export function ScheduledPost({
+const ScheduledPost = React.memo(function ScheduledPost({
   post,
   isEditing = false,
   onEdit,
@@ -76,7 +76,6 @@ export function ScheduledPost({
   )
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
 
-  // Reset edited content when post changes or edit mode is toggled
   React.useEffect(() => {
     setEditedContent(post.content)
     setPlatform(post.platform || "linkedin")
@@ -87,11 +86,9 @@ export function ScheduledPost({
     )
   }, [post.content, post.platform, post.scheduledAt])
 
-  // Focus textarea when entering edit mode
   React.useEffect(() => {
     if (isEditing && textareaRef.current) {
       textareaRef.current.focus()
-      // Move cursor to end
       textareaRef.current.setSelectionRange(
         textareaRef.current.value.length,
         textareaRef.current.value.length,
@@ -103,17 +100,19 @@ export function ScheduledPost({
   const relativeTime = formatRelativeTimeWithFuture(post.scheduledAt)
   const initials = getInitials(post.author.name)
 
-  const handlePlatformChange = (newPlatform: Platform) => {
-    setPlatform(newPlatform)
-    onPlatformChange?.(post.id, newPlatform)
-  }
+  const handlePlatformChange = React.useCallback(
+    (newPlatform: Platform) => {
+      setPlatform(newPlatform)
+      onPlatformChange?.(post.id, newPlatform)
+    },
+    [onPlatformChange, post.id],
+  )
 
-  const handleSave = () => {
-    // TODO: Update post with editedContent, editedScheduledAt, and platform
+  const handleSave = React.useCallback(() => {
     onSave?.(post.id)
-  }
+  }, [onSave, post.id])
 
-  const handleCancel = () => {
+  const handleCancel = React.useCallback(() => {
     setEditedContent(post.content)
     setPlatform(post.platform || "linkedin")
     setEditedScheduledAt(
@@ -122,7 +121,7 @@ export function ScheduledPost({
         : post.scheduledAt,
     )
     onCancel?.()
-  }
+  }, [onCancel, post.content, post.platform, post.scheduledAt])
 
   return (
     <article
@@ -131,7 +130,6 @@ export function ScheduledPost({
       }`}
       aria-label={`Scheduled post by ${post.author.name}`}
     >
-      {/* Scheduled Badge */}
       <div className="px-4 py-2 border-b bg-muted/30">
         {isEditing ? (
           <div className="flex items-center gap-2">
@@ -159,7 +157,6 @@ export function ScheduledPost({
 
       <div className="p-3 sm:p-4">
         <div className="flex gap-2 sm:gap-3">
-          {/* Avatar - Left side */}
           <div className="flex-shrink-0">
             <Avatar className="h-10 w-10 cursor-pointer transition-transform hover:scale-105 sm:h-10 sm:w-10">
               {post.author.avatarUrl ? (
@@ -174,12 +171,11 @@ export function ScheduledPost({
             </Avatar>
           </div>
 
-          {/* Content - Right side */}
           <div className="min-w-0 flex-1 space-y-3 sm:space-y-4">
-            {/* Header: Username + More Menu / Save/Cancel */}
             <div className="flex items-start justify-between gap-2 sm:gap-3">
               <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-1.5">
                 <button
+                  type="button"
                   className="truncate text-base font-semibold hover:underline focus:outline-none focus:underline sm:text-base"
                   aria-label={`View ${post.author.name}'s profile`}
                 >
@@ -257,7 +253,6 @@ export function ScheduledPost({
               )}
             </div>
 
-            {/* Post Content - Editable in edit mode */}
             {isEditing ? (
               <Textarea
                 ref={textareaRef}
@@ -275,8 +270,7 @@ export function ScheduledPost({
               </div>
             )}
 
-            {/* Image */}
-            {post.imageUrl && !isEditing && (
+            {post.imageUrl && !isEditing ? (
               <div className="overflow-hidden rounded-2xl">
                 <img
                   src={post.imageUrl}
@@ -285,9 +279,8 @@ export function ScheduledPost({
                   loading="lazy"
                 />
               </div>
-            )}
+            ) : null}
 
-            {/* Platform Selector */}
             <div className="flex items-center justify-end pt-2">
               <PlatformSelector
                 value={platform}
@@ -300,4 +293,7 @@ export function ScheduledPost({
       </div>
     </article>
   )
-}
+})
+
+export { ScheduledPost }
+export default ScheduledPost

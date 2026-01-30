@@ -22,4 +22,9 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  build: {
+    // Optimize build performance
+    minify: "esbuild",
+    cssMinify: true,
+  },
 })
