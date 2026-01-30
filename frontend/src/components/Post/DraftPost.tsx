@@ -124,6 +124,7 @@ export function DraftPost({
             <div className="flex items-start justify-between gap-2 sm:gap-3">
               <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-1.5">
                 <button
+                  type="button"
                   className="truncate text-base font-semibold hover:underline focus:outline-none focus:underline sm:text-base"
                   aria-label={`View ${post.author.name}'s profile`}
                 >

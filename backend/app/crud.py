@@ -5,7 +5,16 @@ from typing import Any
 from sqlmodel import Session, func, select
 
 from app.core.security import get_password_hash, verify_password
-from app.models import Item, ItemCreate, Post, PostCreate, PostUpdate, User, UserCreate, UserUpdate
+from app.models import (
+    Item,
+    ItemCreate,
+    Post,
+    PostCreate,
+    PostUpdate,
+    User,
+    UserCreate,
+    UserUpdate,
+)
 
 
 def create_user(*, session: Session, user_create: UserCreate) -> User:
@@ -60,11 +69,8 @@ def create_post(*, session: Session, post_in: PostCreate, owner_id: uuid.UUID) -
     # Validate business rules
     if post_in.status == "scheduled" and post_in.scheduled_at is None:
         raise ValueError("scheduled_at is required when status is 'scheduled'")
-    
-    db_post = Post.model_validate(
-        post_in,
-        update={"owner_id": owner_id}
-    )
+
+    db_post = Post.model_validate(post_in, update={"owner_id": owner_id})
     session.add(db_post)
     session.commit()
     session.refresh(db_post)
@@ -87,28 +93,27 @@ def get_posts(
     """Get posts with optional filtering."""
     statement = select(Post)
     count_statement = select(func.count()).select_from(Post)
-    
+
     if owner_id:
         statement = statement.where(Post.owner_id == owner_id)
         count_statement = count_statement.where(Post.owner_id == owner_id)
-    
+
     if status:
         statement = statement.where(Post.status == status)
         count_statement = count_statement.where(Post.status == status)
-    
+
     count = session.exec(count_statement).one()
     posts = session.exec(statement.offset(skip).limit(limit)).all()
-    
-    return posts, count
+    posts_list: list[Post] = list(posts)
+
+    return posts_list, count
 
 
-def update_post(
-    *, session: Session, db_post: Post, post_in: PostUpdate
-) -> Post:
+def update_post(*, session: Session, db_post: Post, post_in: PostUpdate) -> Post:
     """Update a post."""
     # Validate business rules
     update_data = post_in.model_dump(exclude_unset=True)
-    
+
     # If status is being updated to 'scheduled', ensure scheduled_at exists
     if "status" in update_data:
         new_status = update_data["status"]
@@ -120,7 +125,7 @@ def update_post(
             # Set published_at if not already set
             if db_post.published_at is None:
                 update_data["published_at"] = datetime.utcnow()
-    
+
     db_post.sqlmodel_update(update_data)
     db_post.updated_at = datetime.utcnow()
     session.add(db_post)

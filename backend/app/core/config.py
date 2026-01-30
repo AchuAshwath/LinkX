@@ -94,6 +94,17 @@ class Settings(BaseSettings):
     FIRST_SUPERUSER: EmailStr
     FIRST_SUPERUSER_PASSWORD: str
 
+    # Social OAuth (LinkedIn)
+    LINKEDIN_CLIENT_ID: str | None = None
+    LINKEDIN_CLIENT_SECRET: str | None = None
+    # Should match LinkedIn Developer Portal "Authorized redirect URLs"
+    LINKEDIN_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/linkedin/callback"
+    # Space-separated scopes for LinkedIn authorization request
+    LINKEDIN_SCOPES: str = "openid profile email w_member_social"
+
+    # Redis (for OAuth session/token storage)
+    REDIS_URL: str = "redis://redis:6379/0"
+
     def _check_default_secret(self, var_name: str, value: str | None) -> None:
         if value == "changethis":
             message = (

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+import json
 import secrets
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 from urllib.parse import urlencode
-import json
-import uuid
 
 import httpx
 from fastapi import APIRouter, HTTPException, status
@@ -130,7 +130,7 @@ async def linkedin_callback(
     user_id: str | None = None
     try:
         r = get_redis()
-        user_id = r.get(_redis_state_key(state))
+        user_id = r.get(_redis_state_key(state))  # type: ignore[assignment]
         if user_id:
             r.delete(_redis_state_key(state))
     except Exception:
@@ -224,9 +224,7 @@ async def linkedin_callback(
                 _profile_store[user_id] = profile
 
             # Persist profile metadata to Postgres (generic social account)
-            external_user_id = (
-                str(profile.get("sub")) if profile.get("sub") else None
-            )
+            external_user_id = str(profile.get("sub")) if profile.get("sub") else None
             display_name = str(profile.get("name")) if profile.get("name") else None
             email = str(profile.get("email")) if profile.get("email") else None
             profile_picture_url = (
@@ -258,4 +256,3 @@ async def linkedin_callback(
         f"{settings.FRONTEND_HOST.rstrip('/')}/social-accounts?linkedin=connected"
     )
     return RedirectResponse(url=redirect_to, status_code=status.HTTP_302_FOUND)
-

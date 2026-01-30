@@ -1,7 +1,10 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import EmailStr, model_validator
+from sqlalchemy import Column
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -45,6 +48,9 @@ class User(UserBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     hashed_password: str
     items: list["Item"] = Relationship(back_populates="owner", cascade_delete=True)
+    social_accounts: list["SocialAccount"] = Relationship(
+        back_populates="user", cascade_delete=True
+    )
 
 
 # Properties to return via API, id is always required
@@ -80,6 +86,30 @@ class Item(ItemBase, table=True):
         foreign_key="user.id", nullable=False, ondelete="CASCADE"
     )
     owner: User | None = Relationship(back_populates="items")
+
+
+class SocialAccount(SQLModel, table=True):
+    __tablename__ = "social_account"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: uuid.UUID = Field(
+        foreign_key="user.id", nullable=False, ondelete="CASCADE"
+    )
+
+    platform: str = Field(index=True, max_length=50)  # "linkedin", "x", ...
+
+    # Profile identifiers / display data
+    external_user_id: str | None = Field(default=None, max_length=255)
+    display_name: str | None = Field(default=None, max_length=255)
+    email: str | None = Field(default=None, max_length=255)
+    profile_picture_url: str | None = Field(default=None, max_length=1024)
+
+    # Raw profile metadata (provider-specific)
+    raw_profile: dict[str, Any] | None = Field(default=None, sa_column=Column(JSONB))
+
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    user: User | None = Relationship(back_populates="social_accounts")
 
 
 # Properties to return via API, id is always required
@@ -119,7 +149,9 @@ class PostBase(SQLModel):
     content: str = Field(min_length=1, max_length=3000)
     image_url: str | None = Field(default=None, max_length=500)
     platform: str = Field(default="all", max_length=50)  # "linkedin", "x", "all"
-    status: str = Field(default="draft", max_length=50)  # "draft", "scheduled", "published", "failed"
+    status: str = Field(
+        default="draft", max_length=50
+    )  # "draft", "scheduled", "published", "failed"
 
 
 # Properties to receive via API on creation
@@ -159,6 +191,8 @@ class Post(PostBase, table=True):
     owner_id: uuid.UUID = Field(
         foreign_key="user.id", nullable=False, ondelete="CASCADE"
     )
+    # External platform linkage (e.g. LinkedIn post URN)
+    external_post_id: str | None = Field(default=None, max_length=255)
 
     # Scheduling
     scheduled_at: datetime | None = None
@@ -189,7 +223,7 @@ class PostPublic(PostBase):
     created_at: datetime
     updated_at: datetime
     # Author info will be populated in API layer
-    author: dict | None = None
+    author: dict[str, Any] | None = None
 
 
 class PostsPublic(SQLModel):

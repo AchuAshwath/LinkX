@@ -3,6 +3,7 @@ import { ExternalLink, Info, Linkedin, Twitter } from "lucide-react"
 import * as React from "react"
 
 import { OpenAPI } from "@/client"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -12,7 +13,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import useCustomToast from "@/hooks/useCustomToast"
 
 type LinkedInProfile = {
@@ -66,8 +66,8 @@ function SocialAccountsPage() {
         setNeedsReconnect(Boolean(data.needs_reconnect))
         setProfile(data.profile ?? null)
         if (data.connected) setLastStatus("connected")
-      } catch (e) {
-        console.error(e)
+      } catch {
+        // Silently fail - user can retry by clicking connect
       }
     }
     run()
@@ -76,19 +76,21 @@ function SocialAccountsPage() {
   const handleConnectLinkedIn = async () => {
     try {
       setConnecting(true)
-      const res = await fetch(`${OpenAPI.BASE}/api/v1/auth/linkedin/authorize`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("access_token") || ""}`,
+      const res = await fetch(
+        `${OpenAPI.BASE}/api/v1/auth/linkedin/authorize`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("access_token") || ""}`,
+          },
         },
-      })
+      )
       if (!res.ok) {
         throw new Error("Failed to start LinkedIn OAuth")
       }
       const data = (await res.json()) as { authorize_url: string }
       window.location.href = data.authorize_url
-    } catch (e) {
-      console.error(e)
+    } catch {
       showErrorToast("Could not start LinkedIn OAuth. Check backend config.")
       setConnecting(false)
     }
@@ -145,10 +147,10 @@ function SocialAccountsPage() {
                     {needsReconnect
                       ? "Reconnect required"
                       : lastStatus === "connected"
-                      ? "Connected"
-                      : lastStatus === "error"
-                        ? "Error connecting"
-                        : "Not connected"}
+                        ? "Connected"
+                        : lastStatus === "error"
+                          ? "Error connecting"
+                          : "Not connected"}
                   </div>
                 </div>
               </div>
@@ -171,9 +173,7 @@ function SocialAccountsPage() {
         <Card>
           <CardHeader>
             <CardTitle>X (Twitter)</CardTitle>
-            <CardDescription>
-              Coming soon.
-            </CardDescription>
+            <CardDescription>Coming soon.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3">
@@ -183,7 +183,9 @@ function SocialAccountsPage() {
                 </div>
                 <div>
                   <div className="text-sm font-medium">Connection status</div>
-                  <div className="text-sm text-muted-foreground">Coming soon</div>
+                  <div className="text-sm text-muted-foreground">
+                    Coming soon
+                  </div>
                 </div>
               </div>
               <Button type="button" disabled>

@@ -53,9 +53,11 @@ function Layout() {
 
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
-        <div
-          className="fixed inset-0 top-14 z-30 bg-black/50 lg:hidden"
+        <button
+          type="button"
+          className="fixed inset-0 top-14 z-30 bg-black/50 lg:hidden cursor-default"
           onClick={() => setSidebarOpen(false)}
+          aria-label="Close sidebar"
         />
       )}
     </div>

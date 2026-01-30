@@ -3,15 +3,20 @@ FROM node:24 AS build-stage
 
 WORKDIR /app
 
-COPY package*.json /app/
+# Copy lockfile first for better layer caching
+COPY pnpm-lock.yaml package.json ./
 
-RUN npm install
+# Install dependencies with pnpm (frozen lockfile for CI)
+RUN corepack enable && corepack prepare pnpm@latest --activate && \
+    pnpm install --frozen-lockfile
 
+# Copy source files
 COPY ./ /app/
 
 ARG VITE_API_URL=${VITE_API_URL}
 
-RUN npm run build
+# Build with type checking
+RUN pnpm run build
 
 
 # Stage 1, based on Nginx, to have only the compiled app, ready for production with Nginx

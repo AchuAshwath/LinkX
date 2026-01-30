@@ -5,17 +5,17 @@ import time
 from typing import Any
 
 from fastapi import APIRouter
+from sqlmodel import select
 
 from app.api.deps import CurrentUser, SessionDep
 from app.core.redis import get_redis
 from app.models import SocialAccount
-from sqlmodel import select
 
 router = APIRouter(prefix="/linkedin", tags=["linkedin"])
 
 
 @router.get("/status")
-def linkedin_status(current_user: CurrentUser, session: SessionDep) -> dict:
+def linkedin_status(current_user: CurrentUser, session: SessionDep) -> dict[str, Any]:
     """
     Minimal connected-status endpoint for the frontend Social Accounts page.
     Uses Redis for token validity and Postgres for profile metadata.
@@ -29,7 +29,7 @@ def linkedin_status(current_user: CurrentUser, session: SessionDep) -> dict:
         r = get_redis()
         raw = r.get(f"linkedin:token:{user_id}")
         if raw:
-            token_payload = json.loads(raw)
+            token_payload = json.loads(raw)  # type: ignore[arg-type]
     except Exception:
         token_payload = None
 
@@ -39,7 +39,9 @@ def linkedin_status(current_user: CurrentUser, session: SessionDep) -> dict:
     if token_payload and "expires_at" in token_payload:
         expires_at = token_payload.get("expires_at")
         try:
-            needs_reconnect = float(expires_at) <= now if expires_at is not None else False
+            needs_reconnect = (
+                float(expires_at) <= now if expires_at is not None else False
+            )
         except Exception:
             needs_reconnect = False
         connected = not needs_reconnect
@@ -66,4 +68,3 @@ def linkedin_status(current_user: CurrentUser, session: SessionDep) -> dict:
         "expires_at": expires_at,
         "profile": profile,
     }
-

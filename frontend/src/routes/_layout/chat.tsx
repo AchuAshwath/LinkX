@@ -25,28 +25,29 @@ function ChatPage() {
   const [input, setInput] = React.useState("")
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
 
-  const scrollToBottom = () => {
+  const scrollToBottom = React.useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }
+  }, [])
 
   React.useEffect(() => {
     scrollToBottom()
   }, [scrollToBottom])
 
-  const handleSend = () => {
+  const handleSend = React.useCallback(() => {
     if (!input.trim()) return
 
-    // In a real implementation, this would send to an API
-    // For now, we'll just clear the input
     setInput("")
-  }
+  }, [input])
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
-  }
+  const handleKeyDown = React.useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault()
+        handleSend()
+      }
+    },
+    [handleSend],
+  )
 
   return (
     <div className="mx-auto flex w-full max-w-7xl min-h-[calc(100vh-3.5rem)]">
@@ -68,9 +69,7 @@ function ChatPage() {
                 <div
                   key={index}
                   className={`flex gap-3 ${
-                    message.role === "user"
-                      ? "justify-end"
-                      : "justify-start"
+                    message.role === "user" ? "justify-end" : "justify-start"
                   }`}
                 >
                   {message.role === "assistant" && (
@@ -114,8 +113,8 @@ function ChatPage() {
                 Start a conversation
               </h3>
               <p className="text-muted-foreground text-sm max-w-sm">
-                Select a conversation from the sidebar or start a new one
-                to begin chatting with the AI assistant.
+                Select a conversation from the sidebar or start a new one to
+                begin chatting with the AI assistant.
               </p>
             </div>
           )}

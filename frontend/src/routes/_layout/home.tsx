@@ -438,8 +438,8 @@ function TimelinePage() {
                 </div>
                 <h3 className="text-xl font-semibold mb-1">No posts yet</h3>
                 <p className="text-muted-foreground text-sm max-w-sm">
-                  Your scheduled and published posts will appear here.
-                  Create a post above to get started.
+                  Your scheduled and published posts will appear here. Create a
+                  post above to get started.
                 </p>
               </div>
             ) : (

@@ -639,10 +639,10 @@ function PostsPage() {
             <CardContent className="space-y-4">
               {/* Date Range Filter */}
               <div className="space-y-2">
-                <label className="text-sm font-medium flex items-center gap-2">
+                <span className="text-sm font-medium flex items-center gap-2">
                   <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                   Date Range
-                </label>
+                </span>
                 <Select value={dateFilter} onValueChange={setDateFilter}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select date range" />
@@ -660,10 +660,10 @@ function PostsPage() {
 
               {/* Sort By Filter */}
               <div className="space-y-2">
-                <label className="text-sm font-medium flex items-center gap-2">
+                <span className="text-sm font-medium flex items-center gap-2">
                   <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
                   Sort By
-                </label>
+                </span>
                 <Select value={sortBy} onValueChange={setSortBy}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Sort by" />
@@ -684,10 +684,10 @@ function PostsPage() {
               {/* Status Filter (for scheduled posts) */}
               {activeTab === "scheduled" && (
                 <div className="space-y-2">
-                  <label className="text-sm font-medium flex items-center gap-2">
+                  <span className="text-sm font-medium flex items-center gap-2">
                     <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
                     Status
-                  </label>
+                  </span>
                   <Select defaultValue="all">
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Filter by status" />
@@ -705,10 +705,10 @@ function PostsPage() {
               {/* Engagement Filter (for posted posts) */}
               {activeTab === "posted" && (
                 <div className="space-y-2">
-                  <label className="text-sm font-medium flex items-center gap-2">
+                  <span className="text-sm font-medium flex items-center gap-2">
                     <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
                     Engagement
-                  </label>
+                  </span>
                   <Select defaultValue="all">
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Filter by engagement" />
