@@ -1,8 +1,8 @@
-import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Mail } from "lucide-react"
 import { FaLinkedinIn } from "react-icons/fa"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardContent } from "@/components/ui/card"
 
 import useAuth from "@/hooks/useAuth"
 import { getInitials } from "@/utils"
@@ -34,7 +34,7 @@ export default function ProfileHeader() {
               </div>
               <div className="flex items-center gap-1">
                 <FaLinkedinIn className="size-4 text-[#0A66C2]" />
-                {user?.linkedin_username ?? "linkedin-username"}
+                {"linkedin-username"}
               </div>
             </div>
           </div>
