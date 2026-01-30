@@ -79,7 +79,7 @@ export function Posted({
   const [isReposted, setIsReposted] = React.useState(post.isReposted ?? false)
   const [repostCount, setRepostCount] = React.useState(post.reposts)
   const [platform, setPlatform] = React.useState<Platform>(
-    post.platform || "all",
+    post.platform || "linkedin",
   )
   const [editedContent, setEditedContent] = React.useState(post.content)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
@@ -87,7 +87,7 @@ export function Posted({
   // Reset edited content when post changes or edit mode is toggled
   React.useEffect(() => {
     setEditedContent(post.content)
-    setPlatform(post.platform || "all")
+    setPlatform(post.platform || "linkedin")
   }, [post.content, post.platform])
 
   // Focus textarea when entering edit mode
@@ -114,7 +114,7 @@ export function Posted({
 
   const handleCancel = () => {
     setEditedContent(post.content)
-    setPlatform(post.platform || "all")
+    setPlatform(post.platform || "linkedin")
     onCancel?.()
   }
 

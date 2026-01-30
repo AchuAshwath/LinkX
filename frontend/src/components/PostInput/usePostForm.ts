@@ -11,7 +11,7 @@ export function usePostForm() {
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const [content, setContent] = useState("")
   const [scheduledAt, setScheduledAt] = useState<Date | undefined>()
-  const [channel, setChannel] = useState<Platform>("all")
+  const [channel, setChannel] = useState<Platform>("linkedin")
   const [actionType, setActionType] = useState<"draft" | "schedule" | "post">(
     "post",
   )
@@ -38,7 +38,7 @@ export function usePostForm() {
       // Reset form
       setContent("")
       setScheduledAt(undefined)
-      setChannel("all")
+      setChannel("linkedin")
       setActionType("post")
       // Invalidate queries to refetch posts
       queryClient.invalidateQueries({ queryKey: ["posts"] })
@@ -56,6 +56,9 @@ export function usePostForm() {
         return
       }
 
+      // Only LinkedIn is enabled; coerce "x" / "all" to "linkedin" for API
+      const platformForApi =
+        channel === "x" || channel === "all" ? "linkedin" : channel
       const postData: {
         content: string
         platform: string
@@ -63,7 +66,7 @@ export function usePostForm() {
         status: string
       } = {
         content: content.trim(),
-        platform: channel,
+        platform: platformForApi,
         status:
           action === "draft"
             ? "draft"

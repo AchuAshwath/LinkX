@@ -22,8 +22,9 @@ export function PostPreviewDialog({
 }: PostPreviewDialogProps) {
   if (!post) return null
 
+  // Only LinkedIn is enabled; show LinkedIn preview for linkedin/all, never X
   const showLinkedIn = platform === "linkedin" || platform === "all"
-  const showX = platform === "x" || platform === "all"
+  const showX = false
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

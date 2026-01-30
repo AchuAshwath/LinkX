@@ -87,7 +87,7 @@ function PostsPage() {
     null,
   )
   const [previewPostPlatform, setPreviewPostPlatform] =
-    React.useState<Platform>("all")
+    React.useState<Platform>("linkedin")
 
   const { showSuccessToast, showErrorToast } = useCustomToast()
 
@@ -134,7 +134,7 @@ function PostsPage() {
           content: p.content,
           image_url: p.image_url ?? null,
           created_at: p.created_at,
-          platform: p.platform ?? "all",
+          platform: p.platform ?? "linkedin",
         })
       })
   }, [postsData, activeTab])
@@ -156,7 +156,7 @@ function PostsPage() {
           image_url: p.image_url ?? null,
           created_at: p.created_at,
           scheduled_at: p.scheduled_at,
-          platform: p.platform ?? "all",
+          platform: p.platform ?? "linkedin",
         })
       })
   }, [postsData, activeTab])
@@ -180,7 +180,7 @@ function PostsPage() {
           likes: p.likes,
           reposts: p.reposts,
           comments: p.comments,
-          platform: p.platform ?? "all",
+          platform: p.platform ?? "linkedin",
         })
       })
   }, [postsData, activeTab])
@@ -309,7 +309,10 @@ function PostsPage() {
     } = {
       content: postToUpdate.content,
       image_url: postToUpdate.imageUrl || undefined,
-      platform: postToUpdate.platform,
+      platform:
+        postToUpdate.platform === "x" || postToUpdate.platform === "all"
+          ? "linkedin"
+          : (postToUpdate.platform ?? "linkedin"),
     }
 
     // Add scheduled_at for scheduled posts
@@ -328,10 +331,12 @@ function PostsPage() {
   }
 
   const handlePlatformChange = (postId: string, platform: Platform) => {
-    // Update platform via API
+    // Only LinkedIn is enabled; coerce "x" / "all" to "linkedin" for API
+    const platformForApi =
+      platform === "x" || platform === "all" ? "linkedin" : platform
     updateMutation.mutate({
       postId,
-      data: { platform },
+      data: { platform: platformForApi },
     })
   }
 
@@ -374,17 +379,17 @@ function PostsPage() {
 
   const handlePreview = (postId: string) => {
     let post: DraftPostData | ScheduledPostData | PostedData | undefined
-    let platform: Platform = "all"
+    let platform: Platform = "linkedin"
 
     if (activeTab === "drafts") {
       post = draftPosts.find((p) => p.id === postId)
-      platform = post?.platform || "all"
+      platform = post?.platform || "linkedin"
     } else if (activeTab === "scheduled") {
       post = scheduledPosts.find((p) => p.id === postId)
-      platform = post?.platform || "all"
+      platform = post?.platform || "linkedin"
     } else if (activeTab === "posted") {
       post = postedPosts.find((p) => p.id === postId)
-      platform = post?.platform || "all"
+      platform = post?.platform || "linkedin"
     }
 
     if (post) {
