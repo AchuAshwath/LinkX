@@ -30,7 +30,7 @@ export function PostPreviewDialog({
       <DialogContent
         showCloseButton={false}
         overlayClassName="bg-black/40 backdrop-blur-md"
-        className="sm:max-w-3xl max-h-[85vh] overflow-y-auto p-0 gap-0 border-0 bg-transparent shadow-none"
+        className="sm:max-w-3xl max-h-[85vh] overflow-y-auto scrollbar-thin p-0 gap-0 border-0 bg-transparent shadow-none"
       >
         {/* Floating close button */}
         <DialogClose asChild>

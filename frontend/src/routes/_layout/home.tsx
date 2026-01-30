@@ -407,9 +407,9 @@ function TimelinePage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl min-h-[calc(100vh-3.5rem)] lg:min-h-screen">
+    <div className="mx-auto flex w-full max-w-7xl min-h-[calc(100vh-3.5rem)]">
       {/* Main Timeline */}
-      <div className="border-border min-w-0 flex-1 border-r md:max-w-2xl flex flex-col h-[calc(100vh-3.5rem)] lg:h-screen">
+      <div className="border-border min-w-0 flex-1 border-r md:max-w-2xl flex flex-col">
         <Tabs
           value={activeTab}
           onValueChange={(value) => {
@@ -417,7 +417,7 @@ function TimelinePage() {
               navigate({ to: "/ai" })
             }
           }}
-          className="w-full h-full flex flex-col"
+          className="w-full flex flex-col"
         >
           {/* Tabs Header - Sticky */}
           <div className="sticky top-0 z-10 shrink-0 border-b bg-background/80 backdrop-blur-sm">
@@ -446,8 +446,8 @@ function TimelinePage() {
             </TabsList>
           </div>
 
-          {/* Scrollable Content Area */}
-          <div className="flex-1 min-h-0 overflow-y-auto">
+          {/* Content Area - page scrolls */}
+          <div className="w-full">
             {/* Timeline Tab */}
             <TabsContent value="timeline" className="mt-0">
               {/* PostInputBox at the beginning */}
@@ -488,9 +488,9 @@ function TimelinePage() {
         </Tabs>
       </div>
 
-      {/* Right Sidebar - Sticky like left sidebar */}
+      {/* Right Sidebar */}
       <div className="hidden w-80 md:block">
-        <div className="sticky top-0 h-screen overflow-y-auto p-4 space-y-6">
+        <div className="sticky top-0 self-start p-4 space-y-6">
           <TimelineFilters
             dateFilter={dateFilter}
             sortBy={sortBy}

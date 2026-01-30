@@ -412,14 +412,14 @@ function PostsPage() {
   }, [dateFilter, sortBy])
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl min-h-[calc(100vh-3.5rem)] lg:min-h-screen">
-      <div className="border-border min-w-0 flex-1 border-r md:max-w-2xl flex flex-col h-[calc(100vh-3.5rem)] lg:h-screen">
+    <div className="mx-auto flex w-full max-w-7xl min-h-[calc(100vh-3.5rem)]">
+      <div className="border-border min-w-0 flex-1 border-r md:max-w-2xl flex flex-col">
         <Tabs
           value={activeTab}
           onValueChange={(value) =>
             setActiveTab(value as "drafts" | "scheduled" | "posted")
           }
-          className="w-full h-full flex flex-col"
+          className="w-full flex flex-col"
         >
           {/* Tabs Header - Sticky */}
           <div className="sticky top-0 z-10 shrink-0 border-b bg-background/80 backdrop-blur-sm">
@@ -478,8 +478,8 @@ function PostsPage() {
             </TabsList>
           </div>
 
-          {/* Scrollable Content Area */}
-          <div className="flex-1 min-h-0 overflow-y-auto">
+          {/* Content Area - page scrolls */}
+          <div className="w-full">
             {/* Drafts Tab */}
             <TabsContent value="drafts" className="mt-0">
               {isLoadingPosts ? (
@@ -610,7 +610,7 @@ function PostsPage() {
 
       {/* Right Sidebar - Filters */}
       <div className="hidden w-80 md:block">
-        <div className="sticky top-0 h-screen overflow-y-auto p-4 space-y-4">
+        <div className="sticky top-0 self-start p-4 space-y-4">
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">

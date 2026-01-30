@@ -40,7 +40,7 @@ export function Sidebar({ sidebarOpen, onClose }: SidebarProps) {
         <Logo variant="full" className="h-6" />
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto scrollbar-thin p-4">
         <div className="mb-4 flex items-center justify-between lg:hidden">
           <h2 className="text-2xl font-semibold">Menu</h2>
           <Button variant="ghost" size="icon" onClick={onClose}>
