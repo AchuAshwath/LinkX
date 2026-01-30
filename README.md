@@ -1,30 +1,41 @@
-# Full Stack FastAPI Template
+# LinkX – Open Source Social Posting & Scheduling
 
 <a href="https://github.com/fastapi/full-stack-fastapi-template/actions?query=workflow%3A%22Test+Docker+Compose%22" target="_blank"><img src="https://github.com/fastapi/full-stack-fastapi-template/workflows/Test%20Docker%20Compose/badge.svg" alt="Test Docker Compose"></a>
 <a href="https://github.com/fastapi/full-stack-fastapi-template/actions?query=workflow%3A%22Test+Backend%22" target="_blank"><img src="https://github.com/fastapi/full-stack-fastapi-template/workflows/Test%20Backend/badge.svg" alt="Test Backend"></a>
 <a href="https://coverage-badge.samuelcolvin.workers.dev/redirect/fastapi/full-stack-fastapi-template" target="_blank"><img src="https://coverage-badge.samuelcolvin.workers.dev/fastapi/full-stack-fastapi-template.svg" alt="Coverage"></a>
 
+LinkX is an **open‑source social media planner** that you can **self‑host** with Docker Compose.
+It gives you a unified dashboard to draft, schedule, and publish posts across platforms while you retain full control of your data and infrastructure.
+
 ## Technology Stack and Features
 
-- ⚡ [**FastAPI**](https://fastapi.tiangolo.com) for the Python backend API.
-  - 🧰 [SQLModel](https://sqlmodel.tiangolo.com) for the Python SQL database interactions (ORM).
-  - 🔍 [Pydantic](https://docs.pydantic.dev), used by FastAPI, for the data validation and settings management.
-  - 💾 [PostgreSQL](https://www.postgresql.org) as the SQL database.
-- 🚀 [React](https://react.dev) for the frontend.
-  - 💃 Using TypeScript, hooks, [Vite](https://vitejs.dev), and other parts of a modern frontend stack.
-  - 🎨 [Tailwind CSS](https://tailwindcss.com) and [shadcn/ui](https://ui.shadcn.com) for the frontend components.
-  - 🤖 An automatically generated frontend client.
-  - 🧪 [Playwright](https://playwright.dev) for End-to-End testing.
-  - 🦇 Dark mode support.
-- 🐋 [Docker Compose](https://www.docker.com) for development and production.
-- 🔒 Secure password hashing by default.
-- 🔑 JWT (JSON Web Token) authentication.
-- 📫 Email based password recovery.
-- 📬 [Mailcatcher](https://mailcatcher.me) for local email testing during development.
+- ⚡ [**FastAPI**](https://fastapi.tiangolo.com) backend API.
+  - 🧰 [SQLModel](https://sqlmodel.tiangolo.com) ORM over PostgreSQL.
+  - 🔍 [Pydantic](https://docs.pydantic.dev) for data validation and settings.
+  - 💾 [PostgreSQL](https://www.postgresql.org) as the database.
+- 🚀 [React](https://react.dev) frontend.
+  - TypeScript, hooks, [Vite](https://vitejs.dev), and modern tooling.
+  - 🎨 [Tailwind CSS](https://tailwindcss.com) + [shadcn/ui](https://ui.shadcn.com) components.
+  - 🧪 [Playwright](https://playwright.dev) for end‑to‑end testing.
+  - 🦇 Built‑in dark mode support.
+- 🐋 [Docker Compose](https://www.docker.com) for local and production deployments.
+- 🔒 Secure password hashing and **JWT** authentication.
+- 📫 Email‑based password recovery with [Mailcatcher](https://mailcatcher.me) in development.
 - ✅ Tests with [Pytest](https://pytest.org).
-- 📞 [Traefik](https://traefik.io) as a reverse proxy / load balancer.
-- 🚢 Deployment instructions using Docker Compose, including how to set up a frontend Traefik proxy to handle automatic HTTPS certificates.
-- 🏭 CI (continuous integration) and CD (continuous deployment) based on GitHub Actions.
+- 📞 [Traefik](https://traefik.io) reverse proxy / load balancer.
+- 🚢 Deployment docs for running LinkX as your own self‑hosted social scheduler.
+- 🏭 CI/CD workflows using GitHub Actions.
+
+### Social Integrations (LinkX)
+
+- **LinkedIn member posting (self‑hosted)**:
+  - Connect a personal LinkedIn account and publish or delete posts directly from LinkX.
+  - Uses OAuth 2.0 with scopes `openid profile email w_member_social`.
+  - Tokens are stored server‑side only in your deployment; no secrets are exposed to the browser.
+  - See [`docs/LINKEDIN_SETUP.md`](./docs/LINKEDIN_SETUP.md) for step‑by‑step configuration.
+- **Planned**:
+  - X (Twitter) integration.
+  - Richer media workflows and cross‑posting, tracked in [`docs/specs/SOCIAL_MEDIA_INTEGRATION.md`](./docs/specs/SOCIAL_MEDIA_INTEGRATION.md) and related specs.
 
 ### Dashboard Login
 

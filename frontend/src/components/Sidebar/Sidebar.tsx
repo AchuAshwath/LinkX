@@ -1,7 +1,7 @@
 "use client"
 
 import { Link } from "@tanstack/react-router"
-import { Home, Package, X } from "lucide-react"
+import { Home, MessageSquare, Package, X } from "lucide-react"
 import * as React from "react"
 import { Logo } from "@/components/Common/Logo"
 import { CreatePostDialog } from "@/components/PostInput/CreatePostDialog"
@@ -40,7 +40,7 @@ export function Sidebar({ sidebarOpen, onClose }: SidebarProps) {
         <Logo variant="full" className="h-6" />
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto scrollbar-thin p-4">
         <div className="mb-4 flex items-center justify-between lg:hidden">
           <h2 className="text-2xl font-semibold">Menu</h2>
           <Button variant="ghost" size="icon" onClick={onClose}>
@@ -66,6 +66,16 @@ export function Sidebar({ sidebarOpen, onClose }: SidebarProps) {
             <Link to="/posts">
               <Package className="mr-2 h-4 w-4" />
               Posts
+            </Link>
+          </Button>
+          <Button
+            variant="ghost"
+            className="w-full justify-start text-base"
+            asChild
+          >
+            <Link to="/chat">
+              <MessageSquare className="mr-2 h-4 w-4" />
+              Chat
             </Link>
           </Button>
         </nav>

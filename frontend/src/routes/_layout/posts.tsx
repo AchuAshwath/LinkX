@@ -87,7 +87,7 @@ function PostsPage() {
     null,
   )
   const [previewPostPlatform, setPreviewPostPlatform] =
-    React.useState<Platform>("all")
+    React.useState<Platform>("linkedin")
 
   const { showSuccessToast, showErrorToast } = useCustomToast()
 
@@ -134,7 +134,7 @@ function PostsPage() {
           content: p.content,
           image_url: p.image_url ?? null,
           created_at: p.created_at,
-          platform: p.platform ?? "all",
+          platform: p.platform ?? "linkedin",
         })
       })
   }, [postsData, activeTab])
@@ -156,7 +156,7 @@ function PostsPage() {
           image_url: p.image_url ?? null,
           created_at: p.created_at,
           scheduled_at: p.scheduled_at,
-          platform: p.platform ?? "all",
+          platform: p.platform ?? "linkedin",
         })
       })
   }, [postsData, activeTab])
@@ -180,7 +180,7 @@ function PostsPage() {
           likes: p.likes,
           reposts: p.reposts,
           comments: p.comments,
-          platform: p.platform ?? "all",
+          platform: p.platform ?? "linkedin",
         })
       })
   }, [postsData, activeTab])
@@ -309,7 +309,10 @@ function PostsPage() {
     } = {
       content: postToUpdate.content,
       image_url: postToUpdate.imageUrl || undefined,
-      platform: postToUpdate.platform,
+      platform:
+        postToUpdate.platform === "x" || postToUpdate.platform === "all"
+          ? "linkedin"
+          : (postToUpdate.platform ?? "linkedin"),
     }
 
     // Add scheduled_at for scheduled posts
@@ -328,10 +331,12 @@ function PostsPage() {
   }
 
   const handlePlatformChange = (postId: string, platform: Platform) => {
-    // Update platform via API
+    // Only LinkedIn is enabled; coerce "x" / "all" to "linkedin" for API
+    const platformForApi =
+      platform === "x" || platform === "all" ? "linkedin" : platform
     updateMutation.mutate({
       postId,
-      data: { platform },
+      data: { platform: platformForApi },
     })
   }
 
@@ -374,17 +379,17 @@ function PostsPage() {
 
   const handlePreview = (postId: string) => {
     let post: DraftPostData | ScheduledPostData | PostedData | undefined
-    let platform: Platform = "all"
+    let platform: Platform = "linkedin"
 
     if (activeTab === "drafts") {
       post = draftPosts.find((p) => p.id === postId)
-      platform = post?.platform || "all"
+      platform = post?.platform || "linkedin"
     } else if (activeTab === "scheduled") {
       post = scheduledPosts.find((p) => p.id === postId)
-      platform = post?.platform || "all"
+      platform = post?.platform || "linkedin"
     } else if (activeTab === "posted") {
       post = postedPosts.find((p) => p.id === postId)
-      platform = post?.platform || "all"
+      platform = post?.platform || "linkedin"
     }
 
     if (post) {
@@ -412,14 +417,14 @@ function PostsPage() {
   }, [dateFilter, sortBy])
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl min-h-[calc(100vh-3.5rem)] lg:min-h-screen">
-      <div className="border-border min-w-0 flex-1 border-r md:max-w-2xl flex flex-col h-[calc(100vh-3.5rem)] lg:h-screen">
+    <div className="mx-auto flex w-full max-w-7xl min-h-[calc(100vh-3.5rem)]">
+      <div className="border-border min-w-0 flex-1 border-r md:max-w-2xl flex flex-col">
         <Tabs
           value={activeTab}
           onValueChange={(value) =>
             setActiveTab(value as "drafts" | "scheduled" | "posted")
           }
-          className="w-full h-full flex flex-col"
+          className="w-full flex flex-col"
         >
           {/* Tabs Header - Sticky */}
           <div className="sticky top-0 z-10 shrink-0 border-b bg-background/80 backdrop-blur-sm">
@@ -478,8 +483,8 @@ function PostsPage() {
             </TabsList>
           </div>
 
-          {/* Scrollable Content Area */}
-          <div className="flex-1 min-h-0 overflow-y-auto">
+          {/* Content Area - page scrolls */}
+          <div className="w-full">
             {/* Drafts Tab */}
             <TabsContent value="drafts" className="mt-0">
               {isLoadingPosts ? (
@@ -610,7 +615,7 @@ function PostsPage() {
 
       {/* Right Sidebar - Filters */}
       <div className="hidden w-80 md:block">
-        <div className="sticky top-0 h-screen overflow-y-auto p-4 space-y-4">
+        <div className="sticky top-0 self-start p-4 space-y-4">
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">

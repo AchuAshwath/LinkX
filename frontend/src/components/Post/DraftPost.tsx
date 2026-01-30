@@ -52,7 +52,7 @@ export function DraftPost({
   onPreview,
 }: DraftPostProps) {
   const [platform, setPlatform] = React.useState<Platform>(
-    post.platform || "all",
+    post.platform || "linkedin",
   )
   const [editedContent, setEditedContent] = React.useState(post.content)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
@@ -60,7 +60,7 @@ export function DraftPost({
   // Reset edited content when post changes or edit mode is toggled
   React.useEffect(() => {
     setEditedContent(post.content)
-    setPlatform(post.platform || "all")
+    setPlatform(post.platform || "linkedin")
   }, [post.content, post.platform])
 
   // Focus textarea when entering edit mode
@@ -90,7 +90,7 @@ export function DraftPost({
 
   const handleCancel = () => {
     setEditedContent(post.content)
-    setPlatform(post.platform || "all")
+    setPlatform(post.platform || "linkedin")
     onCancel?.()
   }
 

@@ -66,7 +66,7 @@ export function ScheduledPost({
   onPreview,
 }: ScheduledPostProps) {
   const [platform, setPlatform] = React.useState<Platform>(
-    post.platform || "all",
+    post.platform || "linkedin",
   )
   const [editedContent, setEditedContent] = React.useState(post.content)
   const [editedScheduledAt, setEditedScheduledAt] = React.useState<Date>(
@@ -79,7 +79,7 @@ export function ScheduledPost({
   // Reset edited content when post changes or edit mode is toggled
   React.useEffect(() => {
     setEditedContent(post.content)
-    setPlatform(post.platform || "all")
+    setPlatform(post.platform || "linkedin")
     setEditedScheduledAt(
       typeof post.scheduledAt === "string"
         ? new Date(post.scheduledAt)
@@ -115,7 +115,7 @@ export function ScheduledPost({
 
   const handleCancel = () => {
     setEditedContent(post.content)
-    setPlatform(post.platform || "all")
+    setPlatform(post.platform || "linkedin")
     setEditedScheduledAt(
       typeof post.scheduledAt === "string"
         ? new Date(post.scheduledAt)

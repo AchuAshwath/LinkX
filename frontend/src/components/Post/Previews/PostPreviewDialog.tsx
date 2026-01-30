@@ -22,15 +22,16 @@ export function PostPreviewDialog({
 }: PostPreviewDialogProps) {
   if (!post) return null
 
+  // Only LinkedIn is enabled; show LinkedIn preview for linkedin/all, never X
   const showLinkedIn = platform === "linkedin" || platform === "all"
-  const showX = platform === "x" || platform === "all"
+  const showX = false
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
         overlayClassName="bg-black/40 backdrop-blur-md"
-        className="sm:max-w-3xl max-h-[85vh] overflow-y-auto p-0 gap-0 border-0 bg-transparent shadow-none"
+        className="sm:max-w-3xl max-h-[85vh] overflow-y-auto scrollbar-thin p-0 gap-0 border-0 bg-transparent shadow-none"
       >
         {/* Floating close button */}
         <DialogClose asChild>

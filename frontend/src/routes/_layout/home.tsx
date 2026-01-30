@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
-import { Home as HomeIcon, Loader2, Sparkles } from "lucide-react"
+import { createFileRoute } from "@tanstack/react-router"
+import { Home as HomeIcon, Loader2 } from "lucide-react"
 import * as React from "react"
 import { PostsService } from "@/client"
 import type { Platform } from "@/components/Common/PlatformSelector"
@@ -29,7 +29,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { LoadingButton } from "@/components/ui/loading-button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import useAuth from "@/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
 import {
@@ -56,9 +55,7 @@ export const Route = createFileRoute("/_layout/home")({
 
 function TimelinePage() {
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
   const { user } = useAuth()
-  const [activeTab] = React.useState<"timeline" | "ai">("timeline")
 
   // Filter state
   const [dateFilter, setDateFilter] = React.useState<string>("all")
@@ -121,7 +118,7 @@ function TimelinePage() {
           image_url: p.image_url ?? null,
           created_at: p.created_at,
           scheduled_at: p.scheduled_at ?? null,
-          platform: p.platform ?? "all",
+          platform: p.platform ?? "linkedin",
         }),
         type: "scheduled" as const,
       }))
@@ -142,7 +139,7 @@ function TimelinePage() {
           likes: p.likes,
           reposts: p.reposts,
           comments: p.comments,
-          platform: p.platform ?? "all",
+          platform: p.platform ?? "linkedin",
         }),
         type: "posted" as const,
       }))
@@ -273,7 +270,10 @@ function TimelinePage() {
     } = {
       content: postToUpdate.content,
       image_url: postToUpdate.imageUrl || undefined,
-      platform: postToUpdate.platform,
+      platform:
+        postToUpdate.platform === "x" || postToUpdate.platform === "all"
+          ? "linkedin"
+          : (postToUpdate.platform ?? "linkedin"),
     }
 
     // Add scheduled_at for scheduled posts
@@ -292,10 +292,12 @@ function TimelinePage() {
   }
 
   const handlePlatformChange = (postId: string, platform: Platform) => {
-    // Update platform via API
+    // Only LinkedIn is enabled; coerce "x" / "all" to "linkedin" for API
+    const platformForApi =
+      platform === "x" || platform === "all" ? "linkedin" : platform
     updateMutation.mutate({
       postId,
-      data: { platform },
+      data: { platform: platformForApi },
     })
   }
 
@@ -407,90 +409,49 @@ function TimelinePage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl min-h-[calc(100vh-3.5rem)] lg:min-h-screen">
+    <div className="mx-auto flex w-full max-w-7xl min-h-[calc(100vh-3.5rem)]">
       {/* Main Timeline */}
-      <div className="border-border min-w-0 flex-1 border-r md:max-w-2xl flex flex-col h-[calc(100vh-3.5rem)] lg:h-screen">
-        <Tabs
-          value={activeTab}
-          onValueChange={(value) => {
-            if (value === "ai") {
-              navigate({ to: "/ai" })
-            }
-          }}
-          className="w-full h-full flex flex-col"
-        >
-          {/* Tabs Header - Sticky */}
-          <div className="sticky top-0 z-10 shrink-0 border-b bg-background/80 backdrop-blur-sm">
-            <TabsList className="w-full h-auto p-0 bg-transparent rounded-none border-0 border-b border-border grid grid-cols-2 relative">
-              <TabsTrigger
-                value="timeline"
-                className="relative flex-1 h-14 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-base transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <HomeIcon className="h-4 w-4" />
-                  <span>Timeline</span>
+      <div className="border-border min-w-0 flex-1 border-r md:max-w-2xl flex flex-col">
+        {/* PostInputBox - Sticky at top */}
+        <div className="sticky top-0 z-10 shrink-0 border-b bg-background p-4">
+          <PostInputBox
+            username={user?.full_name || user?.email || "User"}
+            avatarUrl={undefined}
+            onSubmit={handlePostCreated}
+          />
+        </div>
+
+        {/* Timeline Posts - Scrollable */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="w-full pb-20">
+            {isLoadingPosts ? (
+              <div className="flex flex-col items-center justify-center py-16">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <p className="mt-4 text-sm text-muted-foreground">
+                  Loading posts...
+                </p>
+              </div>
+            ) : sortedPosts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center text-center py-16 px-4">
+                <div className="rounded-full bg-muted/50 p-6 mb-4">
+                  <HomeIcon className="h-10 w-10 text-muted-foreground" />
                 </div>
-              </TabsTrigger>
-              <TabsTrigger
-                value="ai"
-                className="relative flex-1 h-14 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-base transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
-                asChild
-              >
-                <Link to="/ai">
-                  <div className="flex items-center justify-center gap-2">
-                    <Sparkles className="h-4 w-4" />
-                    <span>AI</span>
-                  </div>
-                </Link>
-              </TabsTrigger>
-            </TabsList>
-          </div>
-
-          {/* Scrollable Content Area */}
-          <div className="flex-1 min-h-0 overflow-y-auto">
-            {/* Timeline Tab */}
-            <TabsContent value="timeline" className="mt-0">
-              {/* PostInputBox at the beginning */}
-              <div className="border-b p-4 shrink-0">
-                <PostInputBox
-                  username={user?.full_name || user?.email || "User"}
-                  avatarUrl={undefined}
-                  onSubmit={handlePostCreated}
-                />
+                <h3 className="text-xl font-semibold mb-1">No posts yet</h3>
+                <p className="text-muted-foreground text-sm max-w-sm">
+                  Your scheduled and published posts will appear here.
+                  Create a post above to get started.
+                </p>
               </div>
-
-              {/* Timeline Posts - Mixed scheduled and posted */}
-              <div className="w-full pb-20">
-                {isLoadingPosts ? (
-                  <div className="flex flex-col items-center justify-center py-16">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                    <p className="mt-4 text-sm text-muted-foreground">
-                      Loading posts...
-                    </p>
-                  </div>
-                ) : sortedPosts.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center text-center py-16 px-4">
-                    <div className="rounded-full bg-muted/50 p-6 mb-4">
-                      <HomeIcon className="h-10 w-10 text-muted-foreground" />
-                    </div>
-                    <h3 className="text-xl font-semibold mb-1">No posts yet</h3>
-                    <p className="text-muted-foreground text-sm max-w-sm">
-                      Your scheduled and published posts will appear here.
-                      Create a post above to get started.
-                    </p>
-                  </div>
-                ) : (
-                  sortedPosts.map(renderPost)
-                )}
-              </div>
-            </TabsContent>
+            ) : (
+              sortedPosts.map(renderPost)
+            )}
           </div>
-        </Tabs>
+        </div>
       </div>
 
-      {/* Right Sidebar - Sticky like left sidebar */}
+      {/* Right Sidebar */}
       <div className="hidden w-80 md:block">
-        <div className="sticky top-0 h-screen overflow-y-auto p-4 space-y-6">
+        <div className="sticky top-0 self-start p-4 space-y-6">
           <TimelineFilters
             dateFilter={dateFilter}
             sortBy={sortBy}
@@ -539,7 +500,7 @@ function TimelinePage() {
           onOpenChange={setPreviewDialogOpen}
           post={previewPost}
           platform={
-            posts.find((p) => p.id === previewPost.id)?.platform || "all"
+            posts.find((p) => p.id === previewPost.id)?.platform || "linkedin"
           }
         />
       )}

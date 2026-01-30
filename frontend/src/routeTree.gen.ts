@@ -19,7 +19,7 @@ import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
 import { Route as LayoutPostsRouteImport } from './routes/_layout/posts'
 import { Route as LayoutItemsRouteImport } from './routes/_layout/items'
 import { Route as LayoutHomeRouteImport } from './routes/_layout/home'
-import { Route as LayoutAiRouteImport } from './routes/_layout/ai'
+import { Route as LayoutChatRouteImport } from './routes/_layout/chat'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
 import { Route as LayoutAboutRouteImport } from './routes/_layout/about'
 
@@ -72,9 +72,9 @@ const LayoutHomeRoute = LayoutHomeRouteImport.update({
   path: '/home',
   getParentRoute: () => LayoutRoute,
 } as any)
-const LayoutAiRoute = LayoutAiRouteImport.update({
-  id: '/ai',
-  path: '/ai',
+const LayoutChatRoute = LayoutChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
   getParentRoute: () => LayoutRoute,
 } as any)
 const LayoutAdminRoute = LayoutAdminRouteImport.update({
@@ -95,7 +95,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/about': typeof LayoutAboutRoute
   '/admin': typeof LayoutAdminRoute
-  '/ai': typeof LayoutAiRoute
+  '/chat': typeof LayoutChatRoute
   '/home': typeof LayoutHomeRoute
   '/items': typeof LayoutItemsRoute
   '/posts': typeof LayoutPostsRoute
@@ -109,7 +109,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/about': typeof LayoutAboutRoute
   '/admin': typeof LayoutAdminRoute
-  '/ai': typeof LayoutAiRoute
+  '/chat': typeof LayoutChatRoute
   '/home': typeof LayoutHomeRoute
   '/items': typeof LayoutItemsRoute
   '/posts': typeof LayoutPostsRoute
@@ -125,7 +125,7 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/_layout/about': typeof LayoutAboutRoute
   '/_layout/admin': typeof LayoutAdminRoute
-  '/_layout/ai': typeof LayoutAiRoute
+  '/_layout/chat': typeof LayoutChatRoute
   '/_layout/home': typeof LayoutHomeRoute
   '/_layout/items': typeof LayoutItemsRoute
   '/_layout/posts': typeof LayoutPostsRoute
@@ -141,7 +141,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/about'
     | '/admin'
-    | '/ai'
+    | '/chat'
     | '/home'
     | '/items'
     | '/posts'
@@ -155,7 +155,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/about'
     | '/admin'
-    | '/ai'
+    | '/chat'
     | '/home'
     | '/items'
     | '/posts'
@@ -170,7 +170,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/_layout/about'
     | '/_layout/admin'
-    | '/_layout/ai'
+    | '/_layout/chat'
     | '/_layout/home'
     | '/_layout/items'
     | '/_layout/posts'
@@ -258,11 +258,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutHomeRouteImport
       parentRoute: typeof LayoutRoute
     }
-    '/_layout/ai': {
-      id: '/_layout/ai'
-      path: '/ai'
-      fullPath: '/ai'
-      preLoaderRoute: typeof LayoutAiRouteImport
+    '/_layout/chat': {
+      id: '/_layout/chat'
+      path: '/chat'
+      fullPath: '/chat'
+      preLoaderRoute: typeof LayoutChatRouteImport
       parentRoute: typeof LayoutRoute
     }
     '/_layout/admin': {
@@ -285,7 +285,7 @@ declare module '@tanstack/react-router' {
 interface LayoutRouteChildren {
   LayoutAboutRoute: typeof LayoutAboutRoute
   LayoutAdminRoute: typeof LayoutAdminRoute
-  LayoutAiRoute: typeof LayoutAiRoute
+  LayoutChatRoute: typeof LayoutChatRoute
   LayoutHomeRoute: typeof LayoutHomeRoute
   LayoutItemsRoute: typeof LayoutItemsRoute
   LayoutPostsRoute: typeof LayoutPostsRoute
@@ -296,7 +296,7 @@ interface LayoutRouteChildren {
 const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutAboutRoute: LayoutAboutRoute,
   LayoutAdminRoute: LayoutAdminRoute,
-  LayoutAiRoute: LayoutAiRoute,
+  LayoutChatRoute: LayoutChatRoute,
   LayoutHomeRoute: LayoutHomeRoute,
   LayoutItemsRoute: LayoutItemsRoute,
   LayoutPostsRoute: LayoutPostsRoute,
