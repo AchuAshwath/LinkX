@@ -286,6 +286,7 @@ Check the file [release-notes.md](./release-notes.md).
 
 #### Refactors
 
+* 🔥 Clean up old files no longer relevant. PR [#608](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/608) by [@tiangolo](https://github.com/tiangolo).
 * ♻ Re-structure Docker Compose files, discard Docker Swarm specific logic. PR [#607](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/607) by [@tiangolo](https://github.com/tiangolo).
 * ♻️ Refactor update endpoints and regenerate client for new-frontend. PR [#602](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/602) by [@alejsdev](https://github.com/alejsdev).
 * ✨ Add Layout to App. PR [#588](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/588) by [@alejsdev](https://github.com/alejsdev).
