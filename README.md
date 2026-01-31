@@ -255,6 +255,7 @@ Check the file [release-notes.md](./release-notes.md).
 
 #### Features
 
+* ✨ Migrate to RouterProvider and other refactors . PR [#598](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/598) by [@alejsdev](https://github.com/alejsdev).
 * ✨ Add delete_user; refactor delete_item. PR [#594](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/594) by [@alejsdev](https://github.com/alejsdev).
 * ✨ Add state store to new frontend. PR [#592](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/592) by [@alejsdev](https://github.com/alejsdev).
 * ✨ Add form validation to Admin, Items and Login. PR [#616](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/616) by [@alejsdev](https://github.com/alejsdev).
