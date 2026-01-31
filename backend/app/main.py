@@ -24,9 +24,6 @@ app = FastAPI(
     generate_unique_id_function=custom_generate_unique_id,
 )
 
-# Mount static files for assets (including LinkX icons)
-app.mount("/assets", StaticFiles(directory="frontend/public/assets"), name="assets")
-
 # Add custom docs router (before CORS to ensure it works)
 app.include_router(docs_router)
 
