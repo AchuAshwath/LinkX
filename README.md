@@ -247,6 +247,7 @@ Check the file [release-notes.md](./release-notes.md).
 
 ### Latest Changes
 
+* Use Pydantic's `BaseSettings` for settings/configs and env vars. PR [#87](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/87) by [@StephenBrown2](https://github.com/StephenBrown2).
 * Remove `package-lock.json` to let everyone lock their own versions (depending on OS, etc).
 * Simplify Traefik service labels PR [#139](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/139).
 * Add email validation. PR [#40](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/40) by [@kedod](https://github.com/kedod).
