@@ -1,10 +1,19 @@
-import { type PostData } from "@/components/Post"
+import { type PostedData } from "@/components/Post/Posted"
+import { type ScheduledPostData } from "@/components/Post/ScheduledPost"
+import { type DraftPostData } from "@/components/Post/DraftPost"
 
-// TODO: Remove this file once backend API is implemented
-// This is temporary mock data for development
-export const timelinePosts: PostData[] = [
+// Union type for timeline posts
+export type TimelinePost = 
+  | (PostedData & { type: "posted" })
+  | (ScheduledPostData & { type: "scheduled" })
+  | (DraftPostData & { type: "draft" })
+
+// Mixed timeline posts - showing drafts, scheduled, and posted posts
+export const timelinePosts: TimelinePost[] = [
+  // Posted posts
   {
-    id: "1",
+    type: "posted",
+    id: "posted-1",
     author: {
       name: "Moyo Shiro",
       username: "moyo",
@@ -16,9 +25,27 @@ export const timelinePosts: PostData[] = [
     likes: 62,
     reposts: 23,
     comments: 45,
+    platform: "all",
   },
+  // Scheduled post
   {
-    id: "2",
+    type: "scheduled",
+    id: "scheduled-1",
+    author: {
+      name: "Jane Doe",
+      username: "janedoe",
+      avatarUrl: "https://bundui-images.netlify.app/avatars/01.png",
+    },
+    content:
+      "Excited to announce our new product launch next week! 🚀 Stay tuned for more updates. #ProductLaunch #Innovation",
+    createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), // Created 1 day ago
+    scheduledAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000), // Scheduled for 2 days from now
+    platform: "all",
+  },
+  // Posted post
+  {
+    type: "posted",
+    id: "posted-2",
     author: {
       name: "Sophia",
       username: "sophia",
@@ -31,9 +58,26 @@ export const timelinePosts: PostData[] = [
     likes: 128,
     reposts: 34,
     comments: 67,
+    platform: "linkedin",
   },
+  // Draft post
   {
-    id: "3",
+    type: "draft",
+    id: "draft-1",
+    author: {
+      name: "Jane Doe",
+      username: "janedoe",
+      avatarUrl: "https://bundui-images.netlify.app/avatars/01.png",
+    },
+    content:
+      "Working on a new blog post about modern web development practices. Stay tuned! 🚀 #WebDev #Blogging",
+    createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), // 1 day ago
+    platform: "all",
+  },
+  // Posted post
+  {
+    type: "posted",
+    id: "posted-3",
     author: {
       name: "Alex Chen",
       username: "alexchen",
@@ -45,9 +89,28 @@ export const timelinePosts: PostData[] = [
     likes: 89,
     reposts: 12,
     comments: 23,
+    platform: "x",
   },
+  // Scheduled post
   {
-    id: "4",
+    type: "scheduled",
+    id: "scheduled-2",
+    author: {
+      name: "Jane Doe",
+      username: "janedoe",
+      avatarUrl: "https://bundui-images.netlify.app/avatars/01.png",
+    },
+    content:
+      "Just finished reading an amazing book on design systems. Can't wait to share my thoughts! 📚 #DesignSystems #Reading",
+    imageUrl: "https://bundui-images.netlify.app/blog/02.jpg",
+    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // Created 2 days ago
+    scheduledAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000), // Scheduled for 5 days from now
+    platform: "linkedin",
+  },
+  // Posted post
+  {
+    type: "posted",
+    id: "posted-4",
     author: {
       name: "Sarah Johnson",
       username: "sarahj",
@@ -60,9 +123,27 @@ export const timelinePosts: PostData[] = [
     likes: 156,
     reposts: 28,
     comments: 41,
+    platform: "all",
   },
+  // Draft post
   {
-    id: "5",
+    type: "draft",
+    id: "draft-2",
+    author: {
+      name: "Jane Doe",
+      username: "janedoe",
+      avatarUrl: "https://bundui-images.netlify.app/avatars/01.png",
+    },
+    content:
+      "Just discovered an amazing new tool for developers. Need to write more about it...",
+    imageUrl: "https://bundui-images.netlify.app/blog/01.jpg",
+    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000), // 3 days ago
+    platform: "linkedin",
+  },
+  // Posted post
+  {
+    type: "posted",
+    id: "posted-5",
     author: {
       name: "Tech Startup",
       username: "techstartup",
@@ -74,49 +155,6 @@ export const timelinePosts: PostData[] = [
     likes: 234,
     reposts: 67,
     comments: 89,
-  },
-  {
-    id: "6",
-    author: {
-      name: "Design Studio",
-      username: "designstudio",
-      avatarUrl: "https://bundui-images.netlify.app/avatars/05.png",
-    },
-    content:
-      "New design system released! 🎨 We've been working on this for months and finally ready to share. Clean, accessible, and beautiful. Check out the full documentation on our website. #DesignSystem #UIUX #Accessibility",
-    imageUrl: "https://bundui-images.netlify.app/blog/04.jpg",
-    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
-    likes: 312,
-    reposts: 94,
-    comments: 127,
-  },
-  {
-    id: "7",
-    author: {
-      name: "Code Mentor",
-      username: "codementor",
-      avatarUrl: "https://bundui-images.netlify.app/avatars/06.png",
-    },
-    content:
-      "Quick tip: Always use semantic HTML! It's not just about accessibility - search engines love it too. Your future self will thank you when debugging. 💡 #WebDev #HTML #Accessibility #BestPractices",
-    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000), // 3 days ago
-    likes: 178,
-    reposts: 45,
-    comments: 56,
-  },
-  {
-    id: "8",
-    author: {
-      name: "Travel Blogger",
-      username: "travelblogger",
-      avatarUrl: "https://bundui-images.netlify.app/avatars/07.png",
-    },
-    content:
-      "Just arrived in Tokyo! 🇯🇵 The city never sleeps and neither do I apparently. First stop: Shibuya crossing. This place is absolutely incredible! #Travel #Tokyo #Japan #Adventure",
-    imageUrl: "https://bundui-images.netlify.app/blog/05.jpg",
-    createdAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000), // 4 days ago
-    likes: 445,
-    reposts: 123,
-    comments: 198,
+    platform: "all",
   },
 ]
