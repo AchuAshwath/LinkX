@@ -249,6 +249,10 @@ Check the file [release-notes.md](./release-notes.md).
 
 * Update development scripts.
 
+* Read Alembic configs from env vars. PR <a href="https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/9" target="_blank">#9</a> by <a href="https://github.com/ebreton" target="_blank">@ebreton</a>.
+
+* Create DB Item objects from all Pydantic model's fields.
+
 ### 0.3.0
 
 * PR <a href="https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/14" target="_blank">#14</a>:
@@ -262,7 +266,7 @@ Check the file [release-notes.md](./release-notes.md).
     * Update migrations to include new Items.
     * Update project README.md with tips about how to start with backend.
 
-* Upgrade Python to 3.7 as Celery is now compatible too. <a href="https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/10" target="_blank">PR #10</a> by <a href="https://github.com/ebreton" target="_blank">@ebreton</a>.
+* Upgrade Python to 3.7 as Celery is now compatible too. PR <a href="https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/10" target="_blank">#10</a> by <a href="https://github.com/ebreton" target="_blank">@ebreton</a>.
 
 ### 0.2.2
 
