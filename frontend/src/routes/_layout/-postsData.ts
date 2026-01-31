@@ -1,7 +1,6 @@
 import { type PostedData } from "@/components/Post/Posted"
 import { type ScheduledPostData } from "@/components/Post/ScheduledPost"
 import { type DraftPostData } from "@/components/Post/DraftPost"
-import { type Platform } from "@/components/Common/PlatformSelector"
 import { formatRelativeTime, formatRelativeTimeWithFuture } from "@/utils"
 
 // Mock data for draft posts
