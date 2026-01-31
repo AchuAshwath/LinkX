@@ -260,6 +260,7 @@ Check the file [release-notes.md](./release-notes.md).
 
 #### Refactors
 
+* ♻️ Refactor project generation, discard cookiecutter, use plain git/clone/fork. PR [#553](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/553) by [@tiangolo](https://github.com/tiangolo).
 * Refactor backend:
     * Simplify configs for tools and format to better support editor integration.
     * Add mypy configurations and plugins.
