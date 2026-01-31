@@ -247,6 +247,10 @@ Check the file [release-notes.md](./release-notes.md).
 
 ### Next
 
+* Set `/start-reload.sh` as a command override for development by default.
+
+* Update generated README.
+
 ### 0.2.0
 
 **<a href="https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/2" target="_blank">PR #2</a>**:
