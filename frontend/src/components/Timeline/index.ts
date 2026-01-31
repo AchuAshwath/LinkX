@@ -12,3 +12,7 @@ export {
   WhoToFollow,
   type WhoToFollowProps,
 } from "./WhoToFollow"
+export {
+  TimelineFilters,
+  type TimelineFiltersProps,
+} from "./TimelineFilters"
