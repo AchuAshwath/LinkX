@@ -239,6 +239,10 @@ This includes using Docker Compose, custom local domains, `.env` configurations,
 
 Check the file [release-notes.md](./release-notes.md).
 
+## Sibling project generators
+
+* Based on Couchbase: [https://github.com/tiangolo/full-stack-fastapi-couchbase](https://github.com/tiangolo/full-stack-fastapi-couchbase).
+
 ## License
 
 The Full Stack FastAPI Template is licensed under the terms of the MIT license.
