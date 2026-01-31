@@ -247,6 +247,8 @@ Check the file [release-notes.md](./release-notes.md).
 
 ### Latest Changes
 
+* Simplify env var files, merge to a single `.env` file. PR [#151](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/151).
+
 ### 0.5.0
 
 * Make the Traefik public network a fixed default of `traefik-public` as done in DockerSwarm.rocks, to simplify development and iteration of the project generator. PR [#150](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/150).
