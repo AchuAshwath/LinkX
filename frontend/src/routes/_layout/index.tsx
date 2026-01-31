@@ -2,22 +2,17 @@ import { createFileRoute } from "@tanstack/react-router"
 import { useMutation } from "@tanstack/react-query"
 import * as React from "react"
 import { Posted } from "@/components/Post/Posted"
+import { DraftPost } from "@/components/Post/DraftPost"
 import { ScheduledPost } from "@/components/Post/ScheduledPost"
 import { PostInputBox } from "@/components/PostInput"
 import {
   type TrendingTopic,
   TrendingTopics,
-  TimelineFilters,
+  type UserToFollow,
+  WhoToFollow,
 } from "@/components/Timeline"
-import { scheduledPosts, postedPosts } from "./-postsData"
-import type { PostedData } from "@/components/Post/Posted"
-import type { ScheduledPostData } from "@/components/Post/ScheduledPost"
+import { timelinePosts as initialTimelinePosts, type TimelinePost } from "./-timelineData"
 import { type Platform } from "@/components/Common/PlatformSelector"
-
-// Union type for timeline posts
-type TimelinePost = 
-  | (PostedData & { type: "posted" })
-  | (ScheduledPostData & { type: "scheduled" })
 import {
   Dialog,
   DialogClose,
@@ -47,17 +42,8 @@ export const Route = createFileRoute("/_layout/")({
 
 function TimelinePage() {
   // TODO: Replace with API call once backend is implemented
-  // Combine scheduled and posted posts for timeline
-  const initialTimelinePosts: TimelinePost[] = React.useMemo(() => [
-    ...scheduledPosts.map((post) => ({ ...post, type: "scheduled" as const })),
-    ...postedPosts.map((post) => ({ ...post, type: "posted" as const })),
-  ], [])
-  
+  // Currently using mock data from timelineData.ts
   const [posts, setPosts] = React.useState<TimelinePost[]>(initialTimelinePosts)
-
-  // Filter state
-  const [dateFilter, setDateFilter] = React.useState<string>("all")
-  const [sortBy, setSortBy] = React.useState<string>("newest")
 
   // Edit state management
   const [editingPostId, setEditingPostId] = React.useState<string | null>(null)
@@ -104,6 +90,31 @@ function TimelinePage() {
     }
   }
 
+  // Sample users to follow
+  const usersToFollow: UserToFollow[] = React.useMemo(
+    () => [
+      {
+        id: "1",
+        name: "George",
+        username: "georgeSZ",
+        avatarUrl: "/placeholder.svg?height=40&width=40",
+      },
+      {
+        id: "2",
+        name: "Nettie Schuster",
+        username: "Precious3",
+        avatarUrl: "/placeholder.svg?height=40&width=40",
+      },
+      {
+        id: "3",
+        name: "Mrs. Lola Rohan",
+        username: "collin_marks",
+        avatarUrl: "/placeholder.svg?height=40&width=40",
+      },
+    ],
+    [],
+  )
+
   // Sample trending topics
   const trendingTopics: TrendingTopic[] = React.useMemo(
     () => [
@@ -123,6 +134,18 @@ function TimelinePage() {
     } else {
       // Handle post actions (like, repost, comment, share)
       console.log(`${action} post ${postId}`)
+    }
+  }
+
+  const handleDraftAction = (action: string, postId: string) => {
+    if (action === "edit") {
+      setEditingPostId(postId)
+    } else if (action === "delete") {
+      handleDelete(postId, "draft")
+    } else if (action === "preview") {
+      handlePreview(postId)
+    } else {
+      console.log(`${action} draft ${postId}`)
     }
   }
 
@@ -176,8 +199,7 @@ function TimelinePage() {
         reposts: post.reposts,
         comments: post.comments,
       }
-    } else {
-      // scheduled
+    } else if (post.type === "scheduled") {
       return {
         id: post.id,
         author: post.author,
@@ -185,6 +207,15 @@ function TimelinePage() {
         imageUrl: post.imageUrl,
         createdAt: post.createdAt,
         scheduledAt: post.scheduledAt,
+      }
+    } else {
+      // draft
+      return {
+        id: post.id,
+        author: post.author,
+        content: post.content,
+        imageUrl: post.imageUrl,
+        createdAt: post.createdAt,
       }
     }
   }
@@ -197,43 +228,33 @@ function TimelinePage() {
     }
   }
 
+  const handleFollow = (userId: string) => {
+    console.log(`Follow user ${userId}`)
+  }
+
   const handleTopicClick = (_topicId: string, hashtag: string) => {
     console.log(`View topic ${hashtag}`)
   }
-
-  const handleClearFilters = () => {
-    setDateFilter("all")
-    setSortBy("newest")
-  }
-
-  const sortedPosts = React.useMemo(() => {
-    const toTime = (d: Date | string) =>
-      (typeof d === "string" ? new Date(d) : d).getTime()
-
-    // Sort by relevant date: scheduledAt for scheduled posts, createdAt for posted posts
-    const sorted = [...posts].sort((a, b) => {
-      const aTime = a.type === "scheduled" 
-        ? toTime(a.scheduledAt) 
-        : toTime(a.createdAt)
-      const bTime = b.type === "scheduled" 
-        ? toTime(b.scheduledAt) 
-        : toTime(b.createdAt)
-      
-      // Apply sort order based on sortBy filter
-      if (sortBy === "oldest") {
-        return aTime - bTime // Ascending: oldest first
-      }
-      return bTime - aTime // Descending: newest/future first
-    })
-
-    // TODO: Apply dateFilter filtering logic here
-    return sorted
-  }, [posts, sortBy])
 
   const renderPost = (post: TimelinePost) => {
     const isEditing = editingPostId === post.id
 
     switch (post.type) {
+      case "draft":
+        return (
+          <DraftPost
+            key={post.id}
+            post={post}
+            isEditing={isEditing}
+            onEdit={(id) => handleDraftAction("edit", id)}
+            onDelete={(id) => handleDraftAction("delete", id)}
+            onSave={(id) => handleSave(id)}
+            onCancel={handleCancel}
+            onPlatformChange={handlePlatformChange}
+            onPreview={(id) => handleDraftAction("preview", id)}
+            onMore={(id) => handleDraftAction("more", id)}
+          />
+        )
       case "scheduled":
         return (
           <ScheduledPost
@@ -281,20 +302,14 @@ function TimelinePage() {
 
         {/* Timeline Posts - Mixed drafts, scheduled, and posted */}
         <div className="w-full">
-          {sortedPosts.map(renderPost)}
+          {posts.map(renderPost)}
         </div>
       </div>
 
       {/* Right Sidebar - Sticky like left sidebar */}
       <div className="hidden w-80 md:block">
         <div className="sticky top-0 h-screen overflow-y-auto p-4 space-y-6">
-          <TimelineFilters
-            dateFilter={dateFilter}
-            sortBy={sortBy}
-            onDateFilterChange={setDateFilter}
-            onSortByChange={setSortBy}
-            onClearFilters={handleClearFilters}
-          />
+          <WhoToFollow users={usersToFollow} onFollow={handleFollow} />
           <TrendingTopics
             topics={trendingTopics}
             onTopicClick={handleTopicClick}
