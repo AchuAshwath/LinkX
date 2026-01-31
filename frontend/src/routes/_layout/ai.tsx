@@ -53,7 +53,7 @@ function AIPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl min-h-[calc(100vh-3.5rem)] lg:min-h-screen">
+    <div className="mx-auto flex w-full max-w-7xl min-h-[calc(100vh-3.5rem)]">
       {/* Main Chat Area */}
       <div className="border-border min-w-0 flex-1 border-r md:max-w-2xl flex flex-col">
         {/* Tabs - Timeline and AI */}
@@ -93,9 +93,9 @@ function AIPage() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="ai" className="mt-0 flex-1 flex flex-col">
-              {/* Messages Area */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <TabsContent value="ai" className="mt-0 flex flex-col">
+              {/* Messages Area - page scrolls */}
+              <div className="p-4 space-y-4">
                 {selectedConversation ? (
                   <>
                     {selectedConversation.messages.map((message, index) => (
@@ -176,7 +176,7 @@ function AIPage() {
 
       {/* Right Sidebar - History Conversations */}
       <div className="hidden w-80 md:block">
-        <div className="sticky top-0 h-screen overflow-y-auto p-4 space-y-4">
+        <div className="sticky top-0 self-start p-4 space-y-4">
           <div>
             <h2 className="text-lg font-semibold mb-4">Conversations</h2>
             <div className="space-y-2">
