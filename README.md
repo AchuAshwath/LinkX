@@ -255,6 +255,7 @@ Check the file [release-notes.md](./release-notes.md).
 
 #### Features
 
+* ✨ Add new pages, components, panels, modals, and theme; refactor and improvements in existing components. PR [#593](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/593) by [@alejsdev](https://github.com/alejsdev).
 * ✨ Support delete own account and other tweaks. PR [#614](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/614) by [@alejsdev](https://github.com/alejsdev).
 * ✨ Restructure folders, allow editing of users/items, and implement other refactors and improvements. PR [#603](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/603) by [@alejsdev](https://github.com/alejsdev).
 * ✨ Add Copier, migrate from Cookiecutter, in a way that supports using the project as is, forking or cloning it. PR [#612](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/612) by [@tiangolo](https://github.com/tiangolo).
