@@ -247,6 +247,8 @@ Check the file [release-notes.md](./release-notes.md).
 
 ### Next release
 
+* Update development scripts.
+
 ### 0.3.0
 
 * PR <a href="https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/14" target="_blank">#14</a>:
