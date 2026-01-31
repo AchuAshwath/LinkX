@@ -245,7 +245,9 @@ Check the file [release-notes.md](./release-notes.md).
 
 ## Release Notes
 
-### Next release
+### Latest Changes
+
+* Add normal user testing Pytest fixture. PR [#20](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/20) by [@ebreton](https://github.com/ebreton).
 
 ### 0.4.0
 
