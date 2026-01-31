@@ -1,0 +1,16 @@
+name: Add to Project
+
+# Temporarily disable automatic CI triggers during active development.
+# This workflow can still be run manually from the Actions tab.
+on:
+  workflow_dispatch:
+
+jobs:
+  add-to-project:
+    name: Add to project
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/add-to-project@v1.0.2
+        with:
+          project-url: https://github.com/orgs/fastapi/projects/2
+          github-token: ${{ secrets.PROJECTS_TOKEN }}
