@@ -247,6 +247,8 @@ Check the file [release-notes.md](./release-notes.md).
 
 ### Latest Changes
 
+* 🔧 Add missing dotenv variables. PR [#554](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/554) by [@tiangolo](https://github.com/tiangolo).
+
 #### Features
 
 * 📌 Add NodeJS version management and instructions. PR [#551](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/551) by [@alejsdev](https://github.com/alejsdev).
