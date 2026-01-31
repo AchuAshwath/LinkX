@@ -21,6 +21,10 @@
 * ♻ Update Docker image to prevent errors in M1 Macs. PR [#710](https://github.com/tiangolo/full-stack-fastapi-template/pull/710) by [@dudil](https://github.com/dudil).
 * ✏ Fix typo in variable names in `backend/app/api/routes/items.py` and `backend/app/api/routes/users.py`. PR [#711](https://github.com/tiangolo/full-stack-fastapi-template/pull/711) by [@disrupted](https://github.com/disrupted).
 
+### Upgrades
+
+* Bump follow-redirects from 1.15.5 to 1.15.6 in /frontend. PR [#734](https://github.com/tiangolo/full-stack-fastapi-template/pull/734) by [@dependabot[bot]](https://github.com/apps/dependabot).
+
 ### Docs
 
 * 📝 Add `CONTRIBUTING.md`. PR [#2159](https://github.com/fastapi/full-stack-fastapi-template/pull/2159) by [@alejsdev](https://github.com/alejsdev).
