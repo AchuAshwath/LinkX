@@ -107,7 +107,7 @@ function SocialAccountsPage() {
         },
       )
       if (!res.ok) {
-        const text = await res.text()
+        await res.text()
         let detail = "Failed to start LinkedIn OAuth"
         try {
           const configRes = await fetch(`${OpenAPI.BASE}/api/v1/auth/linkedin/config-check`)

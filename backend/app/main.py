@@ -1,9 +1,11 @@
 import sentry_sdk
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 
 from app.api.main import api_router
+from app.api.routes.docs import router as docs_router
 from app.core.config import settings
 
 
@@ -17,8 +19,16 @@ if settings.SENTRY_DSN and settings.ENVIRONMENT != "local":
 app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    docs_url=None,  # Disable default docs to use custom
+    redoc_url=None,  # Disable redoc
     generate_unique_id_function=custom_generate_unique_id,
 )
+
+# Mount static files for assets (including LinkX icons)
+app.mount("/assets", StaticFiles(directory="frontend/public/assets"), name="assets")
+
+# Add custom docs router (before CORS to ensure it works)
+app.include_router(docs_router)
 
 # Set all CORS enabled origins
 if settings.all_cors_origins:
