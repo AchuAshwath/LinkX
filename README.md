@@ -287,6 +287,7 @@ Check the file [release-notes.md](./release-notes.md).
 
 #### Refactors
 
+* 🎨 Format files with pre-commit and Ruff. PR [#611](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/611) by [@tiangolo](https://github.com/tiangolo).
 * 🚚 Refactor and simplify backend file structure. PR [#609](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/609) by [@tiangolo](https://github.com/tiangolo).
 * 🔥 Clean up old files no longer relevant. PR [#608](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/608) by [@tiangolo](https://github.com/tiangolo).
 * ♻ Re-structure Docker Compose files, discard Docker Swarm specific logic. PR [#607](https://github.com/tiangolo/full-stack-fastapi-postgresql/pull/607) by [@tiangolo](https://github.com/tiangolo).
