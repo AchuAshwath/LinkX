@@ -90,7 +90,7 @@ export function TimelineSidebar({ sidebarOpen, onClose }: TimelineSidebarProps) 
         </div>
         <nav className="space-y-2">
           <Button variant="ghost" className="w-full justify-start text-base" asChild>
-            <Link to="/">
+            <Link to="/home">
               <Home className="mr-2 h-4 w-4" />
               Timeline
             </Link>
