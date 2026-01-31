@@ -9,6 +9,9 @@ permissions:
   issues: write
   pull-requests: write
 
+permissions:
+  issues: write
+
 jobs:
   issue-manager:
     if: github.repository_owner == 'fastapi'
