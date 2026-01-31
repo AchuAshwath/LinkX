@@ -10,7 +10,7 @@ updates:
     labels: [dependencies, internal]
   # Python uv
   - package-ecosystem: uv
-    directory: /
+    directory: /backend
     schedule:
       interval: weekly
     commit-message:
