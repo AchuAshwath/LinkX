@@ -29,6 +29,10 @@ Make sure your editor is using the correct Python virtual environment, with the 
 
 Modify or add SQLModel models for data and SQL tables in `./backend/app/models.py`, API endpoints in `./backend/app/api/`, CRUD (Create, Read, Update, Delete) utils in `./backend/app/crud.py`.
 
+For a step-by-step example of how the original template implemented a complete
+CRUD feature (models, migrations, routes, and tests) using the `Item` entity,
+see [`./backend/example.md`](example.md).
+
 ## VS Code
 
 There are already configurations in place to run the backend through the VS Code debugger, so that you can use breakpoints, pause and explore variables, etc.
