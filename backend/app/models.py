@@ -11,6 +11,19 @@ def get_datetime_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# Base model shared by most DB tables: UUID primary key + timestamps.
+class TimestampedUUIDModel(SQLModel):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    updated_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
 # Shared properties
 class UserBase(SQLModel):
     email: EmailStr = Field(unique=True, index=True, max_length=255)
@@ -47,13 +60,8 @@ class UpdatePassword(SQLModel):
 
 
 # Database model, database table inferred from class name
-class User(UserBase, table=True):
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+class User(TimestampedUUIDModel, UserBase, table=True):
     hashed_password: str
-    created_at: datetime | None = Field(
-        default_factory=get_datetime_utc,
-        sa_type=DateTime(timezone=True),  # type: ignore
-    )
     items: list["Item"] = Relationship(back_populates="owner", cascade_delete=True)
 
 
@@ -85,12 +93,7 @@ class ItemUpdate(ItemBase):
 
 
 # Database model, database table inferred from class name
-class Item(ItemBase, table=True):
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    created_at: datetime | None = Field(
-        default_factory=get_datetime_utc,
-        sa_type=DateTime(timezone=True),  # type: ignore
-    )
+class Item(TimestampedUUIDModel, ItemBase, table=True):
     owner_id: uuid.UUID = Field(
         foreign_key="user.id", nullable=False, ondelete="CASCADE"
     )
@@ -109,7 +112,23 @@ class ItemsPublic(SQLModel):
     count: int
 
 
-# --- Post (LinkedIn/social posts) ---
+# --- Persona and Post (LinkedIn/social posts) ---
+
+
+class Persona(TimestampedUUIDModel, table=True):
+    """Content identity/brand owned by a user.
+
+    In the future this can be associated with teams and richer access controls
+    without changing this core shape.
+    """
+
+    user_id: uuid.UUID = Field(
+        foreign_key="user.id",
+        nullable=False,
+        ondelete="CASCADE",
+    )
+    name: str = Field(max_length=255)
+    description: str | None = Field(default=None, max_length=500)
 
 
 class PostBase(SQLModel):
@@ -138,11 +157,18 @@ class PostUpdate(SQLModel):
     )
 
 
-class Post(PostBase, table=True):
+class Post(TimestampedUUIDModel, PostBase, table=True):
     __tablename__ = "post"
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    # Legacy owner_id kept for backward compatibility; will be removed
+    # after persona_id is fully adopted across the codebase.
     owner_id: uuid.UUID = Field(
         foreign_key="user.id", nullable=False, ondelete="CASCADE"
+    )
+    persona_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="persona.id",
+        nullable=True,
+        ondelete="CASCADE",
     )
     scheduled_at: datetime | None = Field(
         default=None,
@@ -155,14 +181,6 @@ class Post(PostBase, table=True):
     likes: int = 0
     reposts: int = 0
     comments: int = 0
-    created_at: datetime | None = Field(
-        default_factory=get_datetime_utc,
-        sa_type=DateTime(timezone=True),  # type: ignore
-    )
-    updated_at: datetime | None = Field(
-        default_factory=get_datetime_utc,
-        sa_type=DateTime(timezone=True),  # type: ignore
-    )
     external_post_id: str | None = Field(default=None, max_length=255)
 
 
@@ -175,6 +193,7 @@ class PostAuthor(SQLModel):
 class PostPublic(PostBase):
     id: uuid.UUID
     owner_id: uuid.UUID
+    persona_id: uuid.UUID | None = None
     published_at: datetime | None = None
     likes: int = 0
     reposts: int = 0
@@ -193,11 +212,18 @@ class PostsPublic(SQLModel):
 # --- SocialAccount (OAuth / LinkedIn profile metadata) ---
 
 
-class SocialAccount(SQLModel, table=True):
+class SocialAccount(TimestampedUUIDModel, table=True):
     __tablename__ = "social_account"
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    # Legacy user_id kept for backward compatibility; will be removed
+    # after persona_id is fully adopted across the codebase.
     user_id: uuid.UUID = Field(
         foreign_key="user.id", nullable=False, ondelete="CASCADE"
+    )
+    persona_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="persona.id",
+        nullable=True,
+        ondelete="CASCADE",
     )
     platform: str = Field(max_length=50, index=True)
     external_user_id: str | None = Field(default=None, max_length=255)
@@ -205,14 +231,6 @@ class SocialAccount(SQLModel, table=True):
     email: str | None = Field(default=None, max_length=255)
     profile_picture_url: str | None = Field(default=None, max_length=1024)
     raw_profile: dict | None = Field(default=None, sa_column=Column(JSONB))
-    created_at: datetime | None = Field(
-        default_factory=get_datetime_utc,
-        sa_type=DateTime(timezone=True),  # type: ignore
-    )
-    updated_at: datetime | None = Field(
-        default_factory=get_datetime_utc,
-        sa_type=DateTime(timezone=True),  # type: ignore
-    )
 
 
 # Generic message
@@ -234,3 +252,43 @@ class TokenPayload(SQLModel):
 class NewPassword(SQLModel):
     token: str
     new_password: str = Field(min_length=8, max_length=128)
+
+
+# --- Teams (future-ready) ---
+
+
+class Team(TimestampedUUIDModel, table=True):
+    """Team/organization grouping users.
+
+    For now this is a simple owner-owned team; richer access control can be
+    built on top via TeamMembership and roles.
+    """
+
+    owner_user_id: uuid.UUID = Field(
+        foreign_key="user.id",
+        nullable=False,
+        ondelete="CASCADE",
+    )
+    name: str = Field(max_length=255)
+    description: str | None = Field(default=None, max_length=500)
+
+
+class TeamMembership(SQLModel, table=True):
+    """Join table between users and teams.
+
+    The `role` field is a simple string/enum for now and can later be
+    replaced or complemented by a ROLE dimension table.
+    """
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: uuid.UUID = Field(
+        foreign_key="user.id",
+        nullable=False,
+        ondelete="CASCADE",
+    )
+    team_id: uuid.UUID = Field(
+        foreign_key="team.id",
+        nullable=False,
+        ondelete="CASCADE",
+    )
+    role: str = Field(default="member", max_length=50)
