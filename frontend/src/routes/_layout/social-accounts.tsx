@@ -1,18 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { ExternalLink, Info, Linkedin, Twitter } from "lucide-react"
+import { ExternalLink, Linkedin, Twitter } from "lucide-react"
 import * as React from "react"
 
 import { OpenAPI } from "@/client"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
+import { Separator } from "@/components/ui/separator"
 import useCustomToast from "@/hooks/useCustomToast"
 
 type LinkedInProfile = {
@@ -137,138 +139,142 @@ function SocialAccountsPage() {
     }
   }
 
-  return (
-    <div className="flex flex-col gap-6 p-3 sm:p-4 md:p-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Social Accounts</h1>
-        <p className="text-muted-foreground">
-          Connect your social platforms using OAuth. Credentials and secrets are
-          managed server-side.
-        </p>
-      </div>
+  const linkedInConnected =
+    !statusLoading && (lastStatus === "connected" || (profile && !needsReconnect))
+  const linkedInStatusBadge = statusLoading ? (
+    <Badge variant="secondary" className="font-normal">
+      Loading…
+    </Badge>
+  ) : linkedInConnected ? (
+    <Badge
+      variant="outline"
+      className="border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950 dark:text-green-400"
+    >
+      Connected
+    </Badge>
+  ) : needsReconnect ? (
+    <Badge variant="secondary" className="font-normal">
+      Reconnect required
+    </Badge>
+  ) : (
+    <Badge variant="secondary" className="font-normal">
+      Not connected
+    </Badge>
+  )
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>LinkedIn</CardTitle>
-            <CardDescription>
-              Connect your LinkedIn account to publish and schedule posts.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3">
-              <div className="flex items-center gap-3">
-                {profile?.profile_picture_url ? (
-                  <Avatar className="h-10 w-10">
-                    <AvatarImage
-                      src={profile.profile_picture_url}
-                      alt={profile.display_name ?? "LinkedIn profile"}
-                    />
-                    <AvatarFallback className="text-xs">LI</AvatarFallback>
-                  </Avatar>
-                ) : (
-                  <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted">
-                    <Linkedin className="h-5 w-5" aria-hidden="true" />
-                  </div>
-                )}
-                <div>
-                  <div className="text-sm font-medium">Connection status</div>
-                  {profile?.display_name ? (
-                    <div className="text-sm text-muted-foreground">
-                      {profile.display_name}
-                      {profile.email ? (
-                        <span className="text-muted-foreground/70">
-                          {" "}
-                          • {profile.email}
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  <div className="text-sm text-muted-foreground">
-                    {statusLoading
-                      ? "Loading..."
-                      : needsReconnect
-                        ? "Reconnect required"
-                        : lastStatus === "connected"
-                          ? "Connected"
-                          : lastStatus === "error"
-                            ? "Error connecting"
-                            : "Not connected"}
-                  </div>
-                  {lastStatus === "error" ? (
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Ensure redirect URI and scopes match the{" "}
-                      <a
-                        href="https://www.linkedin.com/developers/"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline hover:text-foreground"
-                      >
-                        LinkedIn Developer Portal
-                      </a>
-                      . See project docs/LINKEDIN_SETUP.md for setup.
-                    </p>
-                  ) : null}
+  return (
+    <div className="container mx-auto space-y-6 px-4 py-6 sm:px-6 md:py-10">
+      {/* Page header – profile style */}
+      <Card className="py-0">
+        <CardContent className="px-6 py-4">
+          <div className="flex flex-col gap-2">
+            <h1 className="text-2xl font-bold tracking-tight">
+              Social Accounts
+            </h1>
+            <p className="text-muted-foreground text-sm">
+              Connect your social platforms using OAuth. Credentials and tokens
+              are managed server-side and never exposed in the browser.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Connected accounts card – settings-style rows */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Connected accounts</CardTitle>
+          <CardDescription>
+            Link your accounts to publish and schedule posts from LinkX.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-0">
+          {/* LinkedIn */}
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-4 min-w-0">
+              {profile?.profile_picture_url ? (
+                <Avatar className="h-12 w-12 shrink-0">
+                  <AvatarImage
+                    src={profile.profile_picture_url}
+                    alt={profile.display_name ?? "LinkedIn"}
+                  />
+                  <AvatarFallback className="text-sm">LI</AvatarFallback>
+                </Avatar>
+              ) : (
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#0A66C2]/10">
+                  <Linkedin className="h-6 w-6 text-[#0A66C2]" aria-hidden />
                 </div>
+              )}
+              <div className="space-y-1 min-w-0">
+                <Label className="text-base">LinkedIn</Label>
+                {profile?.display_name ? (
+                  <p className="text-muted-foreground text-sm truncate">
+                    {profile.display_name}
+                    {profile.email ? ` · ${profile.email}` : ""}
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground text-sm">
+                    Connect your LinkedIn account to publish and schedule posts.
+                  </p>
+                )}
               </div>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              {linkedInStatusBadge}
               <Button
                 type="button"
+                variant={linkedInConnected ? "outline" : "default"}
+                size="sm"
                 onClick={handleConnectLinkedIn}
                 disabled={connecting}
               >
                 <ExternalLink className="mr-2 h-4 w-4" />
-                {needsReconnect ? "Reconnect" : "Connect"}
+                {needsReconnect ? "Reconnect" : linkedInConnected ? "Manage" : "Connect"}
               </Button>
             </div>
-          </CardContent>
-          <CardFooter className="flex flex-col items-start gap-2 text-xs text-muted-foreground">
-            <span>
-              We never ask for your Client Secret in the UI. Configure{" "}
-              <code className="rounded bg-muted px-1">LINKEDIN_*</code> in
-              backend .env per docs/LINKEDIN_SETUP.md.
-            </span>
-          </CardFooter>
-        </Card>
+          </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>X (Twitter)</CardTitle>
-            <CardDescription>Coming soon.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted">
-                  <Twitter className="h-5 w-5" aria-hidden="true" />
-                </div>
-                <div>
-                  <div className="text-sm font-medium">Connection status</div>
-                  <div className="text-sm text-muted-foreground">
-                    Coming soon
-                  </div>
-                </div>
+          {lastStatus === "error" && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Ensure redirect URI and scopes match the{" "}
+              <a
+                href="https://www.linkedin.com/developers/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-foreground"
+              >
+                LinkedIn Developer Portal
+              </a>
+              . See project docs/LINKEDIN_SETUP.md for setup.
+            </p>
+          )}
+
+          <Separator className="my-6" />
+
+          {/* X (Twitter) */}
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-4 min-w-0">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-muted">
+                <Twitter className="h-6 w-6 text-muted-foreground" aria-hidden />
               </div>
-              <Button type="button" disabled>
+              <div className="space-y-1 min-w-0">
+                <Label className="text-base">X (Twitter)</Label>
+                <p className="text-muted-foreground text-sm">
+                  Coming soon. We’ll add X OAuth once the backend flow is ready.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <Badge variant="secondary" className="font-normal">
+                Coming soon
+              </Badge>
+              <Button type="button" variant="outline" size="sm" disabled>
                 <ExternalLink className="mr-2 h-4 w-4" />
                 Connect
               </Button>
             </div>
-          </CardContent>
-          <CardFooter className="text-xs text-muted-foreground">
-            We’ll add X OAuth once the backend flow is implemented.
-          </CardFooter>
-        </Card>
-      </div>
-
-      <div className="rounded-lg border px-4 py-3 text-sm text-muted-foreground">
-        <div className="flex items-start gap-2">
-          <Info className="mt-0.5 h-4 w-4" />
-          <div>
-            You’ll be redirected to the provider to authorize LinkX. We store
-            tokens server-side and never expose your secrets to the browser.
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

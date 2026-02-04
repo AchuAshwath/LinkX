@@ -2,6 +2,16 @@
 
 This guide walks you through creating and configuring a LinkedIn Developer application to enable LinkedIn posting in LinkX.
 
+## How it works
+
+When you connect a social account (e.g. LinkedIn) from the **Social Accounts** page in LinkX:
+
+1. **Redirect** – You are redirected to the provider (LinkedIn) to sign in and authorize LinkX.
+2. **Tokens** – The provider sends an authorization code to our backend; we exchange it for an access token and store it **server-side** (e.g. in Redis). We never expose your client secret or tokens in the browser.
+3. **Publishing** – When you create or publish a post, the backend uses the stored token to call the provider’s API on your behalf.
+
+Configure `LINKEDIN_*` (and other provider variables) in the backend `.env`; see the rest of this guide for LinkedIn setup.
+
 ## Prerequisites
 
 - A LinkedIn account (personal profile)
