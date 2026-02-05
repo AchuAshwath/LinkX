@@ -73,9 +73,9 @@ export function Sidebar({ sidebarOpen, onClose }: SidebarProps) {
             className="w-full justify-start text-base"
             asChild
           >
-            <Link to="/chat">
+            <Link to="/draft">
               <MessageSquare className="mr-2 h-4 w-4" />
-              Chat
+              Draft
             </Link>
           </Button>
           <Button

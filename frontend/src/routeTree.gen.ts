@@ -19,7 +19,7 @@ import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
 import { Route as LayoutPostsRouteImport } from './routes/_layout/posts'
 import { Route as LayoutItemsRouteImport } from './routes/_layout/items'
 import { Route as LayoutHomeRouteImport } from './routes/_layout/home'
-import { Route as LayoutChatRouteImport } from './routes/_layout/chat'
+import { Route as LayoutDraftRouteImport } from './routes/_layout/draft'
 import { Route as LayoutCanvasRouteImport } from './routes/_layout/canvas'
 import { Route as LayoutAiRouteImport } from './routes/_layout/ai'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
@@ -74,9 +74,9 @@ const LayoutHomeRoute = LayoutHomeRouteImport.update({
   path: '/home',
   getParentRoute: () => LayoutRoute,
 } as any)
-const LayoutChatRoute = LayoutChatRouteImport.update({
-  id: '/chat',
-  path: '/chat',
+const LayoutDraftRoute = LayoutDraftRouteImport.update({
+  id: '/draft',
+  path: '/draft',
   getParentRoute: () => LayoutRoute,
 } as any)
 const LayoutCanvasRoute = LayoutCanvasRouteImport.update({
@@ -109,7 +109,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof LayoutAdminRoute
   '/ai': typeof LayoutAiRoute
   '/canvas': typeof LayoutCanvasRoute
-  '/chat': typeof LayoutChatRoute
+  '/draft': typeof LayoutDraftRoute
   '/home': typeof LayoutHomeRoute
   '/items': typeof LayoutItemsRoute
   '/posts': typeof LayoutPostsRoute
@@ -125,7 +125,7 @@ export interface FileRoutesByTo {
   '/admin': typeof LayoutAdminRoute
   '/ai': typeof LayoutAiRoute
   '/canvas': typeof LayoutCanvasRoute
-  '/chat': typeof LayoutChatRoute
+  '/draft': typeof LayoutDraftRoute
   '/home': typeof LayoutHomeRoute
   '/items': typeof LayoutItemsRoute
   '/posts': typeof LayoutPostsRoute
@@ -143,7 +143,7 @@ export interface FileRoutesById {
   '/_layout/admin': typeof LayoutAdminRoute
   '/_layout/ai': typeof LayoutAiRoute
   '/_layout/canvas': typeof LayoutCanvasRoute
-  '/_layout/chat': typeof LayoutChatRoute
+  '/_layout/draft': typeof LayoutDraftRoute
   '/_layout/home': typeof LayoutHomeRoute
   '/_layout/items': typeof LayoutItemsRoute
   '/_layout/posts': typeof LayoutPostsRoute
@@ -161,7 +161,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/ai'
     | '/canvas'
-    | '/chat'
+    | '/draft'
     | '/home'
     | '/items'
     | '/posts'
@@ -177,7 +177,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/ai'
     | '/canvas'
-    | '/chat'
+    | '/draft'
     | '/home'
     | '/items'
     | '/posts'
@@ -194,7 +194,7 @@ export interface FileRouteTypes {
     | '/_layout/admin'
     | '/_layout/ai'
     | '/_layout/canvas'
-    | '/_layout/chat'
+    | '/_layout/draft'
     | '/_layout/home'
     | '/_layout/items'
     | '/_layout/posts'
@@ -282,11 +282,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutHomeRouteImport
       parentRoute: typeof LayoutRoute
     }
-    '/_layout/chat': {
-      id: '/_layout/chat'
-      path: '/chat'
-      fullPath: '/chat'
-      preLoaderRoute: typeof LayoutChatRouteImport
+    '/_layout/draft': {
+      id: '/_layout/draft'
+      path: '/draft'
+      fullPath: '/draft'
+      preLoaderRoute: typeof LayoutDraftRouteImport
       parentRoute: typeof LayoutRoute
     }
     '/_layout/canvas': {
@@ -325,7 +325,7 @@ interface LayoutRouteChildren {
   LayoutAdminRoute: typeof LayoutAdminRoute
   LayoutAiRoute: typeof LayoutAiRoute
   LayoutCanvasRoute: typeof LayoutCanvasRoute
-  LayoutChatRoute: typeof LayoutChatRoute
+  LayoutDraftRoute: typeof LayoutDraftRoute
   LayoutHomeRoute: typeof LayoutHomeRoute
   LayoutItemsRoute: typeof LayoutItemsRoute
   LayoutPostsRoute: typeof LayoutPostsRoute
@@ -338,7 +338,7 @@ const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutAdminRoute: LayoutAdminRoute,
   LayoutAiRoute: LayoutAiRoute,
   LayoutCanvasRoute: LayoutCanvasRoute,
-  LayoutChatRoute: LayoutChatRoute,
+  LayoutDraftRoute: LayoutDraftRoute,
   LayoutHomeRoute: LayoutHomeRoute,
   LayoutItemsRoute: LayoutItemsRoute,
   LayoutPostsRoute: LayoutPostsRoute,
