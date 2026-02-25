@@ -219,10 +219,9 @@ class SocialAccount(TimestampedUUIDModel, table=True):
     user_id: uuid.UUID = Field(
         foreign_key="user.id", nullable=False, ondelete="CASCADE"
     )
-    persona_id: uuid.UUID | None = Field(
-        default=None,
+    persona_id: uuid.UUID = Field(
         foreign_key="persona.id",
-        nullable=True,
+        nullable=False,
         ondelete="CASCADE",
     )
     platform: str = Field(max_length=50, index=True)
