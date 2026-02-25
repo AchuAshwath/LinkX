@@ -21,6 +21,7 @@ from app.api.deps import CurrentUser, SessionDep
 from app.core.config import settings
 from app.core.redis import get_redis
 from app.models import SocialAccount
+from app.services.personas import get_or_create_persona_for_user
 
 router = APIRouter(prefix="/auth/linkedin", tags=["auth"])
 
@@ -174,11 +175,18 @@ async def linkedin_callback(
     user_id: str | None = None
     try:
         r = get_redis()
-        user_id = r.get(_redis_state_key(state))  # type: ignore[assignment]
-        if user_id:
+        raw_user_id = r.get(_redis_state_key(state))
+        if raw_user_id:
+            if isinstance(raw_user_id, bytes):
+                user_id = raw_user_id.decode("utf-8")
+            else:
+                user_id = str(raw_user_id)
             r.delete(_redis_state_key(state))
     except Exception as e:
-        logger.warning("LinkedIn OAuth callback: Redis read failed, trying in-memory state: %s", e)
+        logger.warning(
+            "LinkedIn OAuth callback: Redis read failed, trying in-memory state: %s",
+            e,
+        )
         user_id = None
 
     if not user_id:
@@ -188,8 +196,17 @@ async def linkedin_callback(
 
     if not user_id:
         logger.warning(
-            "LinkedIn OAuth callback: state not found. Ensure (1) callback URL matches LINKEDIN_REDIRECT_URI, "
-            "(2) same backend instance as /authorize, (3) Redis running if multi-worker, (4) state not expired (15min)."
+            "LinkedIn OAuth callback: state not found. Ensure (1) callback URL matches "
+            "LINKEDIN_REDIRECT_URI, (2) same backend instance as /authorize, "
+            "(3) Redis running if multi-worker, (4) state not expired (15min)."
+        )
+        return _frontend_redirect()
+
+    try:
+        user_uuid = uuid.UUID(str(user_id))
+    except (TypeError, ValueError):
+        logger.warning(
+            "LinkedIn OAuth callback: invalid user_id in state. user_id=%r", user_id
         )
         return _frontend_redirect()
 
@@ -293,18 +310,42 @@ async def linkedin_callback(
                 str(profile.get("picture")) if profile.get("picture") else None
             )
 
+            # Ensure there is a Persona for this user; use LinkedIn display name as a hint.
+            persona = get_or_create_persona_for_user(
+                session=session,
+                user_id=user_uuid,
+                display_name_hint=display_name,
+            )
+
+            # Prefer account lookup by persona_id + platform (new world),
+            # but fall back to legacy user_id + platform if needed.
             account = session.exec(
                 select(SocialAccount).where(
-                    SocialAccount.user_id == uuid.UUID(user_id),
+                    SocialAccount.persona_id == persona.id,
                     SocialAccount.platform == "linkedin",
                 )
             ).first()
+
+            if account is None:
+                account = session.exec(
+                    select(SocialAccount).where(
+                        SocialAccount.user_id == user_uuid,
+                        SocialAccount.platform == "linkedin",
+                    )
+                ).first()
+
             if account is None:
                 account = SocialAccount(
-                    user_id=uuid.UUID(user_id),
+                    user_id=user_uuid,
+                    persona_id=persona.id,
                     platform="linkedin",
                 )
 
+            # Ensure legacy rows are migrated to have persona_id set.
+            if account.persona_id is None:
+                account.persona_id = persona.id
+
+            account.user_id = user_uuid
             account.external_user_id = external_user_id
             account.display_name = display_name
             account.email = email
