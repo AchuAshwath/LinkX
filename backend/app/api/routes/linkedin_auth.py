@@ -38,6 +38,7 @@ _STATE_TTL_SECONDS = 15 * 60
 _state_store: dict[str, tuple[str, float]] = {}  # legacy fallback
 _token_store: dict[str, LinkedInToken] = {}  # legacy fallback
 _profile_store: dict[str, dict[str, Any]] = {}  # legacy fallback
+_redis_fallback_warning_logged = False  # flag to warn once per process
 
 
 def _require_linkedin_config() -> tuple[str, str, str]:
@@ -109,6 +110,8 @@ def linkedin_authorize(current_user: CurrentUser) -> dict[str, str]:
     """
     Start LinkedIn OAuth. Returns an `authorize_url` for the frontend to redirect to.
     """
+    global _redis_fallback_warning_logged
+
     client_id, _client_secret, redirect_uri = _require_linkedin_config()
 
     now = time.time()
@@ -122,6 +125,12 @@ def linkedin_authorize(current_user: CurrentUser) -> dict[str, str]:
         r.setex(_redis_state_key(state), _STATE_TTL_SECONDS, user_id)
     except Exception:
         # Fallback to in-memory if Redis unavailable. Multi-worker requires Redis.
+        if not _redis_fallback_warning_logged:
+            logger.warning(
+                "Redis unavailable for OAuth state store; falling back to in-memory storage. "
+                "This is unsupported in multi-worker deployments."
+            )
+            _redis_fallback_warning_logged = True
         _state_store[state] = (user_id, now + _STATE_TTL_SECONDS)
 
     scope = settings.LINKEDIN_SCOPES.strip()
@@ -162,6 +171,8 @@ async def linkedin_callback(
     - Tokens are stored server-side (Redis or in-memory fallback).
     - If LinkedIn sends error (e.g. user denied), we redirect to frontend with linkedin=error.
     """
+    global _redis_fallback_warning_logged
+
     if error:
         logger.warning(
             "LinkedIn OAuth callback: user or provider error: error=%s description=%s",
@@ -283,6 +294,12 @@ async def linkedin_callback(
             )
         except Exception:
             # Fallback to in-memory if Redis unavailable. Multi-worker requires Redis.
+            if not _redis_fallback_warning_logged:
+                logger.warning(
+                    "Redis unavailable for OAuth token store; falling back to in-memory storage. "
+                    "This is unsupported in multi-worker deployments."
+                )
+                _redis_fallback_warning_logged = True
             _token_store[user_id] = token
 
         # OIDC userinfo: requires openid/profile/email. Optional but useful.
@@ -306,6 +323,12 @@ async def linkedin_callback(
                     json.dumps(profile),
                 )
             except Exception:
+                if not _redis_fallback_warning_logged:
+                    logger.warning(
+                        "Redis unavailable for OAuth profile store; falling back to in-memory storage. "
+                        "This is unsupported in multi-worker deployments."
+                    )
+                    _redis_fallback_warning_logged = True
                 _profile_store[user_id] = profile
 
             # Persist profile metadata to Postgres (generic social account)
