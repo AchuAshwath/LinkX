@@ -10,7 +10,7 @@ router = APIRouter(tags=["docs"])
 
 
 @router.get("/docs", include_in_schema=False)
-async def custom_swagger_ui_html(request: Request) -> HTMLResponse:
+async def custom_swagger_ui_html(_request: Request) -> HTMLResponse:
     """Custom Swagger UI with LinkX branding."""
     # Use frontend URL for LinkX favicon
     favicon_url = f"{settings.FRONTEND_HOST}/assets/images/LinkX-icon.svg"

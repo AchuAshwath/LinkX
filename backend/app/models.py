@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 
 from pydantic import EmailStr
 from sqlalchemy import Column, DateTime
@@ -229,7 +230,7 @@ class SocialAccount(TimestampedUUIDModel, table=True):
     display_name: str | None = Field(default=None, max_length=255)
     email: str | None = Field(default=None, max_length=255)
     profile_picture_url: str | None = Field(default=None, max_length=1024)
-    raw_profile: dict | None = Field(default=None, sa_column=Column(JSONB))
+    raw_profile: dict[str, Any] | None = Field(default=None, sa_column=Column(JSONB))
 
 
 # Generic message

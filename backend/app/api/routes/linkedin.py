@@ -42,9 +42,7 @@ def linkedin_status(current_user: CurrentUser, session: SessionDep) -> dict[str,
     if token_payload and "expires_at" in token_payload:
         expires_at = token_payload.get("expires_at")
         try:
-            token_valid = (
-                expires_at is not None and float(expires_at) > now
-            )
+            token_valid = expires_at is not None and float(expires_at) > now
         except (TypeError, ValueError):
             token_valid = False
         connected = token_valid
