@@ -105,8 +105,8 @@ export function MyComponent({ title, onClick }: MyComponentProps) {
   // State
   const [count, setCount] = useState(0)
 
-  // Event handleClick = () handlers
-  const => {
+  // Event handlers
+  const handleClick = () => {
     setCount((c) => c + 1)
     onClick?.()
   }
