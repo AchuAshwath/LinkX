@@ -1,16 +1,13 @@
 from __future__ import annotations
 
 import uuid
-from typing import Optional
 
 from sqlmodel import Session, select
 
 from app.models import Persona, User
 
 
-def _default_persona_name(
-    *, user: Optional[User], display_name_hint: Optional[str]
-) -> str:
+def _default_persona_name(*, user: User | None, display_name_hint: str | None) -> str:
     if display_name_hint:
         name = display_name_hint.strip()
         if name:
@@ -33,16 +30,14 @@ def get_or_create_persona_for_user(
     *,
     session: Session,
     user_id: uuid.UUID,
-    display_name_hint: Optional[str] = None,
+    display_name_hint: str | None = None,
 ) -> Persona:
     """Return an existing Persona for the user or create a new one.
 
     This centralizes persona creation so that all features (LinkedIn, future
     platforms, teams, etc.) share the same mapping from user -> default persona.
     """
-    existing = session.exec(
-        select(Persona).where(Persona.user_id == user_id)
-    ).first()
+    existing = session.exec(select(Persona).where(Persona.user_id == user_id)).first()
     if existing:
         return existing
 
@@ -54,4 +49,3 @@ def get_or_create_persona_for_user(
     # Flush so that persona.id is available to the caller without committing.
     session.flush()
     return persona
-

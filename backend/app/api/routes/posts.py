@@ -1,5 +1,6 @@
 """Posts API routes with LinkedIn integration."""
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -148,8 +149,7 @@ async def create_new_post(
                 session.add(post)
                 session.commit()
                 session.refresh(post)
-                # Could log this error for monitoring
-                print(f"LinkedIn publish failed: {e.detail}")
+                logging.warning(f"LinkedIn publish failed: {e.detail}")
 
     # Get user details for author info
     user = _get_user_details(session=session, user_id=current_user.id)
@@ -253,7 +253,7 @@ async def update_existing_post(
                 session.add(post)
                 session.commit()
                 session.refresh(post)
-                print(f"LinkedIn publish failed: {e.detail}")
+                logging.warning(f"LinkedIn publish failed: {e.detail}")
 
     # Get user details for author info
     user = _get_user_details(session=session, user_id=post.owner_id)

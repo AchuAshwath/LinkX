@@ -10,8 +10,6 @@ from datetime import datetime
 from typing import Any
 from urllib.parse import urlencode
 
-logger = logging.getLogger(__name__)
-
 import httpx
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import RedirectResponse
@@ -22,6 +20,8 @@ from app.core.config import settings
 from app.core.redis import get_redis
 from app.models import SocialAccount
 from app.services.personas import get_or_create_persona_for_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth/linkedin", tags=["auth"])
 
@@ -93,7 +93,9 @@ def linkedin_config_check() -> dict[str, Any]:
     """
     redirect_uri = (settings.LINKEDIN_REDIRECT_URI or "").strip().rstrip("/")
     return {
-        "configured": bool(settings.LINKEDIN_CLIENT_ID and settings.LINKEDIN_CLIENT_SECRET),
+        "configured": bool(
+            settings.LINKEDIN_CLIENT_ID and settings.LINKEDIN_CLIENT_SECRET
+        ),
         "has_client_id": bool(settings.LINKEDIN_CLIENT_ID),
         "has_client_secret": bool(settings.LINKEDIN_CLIENT_SECRET),
         "redirect_uri_masked": _mask_redirect_uri(redirect_uri),
@@ -135,7 +137,9 @@ def linkedin_authorize(current_user: CurrentUser) -> dict[str, str]:
     return {"authorize_url": authorize_url}
 
 
-def _frontend_redirect(path: str = "/social-accounts", linkedin: str = "error") -> RedirectResponse:
+def _frontend_redirect(
+    path: str = "/social-accounts", linkedin: str = "error"
+) -> RedirectResponse:
     base = settings.FRONTEND_HOST.rstrip("/")
     url = f"{base}{path}?linkedin={linkedin}"
     return RedirectResponse(url=url, status_code=status.HTTP_302_FOUND)
@@ -167,7 +171,9 @@ async def linkedin_callback(
         return _frontend_redirect()
 
     if not code or not state:
-        logger.warning("LinkedIn OAuth callback: missing code or state (LinkedIn may have redirected without them)")
+        logger.warning(
+            "LinkedIn OAuth callback: missing code or state (LinkedIn may have redirected without them)"
+        )
         return _frontend_redirect()
 
     now = time.time()

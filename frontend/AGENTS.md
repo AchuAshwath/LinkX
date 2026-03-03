@@ -5,52 +5,52 @@ This document provides guidelines for agentic coding agents working in the LinkX
 ## Build/Lint/Test Commands
 
 ```bash
-# Install dependencies (uses pnpm)
-pnpm install
+# Install dependencies (uses bun)
+bun install
 
 # Start development server
-pnpm run dev
+bun run dev
 
 # Build for production
-pnpm run build
+bun run build
 
 # Preview production build
-pnpm run preview
+bun run preview
 
 # Lint and format code
-pnpm run lint
+bun run lint
 
 # Generate API client from OpenAPI spec
-pnpm run generate-client
+bun run generate-client
 ```
 
 ### Running Playwright Tests
 
 ```bash
 # Run all tests
-npx playwright test
+bunx playwright test
 
 # Run tests in UI mode
-npx playwright test --ui
+bunx playwright test --ui
 
 # Run a specific test file
-npx playwright test tests/login.spec.ts
+bunx playwright test tests/login.spec.ts
 
 # Run tests matching a pattern
-npx playwright test --grep "login"
+bunx playwright test --grep "login"
 
 # Run tests in a specific project
-npx playwright test --project=chromium
+bunx playwright test --project=chromium
 
 # Run with trace for debugging
-npx playwright test --trace=on
+bunx playwright test --trace=on
 ```
 
 ### Type Checking
 
 ```bash
 # Run TypeScript compiler
-npx tsc --noEmit
+bunx tsc --noEmit
 ```
 
 ## Code Style Guidelines
@@ -63,7 +63,7 @@ npx tsc --noEmit
 
 ### Biome Linting
 - Biome is configured for linting and formatting
-- Run `pnpm run lint` to auto-fix issues
+- Run `bun run lint` to auto-fix issues
 - Configuration in `biome.json`:
   - Auto-organize imports enabled
   - `noNonNullAssertion`: off
@@ -136,7 +136,7 @@ export function MyComponent({ title, onClick }: MyComponentProps) {
 ### API Patterns
 - Use TanStack Query for data fetching
 - Generated client in `src/client` from OpenAPI spec
-- Regenerate with `pnpm run generate-client` when backend changes
+- Regenerate with `bun run generate-client` when backend changes
 
 ### File Organization
 ```
@@ -172,7 +172,7 @@ src/
 - **Routing**: TanStack Router
 - **State**: TanStack Query
 - **Styling**: Tailwind CSS v4
-- **Package Manager**: pnpm
+- **Package Manager**: bun
 - **Node Version**: See `.nvmrc`
 - **Path Alias**: `@/` → `src/`
 - **API Client**: Generated from OpenAPI spec

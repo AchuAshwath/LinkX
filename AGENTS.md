@@ -1,161 +1,129 @@
-# AGENTS.md - Coding Agent Guidelines
+# AGENTS.md - LinkX Development Guidelines
 
-This document provides instructions for AI coding agents working in this repository.
-The project is a full-stack FastAPI + React application with Python backend and TypeScript frontend.
+This repo is a FastAPI + React full-stack app. Below are repo-specific quirks and guardrails.
 
-## Project Structure
-
-```
-backend/          # Python FastAPI application
-  app/            # Main application code (models, api, core, crud)
-  tests/          # Pytest tests
-  scripts/        # Shell scripts for lint/test/format
-frontend/         # React TypeScript application (Vite + TanStack Router)
-  src/            # Source code (components, hooks, routes, client)
-  tests/          # Playwright E2E tests
-```
-
-## Build/Lint/Test Commands
-
-### Backend (Python)
+## Development Workflow (Docker Only)
 
 ```bash
-cd backend
+# Terminal 1: Frontend
+cd frontend && bun run dev
 
-bash scripts/test.sh                                    # Run all tests with coverage
-pytest tests/api/routes/test_users.py -v                # Single test file
-pytest tests/api/routes/test_users.py::test_get_users_superuser_me -v  # Single test
-pytest tests/ -k "test_create_user" -v                  # Tests matching pattern
-
-bash scripts/lint.sh                                    # Lint (mypy + ruff)
-bash scripts/format.sh                                  # Auto-fix and format
-fastapi dev app/main.py                                 # Dev server
+# Terminal 2: Backend (Docker)
+docker compose up -d backend
 ```
 
-### Frontend (TypeScript/React)
+## Docker Commands
 
 ```bash
-cd frontend
-
-npm run dev                                             # Dev server
-npm run build                                           # Production build
-npm run lint                                            # Lint with auto-fix
-npm run generate-client                                 # Generate API client
-
-npx playwright test                                     # All E2E tests
-npx playwright test tests/login.spec.ts                 # Single test file
-npx playwright test -g "Log in with valid email"        # Test by name
-npx playwright test --headed                            # Visible browser
+docker compose up -d                  # Start all services
+docker compose up -d backend          # Backend only
+docker compose logs backend           # View backend logs
+docker compose logs -f backend        # Follow logs
+docker compose restart backend        # Restart backend
+docker compose exec backend <command> # Run command in container
 ```
 
-### Docker Compose
+## Lint & Typecheck (Run in Docker)
 
 ```bash
-docker compose watch                                    # Start stack with hot reload
-docker compose logs backend                             # View logs
+# Backend lint (mypy + ruff)
+docker compose exec backend bash scripts/lint.sh
+
+# Backend format (auto-fix)
+docker compose exec backend bash scripts/format.sh
+
+# Backend tests
+docker compose exec backend pytest tests/ -v
+
+# Frontend lint
+docker compose exec frontend bun run lint
+
+# Frontend build
+docker compose exec frontend bun run build
 ```
 
-## Code Style Guidelines
-
-### Backend (Python)
-
-**Formatting**: Ruff (Python 3.10+). **Type Hints**: mypy strict mode.
-
-**Import Order** (3 groups separated by blank lines):
-1. Standard library
-2. Third-party (`fastapi`, `sqlmodel`, `pydantic`)
-3. Local (`from app...`, `from tests...`)
-
-**Type Hints** - Use modern syntax:
-```python
-def get_user(*, session: Session, email: str) -> User | None:  # not Optional[User]
-list[str]  # not List[str]
-SessionDep = Annotated[Session, Depends(get_db)]  # Annotated for dependencies
-```
-
-**Naming**:
-- Functions/variables: `snake_case`
-- Classes: `PascalCase`
-- Constants: `SCREAMING_SNAKE_CASE`
-- Models: `{Entity}Base`, `{Entity}Create`, `{Entity}Update`, `{Entity}Public`
-
-**Function Parameters**: Use keyword-only with `*`:
-```python
-def create_user(*, session: Session, user_create: UserCreate) -> User:
-```
-
-**Error Handling**:
-```python
-if not user:
-    raise HTTPException(status_code=404, detail="User not found")
-```
-
-**Testing**: pytest fixtures, names like `test_{action}_{subject}_{condition}`
-
-### Frontend (TypeScript/React)
-
-**Formatting**: Biome (double quotes, spaces, no trailing semicolons)
-
-**Import Order** (enforced by Biome):
-1. External libraries (alphabetically)
-2. Internal with `@/` alias (alphabetically)
-3. Relative imports
-
-**Path Alias**: `@/` maps to `src/`:
-```typescript
-import { Button } from "@/components/ui/button"
-import type { UserPublic } from "@/client"  // type-only imports
-```
-
-**Type Patterns**:
-```typescript
-const formSchema = z.object({ email: z.email(), password: z.string().min(8) })
-type FormData = z.infer<typeof formSchema>
-```
-
-**Component Style**:
-```typescript
-const AddUser = () => {
-  // 1. Hooks first
-  // 2. Mutations/queries
-  // 3. Handlers
-  // 4. Render
-}
-export default AddUser
-```
-
-**Naming**:
-- Components: `PascalCase` (files: `PascalCase.tsx`)
-- Hooks: `use` prefix (files: `useAuth.ts`)
-- Routes: `kebab-case.tsx`
-- Test files: `kebab-case.spec.ts`
-- data-testid: `kebab-case`
-
-**Error Handling**:
-```typescript
-const mutation = useMutation({
-  mutationFn: (data) => UsersService.createUser({ requestBody: data }),
-  onError: handleError.bind(showErrorToast),
-})
-```
-
-## Pre-commit Hooks
+## Alembic Migrations
 
 ```bash
-cd backend && uv run prek install -f    # Install hooks
-uv run prek run --all-files             # Run manually
+# Verify container is up
+docker compose ps backend
+
+# Run migrations
+docker compose exec backend alembic upgrade head
+
+# Create new migration
+docker compose exec backend alembic revision --autogenerate -m "add field"
 ```
 
-## Key Technologies
+## Running Tests
 
-**Backend**: FastAPI, SQLModel, Pydantic, Alembic, PostgreSQL, uv
-**Frontend**: React, Vite, TanStack Router/Query, Tailwind, shadcn/ui, Zod, Playwright
-**Infrastructure**: Docker Compose, Traefik, Mailcatcher (dev)
+```bash
+# Backend - inside container
+docker compose exec backend pytest tests/api/routes/test_users.py -v
+docker compose exec backend pytest tests/api/routes/test_users.py::test_name -v
 
-## Development URLs
+# Frontend - E2E tests
+cd frontend && bun run dev  # Start frontend first
+docker compose run --rm playwright bunx playwright test tests/login.spec.ts
+```
+
+## Complete Code Workflow (Before Committing)
+
+Always follow this sequence:
+
+```bash
+# 1. Verify backend is running
+docker compose ps backend
+
+# 2. Run linting (mypy + ruff check)
+docker compose exec backend bash scripts/lint.sh
+
+# 3. Run formatting (auto-fix code style)
+docker compose exec backend bash scripts/format.sh
+
+# 4. Run full test suite
+docker compose exec backend pytest tests/ -v
+
+# 5. Copy code back to local (if ruff made changes)
+docker cp linkx-backend-1:/app/backend/app/. ./backend/app/
+
+# 6. Verify git status and commit
+git status
+git add .
+git commit -m "descriptive message"
+```
+
+## Important Quirks & Guardrails
+
+**DO**:
+- Use `bun` for frontend
+- Run `bun run generate-client` in frontend after backend API changes
+- Use `.env` file for all config - auto-loaded by docker
+- Check logs when debugging: `docker compose logs backend`
+- Run full workflow before commits: lint → format → test → copy-back → commit
+- Use keyword-only args: `def foo(*, arg: Type)` in backend
+- Use modern type hints: `X | None` (not `Optional[X]`), `list[X]` (not `List[X]`)
+- Copy tests directory to Docker if not present: `docker cp ./backend/tests <container>:/app/backend/`
+
+**DO NOT**:
+- Commit `.env` or any file with secrets/keys
+- Run `docker compose up --build` in CI - use pre-built images
+- Modify `compose.yml` for local changes - use `.env` or `compose.override.yml`
+- Use `Optional[X]` - use `X | None` instead
+- Use `List[X]` - use `list[x]` instead
+- Commit code without running the full workflow first
+
+## Code Style (repo-specific)
+
+- Backend: keyword-only args `def foo(*, arg: Type)`
+- Frontend: double quotes, no trailing semicolons, `@/` alias for `src/`
+- Model naming: `{Entity}Base`, `{Entity}Create`, `{Entity}Update`, `{Entity}Public`
+
+## Services
 
 - Frontend: http://localhost:5173
 - Backend API: http://localhost:8000
 - API Docs: http://localhost:8000/docs
 - Adminer (DB): http://localhost:8080
 - Mailcatcher: http://localhost:1080
+- Traefik: http://localhost:8090
