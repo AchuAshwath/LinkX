@@ -20,3 +20,12 @@ openapi.json
 # Ignore .af files in all directories and subdirectories
 **/*.af
 *.af
+
+# Environment files (do not commit secrets)
+.env
+*.env
+frontend/.env
+
+# macOS metadata
+.DS_Store
+**/.DS_Store
