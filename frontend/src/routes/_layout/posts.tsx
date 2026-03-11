@@ -12,7 +12,7 @@ import {
   X,
 } from "lucide-react"
 import * as React from "react"
-import { PostsService } from "@/client"
+import { OpenAPI, PostsService } from "@/client"
 import type { Platform } from "@/components/Common/PlatformSelector"
 import type { DraftPostData } from "@/components/Post/DraftPost"
 import { DraftPost } from "@/components/Post/DraftPost"
@@ -46,6 +46,7 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import useCustomToast from "@/hooks/useCustomToast"
+import { usePersona } from "@/hooks/usePersona"
 import {
   handleError,
   transformToDraftPost,
@@ -66,8 +67,9 @@ export const Route = createFileRoute("/_layout/posts")({
 
 function PostsPage() {
   const queryClient = useQueryClient()
+  const { selectedPersonaId } = usePersona()
   const [activeTab, setActiveTab] = React.useState<
-    "drafts" | "scheduled" | "posted"
+    "drafts" | "scheduled" | "publishing" | "failed" | "posted"
   >("drafts")
   const [dateFilter, setDateFilter] = React.useState<string>("all")
   const [sortBy, setSortBy] = React.useState<string>("newest")
@@ -88,13 +90,51 @@ function PostsPage() {
   )
   const [previewPostPlatform, setPreviewPostPlatform] =
     React.useState<Platform>("linkedin")
+  const [personaRole, setPersonaRole] = React.useState<
+    "owner" | "admin" | "member" | null
+  >(null)
 
   const { showSuccessToast, showErrorToast } = useCustomToast()
+
+  React.useEffect(() => {
+    const loadPersonaRole = async () => {
+      if (!selectedPersonaId) {
+        setPersonaRole(null)
+        return
+      }
+      try {
+        const res = await fetch(
+          `${OpenAPI.BASE}/api/v1/personas/${selectedPersonaId}/role`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("access_token") || ""}`,
+            },
+          },
+        )
+        if (!res.ok) {
+          setPersonaRole(null)
+          return
+        }
+        const data = (await res.json()) as {
+          role: "owner" | "admin" | "member"
+        }
+        setPersonaRole(data.role)
+      } catch {
+        setPersonaRole(null)
+      }
+    }
+    loadPersonaRole()
+  }, [selectedPersonaId])
+
+  const canRetry = personaRole === "owner" || personaRole === "admin"
 
   // Map activeTab to API status filter
   const statusFilter = React.useMemo(() => {
     if (activeTab === "drafts") return "draft"
     if (activeTab === "scheduled") return "scheduled"
+    if (activeTab === "publishing") return "publishing"
+    if (activeTab === "failed") return "failed"
     if (activeTab === "posted") return "published"
     return undefined
   }, [activeTab])
@@ -105,15 +145,16 @@ function PostsPage() {
     isLoading: isLoadingPosts,
     error: postsError,
   } = useQuery({
-    queryKey: ["posts", statusFilter],
+    queryKey: ["posts", selectedPersonaId, statusFilter],
     queryFn: async () => {
       return await PostsService.readPosts({
+        persona_id: selectedPersonaId,
         status: statusFilter,
         skip: 0,
         limit: 100,
       })
     },
-    enabled: true, // Always fetch when component mounts
+    enabled: Boolean(selectedPersonaId),
     staleTime: 30000, // Consider data fresh for 30 seconds
   })
 
@@ -185,6 +226,16 @@ function PostsPage() {
       })
   }, [postsData, activeTab])
 
+  const failedPosts = React.useMemo(() => {
+    if (!postsData || activeTab !== "failed") return []
+    return postsData.data.filter((p) => p.status === "failed")
+  }, [postsData, activeTab])
+
+  const publishingPosts = React.useMemo(() => {
+    if (!postsData || activeTab !== "publishing") return []
+    return postsData.data.filter((p) => p.status === "publishing")
+  }, [postsData, activeTab])
+
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (postId: string) => {
@@ -210,6 +261,7 @@ function PostsPage() {
     }: {
       postId: string
       data: {
+        persona_id?: string
         content?: string
         image_url?: string
         platform?: string
@@ -225,6 +277,17 @@ function PostsPage() {
     onSuccess: () => {
       showSuccessToast("Post updated successfully")
       setEditingPostId(null)
+      queryClient.invalidateQueries({ queryKey: ["posts"] })
+    },
+    onError: handleError.bind(showErrorToast),
+  })
+
+  const retryMutation = useMutation({
+    mutationFn: async (postId: string) => {
+      return await PostsService.retryPost({ postId })
+    },
+    onSuccess: () => {
+      showSuccessToast("Retry started")
       queryClient.invalidateQueries({ queryKey: ["posts"] })
     },
     onError: handleError.bind(showErrorToast),
@@ -282,48 +345,59 @@ function PostsPage() {
     setEditingPostId(postId)
   }
 
-  const handleSave = (postId: string) => {
-    // Find the post being edited
-    let postToUpdate: DraftPostData | ScheduledPostData | PostedData | undefined
+  const handleSaveDraft = (
+    postId: string,
+    data: { content: string; platform: Platform },
+  ) => {
+    const platformForApi =
+      data.platform === "x" || data.platform === "all"
+        ? "linkedin"
+        : data.platform
+    updateMutation.mutate({
+      postId,
+      data: {
+        persona_id: selectedPersonaId || undefined,
+        content: data.content,
+        platform: platformForApi,
+      },
+    })
+  }
 
-    if (activeTab === "drafts") {
-      postToUpdate = draftPosts.find((p) => p.id === postId)
-    } else if (activeTab === "scheduled") {
-      postToUpdate = scheduledPosts.find((p) => p.id === postId)
-    } else if (activeTab === "posted") {
-      postToUpdate = postedPosts.find((p) => p.id === postId)
-    }
+  const handleSaveScheduled = (
+    postId: string,
+    data: { content: string; platform: Platform; scheduledAt: Date },
+  ) => {
+    const platformForApi =
+      data.platform === "x" || data.platform === "all"
+        ? "linkedin"
+        : data.platform
+    updateMutation.mutate({
+      postId,
+      data: {
+        persona_id: selectedPersonaId || undefined,
+        content: data.content,
+        platform: platformForApi,
+        scheduled_at: data.scheduledAt.toISOString(),
+      },
+    })
+  }
 
-    if (!postToUpdate) {
-      showErrorToast("Post not found")
-      return
-    }
-
-    // Prepare update data
-    const updateData: {
-      content?: string
-      image_url?: string
-      platform?: string
-      scheduled_at?: string
-      status?: string
-    } = {
-      content: postToUpdate.content,
-      image_url: postToUpdate.imageUrl || undefined,
-      platform:
-        postToUpdate.platform === "x" || postToUpdate.platform === "all"
-          ? "linkedin"
-          : (postToUpdate.platform ?? "linkedin"),
-    }
-
-    // Add scheduled_at for scheduled posts
-    if ("scheduledAt" in postToUpdate && postToUpdate.scheduledAt) {
-      updateData.scheduled_at =
-        typeof postToUpdate.scheduledAt === "string"
-          ? postToUpdate.scheduledAt
-          : postToUpdate.scheduledAt.toISOString()
-    }
-
-    updateMutation.mutate({ postId, data: updateData })
+  const handleSavePosted = (
+    postId: string,
+    data: { content: string; platform: Platform },
+  ) => {
+    const platformForApi =
+      data.platform === "x" || data.platform === "all"
+        ? "linkedin"
+        : data.platform
+    updateMutation.mutate({
+      postId,
+      data: {
+        persona_id: selectedPersonaId || undefined,
+        content: data.content,
+        platform: platformForApi,
+      },
+    })
   }
 
   const handleCancel = () => {
@@ -422,13 +496,20 @@ function PostsPage() {
         <Tabs
           value={activeTab}
           onValueChange={(value) =>
-            setActiveTab(value as "drafts" | "scheduled" | "posted")
+            setActiveTab(
+              value as
+                | "drafts"
+                | "scheduled"
+                | "publishing"
+                | "failed"
+                | "posted",
+            )
           }
           className="w-full flex flex-col"
         >
           {/* Tabs Header - Sticky */}
           <div className="sticky top-0 z-10 shrink-0 border-b bg-background/80 backdrop-blur-sm">
-            <TabsList className="w-full h-auto p-0 bg-transparent rounded-none border-0 border-b border-border grid grid-cols-3 relative">
+            <TabsList className="w-full h-auto p-0 bg-transparent rounded-none border-0 border-b border-border grid grid-cols-5 relative">
               <TabsTrigger
                 value="drafts"
                 className="relative flex-1 h-14 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-base transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
@@ -464,6 +545,40 @@ function PostsPage() {
                 </div>
               </TabsTrigger>
               <TabsTrigger
+                value="publishing"
+                className="relative flex-1 h-14 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-base transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <Loader2 className="h-4 w-4" />
+                  <span>Publishing</span>
+                  {publishingPosts.length > 0 && (
+                    <Badge
+                      variant="secondary"
+                      className="ml-1 h-5 min-w-5 px-1.5 text-xs font-normal"
+                    >
+                      {publishingPosts.length}
+                    </Badge>
+                  )}
+                </div>
+              </TabsTrigger>
+              <TabsTrigger
+                value="failed"
+                className="relative flex-1 h-14 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-base transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <X className="h-4 w-4" />
+                  <span>Failed</span>
+                  {failedPosts.length > 0 && (
+                    <Badge
+                      variant="secondary"
+                      className="ml-1 h-5 min-w-5 px-1.5 text-xs font-normal"
+                    >
+                      {failedPosts.length}
+                    </Badge>
+                  )}
+                </div>
+              </TabsTrigger>
+              <TabsTrigger
                 value="posted"
                 className="relative flex-1 h-14 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-base transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
               >
@@ -487,7 +602,20 @@ function PostsPage() {
           <div className="w-full">
             {/* Drafts Tab */}
             <TabsContent value="drafts" className="mt-0">
-              {isLoadingPosts ? (
+              {!selectedPersonaId ? (
+                <div className="flex flex-col items-center justify-center text-center py-16 px-4">
+                  <div className="rounded-full bg-muted/50 p-6 mb-4">
+                    <FileText className="h-10 w-10 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-xl font-semibold mb-1">
+                    Select a persona
+                  </h3>
+                  <p className="text-muted-foreground text-sm max-w-sm">
+                    Choose a persona in Social Accounts to manage drafts,
+                    scheduled, and published posts.
+                  </p>
+                </div>
+              ) : isLoadingPosts ? (
                 <div className="flex flex-col items-center justify-center py-16">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   <p className="mt-4 text-sm text-muted-foreground">
@@ -514,7 +642,7 @@ function PostsPage() {
                       isEditing={editingPostId === post.id}
                       onEdit={(id) => handleDraftAction("edit", id)}
                       onDelete={(id) => handleDraftAction("delete", id)}
-                      onSave={(id) => handleSave(id)}
+                      onSave={handleSaveDraft}
                       onCancel={handleCancel}
                       onPlatformChange={handlePlatformChange}
                       onPreview={(id) => handleDraftAction("preview", id)}
@@ -555,11 +683,91 @@ function PostsPage() {
                       isEditing={editingPostId === post.id}
                       onEdit={(id) => handleScheduledAction("edit", id)}
                       onDelete={(id) => handleScheduledAction("cancel", id)}
-                      onSave={(id) => handleSave(id)}
+                      onSave={handleSaveScheduled}
                       onCancel={handleCancel}
                       onPlatformChange={handlePlatformChange}
                       onPreview={(id) => handleScheduledAction("preview", id)}
                     />
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Publishing Tab */}
+            <TabsContent value="publishing" className="mt-0">
+              {isLoadingPosts ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  <p className="mt-4 text-sm text-muted-foreground">
+                    Loading posts...
+                  </p>
+                </div>
+              ) : publishingPosts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center text-center py-16 px-4">
+                  <div className="rounded-full bg-muted/50 p-6 mb-4">
+                    <Loader2 className="h-10 w-10 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-xl font-semibold mb-1">
+                    No publishing posts
+                  </h3>
+                </div>
+              ) : (
+                <div className="w-full pb-20 divide-y">
+                  {publishingPosts.map((post) => (
+                    <div key={post.id} className="p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium truncate">
+                          {post.content}
+                        </p>
+                        <Badge variant="secondary">Publishing</Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Failed Tab */}
+            <TabsContent value="failed" className="mt-0">
+              {isLoadingPosts ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  <p className="mt-4 text-sm text-muted-foreground">
+                    Loading posts...
+                  </p>
+                </div>
+              ) : failedPosts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center text-center py-16 px-4">
+                  <div className="rounded-full bg-muted/50 p-6 mb-4">
+                    <X className="h-10 w-10 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-xl font-semibold mb-1">
+                    No failed posts
+                  </h3>
+                </div>
+              ) : (
+                <div className="w-full pb-20 divide-y">
+                  {failedPosts.map((post) => (
+                    <div key={post.id} className="p-4 space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium truncate">
+                          {post.content}
+                        </p>
+                        <Badge variant="secondary">Failed</Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {post.error_message || "Publish failed"}
+                      </p>
+                      {canRetry ? (
+                        <Button
+                          size="sm"
+                          onClick={() => retryMutation.mutate(post.id)}
+                          disabled={retryMutation.isPending}
+                        >
+                          Retry
+                        </Button>
+                      ) : null}
+                    </div>
                   ))}
                 </div>
               )}
@@ -599,7 +807,7 @@ function PostsPage() {
                       onComment={(id) => handlePostAction("comment", id)}
                       onShare={(id) => handlePostAction("share", id)}
                       onEdit={(id) => handlePostEdit(id)}
-                      onSave={(id) => handleSave(id)}
+                      onSave={handleSavePosted}
                       onCancel={handleCancel}
                       onPreview={(id) => handlePostAction("preview", id)}
                       onDelete={(id) => handlePostAction("delete", id)}
@@ -751,11 +959,27 @@ function PostsPage() {
                   {postedPosts.length}
                 </Badge>
               </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">
+                  Publishing
+                </span>
+                <Badge variant="secondary" className="font-semibold">
+                  {publishingPosts.length}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Failed</span>
+                <Badge variant="secondary" className="font-semibold">
+                  {failedPosts.length}
+                </Badge>
+              </div>
               <div className="flex items-center justify-between pt-2 border-t">
                 <span className="text-sm font-medium">Total</span>
                 <span className="text-sm font-semibold">
                   {draftPosts.length +
                     scheduledPosts.length +
+                    publishingPosts.length +
+                    failedPosts.length +
                     postedPosts.length}
                 </span>
               </div>

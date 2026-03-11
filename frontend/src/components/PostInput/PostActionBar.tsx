@@ -23,6 +23,7 @@ export interface PostActionBarProps {
   isSubmitting: boolean
   isContentEmpty: boolean
   actionType: "draft" | "schedule" | "post"
+  canPublishOrSchedule?: boolean
   onActionTypeChange: (type: "draft" | "schedule" | "post") => void
   onImageClick?: () => void
   onEmojiClick?: () => void
@@ -37,6 +38,7 @@ export const PostActionBar = React.memo(function PostActionBar({
   isSubmitting,
   isContentEmpty,
   actionType,
+  canPublishOrSchedule = true,
   onActionTypeChange,
   onImageClick,
   onEmojiClick,
@@ -65,6 +67,7 @@ export const PostActionBar = React.memo(function PostActionBar({
   }, [isSubmitting, actionType])
 
   const isDisabled = isContentEmpty || isSubmitting
+  const isScheduleOrPublishDisabled = isDisabled || !canPublishOrSchedule
 
   return (
     <>
@@ -146,7 +149,7 @@ export const PostActionBar = React.memo(function PostActionBar({
                 onActionTypeChange("schedule")
                 onScheduleClick()
               }}
-              disabled={isDisabled}
+              disabled={isScheduleOrPublishDisabled}
               className="cursor-pointer"
             >
               <Calendar className="mr-2 h-4 w-4" />
@@ -158,7 +161,7 @@ export const PostActionBar = React.memo(function PostActionBar({
                 onActionTypeChange("post")
                 onPostClick()
               }}
-              disabled={isDisabled}
+              disabled={isScheduleOrPublishDisabled}
               className="cursor-pointer"
             >
               <Send className="mr-2 h-4 w-4" />

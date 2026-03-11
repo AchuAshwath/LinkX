@@ -47,6 +47,7 @@ export type NewPassword = {
 
 export type PostCreate = {
     content: string;
+    persona_id: string;
     image_url?: (string | null);
     platform?: string;
     status?: string;
@@ -60,13 +61,21 @@ export type PostPublic = {
     status?: string;
     id: string;
     owner_id: string;
+    persona_id?: (string | null);
     scheduled_at: (string | null);
     published_at: (string | null);
+    publishing_started_at?: (string | null);
+    retry_count?: number;
+    last_retry_at?: (string | null);
+    next_retry_at?: (string | null);
+    error_code?: (string | null);
+    error_message?: (string | null);
     likes: number;
     reposts: number;
     comments: number;
     created_at: string;
     updated_at: string;
+    external_post_id?: (string | null);
     author?: ({
     [key: string]: unknown;
 } | null);
@@ -80,6 +89,7 @@ export type PostsPublic = {
 export type PostUpdate = {
     content?: (string | null);
     image_url?: (string | null);
+    persona_id?: (string | null);
     platform?: (string | null);
     scheduled_at?: (string | null);
     status?: (string | null);
@@ -208,10 +218,11 @@ export type LoginRecoverPasswordHtmlContentData = {
 export type LoginRecoverPasswordHtmlContentResponse = (string);
 
 export type PostsReadPostsData = {
+    persona_id?: (string | null);
     limit?: number;
     skip?: number;
     /**
-     * Filter by status: draft, scheduled, published, failed
+     * Filter by status: draft, scheduled, publishing, published, failed
      */
     status?: (string | null);
 };
@@ -242,6 +253,18 @@ export type PostsDeletePostData = {
 };
 
 export type PostsDeletePostResponse = (Message);
+
+export type PostsPublishPostData = {
+    postId: string;
+};
+
+export type PostsPublishPostResponse = (PostPublic);
+
+export type PostsRetryPostData = {
+    postId: string;
+};
+
+export type PostsRetryPostResponse = (PostPublic);
 
 export type PrivateCreateUserData = {
     requestBody: PrivateUserCreate;

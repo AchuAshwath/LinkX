@@ -1,7 +1,5 @@
 import type { AxiosError } from "axios"
 
-import { handleError } from "@/utils"
-
 export type DraftRole = "user" | "assistant"
 
 export interface DraftMessage {
@@ -57,7 +55,7 @@ export async function draftWithAi(
 
     return { drafts }
   } catch (error) {
-    handleError(error as AxiosError)
+    console.error("AI drafting failed", error as AxiosError)
     return { drafts: [] }
   }
 }
@@ -110,4 +108,3 @@ function createVariantsFromBrief(
 
   return [variant1, variant2, variant3]
 }
-

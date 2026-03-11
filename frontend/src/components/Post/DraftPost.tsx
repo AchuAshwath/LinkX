@@ -34,7 +34,10 @@ export interface DraftPostProps {
   isEditing?: boolean
   onEdit?: (postId: string) => void
   onDelete?: (postId: string) => void
-  onSave?: (postId: string) => void
+  onSave?: (
+    postId: string,
+    data: { content: string; platform: Platform },
+  ) => void
   onCancel?: () => void
   onPlatformChange?: (postId: string, platform: Platform) => void
   onPreview?: (postId: string) => void
@@ -84,8 +87,10 @@ export function DraftPost({
   }
 
   const handleSave = () => {
-    // TODO: Update post with editedContent and platform
-    onSave?.(post.id)
+    onSave?.(post.id, {
+      content: editedContent.trim(),
+      platform,
+    })
   }
 
   const handleCancel = () => {

@@ -48,7 +48,10 @@ export interface ScheduledPostProps {
   isEditing?: boolean
   onEdit?: (postId: string) => void
   onDelete?: (postId: string) => void
-  onSave?: (postId: string) => void
+  onSave?: (
+    postId: string,
+    data: { content: string; platform: Platform; scheduledAt: Date },
+  ) => void
   onCancel?: () => void
   onPlatformChange?: (postId: string, platform: Platform) => void
   onPreview?: (postId: string) => void
@@ -109,8 +112,12 @@ const ScheduledPost = React.memo(function ScheduledPost({
   )
 
   const handleSave = React.useCallback(() => {
-    onSave?.(post.id)
-  }, [onSave, post.id])
+    onSave?.(post.id, {
+      content: editedContent.trim(),
+      platform,
+      scheduledAt: editedScheduledAt,
+    })
+  }, [editedContent, editedScheduledAt, onSave, platform, post.id])
 
   const handleCancel = React.useCallback(() => {
     setEditedContent(post.content)

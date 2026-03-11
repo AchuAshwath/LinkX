@@ -1,17 +1,20 @@
 import { Sparkles } from "lucide-react"
 import * as React from "react"
 
-import { ChatContainerContent, ChatContainerRoot } from "@/components/prompt-kit/chat-container"
+import {
+  ChatContainerContent,
+  ChatContainerRoot,
+} from "@/components/prompt-kit/chat-container"
 import {
   PromptInput,
   PromptInputFooter,
   PromptInputRoot,
   PromptSubmitButton,
 } from "@/components/prompt-kit/prompt-input"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import { formatRelativeTime } from "@/utils"
 
@@ -70,7 +73,8 @@ const TEMPLATES: PromptTemplate[] = [
   {
     id: "weekly-insight",
     label: "Weekly insight",
-    description: "Turn a learning from this week into a concise, valuable post.",
+    description:
+      "Turn a learning from this week into a concise, valuable post.",
     prompt:
       "Turn this into a LinkedIn post that shares a clear takeaway and invites discussion.",
     recommendedObjective: "grow-audience",
@@ -113,6 +117,7 @@ interface PromptDraftStudioProps {
 }
 
 export function PromptDraftStudio({ className }: PromptDraftStudioProps) {
+  const audienceInputId = React.useId()
   const [prompt, setPrompt] = React.useState("")
   const [objective, setObjective] = React.useState<Objective>("grow-audience")
   const [tone, setTone] = React.useState<Tone>("professional")
@@ -291,10 +296,14 @@ export function PromptDraftStudio({ className }: PromptDraftStudioProps) {
               </div>
 
               <div className="flex flex-1 items-center justify-end gap-2">
-                <label className="hidden text-[0.7rem] text-muted-foreground sm:inline">
+                <label
+                  htmlFor={audienceInputId}
+                  className="hidden text-[0.7rem] text-muted-foreground sm:inline"
+                >
                   Audience
                 </label>
                 <input
+                  id={audienceInputId}
                   value={audience}
                   onChange={(event) => setAudience(event.target.value)}
                   className="hidden h-8 w-40 rounded-full border border-input bg-background px-3 text-[0.7rem] text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 sm:inline-block"
@@ -381,7 +390,9 @@ export function PromptDraftStudio({ className }: PromptDraftStudioProps) {
                         </span>
                         <Badge
                           variant={
-                            selectedDraftId === message.id ? "default" : "outline"
+                            selectedDraftId === message.id
+                              ? "default"
+                              : "outline"
                           }
                           className="cursor-pointer rounded-full px-2 py-0 text-[0.65rem]"
                           onClick={() => setSelectedDraftId(message.id)}
@@ -400,7 +411,7 @@ export function PromptDraftStudio({ className }: PromptDraftStudioProps) {
                       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[0.7rem]">
                         <Button
                           variant="outline"
-                          size="xs"
+                          size="sm"
                           className="h-6 rounded-full px-2"
                           type="button"
                           onClick={() => setSelectedDraftId(message.id)}
@@ -409,7 +420,7 @@ export function PromptDraftStudio({ className }: PromptDraftStudioProps) {
                         </Button>
                         <Button
                           variant="ghost"
-                          size="xs"
+                          size="sm"
                           className="h-6 rounded-full px-2"
                           type="button"
                           onClick={() =>
@@ -422,7 +433,7 @@ export function PromptDraftStudio({ className }: PromptDraftStudioProps) {
                         </Button>
                         <Button
                           variant="ghost"
-                          size="xs"
+                          size="sm"
                           className="h-6 rounded-full px-2"
                           type="button"
                         >
@@ -430,7 +441,7 @@ export function PromptDraftStudio({ className }: PromptDraftStudioProps) {
                         </Button>
                         <Button
                           variant="ghost"
-                          size="xs"
+                          size="sm"
                           className="h-6 rounded-full px-2"
                           type="button"
                         >
@@ -476,8 +487,8 @@ export function PromptDraftStudio({ className }: PromptDraftStudioProps) {
                       {template.label}
                     </span>
                     <Badge variant="outline" className="rounded-full px-2 py-0">
-                      {TONES.find((t) => t.id === template.recommendedTone)?.label ??
-                        "Balanced"}
+                      {TONES.find((t) => t.id === template.recommendedTone)
+                        ?.label ?? "Balanced"}
                     </Badge>
                   </div>
                   <p className="line-clamp-2 text-[0.7rem] text-muted-foreground">
@@ -659,4 +670,3 @@ function createMockDrafts(options: {
 
   return [draft1, draft2, draft3]
 }
-

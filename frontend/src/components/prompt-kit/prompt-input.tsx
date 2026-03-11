@@ -1,4 +1,4 @@
-import * as React from "react"
+import type * as React from "react"
 
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -31,10 +31,7 @@ interface PromptInputFooterProps {
  * design tokens and shadcn/ui. They can later be replaced with the
  * official PromptKit components if desired.
  */
-export function PromptInputRoot({
-  children,
-  className,
-}: PromptInputRootProps) {
+export function PromptInputRoot({ children, className }: PromptInputRootProps) {
   return (
     <div
       className={cn(
@@ -111,4 +108,3 @@ export function PromptSubmitButton({
     </Button>
   )
 }
-

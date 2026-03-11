@@ -15,6 +15,7 @@ from app.models import (
     UserCreate,
     UserUpdate,
 )
+from app.services.post_state_machine import validate_transition
 
 
 def create_user(*, session: Session, user_create: UserCreate) -> User:
@@ -84,7 +85,10 @@ def create_post(*, session: Session, post_in: PostCreate, owner_id: uuid.UUID) -
     if post_in.status == "scheduled" and post_in.scheduled_at is None:
         raise ValueError("scheduled_at is required when status is 'scheduled'")
 
-    db_post = Post.model_validate(post_in, update={"owner_id": owner_id})
+    db_post = Post.model_validate(
+        post_in,
+        update={"owner_id": owner_id, "persona_id": post_in.persona_id},
+    )
     session.add(db_post)
     session.commit()
     session.refresh(db_post)
@@ -100,6 +104,7 @@ def get_posts(
     *,
     session: Session,
     owner_id: uuid.UUID | None = None,
+    persona_id: uuid.UUID | None = None,
     status: str | None = None,
     skip: int = 0,
     limit: int = 100,
@@ -111,6 +116,10 @@ def get_posts(
     if owner_id:
         statement = statement.where(Post.owner_id == owner_id)
         count_statement = count_statement.where(Post.owner_id == owner_id)
+
+    if persona_id:
+        statement = statement.where(Post.persona_id == persona_id)
+        count_statement = count_statement.where(Post.persona_id == persona_id)
 
     if status:
         statement = statement.where(Post.status == status)
@@ -131,6 +140,7 @@ def update_post(*, session: Session, db_post: Post, post_in: PostUpdate) -> Post
     # If status is being updated to 'scheduled', ensure scheduled_at exists
     if "status" in update_data:
         new_status = update_data["status"]
+        validate_transition(current_status=db_post.status, target_status=new_status)
         if new_status == "scheduled":
             # Check if scheduled_at is being set in this update or already exists
             if "scheduled_at" not in update_data and db_post.scheduled_at is None:

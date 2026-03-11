@@ -53,7 +53,10 @@ export interface PostedProps {
   onComment?: (postId: string) => void
   onShare?: (postId: string) => void
   onEdit?: (postId: string) => void
-  onSave?: (postId: string) => void
+  onSave?: (
+    postId: string,
+    data: { content: string; platform: Platform },
+  ) => void
   onCancel?: () => void
   onPreview?: (postId: string) => void
   onDelete?: (postId: string) => void
@@ -108,8 +111,11 @@ const Posted = React.memo(function Posted({
   )
 
   const handleSave = React.useCallback(() => {
-    onSave?.(post.id)
-  }, [onSave, post.id])
+    onSave?.(post.id, {
+      content: editedContent.trim(),
+      platform,
+    })
+  }, [editedContent, onSave, platform, post.id])
 
   const handleCancel = React.useCallback(() => {
     setEditedContent(post.content)
