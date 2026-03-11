@@ -2,20 +2,30 @@ from __future__ import annotations
 
 import json
 import time
+import uuid
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, status
 from sqlmodel import select
 
 from app.api.deps import CurrentUser, SessionDep
 from app.core.redis import get_redis
 from app.models import SocialAccount
+from app.services.access import get_persona_role
 
 router = APIRouter(prefix="/linkedin", tags=["linkedin"])
 
 
+def _redis_token_key(*, persona_id: uuid.UUID) -> str:
+    return f"linkedin:token:{persona_id}"
+
+
 @router.get("/status")
-def linkedin_status(current_user: CurrentUser, session: SessionDep) -> dict[str, Any]:
+def linkedin_status(
+    current_user: CurrentUser,
+    session: SessionDep,
+    persona_id: uuid.UUID,
+) -> dict[str, Any]:
     """
     Connected-status endpoint for the frontend Social Accounts page.
     - Token validity comes from Redis (source of truth for "can call LinkedIn API").
@@ -24,14 +34,24 @@ def linkedin_status(current_user: CurrentUser, session: SessionDep) -> dict[str,
     - needs_reconnect: True when user has linked LinkedIn (SocialAccount exists)
       but token is missing or expired, so they should re-authorize.
     """
-    user_id = str(current_user.id)
+    role = get_persona_role(
+        session=session,
+        persona_id=persona_id,
+        user_id=current_user.id,
+    )
+    if not role:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions",
+        )
+
     now = time.time()
 
     # Token from Redis (graceful if Redis down or key missing)
     token_payload: dict[str, Any] | None = None
     try:
         r = get_redis()
-        raw = r.get(f"linkedin:token:{user_id}")
+        raw = r.get(_redis_token_key(persona_id=persona_id))
         if raw:
             token_payload = json.loads(raw)  # type: ignore[arg-type]
     except Exception:
@@ -50,7 +70,7 @@ def linkedin_status(current_user: CurrentUser, session: SessionDep) -> dict[str,
     # Profile from Postgres (authoritative for "has ever linked LinkedIn")
     account = session.exec(
         select(SocialAccount).where(
-            SocialAccount.user_id == current_user.id,
+            SocialAccount.persona_id == persona_id,
             SocialAccount.platform == "linkedin",
         )
     ).first()

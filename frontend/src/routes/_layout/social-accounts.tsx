@@ -39,7 +39,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
-import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import useCustomToast from "@/hooks/useCustomToast"
 
@@ -49,32 +48,31 @@ type LinkedInProfile = {
   profile_picture_url?: string | null
 }
 
-type Workspace = {
-  id: string
-  name: string
-}
-
 type Persona = {
   id: string
   name: string
   description: string
-  visibleToWorkspace: boolean
   createdAt: string
   updatedAt: string
 }
 
-type SocialPlatform = "linkedin" | "x"
-
-type SocialAccount = {
+type PersonaApi = {
   id: string
-  personaId: string
-  platform: SocialPlatform
-  displayName: string | null
-  email: string | null
-  profilePictureUrl: string | null
-  status: "connected" | "not_connected" | "reconnect_required" | "error"
-  updatedAt: string
+  name: string
+  description: string | null
+  user_id: string
+  created_at: string | null
+  updated_at: string | null
 }
+
+const mapPersona = (persona: PersonaApi): Persona => ({
+  id: persona.id,
+  name: persona.name,
+  description: persona.description ?? "",
+  createdAt: persona.created_at ?? new Date().toISOString(),
+  updatedAt: persona.updated_at ?? persona.created_at ?? new Date().toISOString(),
+})
+
 
 export const Route = createFileRoute("/_layout/social-accounts")({
   component: SocialAccountsPage,
@@ -90,50 +88,9 @@ export const Route = createFileRoute("/_layout/social-accounts")({
 function SocialAccountsPage() {
   const { showErrorToast, showSuccessToast } = useCustomToast()
 
-  const workspace: Workspace = React.useMemo(
-    () => ({
-      id: "ws_default",
-      name: "My Workspace",
-    }),
-    []
-  )
+  const workspaceName = "My Workspace"
 
-  const [personas, setPersonas] = React.useState<Persona[]>(() => {
-    const now = new Date().toISOString()
-    return [
-      {
-        id: "persona_1",
-        name: "Personal",
-        description: "My default voice for personal posts and experiments.",
-        visibleToWorkspace: false,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: "persona_2",
-        name: "LinkX",
-        description: "Company voice for product updates and announcements.",
-        visibleToWorkspace: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-    ]
-  })
-  const [socialAccounts, setSocialAccounts] = React.useState<SocialAccount[]>(() => {
-    const now = new Date().toISOString()
-    return [
-      {
-        id: "sa_1",
-        personaId: "persona_2",
-        platform: "linkedin",
-        displayName: "LinkX (mock)",
-        email: "team@linkx.dev",
-        profilePictureUrl: null,
-        status: "connected",
-        updatedAt: now,
-      },
-    ]
-  })
+  const [personas, setPersonas] = React.useState<Persona[]>([])
   const [selectedPersonaId, setSelectedPersonaId] = React.useState<string>(
     () => personas[0]?.id ?? ""
   )
@@ -142,6 +99,47 @@ function SocialAccountsPage() {
     () => personas.find((p) => p.id === selectedPersonaId) ?? null,
     [personas, selectedPersonaId]
   )
+
+  const [personasLoading, setPersonasLoading] = React.useState(true)
+
+  const loadPersonas = React.useCallback(async () => {
+    if (!OpenAPI.BASE) {
+      showErrorToast(
+        "API URL not set. Set VITE_API_URL in frontend .env (e.g. http://localhost:8000)."
+      )
+      setPersonasLoading(false)
+      return
+    }
+    try {
+      const res = await fetch(`${OpenAPI.BASE}/api/v1/personas`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("access_token") || ""}`,
+        },
+      })
+      if (!res.ok) {
+        showErrorToast("Could not load personas. Try again or re-login.")
+        return
+      }
+      const data = (await res.json()) as { data: PersonaApi[] }
+      const nextPersonas = data.data.map(mapPersona)
+      setPersonas(nextPersonas)
+      setSelectedPersonaId((prev) => {
+        if (prev && nextPersonas.some((persona) => persona.id === prev)) {
+          return prev
+        }
+        return nextPersonas[0]?.id || ""
+      })
+    } catch {
+      showErrorToast("Could not load personas. Try again or re-login.")
+    } finally {
+      setPersonasLoading(false)
+    }
+  }, [showErrorToast])
+
+  React.useEffect(() => {
+    loadPersonas()
+  }, [loadPersonas])
 
   React.useEffect(() => {
     if (!selectedPersonaId && personas.length > 0) {
@@ -152,19 +150,13 @@ function SocialAccountsPage() {
   const [createPersonaOpen, setCreatePersonaOpen] = React.useState(false)
   const [editPersonaOpen, setEditPersonaOpen] = React.useState(false)
   const [deletePersonaOpen, setDeletePersonaOpen] = React.useState(false)
-  const [disconnectAccountOpen, setDisconnectAccountOpen] = React.useState(false)
-  const [disconnectTarget, setDisconnectTarget] = React.useState<SocialPlatform | null>(
-    null
-  )
 
   const [personaDraft, setPersonaDraft] = React.useState<{
     name: string
     description: string
-    visibleToWorkspace: boolean
   }>({
     name: "",
     description: "",
-    visibleToWorkspace: false,
   })
   const [deleteConfirmText, setDeleteConfirmText] = React.useState("")
 
@@ -191,14 +183,34 @@ function SocialAccountsPage() {
 
   React.useEffect(() => {
     const run = async () => {
+      if (!selectedPersona) {
+        setProfile(null)
+        setNeedsReconnect(false)
+        setLastStatus("idle")
+        setStatusLoading(false)
+        return
+      }
+      if (!OpenAPI.BASE) {
+        showErrorToast(
+          "API URL not set. Set VITE_API_URL in frontend .env (e.g. http://localhost:8000)."
+        )
+        setStatusLoading(false)
+        return
+      }
+      setNeedsReconnect(false)
+      setLastStatus("idle")
+      setProfile(null)
       setStatusLoading(true)
       try {
-        const res = await fetch(`${OpenAPI.BASE}/api/v1/linkedin/status`, {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token") || ""}`,
-          },
-        })
+        const res = await fetch(
+          `${OpenAPI.BASE}/api/v1/linkedin/status?persona_id=${selectedPersona.id}`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("access_token") || ""}`,
+            },
+          }
+        )
         if (!res.ok) {
           showErrorToast("Could not load connection status. Try again or re-login.")
           setLastStatus((prev) => (prev === "error" ? "error" : "idle"))
@@ -212,7 +224,9 @@ function SocialAccountsPage() {
         setNeedsReconnect(Boolean(data.needs_reconnect))
         setProfile(data.profile ?? null)
         setLastStatus(
-          data.connected ? "connected" : (prev) => (prev === "error" ? "error" : "idle"),
+          data.connected
+            ? "connected"
+            : (prev) => (prev === "error" ? "error" : "idle")
         )
       } catch {
         showErrorToast("Could not load connection status. Try again or re-login.")
@@ -222,13 +236,12 @@ function SocialAccountsPage() {
       }
     }
     run()
-  }, [])
+  }, [selectedPersona, showErrorToast])
 
   const resetPersonaDraft = React.useCallback(() => {
     setPersonaDraft({
       name: "",
       description: "",
-      visibleToWorkspace: false,
     })
   }, [])
 
@@ -245,7 +258,6 @@ function SocialAccountsPage() {
     setPersonaDraft({
       name: selectedPersona.name,
       description: selectedPersona.description,
-      visibleToWorkspace: selectedPersona.visibleToWorkspace,
     })
     setEditPersonaOpen(true)
   }, [selectedPersona, showErrorToast])
@@ -272,101 +284,144 @@ function SocialAccountsPage() {
     return null
   }, [personaDraft.description])
 
-  const saveNewPersona = React.useCallback(() => {
+  const saveNewPersona = React.useCallback(async () => {
     const name = personaDraft.name.trim()
     const description = personaDraft.description.trim()
     if (!name) return
     if (name.length > 255) return
     if (description.length > 500) return
-
-    const now = new Date().toISOString()
-    const newPersona: Persona = {
-      id:
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? `persona_${crypto.randomUUID()}`
-          : `persona_${now}`,
-      name,
-      description,
-      visibleToWorkspace: personaDraft.visibleToWorkspace,
-      createdAt: now,
-      updatedAt: now,
-    }
-    setPersonas((prev) => [newPersona, ...prev])
-    setSelectedPersonaId(newPersona.id)
-    setCreatePersonaOpen(false)
-    showSuccessToast(`Created persona “${newPersona.name}”.`)
-  }, [personaDraft, showSuccessToast])
-
-  const saveEditedPersona = React.useCallback(() => {
-    if (!selectedPersona) return
-    const name = personaDraft.name.trim()
-    const description = personaDraft.description.trim()
-    if (!name) return
-    if (name.length > 255) return
-    if (description.length > 500) return
-
-    setPersonas((prev) =>
-      prev.map((p) =>
-        p.id === selectedPersona.id
-          ? {
-              ...p,
-              name,
-              description,
-              visibleToWorkspace: personaDraft.visibleToWorkspace,
-              updatedAt: new Date().toISOString(),
-            }
-          : p
+    if (!OpenAPI.BASE) {
+      showErrorToast(
+        "API URL not set. Set VITE_API_URL in frontend .env (e.g. http://localhost:8000)."
       )
-    )
-    setEditPersonaOpen(false)
-    showSuccessToast(`Updated persona “${name}”.`)
-  }, [personaDraft, selectedPersona, showSuccessToast])
+      return
+    }
 
-  const confirmDeletePersona = React.useCallback(() => {
-    if (!selectedPersona) return
-    if (deleteConfirmText.trim() !== selectedPersona.name.trim()) return
-
-    setPersonas((prev) => {
-      const next = prev.filter((p) => p.id !== selectedPersona.id)
-      if (next.length > 0 && !next.some((p) => p.id === selectedPersonaId)) {
-        setSelectedPersonaId(next[0].id)
-      }
-      if (next.length === 0) {
-        setSelectedPersonaId("")
-      }
-      return next
-    })
-    setSocialAccounts((prev) => prev.filter((a) => a.personaId !== selectedPersona.id))
-    setDeletePersonaOpen(false)
-    showSuccessToast(`Deleted persona “${selectedPersona.name}”.`)
-  }, [deleteConfirmText, selectedPersona, selectedPersonaId, showSuccessToast])
-
-  const openDisconnectAccount = React.useCallback(
-    (platform: SocialPlatform) => {
-      if (!selectedPersona) {
-        showErrorToast("Select a persona first.")
+    try {
+      const res = await fetch(`${OpenAPI.BASE}/api/v1/personas`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("access_token") || ""}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name,
+          description: description || null,
+        }),
+      })
+      if (!res.ok) {
+        showErrorToast("Failed to create persona. Try again.")
         return
       }
-      setDisconnectTarget(platform)
-      setDisconnectAccountOpen(true)
-    },
-    [selectedPersona, showErrorToast]
-  )
+      const data = (await res.json()) as PersonaApi
+      const newPersona = mapPersona(data)
+      setPersonas((prev) => [newPersona, ...prev])
+      setSelectedPersonaId(newPersona.id)
+      setCreatePersonaOpen(false)
+      showSuccessToast(`Created persona “${newPersona.name}”.`)
+    } catch {
+      showErrorToast("Failed to create persona. Try again.")
+    }
+  }, [personaDraft, showErrorToast, showSuccessToast])
 
-  const confirmDisconnectAccount = React.useCallback(() => {
-    if (!selectedPersona || !disconnectTarget) return
-    setSocialAccounts((prev) =>
-      prev.filter(
-        (a) => !(a.personaId === selectedPersona.id && a.platform === disconnectTarget)
+  const saveEditedPersona = React.useCallback(async () => {
+    if (!selectedPersona) return
+    const name = personaDraft.name.trim()
+    const description = personaDraft.description.trim()
+    if (!name) return
+    if (name.length > 255) return
+    if (description.length > 500) return
+    if (!OpenAPI.BASE) {
+      showErrorToast(
+        "API URL not set. Set VITE_API_URL in frontend .env (e.g. http://localhost:8000)."
       )
-    )
-    setDisconnectAccountOpen(false)
-    showSuccessToast(
-      `Disconnected ${disconnectTarget === "linkedin" ? "LinkedIn" : "X"} for “${selectedPersona.name}”.`
-    )
-  }, [disconnectTarget, selectedPersona, showSuccessToast])
+      return
+    }
+
+    try {
+      const res = await fetch(
+        `${OpenAPI.BASE}/api/v1/personas/${selectedPersona.id}`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("access_token") || ""}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name,
+            description: description || null,
+          }),
+        }
+      )
+      if (!res.ok) {
+        showErrorToast("Failed to update persona. Try again.")
+        return
+      }
+      const data = (await res.json()) as PersonaApi
+      const updatedPersona = mapPersona(data)
+      setPersonas((prev) =>
+        prev.map((p) => (p.id === updatedPersona.id ? updatedPersona : p))
+      )
+      setEditPersonaOpen(false)
+      showSuccessToast(`Updated persona “${name}”.`)
+    } catch {
+      showErrorToast("Failed to update persona. Try again.")
+    }
+  }, [personaDraft, selectedPersona, showErrorToast, showSuccessToast])
+
+  const confirmDeletePersona = React.useCallback(async () => {
+    if (!selectedPersona) return
+    if (deleteConfirmText.trim() !== selectedPersona.name.trim()) return
+    if (!OpenAPI.BASE) {
+      showErrorToast(
+        "API URL not set. Set VITE_API_URL in frontend .env (e.g. http://localhost:8000)."
+      )
+      return
+    }
+
+    try {
+      const res = await fetch(
+        `${OpenAPI.BASE}/api/v1/personas/${selectedPersona.id}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("access_token") || ""}`,
+          },
+        }
+      )
+      if (!res.ok) {
+        showErrorToast("Failed to delete persona. Try again.")
+        return
+      }
+      setPersonas((prev) => {
+        const next = prev.filter((p) => p.id !== selectedPersona.id)
+        if (next.length > 0 && !next.some((p) => p.id === selectedPersonaId)) {
+          setSelectedPersonaId(next[0].id)
+        }
+        if (next.length === 0) {
+          setSelectedPersonaId("")
+        }
+        return next
+      })
+      setDeletePersonaOpen(false)
+      showSuccessToast(`Deleted persona “${selectedPersona.name}”.`)
+    } catch {
+      showErrorToast("Failed to delete persona. Try again.")
+    }
+  }, [
+    deleteConfirmText,
+    selectedPersona,
+    selectedPersonaId,
+    showErrorToast,
+    showSuccessToast,
+  ])
+
 
   const handleConnectLinkedIn = async () => {
+    if (!selectedPersona) {
+      showErrorToast("Select a persona first.")
+      return
+    }
     if (!OpenAPI.BASE) {
       showErrorToast("API URL not set. Set VITE_API_URL in frontend .env (e.g. http://localhost:8000).")
       return
@@ -374,7 +429,7 @@ function SocialAccountsPage() {
     try {
       setConnecting(true)
       const res = await fetch(
-        `${OpenAPI.BASE}/api/v1/auth/linkedin/authorize`,
+        `${OpenAPI.BASE}/api/v1/auth/linkedin/authorize?persona_id=${selectedPersona.id}`,
         {
           method: "GET",
           headers: {
@@ -436,29 +491,7 @@ function SocialAccountsPage() {
     </Badge>
   )
 
-  const personaVisibilityBadge = selectedPersona?.visibleToWorkspace ? (
-    <Badge
-      variant="outline"
-      className="border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300"
-    >
-      Workspace-visible
-    </Badge>
-  ) : (
-    <Badge variant="secondary" className="font-normal">
-      Private
-    </Badge>
-  )
-
-  const personaLinkedInAccount = selectedPersona
-    ? socialAccounts.find(
-        (a) => a.personaId === selectedPersona.id && a.platform === "linkedin"
-      ) ?? null
-    : null
-
-  const personaXAccount = selectedPersona
-    ? socialAccounts.find((a) => a.personaId === selectedPersona.id && a.platform === "x") ??
-      null
-    : null
+  const personaLinkedInProfile = profile
 
   return (
     <div className="container mx-auto space-y-6 px-4 py-6 sm:px-6 md:py-10">
@@ -472,7 +505,7 @@ function SocialAccountsPage() {
                 </h1>
               </CardTitle>
               <CardDescription>
-                Manage connected accounts for personas inside {workspace.name}.
+                Manage connected accounts for personas inside {workspaceName}.
               </CardDescription>
             </div>
             <Button type="button" size="sm" onClick={openCreatePersona}>
@@ -485,10 +518,12 @@ function SocialAccountsPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
               <div className="space-y-1">
-                <Label className="text-sm">Persona in {workspace.name}</Label>
+                <Label className="text-sm">Persona in {workspaceName}</Label>
                 <Select value={selectedPersonaId} onValueChange={setSelectedPersonaId}>
-                  <SelectTrigger className="w-full sm:w-[280px]">
-                    <SelectValue placeholder="Select a persona" />
+                  <SelectTrigger className="w-full sm:w-[280px]" disabled={personasLoading}>
+                    <SelectValue
+                      placeholder={personasLoading ? "Loading personas..." : "Select a persona"}
+                    />
                   </SelectTrigger>
                   <SelectContent align="start">
                     {personas.map((p) => (
@@ -500,9 +535,7 @@ function SocialAccountsPage() {
                 </Select>
               </div>
 
-              <div className="flex items-center gap-2 pt-1 sm:pt-5">
-                {selectedPersona ? personaVisibilityBadge : null}
-              </div>
+            <div className="flex items-center gap-2 pt-1 sm:pt-5" />
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 sm:pt-5">
@@ -543,40 +576,6 @@ function SocialAccountsPage() {
                   </p>
                 </div>
                 <div className="space-y-4 px-4 py-3">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="space-y-0.5">
-                      <p className="text-sm font-medium leading-none">
-                        Visible to workspace
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        When enabled, this persona appears for your team in the UI.
-                      </p>
-                    </div>
-                    <Switch
-                      checked={selectedPersona.visibleToWorkspace}
-                      onCheckedChange={(checked) => {
-                        setPersonas((prev) =>
-                          prev.map((p) =>
-                            p.id === selectedPersona.id
-                              ? {
-                                  ...p,
-                                  visibleToWorkspace: checked,
-                                  updatedAt: new Date().toISOString(),
-                                }
-                              : p
-                          )
-                        )
-                        showSuccessToast(
-                          checked
-                            ? "Persona is now workspace-visible."
-                            : "Persona is now private."
-                        )
-                      }}
-                    />
-                  </div>
-
-                  <Separator />
-
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">Quick stats</p>
                     <div className="flex flex-wrap gap-2">
@@ -603,19 +602,11 @@ function SocialAccountsPage() {
                     {/* LinkedIn */}
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex items-center gap-4 min-w-0">
-                        {profile?.profile_picture_url || personaLinkedInAccount?.profilePictureUrl ? (
+                        {personaLinkedInProfile?.profile_picture_url ? (
                           <Avatar className="h-12 w-12 shrink-0">
                             <AvatarImage
-                              src={
-                                profile?.profile_picture_url ??
-                                personaLinkedInAccount?.profilePictureUrl ??
-                                ""
-                              }
-                              alt={
-                                profile?.display_name ??
-                                personaLinkedInAccount?.displayName ??
-                                "LinkedIn"
-                              }
+                              src={personaLinkedInProfile.profile_picture_url ?? ""}
+                              alt={personaLinkedInProfile.display_name ?? "LinkedIn"}
                             />
                             <AvatarFallback className="text-sm">LI</AvatarFallback>
                           </Avatar>
@@ -626,11 +617,11 @@ function SocialAccountsPage() {
                         )}
                         <div className="space-y-1 min-w-0">
                           <Label className="text-base">LinkedIn</Label>
-                          {profile?.display_name || personaLinkedInAccount?.displayName ? (
+                          {personaLinkedInProfile?.display_name ? (
                             <p className="text-muted-foreground text-sm truncate">
-                              {profile?.display_name ?? personaLinkedInAccount?.displayName}
-                              {(profile?.email ?? personaLinkedInAccount?.email)
-                                ? ` · ${profile?.email ?? personaLinkedInAccount?.email}`
+                              {personaLinkedInProfile.display_name}
+                              {personaLinkedInProfile.email
+                                ? ` · ${personaLinkedInProfile.email}`
                                 : ""}
                               <span className="text-muted-foreground/70">
                                 {" "}
@@ -655,15 +646,6 @@ function SocialAccountsPage() {
                         >
                           <ExternalLink className="mr-2 h-4 w-4" />
                           {needsReconnect ? "Reconnect" : linkedInConnected ? "Manage" : "Connect"}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openDisconnectAccount("linkedin")}
-                          disabled={!personaLinkedInAccount}
-                        >
-                          Disconnect
                         </Button>
                       </div>
                     </div>
@@ -705,15 +687,6 @@ function SocialAccountsPage() {
                         <Button type="button" variant="outline" size="sm" disabled>
                           <ExternalLink className="mr-2 h-4 w-4" />
                           Connect
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openDisconnectAccount("x")}
-                          disabled={!personaXAccount}
-                        >
-                          Disconnect
                         </Button>
                       </div>
                     </div>
@@ -769,22 +742,6 @@ function SocialAccountsPage() {
               )}
             </div>
 
-            <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
-              <div className="space-y-0.5">
-                <p className="text-sm font-medium leading-none">
-                  Visible to workspace
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  If enabled, this persona will show up for your team in the UI.
-                </p>
-              </div>
-              <Switch
-                checked={personaDraft.visibleToWorkspace}
-                onCheckedChange={(checked) =>
-                  setPersonaDraft((d) => ({ ...d, visibleToWorkspace: checked }))
-                }
-              />
-            </div>
           </div>
 
           <DialogFooter>
@@ -807,7 +764,7 @@ function SocialAccountsPage() {
           <DialogHeader>
             <DialogTitle>Edit persona</DialogTitle>
             <DialogDescription>
-              Update persona details and visibility within {workspace.name}.
+              Update persona details for {workspaceName}.
             </DialogDescription>
           </DialogHeader>
 
@@ -844,22 +801,6 @@ function SocialAccountsPage() {
               )}
             </div>
 
-            <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
-              <div className="space-y-0.5">
-                <p className="text-sm font-medium leading-none">
-                  Visible to workspace
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  If enabled, this persona will show up for your team in the UI.
-                </p>
-              </div>
-              <Switch
-                checked={personaDraft.visibleToWorkspace}
-                onCheckedChange={(checked) =>
-                  setPersonaDraft((d) => ({ ...d, visibleToWorkspace: checked }))
-                }
-              />
-            </div>
           </div>
 
           <DialogFooter>
@@ -922,51 +863,6 @@ function SocialAccountsPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={disconnectAccountOpen} onOpenChange={setDisconnectAccountOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Disconnect social account</DialogTitle>
-            <DialogDescription>
-              This disconnects the selected platform for{" "}
-              <span className="font-medium">{selectedPersona?.name ?? "this persona"}</span>.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="rounded-lg border bg-muted/20 p-3">
-            <p className="text-sm">
-              Platform:{" "}
-              <span className="font-semibold">
-                {disconnectTarget === "linkedin"
-                  ? "LinkedIn"
-                  : disconnectTarget === "x"
-                    ? "X"
-                    : "—"}
-              </span>
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              You can reconnect anytime.
-            </p>
-          </div>
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setDisconnectAccountOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={confirmDisconnectAccount}
-              disabled={!selectedPersona || !disconnectTarget}
-            >
-              Disconnect
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

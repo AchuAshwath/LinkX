@@ -9,22 +9,22 @@ This document describes **industry-standard building blocks** for OAuth-based in
 - **Backend API server (e.g. FastAPI, Django, Express, Spring)**
   - **Why**: Acts as the **confidential client** in OAuth terms. Holds the OAuth client secret, performs authorization code exchange, stores tokens, and calls provider APIs.
   - **Key responsibilities**:
-    - Expose `/oauth/authorize` and `/oauth/callback` endpoints.
+    - Expose `/oauth/{provider}/authorize` and `/oauth/{provider}/callback` endpoints.
     - Perform token exchange and refresh.
-    - Store/rotate tokens and manage user connections.
+    - Store/rotate tokens and manage persona connections.
     - Enforce business rules (who can connect, scopes, rate limits).
 
 - **Frontend SPA / Web client (e.g. React, Next.js, Vue)**
   - **Why**: Provides the UX—“Connect”, “Active”, “Expired”, “Reconnect”—and drives the user through the OAuth consent flow.
   - **Key responsibilities**:
-    - Initiate OAuth by calling backend `/oauth/authorize`, then redirecting the browser to the provider.
+    - Initiate OAuth by calling backend `/oauth/{provider}/authorize?persona_id=...`, then redirecting the browser to the provider.
     - Display connection state (connected / expired / error) and surface actions (connect, reconnect, disconnect).
     - Never store provider client secrets or long-lived tokens.
 
 - **Primary database (e.g. PostgreSQL, MySQL)**
-  - **Why**: Long-term, authoritative record of which user or workspace is connected to which provider accounts.
+  - **Why**: Long-term, authoritative record of which persona is connected to which provider accounts (with team access handled separately).
   - **Typical data**:
-    - `user_id` / `workspace_id`
+    - `persona_id`
     - `provider` (`"linkedin"`, `"google"`, …)
     - `external_user_id` (e.g. LinkedIn person URN)
     - Profile metadata: name, email, avatar URL
@@ -47,7 +47,7 @@ This document describes **industry-standard building blocks** for OAuth-based in
     - Retry failed provider calls with backoff.
 
 - **Message queue / event bus (optional but common) (e.g. Redis Streams, RabbitMQ, Kafka, SQS)**
-  - **Why**: Decouple “user connected account” or “token expired” events from the rest of the system.
+  - **Why**: Decouple “persona connected account” or “token expired” events from the rest of the system.
   - **Use cases**:
     - Publish `oauth.connected`, `oauth.expired`, `oauth.disconnected` events for analytics, auditing, or other services.
 
@@ -80,8 +80,8 @@ sequenceDiagram
   participant DB as PrimaryDB
 
   Browser->>Frontend: Click "Connect {Provider}"
-  Frontend->>Backend: GET /oauth/{provider}/authorize
-  Backend->>Backend: Generate state (+ PKCE if needed)
+  Frontend->>Backend: GET /oauth/{provider}/authorize?persona_id=...
+  Backend->>Backend: Generate state (csrf + persona_id + PKCE if needed)
   Backend->>TokenStore: Store state (short TTL)
   Backend-->>Frontend: { authorize_url }
   Frontend->>OAuthProvider: Redirect to authorize_url
@@ -96,14 +96,14 @@ sequenceDiagram
   Backend->>OAuthProvider: GET /userinfo (profile)
   Backend->>DB: Upsert SocialAccount / OAuthConnection
   Backend-->>Browser: Redirect to Frontend (e.g. /social-accounts?status=connected)
-  Frontend->>Backend: GET /oauth/{provider}/status
+  Frontend->>Backend: GET /oauth/{provider}/status?persona_id=...
   Backend-->>Frontend: { status: "active", expires_at, profile }
   Frontend-->>Browser: Render "Active" / "Connected" state
 ```
 
 Key properties:
 
-- **State parameter** protects against CSRF, stored server-side with a short TTL.
+- **State parameter** protects against CSRF, stored server-side with a short TTL; it also carries `persona_id` to bind the connection.
 - **Authorization code** exchanged server-side, never in the front-end.
 - **Access token** is short-lived; **refresh token** (if supported) is longer-lived.
 - **Connection status** is computed server-side and exposed via a dedicated `/status` endpoint.
@@ -143,9 +143,9 @@ flowchart TD
 ```
 
 - **API Layer (`routes`)**
-  - `GET /oauth/{provider}/authorize`: calls `OAuthService.start_authorization(user, provider)`.
+  - `GET /oauth/{provider}/authorize`: calls `OAuthService.start_authorization(user, provider, persona_id)`.
   - `GET /oauth/{provider}/callback`: calls `OAuthService.handle_callback(query_params)`.
-  - `GET /oauth/{provider}/status`: calls `OAuthService.get_status(user, provider)`.
+  - `GET /oauth/{provider}/status`: calls `OAuthService.get_status(user, provider, persona_id)`.
 
 - **Service Layer**
   - **Single responsibility**: implement OAuth flows and connection status logic.
@@ -159,6 +159,8 @@ flowchart TD
   - **TokenRepository**: read/write access + refresh tokens to secure store (Redis / DB).
   - **ConnectionRepository**: upsert and query `SocialAccount`/`OAuthConnection` records.
   - **ProviderClient**: HTTP client for provider APIs, fully isolated behind a clean interface.
+
+Access control note: connect/disconnect actions require persona role (Owner/Admin); Member can view status only.
 
 This pattern makes it easy to:
 
@@ -191,7 +193,7 @@ flowchart TD
   G -- No --> I["status = expired"]
 ```
 
-Frontend then consumes `/oauth/{provider}/status`:
+Frontend then consumes `/oauth/{provider}/status?persona_id=...`:
 
 ```json
 {
@@ -262,7 +264,7 @@ If the provider does **not** support refresh tokens (or you intentionally skip t
   - Never log full access/refresh tokens.
   - Log high-level statuses and correlation IDs for debugging.
 - **Rate-limit authorization attempts** to avoid abuse.
-- **Multi-tenant isolation**: make sure tokens are correctly scoped per user/workspace.
+- **Multi-tenant isolation**: make sure tokens and connection records are correctly scoped per persona (and not shared across teams without explicit persona access).
 
 ---
 
