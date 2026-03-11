@@ -210,6 +210,21 @@ class Post(TimestampedUUIDModel, PostBase, table=True):
         default=None,
         sa_type=DateTime(timezone=True),  # type: ignore
     )
+    publishing_started_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    retry_count: int = 0
+    last_retry_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    next_retry_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    error_code: str | None = Field(default=None, max_length=100)
+    error_message: str | None = Field(default=None, max_length=1000)
     likes: int = 0
     reposts: int = 0
     comments: int = 0
@@ -227,6 +242,12 @@ class PostPublic(PostBase):
     owner_id: uuid.UUID
     persona_id: uuid.UUID | None = None
     published_at: datetime | None = None
+    publishing_started_at: datetime | None = None
+    retry_count: int = 0
+    last_retry_at: datetime | None = None
+    next_retry_at: datetime | None = None
+    error_code: str | None = None
+    error_message: str | None = None
     likes: int = 0
     reposts: int = 0
     comments: int = 0
@@ -239,6 +260,14 @@ class PostPublic(PostBase):
 class PostsPublic(SQLModel):
     data: list[PostPublic]
     count: int
+
+
+class PublishErrorResponse(SQLModel):
+    error: str
+    message: str
+    retryable: bool
+    details: dict[str, Any] | None = None
+    trace_id: str
 
 
 # --- SocialAccount (OAuth / LinkedIn profile metadata) ---

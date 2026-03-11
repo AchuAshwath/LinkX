@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 import time
 from typing import Any
 from urllib.parse import quote
@@ -13,6 +14,26 @@ from app.core.redis import get_redis
 
 class LinkedInPostError(HTTPException):
     """Specialized error for LinkedIn post operations."""
+
+    def __init__(
+        self,
+        *,
+        status_code: int,
+        detail: str,
+        code: str = "linkedin_publish_failed",
+        retryable: bool = False,
+        details: dict[str, Any] | None = None,
+        trace_id: str | None = None,
+    ) -> None:
+        self.code = code
+        self.retryable = retryable
+        self.details = details or {}
+        self.trace_id = trace_id or str(uuid.uuid4())
+        super().__init__(status_code=status_code, detail=detail)
+
+
+def _is_retryable_status(*, status_code: int) -> bool:
+    return status_code == status.HTTP_429_TOO_MANY_REQUESTS or status_code >= 500
 
 
 _LINKEDIN_VERSION = "202511"
@@ -48,6 +69,9 @@ class LinkedInPostClient:
             raise LinkedInPostError(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="LinkedIn account not connected. Please connect LinkedIn first.",
+                code="linkedin_not_connected",
+                retryable=False,
+                details={"platform": "linkedin"},
             )
 
         try:
@@ -56,15 +80,22 @@ class LinkedInPostClient:
             raise LinkedInPostError(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid LinkedIn token payload. Please reconnect LinkedIn.",
+                code="linkedin_token_invalid",
+                retryable=False,
+                details={"platform": "linkedin"},
             )
 
-        access_token: str = payload.get("access_token")  # type: ignore[assignment]
+        raw_access_token = payload.get("access_token")
+        access_token = raw_access_token if isinstance(raw_access_token, str) else ""
         expires_at = payload.get("expires_at")
 
         if not access_token:
             raise LinkedInPostError(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="LinkedIn access token missing. Please reconnect LinkedIn.",
+                code="linkedin_token_missing",
+                retryable=False,
+                details={"platform": "linkedin"},
             )
 
         now = time.time()
@@ -73,12 +104,18 @@ class LinkedInPostClient:
                 raise LinkedInPostError(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="LinkedIn session has expired. Please reconnect LinkedIn.",
+                    code="linkedin_token_expired",
+                    retryable=False,
+                    details={"platform": "linkedin"},
                 )
         except Exception:
             # If expires_at cannot be parsed, treat it as invalid and ask for reconnect
             raise LinkedInPostError(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="LinkedIn session is invalid. Please reconnect LinkedIn.",
+                code="linkedin_session_invalid",
+                retryable=False,
+                details={"platform": "linkedin"},
             )
 
         return access_token
@@ -129,12 +166,19 @@ class LinkedInPostClient:
                 raise LinkedInPostError(
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail=f"Error communicating with LinkedIn: {exc}",
+                    code="linkedin_network_error",
+                    retryable=True,
+                    details={"platform": "linkedin"},
                 )
 
         if resp.status_code >= 400:
+            retryable = _is_retryable_status(status_code=resp.status_code)
             raise LinkedInPostError(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="LinkedIn rejected the post. Please try again or reconnect LinkedIn.",
+                code="linkedin_publish_failed",
+                retryable=retryable,
+                details={"platform": "linkedin", "status_code": resp.status_code},
             )
 
         post_urn = resp.headers.get("x-restli-id")
@@ -146,6 +190,9 @@ class LinkedInPostClient:
             raise LinkedInPostError(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="LinkedIn did not return a post id. Please try again later.",
+                code="linkedin_missing_post_id",
+                retryable=True,
+                details={"platform": "linkedin"},
             )
 
         return str(post_urn)
@@ -183,18 +230,28 @@ class LinkedInPostClient:
                 raise LinkedInPostError(
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail=f"Error communicating with LinkedIn: {exc}",
+                    code="linkedin_network_error",
+                    retryable=True,
+                    details={"platform": "linkedin"},
                 )
 
         if resp.status_code == status.HTTP_404_NOT_FOUND:
             raise LinkedInPostError(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="LinkedIn post no longer exists. Please create a new post.",
+                code="linkedin_post_not_found",
+                retryable=False,
+                details={"platform": "linkedin", "status_code": resp.status_code},
             )
 
         if resp.status_code >= 400:
+            retryable = _is_retryable_status(status_code=resp.status_code)
             raise LinkedInPostError(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="LinkedIn could not update the post. Please try again.",
+                code="linkedin_update_failed",
+                retryable=retryable,
+                details={"platform": "linkedin", "status_code": resp.status_code},
             )
 
     async def delete_post(
@@ -223,13 +280,20 @@ class LinkedInPostClient:
                 raise LinkedInPostError(
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail=f"Error communicating with LinkedIn: {exc}",
+                    code="linkedin_network_error",
+                    retryable=True,
+                    details={"platform": "linkedin"},
                 )
 
         if resp.status_code in (status.HTTP_404_NOT_FOUND, status.HTTP_204_NO_CONTENT):
             return
 
         if resp.status_code >= 400:
+            retryable = _is_retryable_status(status_code=resp.status_code)
             raise LinkedInPostError(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="LinkedIn could not delete the post. Please try again.",
+                code="linkedin_delete_failed",
+                retryable=retryable,
+                details={"platform": "linkedin", "status_code": resp.status_code},
             )

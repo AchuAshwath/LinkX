@@ -7,6 +7,14 @@ function extractErrorMessage(err: ApiError): string {
   }
 
   const errDetail = (err.body as any)?.detail
+  if (errDetail && typeof errDetail === "object") {
+    if (typeof errDetail.message === "string") {
+      return errDetail.message
+    }
+    if (typeof errDetail.error === "string") {
+      return errDetail.error
+    }
+  }
   if (Array.isArray(errDetail) && errDetail.length > 0) {
     return errDetail[0].msg
   }
