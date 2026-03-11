@@ -47,6 +47,7 @@ export type NewPassword = {
 
 export type PostCreate = {
     content: string;
+    persona_id: string;
     image_url?: (string | null);
     platform?: string;
     status?: string;
@@ -60,6 +61,7 @@ export type PostPublic = {
     status?: string;
     id: string;
     owner_id: string;
+    persona_id?: (string | null);
     scheduled_at: (string | null);
     published_at: (string | null);
     likes: number;
@@ -80,6 +82,7 @@ export type PostsPublic = {
 export type PostUpdate = {
     content?: (string | null);
     image_url?: (string | null);
+    persona_id?: (string | null);
     platform?: (string | null);
     scheduled_at?: (string | null);
     status?: (string | null);
@@ -208,6 +211,7 @@ export type LoginRecoverPasswordHtmlContentData = {
 export type LoginRecoverPasswordHtmlContentResponse = (string);
 
 export type PostsReadPostsData = {
+    persona_id?: (string | null);
     limit?: number;
     skip?: number;
     /**

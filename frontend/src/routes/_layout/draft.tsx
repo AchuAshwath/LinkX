@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router"
-import * as React from "react"
 
 import { PromptDraftStudio } from "@/components/chat/PromptDraftStudio"
 
@@ -15,9 +14,7 @@ export const Route = createFileRoute("/_layout/draft")({
 })
 
 function DraftPage() {
-  return (
-    <PromptDraftStudio />
-  )
+  return <PromptDraftStudio />
 }
 
 export default DraftPage

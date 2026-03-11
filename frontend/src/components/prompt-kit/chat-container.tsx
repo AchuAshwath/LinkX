@@ -39,7 +39,7 @@ export function ChatContainerRoot({
     if (isAtBottom) {
       el.scrollTop = el.scrollHeight
     }
-  }, [children])
+  }, [])
 
   return (
     <div
@@ -66,4 +66,3 @@ export function ChatContainerScrollAnchor({
 }: ChatContainerScrollAnchorProps) {
   return <div className={cn("h-px w-full", className)} />
 }
-

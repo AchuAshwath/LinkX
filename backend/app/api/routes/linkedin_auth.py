@@ -222,8 +222,12 @@ async def linkedin_callback(
     try:
         r = get_redis()
         raw_state = r.get(_redis_state_key(state))
-        if raw_state:
-            raw_value = raw_state.decode("utf-8") if isinstance(raw_state, bytes) else raw_state
+        raw_value: str | None = None
+        if isinstance(raw_state, bytes):
+            raw_value = raw_state.decode("utf-8")
+        elif isinstance(raw_state, str):
+            raw_value = raw_state
+        if raw_value:
             payload = json.loads(raw_value)
             user_id = str(payload.get("user_id")) if payload.get("user_id") else None
             persona_id = (

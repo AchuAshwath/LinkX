@@ -218,10 +218,12 @@ export class PostsService {
      * Read Posts
      * Retrieve posts for current user.
      *
+     * - **persona_id**: Required persona id for post scope
      * - **status**: Optional filter by post status
      * - **skip**: Number of posts to skip (for pagination)
      * - **limit**: Maximum number of posts to return (1-100)
      * @param data The data for the request.
+     * @param data.persona_id
      * @param data.status Filter by status: draft, scheduled, published, failed
      * @param data.skip
      * @param data.limit
@@ -233,6 +235,7 @@ export class PostsService {
             method: 'GET',
             url: '/api/v1/posts/',
             query: {
+                persona_id: data.persona_id,
                 status: data.status,
                 skip: data.skip,
                 limit: data.limit

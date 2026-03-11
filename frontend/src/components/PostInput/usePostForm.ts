@@ -4,11 +4,13 @@ import { useCallback, useState } from "react"
 import { PostsService } from "@/client"
 import type { Platform } from "@/components/Common/PlatformSelector"
 import useCustomToast from "@/hooks/useCustomToast"
+import { usePersona } from "@/hooks/usePersona"
 import { handleError } from "@/utils"
 
 export function usePostForm() {
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
+  const { selectedPersonaId } = usePersona()
   const [content, setContent] = useState("")
   const [scheduledAt, setScheduledAt] = useState<Date | undefined>()
   const [channel, setChannel] = useState<Platform>("linkedin")
@@ -22,6 +24,7 @@ export function usePostForm() {
       platform: string
       scheduled_at?: string
       status: string
+      persona_id: string
     }) => {
       return await PostsService.createPost({ requestBody: data })
     },
@@ -50,6 +53,11 @@ export function usePostForm() {
     (action: "draft" | "schedule" | "post") => {
       if (content.trim().length === 0) return
 
+      if (!selectedPersonaId) {
+        showErrorToast("Select a persona before creating a post")
+        return
+      }
+
       // Validate schedule action
       if (action === "schedule" && !scheduledAt) {
         showErrorToast("Please select a date and time to schedule the post")
@@ -64,9 +72,11 @@ export function usePostForm() {
         platform: string
         scheduled_at?: string
         status: string
+        persona_id: string
       } = {
         content: content.trim(),
         platform: platformForApi,
+        persona_id: selectedPersonaId,
         status:
           action === "draft"
             ? "draft"
@@ -81,7 +91,14 @@ export function usePostForm() {
 
       createPostMutation.mutate(postData)
     },
-    [content, scheduledAt, channel, createPostMutation, showErrorToast],
+    [
+      channel,
+      content,
+      createPostMutation,
+      scheduledAt,
+      selectedPersonaId,
+      showErrorToast,
+    ],
   )
 
   const handleContentChange = useCallback(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.models import Persona, PersonaAccess, TeamMembership
 
@@ -56,10 +56,13 @@ def get_persona_role(
 
     rows = session.exec(
         select(PersonaAccess.role)
-        .join(TeamMembership, PersonaAccess.team_id == TeamMembership.team_id)
+        .join(
+            TeamMembership,
+            col(PersonaAccess.team_id) == col(TeamMembership.team_id),
+        )
         .where(
-            PersonaAccess.persona_id == persona_id,
-            TeamMembership.user_id == user_id,
+            col(PersonaAccess.persona_id) == persona_id,
+            col(TeamMembership.user_id) == user_id,
         )
     ).all()
     roles = [normalize_role(role=row) for row in rows]

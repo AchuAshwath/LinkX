@@ -84,7 +84,10 @@ def create_post(*, session: Session, post_in: PostCreate, owner_id: uuid.UUID) -
     if post_in.status == "scheduled" and post_in.scheduled_at is None:
         raise ValueError("scheduled_at is required when status is 'scheduled'")
 
-    db_post = Post.model_validate(post_in, update={"owner_id": owner_id})
+    db_post = Post.model_validate(
+        post_in,
+        update={"owner_id": owner_id, "persona_id": post_in.persona_id},
+    )
     session.add(db_post)
     session.commit()
     session.refresh(db_post)
@@ -100,6 +103,7 @@ def get_posts(
     *,
     session: Session,
     owner_id: uuid.UUID | None = None,
+    persona_id: uuid.UUID | None = None,
     status: str | None = None,
     skip: int = 0,
     limit: int = 100,
@@ -111,6 +115,10 @@ def get_posts(
     if owner_id:
         statement = statement.where(Post.owner_id == owner_id)
         count_statement = count_statement.where(Post.owner_id == owner_id)
+
+    if persona_id:
+        statement = statement.where(Post.persona_id == persona_id)
+        count_statement = count_statement.where(Post.persona_id == persona_id)
 
     if status:
         statement = statement.where(Post.status == status)

@@ -46,6 +46,7 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import useCustomToast from "@/hooks/useCustomToast"
+import { usePersona } from "@/hooks/usePersona"
 import {
   handleError,
   transformToDraftPost,
@@ -66,6 +67,7 @@ export const Route = createFileRoute("/_layout/posts")({
 
 function PostsPage() {
   const queryClient = useQueryClient()
+  const { selectedPersonaId } = usePersona()
   const [activeTab, setActiveTab] = React.useState<
     "drafts" | "scheduled" | "posted"
   >("drafts")
@@ -105,15 +107,16 @@ function PostsPage() {
     isLoading: isLoadingPosts,
     error: postsError,
   } = useQuery({
-    queryKey: ["posts", statusFilter],
+    queryKey: ["posts", selectedPersonaId, statusFilter],
     queryFn: async () => {
       return await PostsService.readPosts({
+        persona_id: selectedPersonaId,
         status: statusFilter,
         skip: 0,
         limit: 100,
       })
     },
-    enabled: true, // Always fetch when component mounts
+    enabled: Boolean(selectedPersonaId),
     staleTime: 30000, // Consider data fresh for 30 seconds
   })
 
@@ -210,6 +213,7 @@ function PostsPage() {
     }: {
       postId: string
       data: {
+        persona_id?: string
         content?: string
         image_url?: string
         platform?: string
@@ -282,48 +286,59 @@ function PostsPage() {
     setEditingPostId(postId)
   }
 
-  const handleSave = (postId: string) => {
-    // Find the post being edited
-    let postToUpdate: DraftPostData | ScheduledPostData | PostedData | undefined
+  const handleSaveDraft = (
+    postId: string,
+    data: { content: string; platform: Platform },
+  ) => {
+    const platformForApi =
+      data.platform === "x" || data.platform === "all"
+        ? "linkedin"
+        : data.platform
+    updateMutation.mutate({
+      postId,
+      data: {
+        persona_id: selectedPersonaId || undefined,
+        content: data.content,
+        platform: platformForApi,
+      },
+    })
+  }
 
-    if (activeTab === "drafts") {
-      postToUpdate = draftPosts.find((p) => p.id === postId)
-    } else if (activeTab === "scheduled") {
-      postToUpdate = scheduledPosts.find((p) => p.id === postId)
-    } else if (activeTab === "posted") {
-      postToUpdate = postedPosts.find((p) => p.id === postId)
-    }
+  const handleSaveScheduled = (
+    postId: string,
+    data: { content: string; platform: Platform; scheduledAt: Date },
+  ) => {
+    const platformForApi =
+      data.platform === "x" || data.platform === "all"
+        ? "linkedin"
+        : data.platform
+    updateMutation.mutate({
+      postId,
+      data: {
+        persona_id: selectedPersonaId || undefined,
+        content: data.content,
+        platform: platformForApi,
+        scheduled_at: data.scheduledAt.toISOString(),
+      },
+    })
+  }
 
-    if (!postToUpdate) {
-      showErrorToast("Post not found")
-      return
-    }
-
-    // Prepare update data
-    const updateData: {
-      content?: string
-      image_url?: string
-      platform?: string
-      scheduled_at?: string
-      status?: string
-    } = {
-      content: postToUpdate.content,
-      image_url: postToUpdate.imageUrl || undefined,
-      platform:
-        postToUpdate.platform === "x" || postToUpdate.platform === "all"
-          ? "linkedin"
-          : (postToUpdate.platform ?? "linkedin"),
-    }
-
-    // Add scheduled_at for scheduled posts
-    if ("scheduledAt" in postToUpdate && postToUpdate.scheduledAt) {
-      updateData.scheduled_at =
-        typeof postToUpdate.scheduledAt === "string"
-          ? postToUpdate.scheduledAt
-          : postToUpdate.scheduledAt.toISOString()
-    }
-
-    updateMutation.mutate({ postId, data: updateData })
+  const handleSavePosted = (
+    postId: string,
+    data: { content: string; platform: Platform },
+  ) => {
+    const platformForApi =
+      data.platform === "x" || data.platform === "all"
+        ? "linkedin"
+        : data.platform
+    updateMutation.mutate({
+      postId,
+      data: {
+        persona_id: selectedPersonaId || undefined,
+        content: data.content,
+        platform: platformForApi,
+      },
+    })
   }
 
   const handleCancel = () => {
@@ -487,7 +502,20 @@ function PostsPage() {
           <div className="w-full">
             {/* Drafts Tab */}
             <TabsContent value="drafts" className="mt-0">
-              {isLoadingPosts ? (
+              {!selectedPersonaId ? (
+                <div className="flex flex-col items-center justify-center text-center py-16 px-4">
+                  <div className="rounded-full bg-muted/50 p-6 mb-4">
+                    <FileText className="h-10 w-10 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-xl font-semibold mb-1">
+                    Select a persona
+                  </h3>
+                  <p className="text-muted-foreground text-sm max-w-sm">
+                    Choose a persona in Social Accounts to manage drafts,
+                    scheduled, and published posts.
+                  </p>
+                </div>
+              ) : isLoadingPosts ? (
                 <div className="flex flex-col items-center justify-center py-16">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   <p className="mt-4 text-sm text-muted-foreground">
@@ -514,7 +542,7 @@ function PostsPage() {
                       isEditing={editingPostId === post.id}
                       onEdit={(id) => handleDraftAction("edit", id)}
                       onDelete={(id) => handleDraftAction("delete", id)}
-                      onSave={(id) => handleSave(id)}
+                      onSave={handleSaveDraft}
                       onCancel={handleCancel}
                       onPlatformChange={handlePlatformChange}
                       onPreview={(id) => handleDraftAction("preview", id)}
@@ -555,7 +583,7 @@ function PostsPage() {
                       isEditing={editingPostId === post.id}
                       onEdit={(id) => handleScheduledAction("edit", id)}
                       onDelete={(id) => handleScheduledAction("cancel", id)}
-                      onSave={(id) => handleSave(id)}
+                      onSave={handleSaveScheduled}
                       onCancel={handleCancel}
                       onPlatformChange={handlePlatformChange}
                       onPreview={(id) => handleScheduledAction("preview", id)}
@@ -599,7 +627,7 @@ function PostsPage() {
                       onComment={(id) => handlePostAction("comment", id)}
                       onShare={(id) => handlePostAction("share", id)}
                       onEdit={(id) => handlePostEdit(id)}
-                      onSave={(id) => handleSave(id)}
+                      onSave={handleSavePosted}
                       onCancel={handleCancel}
                       onPreview={(id) => handlePostAction("preview", id)}
                       onDelete={(id) => handlePostAction("delete", id)}

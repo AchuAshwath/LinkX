@@ -1,16 +1,19 @@
-"""Posts API routes with LinkedIn integration."""
+"""Posts API routes with persona-scoped access and LinkedIn integration."""
+
+from __future__ import annotations
 
 import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
-from sqlmodel import select
+from fastapi import APIRouter, HTTPException, Query, status
+from sqlmodel import Session, select
 
 from app.api.deps import CurrentUser, SessionDep
 from app.crud import create_post, delete_post, get_post, get_posts, update_post
 from app.models import (
+    Message,
     Post,
     PostAuthor,
     PostCreate,
@@ -20,41 +23,39 @@ from app.models import (
     SocialAccount,
     User,
 )
+from app.services.access import get_persona_role, has_min_role
 from app.services.linkedin_posts import LinkedInPostClient, LinkedInPostError
 
 router = APIRouter(prefix="/posts", tags=["posts"])
 
 
 def _get_linkedin_account(
-    *, session: SessionDep, user_id: uuid.UUID
+    *, session: Session, persona_id: uuid.UUID
 ) -> SocialAccount | None:
-    """Get LinkedIn social account for a user if it exists."""
     statement = select(SocialAccount).where(
-        SocialAccount.user_id == user_id,
+        SocialAccount.persona_id == persona_id,
         SocialAccount.platform == "linkedin",
     )
     return session.exec(statement).first()
 
 
-def _get_user_details(*, session: SessionDep, user_id: uuid.UUID) -> User | None:
-    """Get user details for author info."""
+def _get_user_details(*, session: Session, user_id: uuid.UUID) -> User | None:
     return session.get(User, user_id)
 
 
 def _build_post_author(*, user: User) -> PostAuthor:
-    """Build PostAuthor from User."""
     return PostAuthor(
         name=user.full_name or user.email,
         username=user.email.split("@")[0],
-        avatarUrl=None,  # Could be extended to support avatars
+        avatarUrl=None,
     )
 
 
 def _post_to_public(*, post: Post, author: PostAuthor | None = None) -> PostPublic:
-    """Convert Post model to PostPublic response."""
     return PostPublic(
         id=post.id,
         owner_id=post.owner_id,
+        persona_id=post.persona_id,
         content=post.content,
         image_url=post.image_url,
         platform=post.platform,
@@ -71,31 +72,54 @@ def _post_to_public(*, post: Post, author: PostAuthor | None = None) -> PostPubl
     )
 
 
+def _require_persona_role(
+    *,
+    session: Session,
+    user_id: uuid.UUID,
+    persona_id: uuid.UUID,
+) -> str:
+    role = get_persona_role(
+        session=session,
+        persona_id=persona_id,
+        user_id=user_id,
+    )
+    if not role:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions",
+        )
+    return role
+
+
 @router.get("", response_model=PostsPublic)
 def read_posts(
     session: SessionDep,
     current_user: CurrentUser,
+    persona_id: uuid.UUID | None = Query(default=None),
     skip: int = 0,
     limit: int = 100,
-    status: str | None = None,
+    post_status: str | None = Query(default=None, alias="status"),
 ) -> Any:
-    """
-    Retrieve posts for the current user.
+    if persona_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="persona_id is required",
+        )
 
-    Args:
-        skip: Number of posts to skip (pagination)
-        limit: Maximum number of posts to return
-        status: Filter by status (draft, scheduled, published, failed)
-    """
+    _require_persona_role(
+        session=session,
+        user_id=current_user.id,
+        persona_id=persona_id,
+    )
+
     posts, count = get_posts(
         session=session,
-        owner_id=current_user.id,
-        status=status,
+        persona_id=persona_id,
+        status=post_status,
         skip=skip,
         limit=limit,
     )
 
-    # Get user details for author info
     user = _get_user_details(session=session, user_id=current_user.id)
     author = _build_post_author(user=user) if user else None
 
@@ -112,46 +136,61 @@ async def create_new_post(
     current_user: CurrentUser,
     post_in: PostCreate,
 ) -> Any:
-    """
-    Create a new post.
-
-    If status is 'published' and the user has LinkedIn connected,
-    the post will be published to LinkedIn immediately.
-    """
-    # Create the post in the database
-    post = create_post(session=session, post_in=post_in, owner_id=current_user.id)
-
-    # If status is published, try to publish to LinkedIn
-    if post_in.status == "published":
-        linkedin_account = _get_linkedin_account(
-            session=session, user_id=current_user.id
+    if post_in.persona_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="persona_id is required",
         )
 
-        if linkedin_account and linkedin_account.external_user_id:
-            try:
-                client = LinkedInPostClient()
-                external_post_id = await client.create_text_post(
-                    user_id=str(current_user.id),
-                    linkedin_person_id=linkedin_account.external_user_id,
-                    content=post_in.content,
-                )
+    role = _require_persona_role(
+        session=session,
+        user_id=current_user.id,
+        persona_id=post_in.persona_id,
+    )
 
-                # Update post with external_post_id and published_at
-                post.external_post_id = external_post_id
-                post.published_at = datetime.now(timezone.utc)
-                session.add(post)
-                session.commit()
-                session.refresh(post)
+    if post_in.status in {"published", "scheduled"} and not has_min_role(
+        role=role,
+        minimum="admin",
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Members can create and edit drafts only",
+        )
 
-            except LinkedInPostError as e:
-                # Don't fail the request, but mark as failed
-                post.status = "failed"
-                session.add(post)
-                session.commit()
-                session.refresh(post)
-                logging.warning(f"LinkedIn publish failed: {e.detail}")
+    post = create_post(session=session, post_in=post_in, owner_id=current_user.id)
 
-    # Get user details for author info
+    if post_in.status == "published" and post.persona_id is not None:
+        linkedin_account = _get_linkedin_account(
+            session=session, persona_id=post.persona_id
+        )
+
+        if not linkedin_account or not linkedin_account.external_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="LinkedIn account not connected for this persona",
+            )
+
+        try:
+            client = LinkedInPostClient()
+            external_post_id = await client.create_text_post(
+                persona_id=str(post.persona_id),
+                linkedin_person_id=linkedin_account.external_user_id,
+                content=post_in.content,
+            )
+
+            post.external_post_id = external_post_id
+            post.published_at = datetime.now(timezone.utc)
+            session.add(post)
+            session.commit()
+            session.refresh(post)
+
+        except LinkedInPostError as e:
+            post.status = "failed"
+            session.add(post)
+            session.commit()
+            session.refresh(post)
+            logging.warning("LinkedIn publish failed: %s", e.detail)
+
     user = _get_user_details(session=session, user_id=current_user.id)
     author = _build_post_author(user=user) if user else None
 
@@ -165,29 +204,31 @@ def read_post(
     current_user: CurrentUser,
     post_id: uuid.UUID,
 ) -> Any:
-    """Get a specific post by ID."""
     post = get_post(session=session, post_id=post_id)
 
     if not post:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Post not found",
+            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
         )
 
-    if post.owner_id != current_user.id:
+    if post.persona_id is None:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions",
+            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
         )
 
-    # Get user details for author info
+    _require_persona_role(
+        session=session,
+        user_id=current_user.id,
+        persona_id=post.persona_id,
+    )
+
     user = _get_user_details(session=session, user_id=post.owner_id)
     author = _build_post_author(user=user) if user else None
 
     return _post_to_public(post=post, author=author)
 
 
-@router.put("/{post_id}", response_model=PostPublic)
+@router.patch("/{post_id}", response_model=PostPublic)
 async def update_existing_post(
     *,
     session: SessionDep,
@@ -195,93 +236,109 @@ async def update_existing_post(
     post_id: uuid.UUID,
     post_in: PostUpdate,
 ) -> Any:
-    """
-    Update a post.
-
-    If status is changed to 'published' and the user has LinkedIn connected,
-    the post will be published to LinkedIn.
-    """
     post = get_post(session=session, post_id=post_id)
 
     if not post:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Post not found",
+            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
         )
 
-    if post.owner_id != current_user.id:
+    if post.persona_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        )
+
+    role = _require_persona_role(
+        session=session,
+        user_id=current_user.id,
+        persona_id=post.persona_id,
+    )
+
+    requested_status = post_in.status
+    if requested_status in {"published", "scheduled"} and not has_min_role(
+        role=role,
+        minimum="admin",
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions",
+            detail="Members can create and edit drafts only",
         )
 
-    # Check if we're transitioning to published status
     is_publishing = (
         post_in.status == "published"
         and post.status != "published"
-        and not post.external_post_id  # Only publish if not already published
+        and not post.external_post_id
     )
 
-    # Update the post
     post = update_post(session=session, db_post=post, post_in=post_in)
 
-    # If publishing to LinkedIn
-    if is_publishing:
+    if is_publishing and post.persona_id is not None:
         linkedin_account = _get_linkedin_account(
-            session=session, user_id=current_user.id
+            session=session, persona_id=post.persona_id
         )
 
-        if linkedin_account and linkedin_account.external_user_id:
-            try:
-                client = LinkedInPostClient()
-                external_post_id = await client.create_text_post(
-                    user_id=str(current_user.id),
-                    linkedin_person_id=linkedin_account.external_user_id,
-                    content=post.content,
-                )
+        if not linkedin_account or not linkedin_account.external_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="LinkedIn account not connected for this persona",
+            )
 
-                # Update post with external_post_id and published_at
-                post.external_post_id = external_post_id
-                post.published_at = datetime.now(timezone.utc)
-                session.add(post)
-                session.commit()
-                session.refresh(post)
+        try:
+            client = LinkedInPostClient()
+            external_post_id = await client.create_text_post(
+                persona_id=str(post.persona_id),
+                linkedin_person_id=linkedin_account.external_user_id,
+                content=post.content,
+            )
 
-            except LinkedInPostError as e:
-                # Mark as failed but don't fail the request
-                post.status = "failed"
-                session.add(post)
-                session.commit()
-                session.refresh(post)
-                logging.warning(f"LinkedIn publish failed: {e.detail}")
+            post.external_post_id = external_post_id
+            post.published_at = datetime.now(timezone.utc)
+            session.add(post)
+            session.commit()
+            session.refresh(post)
 
-    # Get user details for author info
+        except LinkedInPostError as e:
+            post.status = "failed"
+            session.add(post)
+            session.commit()
+            session.refresh(post)
+            logging.warning("LinkedIn publish failed: %s", e.detail)
+
     user = _get_user_details(session=session, user_id=post.owner_id)
     author = _build_post_author(user=user) if user else None
 
     return _post_to_public(post=post, author=author)
 
 
-@router.delete("/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{post_id}", response_model=Message)
 def delete_existing_post(
     *,
     session: SessionDep,
     current_user: CurrentUser,
     post_id: uuid.UUID,
-) -> None:
-    """Delete a post."""
+) -> Any:
     post = get_post(session=session, post_id=post_id)
 
     if not post:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Post not found",
+            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
         )
 
-    if post.owner_id != current_user.id:
+    if post.persona_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        )
+
+    role = _require_persona_role(
+        session=session,
+        user_id=current_user.id,
+        persona_id=post.persona_id,
+    )
+    if not has_min_role(role=role, minimum="admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions",
+            detail="Members can create and edit drafts only",
         )
 
     delete_post(session=session, post_id=post_id)
+    return Message(message="Post deleted successfully")

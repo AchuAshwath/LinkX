@@ -14,6 +14,7 @@ from app.models import (
     PersonaAccessPublic,
     PersonaCreate,
     PersonaPublic,
+    PersonaRolePublic,
     PersonasPublic,
     PersonaUpdate,
     Team,
@@ -49,26 +50,33 @@ def read_personas(
 ) -> Any:
     shared_persona_ids = (
         select(PersonaAccess.persona_id)
-        .join(TeamMembership, PersonaAccess.team_id == TeamMembership.team_id)
-        .where(TeamMembership.user_id == current_user.id)
+        .join(
+            TeamMembership,
+            col(PersonaAccess.team_id) == col(TeamMembership.team_id),
+        )
+        .where(col(TeamMembership.user_id) == current_user.id)
     )
 
     statement = (
         select(Persona)
         .where(
             or_(
-                Persona.user_id == current_user.id,
-                Persona.id.in_(shared_persona_ids),
+                col(Persona.user_id) == current_user.id,
+                col(Persona.id).in_(shared_persona_ids),
             )
         )
         .order_by(col(Persona.created_at).desc().nulls_last())
         .offset(skip)
         .limit(limit)
     )
-    count_statement = select(func.count()).select_from(Persona).where(
-        or_(
-            Persona.user_id == current_user.id,
-            Persona.id.in_(shared_persona_ids),
+    count_statement = (
+        select(func.count())
+        .select_from(Persona)
+        .where(
+            or_(
+                col(Persona.user_id) == current_user.id,
+                col(Persona.id).in_(shared_persona_ids),
+            )
         )
     )
 
@@ -105,6 +113,25 @@ def read_persona(
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
     return persona
+
+
+@router.get("/{persona_id}/role", response_model=PersonaRolePublic)
+def read_persona_role(
+    *, session: SessionDep, current_user: CurrentUser, persona_id: uuid.UUID
+) -> Any:
+    persona = session.get(Persona, persona_id)
+    if not persona:
+        raise HTTPException(status_code=404, detail="Persona not found")
+
+    role = get_persona_role(
+        session=session,
+        persona_id=persona_id,
+        user_id=current_user.id,
+    )
+    if not role:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    return PersonaRolePublic(role=role)
 
 
 @router.put("/{persona_id}", response_model=PersonaPublic)

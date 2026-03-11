@@ -158,6 +158,10 @@ class PersonasPublic(SQLModel):
     count: int
 
 
+class PersonaRolePublic(SQLModel):
+    role: str
+
+
 class PostBase(SQLModel):
     content: str = Field(min_length=1, max_length=3000)
     image_url: str | None = Field(default=None, max_length=500)
@@ -170,7 +174,7 @@ class PostBase(SQLModel):
 
 
 class PostCreate(PostBase):
-    pass
+    persona_id: uuid.UUID | None = None
 
 
 class PostUpdate(SQLModel):
@@ -178,6 +182,7 @@ class PostUpdate(SQLModel):
     image_url: str | None = Field(default=None, max_length=500)
     platform: str | None = Field(default=None, max_length=50)
     status: str | None = Field(default=None, max_length=50)
+    persona_id: uuid.UUID | None = None
     scheduled_at: datetime | None = Field(
         default=None,
         sa_type=DateTime(timezone=True),  # type: ignore

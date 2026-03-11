@@ -17,7 +17,12 @@ from app.models import (
     TeamUpdate,
     User,
 )
-from app.services.access import ROLE_PRIORITY, get_team_role, has_min_role, normalize_role
+from app.services.access import (
+    ROLE_PRIORITY,
+    get_team_role,
+    has_min_role,
+    normalize_role,
+)
 
 router = APIRouter(prefix="/teams", tags=["teams"])
 
@@ -38,8 +43,8 @@ def read_teams(
 ) -> Any:
     statement = (
         select(Team)
-        .join(TeamMembership, TeamMembership.team_id == Team.id)
-        .where(TeamMembership.user_id == current_user.id)
+        .join(TeamMembership, col(TeamMembership.team_id) == col(Team.id))
+        .where(col(TeamMembership.user_id) == current_user.id)
         .order_by(col(Team.created_at).desc().nulls_last())
         .offset(skip)
         .limit(limit)
@@ -47,8 +52,8 @@ def read_teams(
     count_statement = (
         select(func.count())
         .select_from(Team)
-        .join(TeamMembership, TeamMembership.team_id == Team.id)
-        .where(TeamMembership.user_id == current_user.id)
+        .join(TeamMembership, col(TeamMembership.team_id) == col(Team.id))
+        .where(col(TeamMembership.user_id) == current_user.id)
     )
 
     teams = session.exec(statement).all()
@@ -208,7 +213,9 @@ def remove_team_member(
 
     if normalize_role(role=membership.role) == "owner":
         owner_count = session.exec(
-            select(func.count()).select_from(TeamMembership).where(
+            select(func.count())
+            .select_from(TeamMembership)
+            .where(
                 TeamMembership.team_id == team_id,
                 TeamMembership.role == "owner",
             )
