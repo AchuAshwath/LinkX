@@ -132,6 +132,36 @@ class Persona(TimestampedUUIDModel, table=True):
     description: str | None = Field(default=None, max_length=500)
 
 
+class PersonaBase(SQLModel):
+    name: str = Field(max_length=255)
+    description: str | None = Field(default=None, max_length=500)
+
+
+class PersonaCreate(PersonaBase):
+    pass
+
+
+class PersonaUpdate(SQLModel):
+    name: str | None = Field(default=None, max_length=255)
+    description: str | None = Field(default=None, max_length=500)
+
+
+class PersonaPublic(PersonaBase):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class PersonasPublic(SQLModel):
+    data: list[PersonaPublic]
+    count: int
+
+
+class PersonaRolePublic(SQLModel):
+    role: str
+
+
 class PostBase(SQLModel):
     content: str = Field(min_length=1, max_length=3000)
     image_url: str | None = Field(default=None, max_length=500)
@@ -144,7 +174,7 @@ class PostBase(SQLModel):
 
 
 class PostCreate(PostBase):
-    pass
+    persona_id: uuid.UUID | None = None
 
 
 class PostUpdate(SQLModel):
@@ -152,6 +182,7 @@ class PostUpdate(SQLModel):
     image_url: str | None = Field(default=None, max_length=500)
     platform: str | None = Field(default=None, max_length=50)
     status: str | None = Field(default=None, max_length=50)
+    persona_id: uuid.UUID | None = None
     scheduled_at: datetime | None = Field(
         default=None,
         sa_type=DateTime(timezone=True),  # type: ignore
@@ -179,6 +210,21 @@ class Post(TimestampedUUIDModel, PostBase, table=True):
         default=None,
         sa_type=DateTime(timezone=True),  # type: ignore
     )
+    publishing_started_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    retry_count: int = 0
+    last_retry_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    next_retry_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    error_code: str | None = Field(default=None, max_length=100)
+    error_message: str | None = Field(default=None, max_length=1000)
     likes: int = 0
     reposts: int = 0
     comments: int = 0
@@ -196,6 +242,12 @@ class PostPublic(PostBase):
     owner_id: uuid.UUID
     persona_id: uuid.UUID | None = None
     published_at: datetime | None = None
+    publishing_started_at: datetime | None = None
+    retry_count: int = 0
+    last_retry_at: datetime | None = None
+    next_retry_at: datetime | None = None
+    error_code: str | None = None
+    error_message: str | None = None
     likes: int = 0
     reposts: int = 0
     comments: int = 0
@@ -208,6 +260,14 @@ class PostPublic(PostBase):
 class PostsPublic(SQLModel):
     data: list[PostPublic]
     count: int
+
+
+class PublishErrorResponse(SQLModel):
+    error: str
+    message: str
+    retryable: bool
+    details: dict[str, Any] | None = None
+    trace_id: str
 
 
 # --- SocialAccount (OAuth / LinkedIn profile metadata) ---
@@ -274,6 +334,32 @@ class Team(TimestampedUUIDModel, table=True):
     description: str | None = Field(default=None, max_length=500)
 
 
+class TeamBase(SQLModel):
+    name: str = Field(max_length=255)
+    description: str | None = Field(default=None, max_length=500)
+
+
+class TeamCreate(TeamBase):
+    pass
+
+
+class TeamUpdate(SQLModel):
+    name: str | None = Field(default=None, max_length=255)
+    description: str | None = Field(default=None, max_length=500)
+
+
+class TeamPublic(TeamBase):
+    id: uuid.UUID
+    owner_user_id: uuid.UUID
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class TeamsPublic(SQLModel):
+    data: list[TeamPublic]
+    count: int
+
+
 class TeamMembership(SQLModel, table=True):
     """Join table between users and teams.
 
@@ -281,6 +367,7 @@ class TeamMembership(SQLModel, table=True):
     replaced or complemented by a ROLE dimension table.
     """
 
+    __tablename__ = "team_membership"
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     user_id: uuid.UUID = Field(
         foreign_key="user.id",
@@ -293,3 +380,50 @@ class TeamMembership(SQLModel, table=True):
         ondelete="CASCADE",
     )
     role: str = Field(default="member", max_length=50)
+
+
+class TeamMembershipCreate(SQLModel):
+    user_id: uuid.UUID
+    role: str = Field(default="member", max_length=50)
+
+
+class TeamMembershipPublic(SQLModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    team_id: uuid.UUID
+    role: str
+
+
+class PersonaAccess(TimestampedUUIDModel, table=True):
+    __tablename__ = "persona_access"
+    persona_id: uuid.UUID = Field(
+        foreign_key="persona.id",
+        nullable=False,
+        ondelete="CASCADE",
+    )
+    team_id: uuid.UUID = Field(
+        foreign_key="team.id",
+        nullable=False,
+        ondelete="CASCADE",
+    )
+    granted_by_user_id: uuid.UUID = Field(
+        foreign_key="user.id",
+        nullable=False,
+        ondelete="CASCADE",
+    )
+    role: str = Field(default="member", max_length=50)
+
+
+class PersonaAccessCreate(SQLModel):
+    team_id: uuid.UUID
+    role: str = Field(default="member", max_length=50)
+
+
+class PersonaAccessPublic(SQLModel):
+    id: uuid.UUID
+    persona_id: uuid.UUID
+    team_id: uuid.UUID
+    granted_by_user_id: uuid.UUID
+    role: str
+    created_at: datetime | None = None
+    updated_at: datetime | None = None

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { Home as HomeIcon, Loader2 } from "lucide-react"
 import * as React from "react"
-import { PostsService } from "@/client"
+import { OpenAPI, PostsService } from "@/client"
 import type { Platform } from "@/components/Common/PlatformSelector"
 import type { PostedData } from "@/components/Post/Posted"
 import { Posted } from "@/components/Post/Posted"
@@ -31,11 +31,8 @@ import {
 import { LoadingButton } from "@/components/ui/loading-button"
 import useAuth from "@/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
-import {
-  handleError,
-  transformToPostedPost,
-  transformToScheduledPost,
-} from "@/utils"
+import { usePersona } from "@/hooks/usePersona"
+import { transformToPostedPost, transformToScheduledPost } from "@/utils"
 
 // Union type for timeline posts
 type TimelinePost =
@@ -56,6 +53,10 @@ export const Route = createFileRoute("/_layout/home")({
 function TimelinePage() {
   const queryClient = useQueryClient()
   const { user } = useAuth()
+  const { selectedPersonaId } = usePersona()
+  const [personaRole, setPersonaRole] = React.useState<
+    "owner" | "admin" | "member" | null
+  >(null)
 
   // Filter state
   const [dateFilter, setDateFilter] = React.useState<string>("all")
@@ -79,27 +80,65 @@ function TimelinePage() {
 
   const { showSuccessToast, showErrorToast } = useCustomToast()
 
+  React.useEffect(() => {
+    const loadPersonaRole = async () => {
+      if (!selectedPersonaId || !OpenAPI.BASE) {
+        setPersonaRole(null)
+        return
+      }
+      try {
+        const res = await fetch(
+          `${OpenAPI.BASE}/api/v1/personas/${selectedPersonaId}/role`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("access_token") || ""}`,
+            },
+          },
+        )
+        if (!res.ok) {
+          setPersonaRole(null)
+          return
+        }
+        const data = (await res.json()) as {
+          role: "owner" | "admin" | "member"
+        }
+        setPersonaRole(data.role)
+      } catch {
+        setPersonaRole(null)
+      }
+    }
+    loadPersonaRole()
+  }, [selectedPersonaId])
+
+  const canPublishOrSchedule =
+    personaRole === "owner" || personaRole === "admin"
+
   // Fetch scheduled and published posts for timeline
   const { data: scheduledData, isLoading: isLoadingScheduled } = useQuery({
-    queryKey: ["posts", "scheduled"],
+    queryKey: ["posts", selectedPersonaId, "scheduled"],
     queryFn: async () => {
       return await PostsService.readPosts({
+        persona_id: selectedPersonaId,
         status: "scheduled",
         skip: 0,
         limit: 100,
       })
     },
+    enabled: Boolean(selectedPersonaId),
   })
 
   const { data: publishedData, isLoading: isLoadingPublished } = useQuery({
-    queryKey: ["posts", "published"],
+    queryKey: ["posts", selectedPersonaId, "published"],
     queryFn: async () => {
       return await PostsService.readPosts({
+        persona_id: selectedPersonaId,
         status: "published",
         skip: 0,
         limit: 100,
       })
     },
+    enabled: Boolean(selectedPersonaId),
   })
 
   // Transform API data to timeline posts
@@ -163,7 +202,10 @@ function TimelinePage() {
         queryClient.invalidateQueries({ queryKey: ["posts"] })
       }
     },
-    onError: handleError.bind(showErrorToast),
+    onError: (error) => {
+      console.error("Failed to delete post", error)
+      showErrorToast("Failed to delete post")
+    },
   })
 
   // Update mutation
@@ -174,6 +216,7 @@ function TimelinePage() {
     }: {
       postId: string
       data: {
+        persona_id?: string
         content?: string
         image_url?: string
         platform?: string
@@ -191,13 +234,11 @@ function TimelinePage() {
       setEditingPostId(null)
       queryClient.invalidateQueries({ queryKey: ["posts"] })
     },
-    onError: handleError.bind(showErrorToast),
+    onError: (error) => {
+      console.error("Failed to update post", error)
+      showErrorToast("Failed to update post")
+    },
   })
-
-  // Handle query errors
-  React.useEffect(() => {
-    // Errors are handled by React Query's onError in useQuery
-  }, [])
 
   const handleDelete = (
     postId: string,
@@ -251,40 +292,41 @@ function TimelinePage() {
     setEditingPostId(postId)
   }
 
-  const handleSave = (postId: string) => {
-    // Find the post being edited
-    const postToUpdate = posts.find((p) => p.id === postId)
+  const handleSaveScheduled = (
+    postId: string,
+    data: { content: string; platform: Platform; scheduledAt: Date },
+  ) => {
+    const platformForApi =
+      data.platform === "x" || data.platform === "all"
+        ? "linkedin"
+        : data.platform
+    updateMutation.mutate({
+      postId,
+      data: {
+        persona_id: selectedPersonaId || undefined,
+        content: data.content,
+        platform: platformForApi,
+        scheduled_at: data.scheduledAt.toISOString(),
+      },
+    })
+  }
 
-    if (!postToUpdate) {
-      showErrorToast("Post not found")
-      return
-    }
-
-    // Prepare update data
-    const updateData: {
-      content?: string
-      image_url?: string
-      platform?: string
-      scheduled_at?: string
-      status?: string
-    } = {
-      content: postToUpdate.content,
-      image_url: postToUpdate.imageUrl || undefined,
-      platform:
-        postToUpdate.platform === "x" || postToUpdate.platform === "all"
-          ? "linkedin"
-          : (postToUpdate.platform ?? "linkedin"),
-    }
-
-    // Add scheduled_at for scheduled posts
-    if (postToUpdate.type === "scheduled" && postToUpdate.scheduledAt) {
-      updateData.scheduled_at =
-        typeof postToUpdate.scheduledAt === "string"
-          ? postToUpdate.scheduledAt
-          : postToUpdate.scheduledAt.toISOString()
-    }
-
-    updateMutation.mutate({ postId, data: updateData })
+  const handleSavePosted = (
+    postId: string,
+    data: { content: string; platform: Platform },
+  ) => {
+    const platformForApi =
+      data.platform === "x" || data.platform === "all"
+        ? "linkedin"
+        : data.platform
+    updateMutation.mutate({
+      postId,
+      data: {
+        persona_id: selectedPersonaId || undefined,
+        content: data.content,
+        platform: platformForApi,
+      },
+    })
   }
 
   const handleCancel = () => {
@@ -376,7 +418,7 @@ function TimelinePage() {
             isEditing={isEditing}
             onEdit={(id) => handleScheduledAction("edit", id)}
             onDelete={(id) => handleScheduledAction("cancel", id)}
-            onSave={(id) => handleSave(id)}
+            onSave={handleSaveScheduled}
             onCancel={handleCancel}
             onPlatformChange={handlePlatformChange}
             onPreview={(id) => handleScheduledAction("preview", id)}
@@ -393,7 +435,7 @@ function TimelinePage() {
             onComment={(id) => handlePostAction("comment", id)}
             onShare={(id) => handlePostAction("share", id)}
             onEdit={(id) => handlePostEdit(id)}
-            onSave={(id) => handleSave(id)}
+            onSave={handleSavePosted}
             onCancel={handleCancel}
             onPreview={(id) => handlePostAction("preview", id)}
             onDelete={(id) => handlePostAction("delete", id)}
@@ -418,7 +460,13 @@ function TimelinePage() {
             username={user?.full_name || user?.email || "User"}
             avatarUrl={undefined}
             onSubmit={handlePostCreated}
+            canPublishOrSchedule={canPublishOrSchedule}
           />
+          {!selectedPersonaId && (
+            <p className="mt-2 text-sm text-muted-foreground">
+              Select a persona in Social Accounts to create and view posts.
+            </p>
+          )}
         </div>
 
         {/* Timeline Posts - Scrollable */}

@@ -14,6 +14,7 @@ interface PostInputBoxProps {
   avatarUrl?: string
   onSubmit?: () => void
   onCancel?: () => void
+  canPublishOrSchedule?: boolean
 }
 
 export function PostInputBox({
@@ -21,6 +22,7 @@ export function PostInputBox({
   avatarUrl,
   onSubmit,
   onCancel,
+  canPublishOrSchedule = true,
 }: PostInputBoxProps) {
   const {
     content,
@@ -97,6 +99,7 @@ export function PostInputBox({
             isSubmitting={createPostMutation.isPending}
             isContentEmpty={content.trim().length === 0}
             actionType={actionType}
+            canPublishOrSchedule={canPublishOrSchedule}
             onActionTypeChange={setActionType}
             onImageClick={() => {
               // TODO: Implement image upload functionality

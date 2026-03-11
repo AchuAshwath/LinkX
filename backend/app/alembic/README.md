@@ -24,21 +24,51 @@ erDiagram
     UUID owner_id FK
   }
 
+  PERSONA {
+    UUID id PK
+    UUID user_id FK
+    VARCHAR name
+    VARCHAR description
+    TIMESTAMPTZ created_at
+    TIMESTAMPTZ updated_at
+  }
+
   POST {
     UUID id PK
-    UUID persona_id FK
+    UUID owner_id FK "legacy, user.id"
+    UUID persona_id FK "persona.id"
     VARCHAR content
     VARCHAR image_url
     VARCHAR platform
-    VARCHAR status
+    VARCHAR status "draft|scheduled|publishing|published|failed"
     TIMESTAMPTZ scheduled_at
     TIMESTAMPTZ published_at
+    TIMESTAMPTZ publishing_started_at
+    INT retry_count "default 0"
+    TIMESTAMPTZ last_retry_at
+    TIMESTAMPTZ next_retry_at
+    VARCHAR error_code
+    VARCHAR error_message
     INT likes
     INT reposts
     INT comments
+    VARCHAR external_post_id
     TIMESTAMPTZ created_at
     TIMESTAMPTZ updated_at
-    VARCHAR external_post_id
+  }
+
+  SOCIAL_ACCOUNT {
+    UUID id PK
+    UUID user_id FK "legacy, user.id"
+    UUID persona_id FK "persona.id"
+    VARCHAR platform "linkedin/x/..."
+    VARCHAR external_user_id
+    VARCHAR display_name
+    VARCHAR email
+    VARCHAR profile_picture_url
+    JSONB raw_profile
+    TIMESTAMPTZ created_at
+    TIMESTAMPTZ updated_at
   }
 
   TEAM {
@@ -54,41 +84,35 @@ erDiagram
     UUID id PK
     UUID user_id FK
     UUID team_id FK
-    VARCHAR role "optional: admin/member/viewer"
+    VARCHAR role "member|admin|owner"
   }
 
-  PERSONA {
-    UUID id PK
-    UUID user_id FK
-    VARCHAR name
-    VARCHAR description
-    TIMESTAMPTZ created_at
-    TIMESTAMPTZ updated_at
-  }
-
-  SOCIAL_ACCOUNT {
+  PERSONA_ACCESS {
     UUID id PK
     UUID persona_id FK
-    VARCHAR platform "linkedin/x/..."
-    VARCHAR external_user_id
-    VARCHAR display_name
-    VARCHAR email
-    VARCHAR profile_picture_url
-    JSONB raw_profile
+    UUID team_id FK
+    UUID granted_by_user_id FK
+    VARCHAR role "member|admin|owner"
     TIMESTAMPTZ created_at
     TIMESTAMPTZ updated_at
   }
 
   %% Foreign key relationships (with columns)
   ITEM }o--|| USER : "owner_id -> user.id"
+  POST }o--|| USER : "owner_id -> user.id (legacy)"
   POST }o--|| PERSONA : "persona_id -> persona.id"
+
+  PERSONA }o--|| USER : "user_id -> user.id"
+  SOCIAL_ACCOUNT }o--|| USER : "user_id -> user.id (legacy)"
+  SOCIAL_ACCOUNT }o--|| PERSONA : "persona_id -> persona.id"
 
   TEAM }o--|| USER : "owner_user_id -> user.id"
   TEAM_MEMBERSHIP }o--|| USER : "user_id -> user.id"
   TEAM_MEMBERSHIP }o--|| TEAM : "team_id -> team.id"
 
-  PERSONA }o--|| USER : "user_id -> user.id"
-  SOCIAL_ACCOUNT }o--|| PERSONA : "persona_id -> persona.id"
+  PERSONA_ACCESS }o--|| PERSONA : "persona_id -> persona.id"
+  PERSONA_ACCESS }o--|| TEAM : "team_id -> team.id"
+  PERSONA_ACCESS }o--|| USER : "granted_by_user_id -> user.id"
 ```
 
 ## Users and teams
@@ -119,7 +143,7 @@ erDiagram
     UUID id PK
     UUID user_id FK
     UUID team_id FK
-    VARCHAR role "optional: admin/member/viewer"
+    VARCHAR role "member|admin|owner"
   }
 
   %% Relationships
@@ -143,9 +167,9 @@ erDiagram
   ROLE {
     UUID id PK
     VARCHAR name
-    BOOLEAN canDraft
-    BOOLEAN canSchedule
-    BOOLEAN canPublish
+    BOOLEAN can_draft
+    BOOLEAN can_schedule
+    BOOLEAN can_publish
   }
 
   TEAM_MEMBERSHIP {
@@ -193,6 +217,7 @@ erDiagram
     VARCHAR display_name
     VARCHAR email
     VARCHAR profile_picture_url
+    JSONB raw_profile
   }
 
   %% Relationships
@@ -201,37 +226,130 @@ erDiagram
 ```
 
 - A **user** can own many **personas**.
-- Each **persona** can have at most one social account per platform (enforced later with a unique index on `(persona_id, platform)`).
+- Each **persona** can have at most one social account per platform (enforced with a unique index on `(persona_id, platform)`).
 - `SOCIAL_ACCOUNT` stores platform-specific details (profile metadata, external IDs, etc.).
 
-### Extensible: persona access and roles (future)
+### Extensible: persona access via teams (current Phase 1)
 
-Later, you can grant access to personas for specific users or teams using the same dim + join pattern as teams:
+As of Phase 1, personas are shared with teams using role-based access:
 
 ```mermaid
 erDiagram
-  ROLE {
+  PERSONA {
     UUID id PK
+    UUID user_id FK
     VARCHAR name
-    BOOLEAN canDraft
-    BOOLEAN canSchedule
-    BOOLEAN canPublish
+    VARCHAR description
+  }
+
+  TEAM {
+    UUID id PK
+    UUID owner_user_id FK
+    VARCHAR name
+    VARCHAR description
   }
 
   PERSONA_ACCESS {
     UUID id PK
     UUID persona_id FK
-    UUID user_id FK
-    UUID role_id FK
+    UUID team_id FK
+    UUID granted_by_user_id FK
+    VARCHAR role "member|admin|owner"
+  }
+
+  USER {
+    UUID id PK
+    VARCHAR email
+    VARCHAR full_name
   }
 
   %% Relationships
   PERSONA_ACCESS }o--|| PERSONA : "persona_id -> persona.id"
-  PERSONA_ACCESS }o--|| USER : "user_id -> user.id"
-  PERSONA_ACCESS }o--|| ROLE : "role_id -> role.id"
+  PERSONA_ACCESS }o--|| TEAM : "team_id -> team.id"
+  PERSONA_ACCESS }o--|| USER : "granted_by_user_id -> user.id"
 ```
 
 This allows:
 
-- Multiple users to collaborate on the same persona with different permissions.
-- Evolving your permission model without changing the core `PERSONA` or `SOCIAL_ACCOUNT` tables.
+- Personas to be shared with teams using explicit role grants.
+- Team members to inherit persona access via `PERSONA_ACCESS` with their effective role.
+- Persona owner can grant/revoke team-level access without direct user grants (v1).
+
+## Posts and scheduling reliability
+
+This section focuses on how posts relate to personas and the state machine for scheduling/publishing.
+
+### Current conceptual model (Phase 3)
+
+```mermaid
+erDiagram
+  PERSONA {
+    UUID id PK
+    UUID user_id FK
+    VARCHAR name
+    VARCHAR description
+  }
+
+  POST {
+    UUID id PK
+    UUID persona_id FK
+    UUID owner_id FK "legacy, user.id"
+    VARCHAR content
+    VARCHAR image_url
+    VARCHAR platform
+    VARCHAR status "draft|scheduled|publishing|published|failed"
+    TIMESTAMPTZ scheduled_at
+    TIMESTAMPTZ published_at
+    TIMESTAMPTZ publishing_started_at
+    INT retry_count
+    TIMESTAMPTZ last_retry_at
+    TIMESTAMPTZ next_retry_at
+    VARCHAR error_code
+    VARCHAR error_message
+    VARCHAR external_post_id
+    INT likes
+    INT reposts
+    INT comments
+  }
+
+  SOCIAL_ACCOUNT {
+    UUID id PK
+    UUID persona_id FK
+    VARCHAR platform
+    VARCHAR external_user_id
+  }
+
+  %% Relationships
+  POST }o--|| PERSONA : "persona_id -> persona.id"
+  SOCIAL_ACCOUNT }o--|| PERSONA : "persona_id -> persona.id"
+```
+
+- Each **post** belongs to exactly one **persona**.
+- Posts track their **status** through the state machine: `draft` → `scheduled` → `publishing` → `published` or `failed`.
+- Retry fields (`retry_count`, `last_retry_at`, `next_retry_at`, `error_code`, `error_message`) support automatic retry with exponential backoff.
+- `publishing_started_at` tracks when a publish attempt began.
+- `external_post_id` ensures idempotent publishing (no duplicates if scheduler runs twice).
+- `owner_id` is retained as legacy storage for backwards compatibility; `persona_id` is the primary ownership boundary.
+
+### Status transitions (Phase 3 State Machine)
+
+```
+draft
+  ↓ (schedule for later)
+scheduled
+  ↓ (wait for scheduled time)
+publishing (scheduler transitions to this before attempting publish)
+  ├─ ✓ (success) → published
+  └─ ✗ (error) → failed (non-retryable) OR remain scheduled (retryable, reschedule with backoff)
+
+failed (terminal, non-retryable error)
+  ↓ (manual retry only, admin/owner)
+scheduled (reschedule for immediate or future retry)
+```
+
+### Retry and error handling
+
+- **Retryable errors** (429 rate limit, 5xx server error, network timeout): Keep status `scheduled`, increment `retry_count`, set `next_retry_at = NOW + (60 * 2^retry_count)`.
+- **Non-retryable errors** (401 unauthorized, 400 bad request): Set status `failed`, store `error_code` and `error_message`.
+- **Max retries** (default 3): After exceeding `MAX_RETRIES`, mark as `failed` and require manual intervention.
+- **Idempotency**: If `external_post_id` is already set, do not re-publish (prevents duplicates).

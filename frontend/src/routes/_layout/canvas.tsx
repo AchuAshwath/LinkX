@@ -1,6 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router"
-import { ChevronsUpDown, LogOut, Settings, User, CreditCard, HelpCircle } from "lucide-react"
-
+import {
+  ChevronsUpDown,
+  CreditCard,
+  HelpCircle,
+  LogOut,
+  Settings,
+  User,
+} from "lucide-react"
+import { PostInputBox } from "@/components/PostInput"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -11,7 +18,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { PostInputBox } from "@/components/PostInput"
 import { getInitials } from "@/utils"
 
 export const Route = createFileRoute("/_layout/canvas")({
@@ -34,8 +40,12 @@ function UserInfo({ fullName, email }: { fullName?: string; email?: string }) {
         </AvatarFallback>
       </Avatar>
       <div className="flex flex-col justify-center items-start min-w-0 flex-1 overflow-hidden text-left">
-        <p className="text-sm font-medium text-foreground truncate w-full leading-5 text-left">{fullName}</p>
-        <p className="text-xs text-muted-foreground truncate w-full leading-4 text-left">{email}</p>
+        <p className="text-sm font-medium text-foreground truncate w-full leading-5 text-left">
+          {fullName}
+        </p>
+        <p className="text-xs text-muted-foreground truncate w-full leading-4 text-left">
+          {email}
+        </p>
       </div>
     </div>
   )
@@ -65,7 +75,9 @@ function CanvasPage() {
         {/* Profile Dropdown Component */}
         <div className="space-y-4">
           <div>
-            <h2 className="text-lg font-semibold mb-4">Profile Dropdown Component</h2>
+            <h2 className="text-lg font-semibold mb-4">
+              Profile Dropdown Component
+            </h2>
             <div className="flex justify-center">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -73,9 +85,9 @@ function CanvasPage() {
                     variant="outline"
                     className="w-full max-w-sm justify-start text-base h-auto py-2 px-3 data-[state=open]:bg-accent data-[state=open]:text-accent-foreground"
                   >
-                    <UserInfo 
-                      fullName={mockUser.full_name} 
-                      email={mockUser.email} 
+                    <UserInfo
+                      fullName={mockUser.full_name}
+                      email={mockUser.email}
                     />
                     <ChevronsUpDown className="ml-auto size-4 text-muted-foreground shrink-0" />
                   </Button>
@@ -86,9 +98,9 @@ function CanvasPage() {
                   sideOffset={4}
                 >
                   <DropdownMenuLabel className="p-0 font-normal">
-                    <UserInfo 
-                      fullName={mockUser.full_name} 
-                      email={mockUser.email} 
+                    <UserInfo
+                      fullName={mockUser.full_name}
+                      email={mockUser.email}
                     />
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />

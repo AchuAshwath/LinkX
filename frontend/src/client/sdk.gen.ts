@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PostsReadPostsData, PostsReadPostsResponse, PostsCreatePostData, PostsCreatePostResponse, PostsReadPostData, PostsReadPostResponse, PostsUpdatePostData, PostsUpdatePostResponse, PostsDeletePostData, PostsDeletePostResponse, PrivateCreateUserData, PrivateCreateUserResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
+import type { ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PostsReadPostsData, PostsReadPostsResponse, PostsCreatePostData, PostsCreatePostResponse, PostsReadPostData, PostsReadPostResponse, PostsUpdatePostData, PostsUpdatePostResponse, PostsDeletePostData, PostsDeletePostResponse, PostsPublishPostData, PostsPublishPostResponse, PostsRetryPostData, PostsRetryPostResponse, PrivateCreateUserData, PrivateCreateUserResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
 
 export class ItemsService {
     /**
@@ -218,11 +218,13 @@ export class PostsService {
      * Read Posts
      * Retrieve posts for current user.
      *
+     * - **persona_id**: Required persona id for post scope
      * - **status**: Optional filter by post status
      * - **skip**: Number of posts to skip (for pagination)
      * - **limit**: Maximum number of posts to return (1-100)
      * @param data The data for the request.
-     * @param data.status Filter by status: draft, scheduled, published, failed
+     * @param data.persona_id
+     * @param data.status Filter by status: draft, scheduled, publishing, published, failed
      * @param data.skip
      * @param data.limit
      * @returns PostsPublic Successful Response
@@ -233,6 +235,7 @@ export class PostsService {
             method: 'GET',
             url: '/api/v1/posts/',
             query: {
+                persona_id: data.persona_id,
                 status: data.status,
                 skip: data.skip,
                 limit: data.limit
@@ -333,6 +336,48 @@ export class PostsService {
         return __request(OpenAPI, {
             method: 'DELETE',
             url: '/api/v1/posts/{post_id}',
+            path: {
+                post_id: data.postId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Publish Existing Post
+     * Publish a specific post immediately.
+     * @param data The data for the request.
+     * @param data.postId
+     * @returns PostPublic Successful Response
+     * @throws ApiError
+     */
+    public static publishPost(data: PostsPublishPostData): CancelablePromise<PostsPublishPostResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/posts/{post_id}/publish',
+            path: {
+                post_id: data.postId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Retry Failed Post
+     * Retry a failed post immediately.
+     * @param data The data for the request.
+     * @param data.postId
+     * @returns PostPublic Successful Response
+     * @throws ApiError
+     */
+    public static retryPost(data: PostsRetryPostData): CancelablePromise<PostsRetryPostResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/posts/{post_id}/retry',
             path: {
                 post_id: data.postId
             },

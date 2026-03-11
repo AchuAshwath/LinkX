@@ -18,8 +18,8 @@ from sqlmodel import select
 from app.api.deps import CurrentUser, SessionDep
 from app.core.config import settings
 from app.core.redis import get_redis
-from app.models import SocialAccount
-from app.services.personas import get_or_create_persona_for_user
+from app.models import Persona, SocialAccount
+from app.services.access import get_persona_role, has_min_role
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ class LinkedInToken:
 
 
 _STATE_TTL_SECONDS = 15 * 60
-_state_store: dict[str, tuple[str, float]] = {}  # legacy fallback
+_state_store: dict[str, tuple[str, str, float]] = {}  # legacy fallback
 _token_store: dict[str, LinkedInToken] = {}  # legacy fallback
 _profile_store: dict[str, dict[str, Any]] = {}  # legacy fallback
 _redis_fallback_warning_logged = False  # flag to warn once per process
@@ -56,7 +56,7 @@ def _require_linkedin_config() -> tuple[str, str, str]:
 
 
 def _cleanup_state_store(now: float) -> None:
-    expired = [k for k, (_, exp) in _state_store.items() if exp <= now]
+    expired = [k for k, (_, __, exp) in _state_store.items() if exp <= now]
     for k in expired:
         _state_store.pop(k, None)
 
@@ -72,11 +72,19 @@ def _redis_state_key(state: str) -> str:
     return f"linkedin:oauth_state:{state}"
 
 
-def _redis_token_key(user_id: str) -> str:
+def _redis_token_key(persona_id: str) -> str:
+    return f"linkedin:token:{persona_id}"
+
+
+def _redis_token_key_legacy(user_id: str) -> str:
     return f"linkedin:token:{user_id}"
 
 
-def _redis_profile_key(user_id: str) -> str:
+def _redis_profile_key(persona_id: str) -> str:
+    return f"linkedin:profile:{persona_id}"
+
+
+def _redis_profile_key_legacy(user_id: str) -> str:
     return f"linkedin:profile:{user_id}"
 
 
@@ -106,7 +114,11 @@ def linkedin_config_check() -> dict[str, Any]:
 
 
 @router.get("/authorize")
-def linkedin_authorize(current_user: CurrentUser) -> dict[str, str]:
+def linkedin_authorize(
+    session: SessionDep,
+    current_user: CurrentUser,
+    persona_id: uuid.UUID,
+) -> dict[str, str]:
     """
     Start LinkedIn OAuth. Returns an `authorize_url` for the frontend to redirect to.
     """
@@ -118,11 +130,27 @@ def linkedin_authorize(current_user: CurrentUser) -> dict[str, str]:
     _cleanup_state_store(now)
     _cleanup_token_store(now)
 
+    role = get_persona_role(
+        session=session,
+        persona_id=persona_id,
+        user_id=current_user.id,
+    )
+    if not role or not has_min_role(role=role, minimum="admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions",
+        )
+
     state = secrets.token_urlsafe(32)
     user_id = str(current_user.id)
+    persona_id_str = str(persona_id)
     try:
         r = get_redis()
-        r.setex(_redis_state_key(state), _STATE_TTL_SECONDS, user_id)
+        r.setex(
+            _redis_state_key(state),
+            _STATE_TTL_SECONDS,
+            json.dumps({"user_id": user_id, "persona_id": persona_id_str}),
+        )
     except Exception:
         # Fallback to in-memory if Redis unavailable. Multi-worker requires Redis.
         if not _redis_fallback_warning_logged:
@@ -131,7 +159,7 @@ def linkedin_authorize(current_user: CurrentUser) -> dict[str, str]:
                 "This is unsupported in multi-worker deployments."
             )
             _redis_fallback_warning_logged = True
-        _state_store[state] = (user_id, now + _STATE_TTL_SECONDS)
+        _state_store[state] = (user_id, persona_id_str, now + _STATE_TTL_SECONDS)
 
     scope = settings.LINKEDIN_SCOPES.strip()
     authorize_url = "https://www.linkedin.com/oauth/v2/authorization?" + urlencode(
@@ -190,14 +218,21 @@ async def linkedin_callback(
     now = time.time()
     _cleanup_state_store(now)
     user_id: str | None = None
+    persona_id: str | None = None
     try:
         r = get_redis()
-        raw_user_id = r.get(_redis_state_key(state))
-        if raw_user_id:
-            if isinstance(raw_user_id, bytes):
-                user_id = raw_user_id.decode("utf-8")
-            else:
-                user_id = str(raw_user_id)
+        raw_state = r.get(_redis_state_key(state))
+        raw_value: str | None = None
+        if isinstance(raw_state, bytes):
+            raw_value = raw_state.decode("utf-8")
+        elif isinstance(raw_state, str):
+            raw_value = raw_state
+        if raw_value:
+            payload = json.loads(raw_value)
+            user_id = str(payload.get("user_id")) if payload.get("user_id") else None
+            persona_id = (
+                str(payload.get("persona_id")) if payload.get("persona_id") else None
+            )
             r.delete(_redis_state_key(state))
     except Exception as e:
         logger.warning(
@@ -206,12 +241,12 @@ async def linkedin_callback(
         )
         user_id = None
 
-    if not user_id:
+    if not user_id or not persona_id:
         state_entry = _state_store.pop(state, None)
         if state_entry:
-            user_id, _expires_at = state_entry
+            user_id, persona_id, _expires_at = state_entry
 
-    if not user_id:
+    if not user_id or not persona_id:
         logger.warning(
             "LinkedIn OAuth callback: state not found. Ensure (1) callback URL matches "
             "LINKEDIN_REDIRECT_URI, (2) same backend instance as /authorize, "
@@ -221,9 +256,30 @@ async def linkedin_callback(
 
     try:
         user_uuid = uuid.UUID(str(user_id))
+        persona_uuid = uuid.UUID(str(persona_id))
     except (TypeError, ValueError):
         logger.warning(
-            "LinkedIn OAuth callback: invalid user_id in state. user_id=%r", user_id
+            "LinkedIn OAuth callback: invalid state in OAuth callback. user_id=%r persona_id=%r",
+            user_id,
+            persona_id,
+        )
+        return _frontend_redirect()
+
+    persona = session.get(Persona, persona_uuid)
+    if not persona:
+        logger.warning("LinkedIn OAuth callback: persona not found: %s", persona_id)
+        return _frontend_redirect()
+
+    role = get_persona_role(
+        session=session,
+        persona_id=persona_uuid,
+        user_id=user_uuid,
+    )
+    if not role:
+        logger.warning(
+            "LinkedIn OAuth callback: user no longer has access to persona: user=%s persona=%s",
+            user_id,
+            persona_id,
         )
         return _frontend_redirect()
 
@@ -282,7 +338,19 @@ async def linkedin_callback(
         try:
             r = get_redis()
             r.setex(
-                _redis_token_key(user_id),
+                _redis_token_key(str(persona_uuid)),
+                max(token.expires_in, 60),
+                json.dumps(
+                    {
+                        "access_token": token.access_token,
+                        "expires_at": token.expires_at,
+                        "token_type": token.token_type,
+                    }
+                ),
+            )
+            # Legacy compatibility for user-scoped tokens in older flows.
+            r.setex(
+                _redis_token_key_legacy(user_id),
                 max(token.expires_in, 60),
                 json.dumps(
                     {
@@ -300,7 +368,7 @@ async def linkedin_callback(
                     "This is unsupported in multi-worker deployments."
                 )
                 _redis_fallback_warning_logged = True
-            _token_store[user_id] = token
+            _token_store[str(persona_uuid)] = token
 
         # OIDC userinfo: requires openid/profile/email. Optional but useful.
         profile: dict[str, Any] | None = None
@@ -318,7 +386,13 @@ async def linkedin_callback(
             try:
                 r = get_redis()
                 r.setex(
-                    _redis_profile_key(user_id),
+                    _redis_profile_key(str(persona_uuid)),
+                    max(token.expires_in, 60),
+                    json.dumps(profile),
+                )
+                # Legacy compatibility for user-scoped profile in older flows.
+                r.setex(
+                    _redis_profile_key_legacy(user_id),
                     max(token.expires_in, 60),
                     json.dumps(profile),
                 )
@@ -329,7 +403,7 @@ async def linkedin_callback(
                         "This is unsupported in multi-worker deployments."
                     )
                     _redis_fallback_warning_logged = True
-                _profile_store[user_id] = profile
+                _profile_store[str(persona_uuid)] = profile
 
             # Persist profile metadata to Postgres (generic social account)
             external_user_id = str(profile.get("sub")) if profile.get("sub") else None
@@ -339,18 +413,11 @@ async def linkedin_callback(
                 str(profile.get("picture")) if profile.get("picture") else None
             )
 
-            # Ensure there is a Persona for this user; use LinkedIn display name as a hint.
-            persona = get_or_create_persona_for_user(
-                session=session,
-                user_id=user_uuid,
-                display_name_hint=display_name,
-            )
-
             # Prefer account lookup by persona_id + platform (new world),
             # but fall back to legacy user_id + platform if needed.
             account = session.exec(
                 select(SocialAccount).where(
-                    SocialAccount.persona_id == persona.id,
+                    SocialAccount.persona_id == persona_uuid,
                     SocialAccount.platform == "linkedin",
                 )
             ).first()
@@ -366,13 +433,13 @@ async def linkedin_callback(
             if account is None:
                 account = SocialAccount(
                     user_id=user_uuid,
-                    persona_id=persona.id,
+                    persona_id=persona_uuid,
                     platform="linkedin",
                 )
 
             # Ensure legacy rows are migrated to have persona_id set.
             if account.persona_id is None:
-                account.persona_id = persona.id
+                account.persona_id = persona_uuid
 
             account.user_id = user_uuid
             account.external_user_id = external_user_id
