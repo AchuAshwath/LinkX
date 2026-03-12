@@ -12,12 +12,15 @@ import {
 import * as React from "react"
 import { z } from "zod"
 
-import { ApiError } from "@/client"
 import {
-  LinkedInService,
-  type PersonaApi,
+  ApiError,
+  AuthService,
+  LinkedinService,
+  type PersonaPublic,
   PersonasService,
-} from "@/client/social-accounts"
+  type TeamPublic,
+  TeamsService,
+} from "@/client"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -67,7 +70,7 @@ type Persona = {
   updatedAt: string
 }
 
-const mapPersona = (persona: PersonaApi): Persona => ({
+const mapPersona = (persona: PersonaPublic): Persona => ({
   id: persona.id,
   name: persona.name,
   description: persona.description ?? "",
@@ -76,7 +79,32 @@ const mapPersona = (persona: PersonaApi): Persona => ({
     persona.updated_at ?? persona.created_at ?? new Date().toISOString(),
 })
 
+type Team = {
+  id: string
+  name: string
+  description: string
+}
+
+const mapTeam = (team: TeamPublic): Team => ({
+  id: team.id,
+  name: team.name,
+  description: team.description ?? "",
+})
+
 const personaSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, { message: "Name is required." })
+    .max(255, { message: "Name must be 255 characters or fewer." }),
+  description: z
+    .string()
+    .trim()
+    .max(500, { message: "Description must be 500 characters or fewer." })
+    .optional(),
+})
+
+const teamSchema = z.object({
   name: z
     .string()
     .trim()
@@ -111,12 +139,26 @@ function SocialAccountsPage() {
     error: personasError,
   } = useQuery({
     queryKey: ["personas"],
-    queryFn: PersonasService.listPersonas,
+    queryFn: () => PersonasService.readPersonas(),
   })
 
   const personas = React.useMemo(
     () => (personasData?.data ?? []).map(mapPersona),
     [personasData],
+  )
+
+  const {
+    data: teamsData,
+    isLoading: teamsLoading,
+    error: teamsError,
+  } = useQuery({
+    queryKey: ["teams"],
+    queryFn: () => TeamsService.readTeams(),
+  })
+
+  const teams = React.useMemo(
+    () => (teamsData?.data ?? []).map(mapTeam),
+    [teamsData],
   )
 
   const selectedPersona = React.useMemo(() => {
@@ -128,6 +170,12 @@ function SocialAccountsPage() {
       handleError.bind(showErrorToast)(personasError as any)
     }
   }, [personasError, showErrorToast])
+
+  React.useEffect(() => {
+    if (teamsError) {
+      handleError.bind(showErrorToast)(teamsError as any)
+    }
+  }, [teamsError, showErrorToast])
 
   React.useEffect(() => {
     if (!personas.length) {
@@ -149,11 +197,16 @@ function SocialAccountsPage() {
   const [createPersonaOpen, setCreatePersonaOpen] = React.useState(false)
   const [editPersonaOpen, setEditPersonaOpen] = React.useState(false)
   const [deletePersonaOpen, setDeletePersonaOpen] = React.useState(false)
+  const [createTeamOpen, setCreateTeamOpen] = React.useState(false)
 
   const [personaDraft, setPersonaDraft] = React.useState<{
     name: string
     description: string
   }>({
+    name: "",
+    description: "",
+  })
+  const [teamDraft, setTeamDraft] = React.useState<{ name: string; description: string }>({
     name: "",
     description: "",
   })
@@ -186,7 +239,7 @@ function SocialAccountsPage() {
   } = useQuery({
     queryKey: ["linkedin-status", selectedPersonaId],
     queryFn: async () => {
-      return await LinkedInService.readStatus({ personaId: selectedPersonaId })
+      return await LinkedinService.linkedinStatus({ personaId: selectedPersonaId })
     },
     enabled: Boolean(selectedPersonaId),
   })
@@ -211,10 +264,22 @@ function SocialAccountsPage() {
     })
   }, [])
 
+  const resetTeamDraft = React.useCallback(() => {
+    setTeamDraft({
+      name: "",
+      description: "",
+    })
+  }, [])
+
   const openCreatePersona = React.useCallback(() => {
     resetPersonaDraft()
     setCreatePersonaOpen(true)
   }, [resetPersonaDraft])
+
+  const openCreateTeam = React.useCallback(() => {
+    resetTeamDraft()
+    setCreateTeamOpen(true)
+  }, [resetTeamDraft])
 
   const openEditPersona = React.useCallback(() => {
     if (!selectedPersona) {
@@ -308,6 +373,29 @@ function SocialAccountsPage() {
     onError: handleError.bind(showErrorToast),
   })
 
+  const createTeamMutation = useMutation({
+    mutationFn: async () => {
+      const parsed = teamSchema.safeParse(teamDraft)
+      if (!parsed.success) {
+        throw new Error(parsed.error.issues[0]?.message ?? "Invalid team details.")
+      }
+      return await TeamsService.createTeam({
+        requestBody: {
+          name: parsed.data.name,
+          description: parsed.data.description?.trim()
+            ? parsed.data.description.trim()
+            : null,
+        },
+      })
+    },
+    onSuccess: (created) => {
+      showSuccessToast(`Created team “${created.name}”.`)
+      setCreateTeamOpen(false)
+      queryClient.invalidateQueries({ queryKey: ["teams"] })
+    },
+    onError: handleError.bind(showErrorToast),
+  })
+
   const handleConnectLinkedIn = async () => {
     if (!selectedPersona) {
       showErrorToast("Select a persona first.")
@@ -315,7 +403,7 @@ function SocialAccountsPage() {
     }
     try {
       setConnecting(true)
-      const data = await LinkedInService.authorize({
+      const data = await AuthService.linkedinAuthorize({
         personaId: selectedPersona.id,
       })
       if (!data.authorize_url) throw new Error("No authorize_url in response.")
@@ -324,7 +412,7 @@ function SocialAccountsPage() {
       let message =
         e instanceof Error ? e.message : "Could not start LinkedIn OAuth."
       try {
-        const config = await LinkedInService.configCheck()
+        const config = await AuthService.linkedinConfigCheck()
         if (!config.configured) {
           message = `LinkedIn not configured in backend. ${config.hint ?? ""}`
         } else if (config.hint) {
@@ -338,10 +426,21 @@ function SocialAccountsPage() {
     }
   }
 
-  const needsReconnect = Boolean(linkedInStatus?.needs_reconnect)
-  const personaLinkedInProfile = linkedInStatus?.profile ?? null
+  type LinkedInProfile = {
+    display_name?: string
+    email?: string
+    profile_picture_url?: string
+  }
+
+  const needsReconnect = Boolean(
+    (linkedInStatus as Record<string, unknown> | undefined)?.needs_reconnect,
+  )
+  const personaLinkedInProfile =
+    ((linkedInStatus as Record<string, unknown> | undefined)
+      ?.profile as LinkedInProfile | undefined) ?? null
   const linkedInConnected = Boolean(
-    linkedInStatus?.connected && !linkedInStatus.needs_reconnect,
+    (linkedInStatus as Record<string, unknown> | undefined)?.connected &&
+      !needsReconnect,
   )
   const linkedInStatusBadge = statusLoading ? (
     <Badge variant="secondary" className="font-normal">
@@ -601,6 +700,12 @@ function SocialAccountsPage() {
                 </Badge>
               </div>
               <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Teams</span>
+                <Badge variant="secondary" className="font-semibold">
+                  {teamsLoading ? "…" : teams.length}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">
                   Platforms supported
                 </span>
@@ -614,6 +719,48 @@ function SocialAccountsPage() {
                   {selectedPersona?.name ?? "—"}
                 </span>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  Teams
+                </span>
+                <Button type="button" size="sm" variant="outline" onClick={openCreateTeam}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  New
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {teamsLoading ? (
+                <p className="text-sm text-muted-foreground">Loading teams…</p>
+              ) : teams.length ? (
+                <div className="space-y-2">
+                  {teams.slice(0, 5).map((team) => (
+                    <div key={team.id} className="rounded-md border px-3 py-2">
+                      <div className="text-sm font-medium truncate">{team.name}</div>
+                      {team.description ? (
+                        <div className="text-xs text-muted-foreground line-clamp-2">
+                          {team.description}
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                  {teams.length > 5 ? (
+                    <p className="text-xs text-muted-foreground">
+                      Showing first 5 teams.
+                    </p>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Create a team to share personas and collaborate.
+                </p>
+              )}
             </CardContent>
           </Card>
 
@@ -637,6 +784,62 @@ function SocialAccountsPage() {
           </Card>
         </div>
       </div>
+
+      <Dialog open={createTeamOpen} onOpenChange={setCreateTeamOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create team</DialogTitle>
+            <DialogDescription>
+              Teams let you share personas with role-based access.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="team-create-name">Name</Label>
+              <Input
+                id="team-create-name"
+                value={teamDraft.name}
+                onChange={(e) =>
+                  setTeamDraft((d) => ({ ...d, name: e.target.value }))
+                }
+                placeholder="Acme Social Team"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="team-create-description">
+                Description <span className="text-muted-foreground">(optional)</span>
+              </Label>
+              <Textarea
+                id="team-create-description"
+                value={teamDraft.description}
+                onChange={(e) =>
+                  setTeamDraft((d) => ({ ...d, description: e.target.value }))
+                }
+                placeholder="Who’s in this team and what it’s for…"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCreateTeamOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => createTeamMutation.mutate()}
+              disabled={createTeamMutation.isPending}
+            >
+              {createTeamMutation.isPending ? "Creating…" : "Create team"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={createPersonaOpen} onOpenChange={setCreatePersonaOpen}>
         <DialogContent>

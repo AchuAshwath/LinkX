@@ -45,40 +45,87 @@ export type NewPassword = {
     new_password: string;
 };
 
+export type PersonaAccessCreate = {
+    team_id: string;
+    role?: string;
+};
+
+export type PersonaAccessPublic = {
+    id: string;
+    persona_id: string;
+    team_id: string;
+    granted_by_user_id: string;
+    role: string;
+    created_at?: (string | null);
+    updated_at?: (string | null);
+};
+
+export type PersonaCreate = {
+    name: string;
+    description?: (string | null);
+};
+
+export type PersonaPublic = {
+    name: string;
+    description?: (string | null);
+    id: string;
+    user_id: string;
+    created_at?: (string | null);
+    updated_at?: (string | null);
+};
+
+export type PersonaRolePublic = {
+    role: string;
+};
+
+export type PersonasPublic = {
+    data: Array<PersonaPublic>;
+    count: number;
+};
+
+export type PersonaUpdate = {
+    name?: (string | null);
+    description?: (string | null);
+};
+
+export type PostAuthor = {
+    name: string;
+    username: string;
+    avatarUrl?: (string | null);
+};
+
 export type PostCreate = {
     content: string;
-    persona_id: string;
     image_url?: (string | null);
-    platform?: string;
-    status?: string;
+    platform: string;
+    status: string;
     scheduled_at?: (string | null);
+    persona_id?: (string | null);
 };
 
 export type PostPublic = {
     content: string;
     image_url?: (string | null);
-    platform?: string;
-    status?: string;
+    platform: string;
+    status: string;
+    scheduled_at?: (string | null);
     id: string;
     owner_id: string;
     persona_id?: (string | null);
-    scheduled_at: (string | null);
-    published_at: (string | null);
+    published_at?: (string | null);
     publishing_started_at?: (string | null);
     retry_count?: number;
     last_retry_at?: (string | null);
     next_retry_at?: (string | null);
     error_code?: (string | null);
     error_message?: (string | null);
-    likes: number;
-    reposts: number;
-    comments: number;
-    created_at: string;
-    updated_at: string;
+    likes?: number;
+    reposts?: number;
+    comments?: number;
+    created_at?: (string | null);
+    updated_at?: (string | null);
     external_post_id?: (string | null);
-    author?: ({
-    [key: string]: unknown;
-} | null);
+    author?: (PostAuthor | null);
 };
 
 export type PostsPublic = {
@@ -89,10 +136,10 @@ export type PostsPublic = {
 export type PostUpdate = {
     content?: (string | null);
     image_url?: (string | null);
-    persona_id?: (string | null);
     platform?: (string | null);
-    scheduled_at?: (string | null);
     status?: (string | null);
+    persona_id?: (string | null);
+    scheduled_at?: (string | null);
 };
 
 export type PrivateUserCreate = {
@@ -100,6 +147,42 @@ export type PrivateUserCreate = {
     password: string;
     full_name: string;
     is_verified?: boolean;
+};
+
+export type TeamCreate = {
+    name: string;
+    description?: (string | null);
+};
+
+export type TeamMembershipCreate = {
+    user_id: string;
+    role?: string;
+};
+
+export type TeamMembershipPublic = {
+    id: string;
+    user_id: string;
+    team_id: string;
+    role: string;
+};
+
+export type TeamPublic = {
+    name: string;
+    description?: (string | null);
+    id: string;
+    owner_user_id: string;
+    created_at?: (string | null);
+    updated_at?: (string | null);
+};
+
+export type TeamsPublic = {
+    data: Array<TeamPublic>;
+    count: number;
+};
+
+export type TeamUpdate = {
+    name?: (string | null);
+    description?: (string | null);
 };
 
 export type Token = {
@@ -159,6 +242,27 @@ export type ValidationError = {
     type: string;
 };
 
+export type AuthLinkedinConfigCheckResponse = ({
+    [key: string]: unknown;
+});
+
+export type AuthLinkedinAuthorizeData = {
+    personaId: string;
+};
+
+export type AuthLinkedinAuthorizeResponse = ({
+    [key: string]: (string);
+});
+
+export type AuthLinkedinCallbackData = {
+    code?: (string | null);
+    error?: (string | null);
+    errorDescription?: (string | null);
+    state?: (string | null);
+};
+
+export type AuthLinkedinCallbackResponse = (unknown);
+
 export type ItemsReadItemsData = {
     limit?: number;
     skip?: number;
@@ -191,6 +295,14 @@ export type ItemsDeleteItemData = {
 
 export type ItemsDeleteItemResponse = (Message);
 
+export type LinkedinLinkedinStatusData = {
+    personaId: string;
+};
+
+export type LinkedinLinkedinStatusResponse = ({
+    [key: string]: unknown;
+});
+
 export type LoginLoginAccessTokenData = {
     formData: Body_login_login_access_token;
 };
@@ -217,23 +329,78 @@ export type LoginRecoverPasswordHtmlContentData = {
 
 export type LoginRecoverPasswordHtmlContentResponse = (string);
 
-export type PostsReadPostsData = {
-    persona_id?: (string | null);
+export type PersonasReadPersonasData = {
     limit?: number;
     skip?: number;
-    /**
-     * Filter by status: draft, scheduled, publishing, published, failed
-     */
+};
+
+export type PersonasReadPersonasResponse = (PersonasPublic);
+
+export type PersonasCreatePersonaData = {
+    requestBody: PersonaCreate;
+};
+
+export type PersonasCreatePersonaResponse = (PersonaPublic);
+
+export type PersonasReadPersonaData = {
+    personaId: string;
+};
+
+export type PersonasReadPersonaResponse = (PersonaPublic);
+
+export type PersonasUpdatePersonaData = {
+    personaId: string;
+    requestBody: PersonaUpdate;
+};
+
+export type PersonasUpdatePersonaResponse = (PersonaPublic);
+
+export type PersonasDeletePersonaData = {
+    personaId: string;
+};
+
+export type PersonasDeletePersonaResponse = (Message);
+
+export type PersonasReadPersonaRoleData = {
+    personaId: string;
+};
+
+export type PersonasReadPersonaRoleResponse = (PersonaRolePublic);
+
+export type PersonasSharePersonaData = {
+    personaId: string;
+    requestBody: PersonaAccessCreate;
+};
+
+export type PersonasSharePersonaResponse = (PersonaAccessPublic);
+
+export type PersonasListPersonaAccessData = {
+    personaId: string;
+};
+
+export type PersonasListPersonaAccessResponse = (Array<PersonaAccessPublic>);
+
+export type PersonasDeletePersonaAccessData = {
+    personaId: string;
+    teamId: string;
+};
+
+export type PersonasDeletePersonaAccessResponse = (Message);
+
+export type PostsReadPostsData = {
+    limit?: number;
+    personaId?: (string | null);
+    skip?: number;
     status?: (string | null);
 };
 
 export type PostsReadPostsResponse = (PostsPublic);
 
-export type PostsCreatePostData = {
+export type PostsCreateNewPostData = {
     requestBody: PostCreate;
 };
 
-export type PostsCreatePostResponse = (PostPublic);
+export type PostsCreateNewPostResponse = (PostPublic);
 
 export type PostsReadPostData = {
     postId: string;
@@ -241,36 +408,82 @@ export type PostsReadPostData = {
 
 export type PostsReadPostResponse = (PostPublic);
 
-export type PostsUpdatePostData = {
+export type PostsUpdateExistingPostData = {
     postId: string;
     requestBody: PostUpdate;
 };
 
-export type PostsUpdatePostResponse = (PostPublic);
+export type PostsUpdateExistingPostResponse = (PostPublic);
 
-export type PostsDeletePostData = {
+export type PostsDeleteExistingPostData = {
     postId: string;
 };
 
-export type PostsDeletePostResponse = (Message);
+export type PostsDeleteExistingPostResponse = (Message);
 
-export type PostsPublishPostData = {
+export type PostsPublishExistingPostData = {
     postId: string;
 };
 
-export type PostsPublishPostResponse = (PostPublic);
+export type PostsPublishExistingPostResponse = (PostPublic);
 
-export type PostsRetryPostData = {
+export type PostsRetryFailedPostData = {
     postId: string;
 };
 
-export type PostsRetryPostResponse = (PostPublic);
+export type PostsRetryFailedPostResponse = (PostPublic);
 
 export type PrivateCreateUserData = {
     requestBody: PrivateUserCreate;
 };
 
 export type PrivateCreateUserResponse = (UserPublic);
+
+export type TeamsReadTeamsData = {
+    limit?: number;
+    skip?: number;
+};
+
+export type TeamsReadTeamsResponse = (TeamsPublic);
+
+export type TeamsCreateTeamData = {
+    requestBody: TeamCreate;
+};
+
+export type TeamsCreateTeamResponse = (TeamPublic);
+
+export type TeamsReadTeamData = {
+    teamId: string;
+};
+
+export type TeamsReadTeamResponse = (TeamPublic);
+
+export type TeamsUpdateTeamData = {
+    requestBody: TeamUpdate;
+    teamId: string;
+};
+
+export type TeamsUpdateTeamResponse = (TeamPublic);
+
+export type TeamsDeleteTeamData = {
+    teamId: string;
+};
+
+export type TeamsDeleteTeamResponse = (Message);
+
+export type TeamsAddTeamMemberData = {
+    requestBody: TeamMembershipCreate;
+    teamId: string;
+};
+
+export type TeamsAddTeamMemberResponse = (TeamMembershipPublic);
+
+export type TeamsRemoveTeamMemberData = {
+    teamId: string;
+    userId: string;
+};
+
+export type TeamsRemoveTeamMemberResponse = (Message);
 
 export type UsersReadUsersData = {
     limit?: number;

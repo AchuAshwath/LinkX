@@ -3,7 +3,77 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PostsReadPostsData, PostsReadPostsResponse, PostsCreatePostData, PostsCreatePostResponse, PostsReadPostData, PostsReadPostResponse, PostsUpdatePostData, PostsUpdatePostResponse, PostsDeletePostData, PostsDeletePostResponse, PostsPublishPostData, PostsPublishPostResponse, PostsRetryPostData, PostsRetryPostResponse, PrivateCreateUserData, PrivateCreateUserResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
+import type { AuthLinkedinConfigCheckResponse, AuthLinkedinAuthorizeData, AuthLinkedinAuthorizeResponse, AuthLinkedinCallbackData, AuthLinkedinCallbackResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, LinkedinLinkedinStatusData, LinkedinLinkedinStatusResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PersonasReadPersonasData, PersonasReadPersonasResponse, PersonasCreatePersonaData, PersonasCreatePersonaResponse, PersonasReadPersonaData, PersonasReadPersonaResponse, PersonasUpdatePersonaData, PersonasUpdatePersonaResponse, PersonasDeletePersonaData, PersonasDeletePersonaResponse, PersonasReadPersonaRoleData, PersonasReadPersonaRoleResponse, PersonasSharePersonaData, PersonasSharePersonaResponse, PersonasListPersonaAccessData, PersonasListPersonaAccessResponse, PersonasDeletePersonaAccessData, PersonasDeletePersonaAccessResponse, PostsReadPostsData, PostsReadPostsResponse, PostsCreateNewPostData, PostsCreateNewPostResponse, PostsReadPostData, PostsReadPostResponse, PostsUpdateExistingPostData, PostsUpdateExistingPostResponse, PostsDeleteExistingPostData, PostsDeleteExistingPostResponse, PostsPublishExistingPostData, PostsPublishExistingPostResponse, PostsRetryFailedPostData, PostsRetryFailedPostResponse, PrivateCreateUserData, PrivateCreateUserResponse, TeamsReadTeamsData, TeamsReadTeamsResponse, TeamsCreateTeamData, TeamsCreateTeamResponse, TeamsReadTeamData, TeamsReadTeamResponse, TeamsUpdateTeamData, TeamsUpdateTeamResponse, TeamsDeleteTeamData, TeamsDeleteTeamResponse, TeamsAddTeamMemberData, TeamsAddTeamMemberResponse, TeamsRemoveTeamMemberData, TeamsRemoveTeamMemberResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
+
+export class AuthService {
+    /**
+     * Linkedin Config Check
+     * Return LinkedIn OAuth config status (no secrets). Use to verify redirect URI
+     * and that the app is configured before starting OAuth.
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static linkedinConfigCheck(): CancelablePromise<AuthLinkedinConfigCheckResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/auth/linkedin/config-check'
+        });
+    }
+    
+    /**
+     * Linkedin Authorize
+     * Start LinkedIn OAuth. Returns an `authorize_url` for the frontend to redirect to.
+     * @param data The data for the request.
+     * @param data.personaId
+     * @returns string Successful Response
+     * @throws ApiError
+     */
+    public static linkedinAuthorize(data: AuthLinkedinAuthorizeData): CancelablePromise<AuthLinkedinAuthorizeResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/auth/linkedin/authorize',
+            query: {
+                persona_id: data.personaId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Linkedin Callback
+     * OAuth callback endpoint configured in the LinkedIn Developer Portal.
+     *
+     * Notes:
+     * - This endpoint is called by LinkedIn, not the frontend, so we validate `state`
+     * against a short-lived server-side store created in `/authorize`.
+     * - Tokens are stored server-side (Redis or in-memory fallback).
+     * - If LinkedIn sends error (e.g. user denied), we redirect to frontend with linkedin=error.
+     * @param data The data for the request.
+     * @param data.code
+     * @param data.state
+     * @param data.error
+     * @param data.errorDescription
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static linkedinCallback(data: AuthLinkedinCallbackData = {}): CancelablePromise<AuthLinkedinCallbackResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/auth/linkedin/callback',
+            query: {
+                code: data.code,
+                state: data.state,
+                error: data.error,
+                error_description: data.errorDescription
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
 
 export class ItemsService {
     /**
@@ -116,6 +186,34 @@ export class ItemsService {
     }
 }
 
+export class LinkedinService {
+    /**
+     * Linkedin Status
+     * Connected-status endpoint for the frontend Social Accounts page.
+     * - Token validity comes from Redis (source of truth for "can call LinkedIn API").
+     * - Profile metadata comes from Postgres (SocialAccount); survives Redis/restarts.
+     * - connected: True only when we have a valid (non-expired) token in Redis.
+     * - needs_reconnect: True when user has linked LinkedIn (SocialAccount exists)
+     * but token is missing or expired, so they should re-authorize.
+     * @param data The data for the request.
+     * @param data.personaId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static linkedinStatus(data: LinkedinLinkedinStatusData): CancelablePromise<LinkedinLinkedinStatusResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/linkedin/status',
+            query: {
+                persona_id: data.personaId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
 export class LoginService {
     /**
      * Login Access Token
@@ -213,30 +311,20 @@ export class LoginService {
     }
 }
 
-export class PostsService {
+export class PersonasService {
     /**
-     * Read Posts
-     * Retrieve posts for current user.
-     *
-     * - **persona_id**: Required persona id for post scope
-     * - **status**: Optional filter by post status
-     * - **skip**: Number of posts to skip (for pagination)
-     * - **limit**: Maximum number of posts to return (1-100)
+     * Read Personas
      * @param data The data for the request.
-     * @param data.persona_id
-     * @param data.status Filter by status: draft, scheduled, publishing, published, failed
      * @param data.skip
      * @param data.limit
-     * @returns PostsPublic Successful Response
+     * @returns PersonasPublic Successful Response
      * @throws ApiError
      */
-    public static readPosts(data: PostsReadPostsData = {}): CancelablePromise<PostsReadPostsResponse> {
+    public static readPersonas(data: PersonasReadPersonasData = {}): CancelablePromise<PersonasReadPersonasResponse> {
         return __request(OpenAPI, {
             method: 'GET',
-            url: '/api/v1/posts/',
+            url: '/api/v1/personas',
             query: {
-                persona_id: data.persona_id,
-                status: data.status,
                 skip: data.skip,
                 limit: data.limit
             },
@@ -247,23 +335,211 @@ export class PostsService {
     }
     
     /**
-     * Create Post
-     * Create a new post.
-     *
-     * - **content**: Post content (1-3000 characters, required)
-     * - **image_url**: Optional image URL
-     * - **platform**: Platform to post to (linkedin, x, all)
-     * - **status**: Post status (draft, scheduled, published, failed)
-     * - **scheduled_at**: Required if status is 'scheduled'
+     * Create Persona
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns PersonaPublic Successful Response
+     * @throws ApiError
+     */
+    public static createPersona(data: PersonasCreatePersonaData): CancelablePromise<PersonasCreatePersonaResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/personas',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Persona
+     * @param data The data for the request.
+     * @param data.personaId
+     * @returns PersonaPublic Successful Response
+     * @throws ApiError
+     */
+    public static readPersona(data: PersonasReadPersonaData): CancelablePromise<PersonasReadPersonaResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/personas/{persona_id}',
+            path: {
+                persona_id: data.personaId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Update Persona
+     * @param data The data for the request.
+     * @param data.personaId
+     * @param data.requestBody
+     * @returns PersonaPublic Successful Response
+     * @throws ApiError
+     */
+    public static updatePersona(data: PersonasUpdatePersonaData): CancelablePromise<PersonasUpdatePersonaResponse> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/api/v1/personas/{persona_id}',
+            path: {
+                persona_id: data.personaId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Delete Persona
+     * @param data The data for the request.
+     * @param data.personaId
+     * @returns Message Successful Response
+     * @throws ApiError
+     */
+    public static deletePersona(data: PersonasDeletePersonaData): CancelablePromise<PersonasDeletePersonaResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/personas/{persona_id}',
+            path: {
+                persona_id: data.personaId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Persona Role
+     * @param data The data for the request.
+     * @param data.personaId
+     * @returns PersonaRolePublic Successful Response
+     * @throws ApiError
+     */
+    public static readPersonaRole(data: PersonasReadPersonaRoleData): CancelablePromise<PersonasReadPersonaRoleResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/personas/{persona_id}/role',
+            path: {
+                persona_id: data.personaId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Share Persona
+     * @param data The data for the request.
+     * @param data.personaId
+     * @param data.requestBody
+     * @returns PersonaAccessPublic Successful Response
+     * @throws ApiError
+     */
+    public static sharePersona(data: PersonasSharePersonaData): CancelablePromise<PersonasSharePersonaResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/personas/{persona_id}/share',
+            path: {
+                persona_id: data.personaId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * List Persona Access
+     * @param data The data for the request.
+     * @param data.personaId
+     * @returns PersonaAccessPublic Successful Response
+     * @throws ApiError
+     */
+    public static listPersonaAccess(data: PersonasListPersonaAccessData): CancelablePromise<PersonasListPersonaAccessResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/personas/{persona_id}/access',
+            path: {
+                persona_id: data.personaId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Delete Persona Access
+     * @param data The data for the request.
+     * @param data.personaId
+     * @param data.teamId
+     * @returns Message Successful Response
+     * @throws ApiError
+     */
+    public static deletePersonaAccess(data: PersonasDeletePersonaAccessData): CancelablePromise<PersonasDeletePersonaAccessResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/personas/{persona_id}/access/{team_id}',
+            path: {
+                persona_id: data.personaId,
+                team_id: data.teamId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
+export class PostsService {
+    /**
+     * Read Posts
+     * @param data The data for the request.
+     * @param data.personaId
+     * @param data.skip
+     * @param data.limit
+     * @param data.status
+     * @returns PostsPublic Successful Response
+     * @throws ApiError
+     */
+    public static readPosts(data: PostsReadPostsData = {}): CancelablePromise<PostsReadPostsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/posts',
+            query: {
+                persona_id: data.personaId,
+                skip: data.skip,
+                limit: data.limit,
+                status: data.status
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Create New Post
      * @param data The data for the request.
      * @param data.requestBody
      * @returns PostPublic Successful Response
      * @throws ApiError
      */
-    public static createPost(data: PostsCreatePostData): CancelablePromise<PostsCreatePostResponse> {
+    public static createNewPost(data: PostsCreateNewPostData): CancelablePromise<PostsCreateNewPostResponse> {
         return __request(OpenAPI, {
             method: 'POST',
-            url: '/api/v1/posts/',
+            url: '/api/v1/posts',
             body: data.requestBody,
             mediaType: 'application/json',
             errors: {
@@ -274,9 +550,6 @@ export class PostsService {
     
     /**
      * Read Post
-     * Get a specific post by ID.
-     *
-     * - **post_id**: UUID of the post to retrieve
      * @param data The data for the request.
      * @param data.postId
      * @returns PostPublic Successful Response
@@ -296,18 +569,14 @@ export class PostsService {
     }
     
     /**
-     * Update Post
-     * Update a post.
-     *
-     * - **post_id**: UUID of the post to update
-     * - All fields are optional - only provided fields will be updated
+     * Update Existing Post
      * @param data The data for the request.
      * @param data.postId
      * @param data.requestBody
      * @returns PostPublic Successful Response
      * @throws ApiError
      */
-    public static updatePost(data: PostsUpdatePostData): CancelablePromise<PostsUpdatePostResponse> {
+    public static updateExistingPost(data: PostsUpdateExistingPostData): CancelablePromise<PostsUpdateExistingPostResponse> {
         return __request(OpenAPI, {
             method: 'PATCH',
             url: '/api/v1/posts/{post_id}',
@@ -323,16 +592,13 @@ export class PostsService {
     }
     
     /**
-     * Delete Post
-     * Delete a post.
-     *
-     * - **post_id**: UUID of the post to delete
+     * Delete Existing Post
      * @param data The data for the request.
      * @param data.postId
      * @returns Message Successful Response
      * @throws ApiError
      */
-    public static deletePost(data: PostsDeletePostData): CancelablePromise<PostsDeletePostResponse> {
+    public static deleteExistingPost(data: PostsDeleteExistingPostData): CancelablePromise<PostsDeleteExistingPostResponse> {
         return __request(OpenAPI, {
             method: 'DELETE',
             url: '/api/v1/posts/{post_id}',
@@ -344,16 +610,15 @@ export class PostsService {
             }
         });
     }
-
+    
     /**
      * Publish Existing Post
-     * Publish a specific post immediately.
      * @param data The data for the request.
      * @param data.postId
      * @returns PostPublic Successful Response
      * @throws ApiError
      */
-    public static publishPost(data: PostsPublishPostData): CancelablePromise<PostsPublishPostResponse> {
+    public static publishExistingPost(data: PostsPublishExistingPostData): CancelablePromise<PostsPublishExistingPostResponse> {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/api/v1/posts/{post_id}/publish',
@@ -365,16 +630,15 @@ export class PostsService {
             }
         });
     }
-
+    
     /**
      * Retry Failed Post
-     * Retry a failed post immediately.
      * @param data The data for the request.
      * @param data.postId
      * @returns PostPublic Successful Response
      * @throws ApiError
      */
-    public static retryPost(data: PostsRetryPostData): CancelablePromise<PostsRetryPostResponse> {
+    public static retryFailedPost(data: PostsRetryFailedPostData): CancelablePromise<PostsRetryFailedPostResponse> {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/api/v1/posts/{post_id}/retry',
@@ -403,6 +667,157 @@ export class PrivateService {
             url: '/api/v1/private/users/',
             body: data.requestBody,
             mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
+export class TeamsService {
+    /**
+     * Read Teams
+     * @param data The data for the request.
+     * @param data.skip
+     * @param data.limit
+     * @returns TeamsPublic Successful Response
+     * @throws ApiError
+     */
+    public static readTeams(data: TeamsReadTeamsData = {}): CancelablePromise<TeamsReadTeamsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/teams',
+            query: {
+                skip: data.skip,
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Create Team
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns TeamPublic Successful Response
+     * @throws ApiError
+     */
+    public static createTeam(data: TeamsCreateTeamData): CancelablePromise<TeamsCreateTeamResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/teams',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Team
+     * @param data The data for the request.
+     * @param data.teamId
+     * @returns TeamPublic Successful Response
+     * @throws ApiError
+     */
+    public static readTeam(data: TeamsReadTeamData): CancelablePromise<TeamsReadTeamResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/teams/{team_id}',
+            path: {
+                team_id: data.teamId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Update Team
+     * @param data The data for the request.
+     * @param data.teamId
+     * @param data.requestBody
+     * @returns TeamPublic Successful Response
+     * @throws ApiError
+     */
+    public static updateTeam(data: TeamsUpdateTeamData): CancelablePromise<TeamsUpdateTeamResponse> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/api/v1/teams/{team_id}',
+            path: {
+                team_id: data.teamId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Delete Team
+     * @param data The data for the request.
+     * @param data.teamId
+     * @returns Message Successful Response
+     * @throws ApiError
+     */
+    public static deleteTeam(data: TeamsDeleteTeamData): CancelablePromise<TeamsDeleteTeamResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/teams/{team_id}',
+            path: {
+                team_id: data.teamId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Add Team Member
+     * @param data The data for the request.
+     * @param data.teamId
+     * @param data.requestBody
+     * @returns TeamMembershipPublic Successful Response
+     * @throws ApiError
+     */
+    public static addTeamMember(data: TeamsAddTeamMemberData): CancelablePromise<TeamsAddTeamMemberResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/teams/{team_id}/members',
+            path: {
+                team_id: data.teamId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Remove Team Member
+     * @param data The data for the request.
+     * @param data.teamId
+     * @param data.userId
+     * @returns Message Successful Response
+     * @throws ApiError
+     */
+    public static removeTeamMember(data: TeamsRemoveTeamMemberData): CancelablePromise<TeamsRemoveTeamMemberResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/teams/{team_id}/members/{user_id}',
+            path: {
+                team_id: data.teamId,
+                user_id: data.userId
+            },
             errors: {
                 422: 'Validation Error'
             }
