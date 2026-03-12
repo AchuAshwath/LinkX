@@ -10,6 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import useAuth from "@/hooks/useAuth"
 
 interface SidebarProfileProps {
   fullName?: string
@@ -24,6 +25,7 @@ export function SidebarProfile({
   onMenuClick,
   onLogout,
 }: SidebarProfileProps) {
+  const { user: currentUser } = useAuth()
   const handleLogout = () => {
     if (onLogout) {
       onLogout()
@@ -61,12 +63,14 @@ export function SidebarProfile({
               User Settings
             </DropdownMenuItem>
           </Link>
-          <Link to="/admin" onClick={onMenuClick}>
-            <DropdownMenuItem>
-              <Shield className="mr-2 h-4 w-4" />
-              Admin
-            </DropdownMenuItem>
-          </Link>
+          {currentUser?.is_superuser ? (
+            <Link to="/admin" onClick={onMenuClick}>
+              <DropdownMenuItem>
+                <Shield className="mr-2 h-4 w-4" />
+                Admin
+              </DropdownMenuItem>
+            </Link>
+          ) : null}
           <DropdownMenuSeparator />
           <Link to="/about" onClick={onMenuClick}>
             <DropdownMenuItem>
