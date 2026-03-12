@@ -69,7 +69,7 @@ function PostsPage() {
   const queryClient = useQueryClient()
   const { selectedPersonaId } = usePersona()
   const [activeTab, setActiveTab] = React.useState<
-    "drafts" | "scheduled" | "publishing" | "failed" | "posted"
+    "drafts" | "scheduled" | "posted"
   >("drafts")
   const [dateFilter, setDateFilter] = React.useState<string>("all")
   const [sortBy, setSortBy] = React.useState<string>("newest")
@@ -133,8 +133,6 @@ function PostsPage() {
   const statusFilter = React.useMemo(() => {
     if (activeTab === "drafts") return "draft"
     if (activeTab === "scheduled") return "scheduled"
-    if (activeTab === "publishing") return "publishing"
-    if (activeTab === "failed") return "failed"
     if (activeTab === "posted") return "published"
     return undefined
   }, [activeTab])
@@ -148,7 +146,7 @@ function PostsPage() {
     queryKey: ["posts", selectedPersonaId, statusFilter],
     queryFn: async () => {
       return await PostsService.readPosts({
-        persona_id: selectedPersonaId,
+        personaId: selectedPersonaId,
         status: statusFilter,
         skip: 0,
         limit: 100,
@@ -156,6 +154,34 @@ function PostsPage() {
     },
     enabled: Boolean(selectedPersonaId),
     staleTime: 30000, // Consider data fresh for 30 seconds
+  })
+
+  const { data: publishingData } = useQuery({
+    queryKey: ["posts", selectedPersonaId, "publishing"],
+    queryFn: async () => {
+      return await PostsService.readPosts({
+        personaId: selectedPersonaId,
+        status: "publishing",
+        skip: 0,
+        limit: 20,
+      })
+    },
+    enabled: Boolean(selectedPersonaId),
+    staleTime: 15000,
+  })
+
+  const { data: failedData } = useQuery({
+    queryKey: ["posts", selectedPersonaId, "failed"],
+    queryFn: async () => {
+      return await PostsService.readPosts({
+        personaId: selectedPersonaId,
+        status: "failed",
+        skip: 0,
+        limit: 20,
+      })
+    },
+    enabled: Boolean(selectedPersonaId),
+    staleTime: 15000,
   })
 
   // Transform API data to component types
@@ -174,7 +200,7 @@ function PostsPage() {
           author,
           content: p.content,
           image_url: p.image_url ?? null,
-          created_at: p.created_at,
+          created_at: p.created_at ?? new Date().toISOString(),
           platform: p.platform ?? "linkedin",
         })
       })
@@ -195,8 +221,8 @@ function PostsPage() {
           author,
           content: p.content,
           image_url: p.image_url ?? null,
-          created_at: p.created_at,
-          scheduled_at: p.scheduled_at,
+          created_at: p.created_at ?? new Date().toISOString(),
+          scheduled_at: p.scheduled_at ?? null,
           platform: p.platform ?? "linkedin",
         })
       })
@@ -217,29 +243,27 @@ function PostsPage() {
           author,
           content: p.content,
           image_url: p.image_url ?? null,
-          created_at: p.created_at,
-          likes: p.likes,
-          reposts: p.reposts,
-          comments: p.comments,
+          created_at: p.created_at ?? new Date().toISOString(),
+          likes: p.likes ?? 0,
+          reposts: p.reposts ?? 0,
+          comments: p.comments ?? 0,
           platform: p.platform ?? "linkedin",
         })
       })
   }, [postsData, activeTab])
 
-  const failedPosts = React.useMemo(() => {
-    if (!postsData || activeTab !== "failed") return []
-    return postsData.data.filter((p) => p.status === "failed")
-  }, [postsData, activeTab])
-
   const publishingPosts = React.useMemo(() => {
-    if (!postsData || activeTab !== "publishing") return []
-    return postsData.data.filter((p) => p.status === "publishing")
-  }, [postsData, activeTab])
+    return publishingData?.data?.filter((p) => p.status === "publishing") ?? []
+  }, [publishingData])
+
+  const failedPosts = React.useMemo(() => {
+    return failedData?.data?.filter((p) => p.status === "failed") ?? []
+  }, [failedData])
 
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (postId: string) => {
-      await PostsService.deletePost({ postId })
+      await PostsService.deleteExistingPost({ postId })
     },
     onSuccess: () => {
       if (postToDelete) {
@@ -269,7 +293,7 @@ function PostsPage() {
         status?: string
       }
     }) => {
-      return await PostsService.updatePost({
+      return await PostsService.updateExistingPost({
         postId,
         requestBody: data,
       })
@@ -284,7 +308,7 @@ function PostsPage() {
 
   const retryMutation = useMutation({
     mutationFn: async (postId: string) => {
-      return await PostsService.retryPost({ postId })
+      return await PostsService.retryFailedPost({ postId })
     },
     onSuccess: () => {
       showSuccessToast("Retry started")
@@ -500,8 +524,6 @@ function PostsPage() {
               value as
                 | "drafts"
                 | "scheduled"
-                | "publishing"
-                | "failed"
                 | "posted",
             )
           }
@@ -509,7 +531,7 @@ function PostsPage() {
         >
           {/* Tabs Header - Sticky */}
           <div className="sticky top-0 z-10 shrink-0 border-b bg-background/80 backdrop-blur-sm">
-            <TabsList className="w-full h-auto p-0 bg-transparent rounded-none border-0 border-b border-border grid grid-cols-5 relative">
+            <TabsList className="w-full h-auto p-0 bg-transparent rounded-none border-0 border-b border-border grid grid-cols-3 relative">
               <TabsTrigger
                 value="drafts"
                 className="relative flex-1 h-14 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-base transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
@@ -540,40 +562,6 @@ function PostsPage() {
                       className="ml-1 h-5 min-w-5 px-1.5 text-xs font-normal"
                     >
                       {scheduledPosts.length}
-                    </Badge>
-                  )}
-                </div>
-              </TabsTrigger>
-              <TabsTrigger
-                value="publishing"
-                className="relative flex-1 h-14 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-base transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <Loader2 className="h-4 w-4" />
-                  <span>Publishing</span>
-                  {publishingPosts.length > 0 && (
-                    <Badge
-                      variant="secondary"
-                      className="ml-1 h-5 min-w-5 px-1.5 text-xs font-normal"
-                    >
-                      {publishingPosts.length}
-                    </Badge>
-                  )}
-                </div>
-              </TabsTrigger>
-              <TabsTrigger
-                value="failed"
-                className="relative flex-1 h-14 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-base transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <X className="h-4 w-4" />
-                  <span>Failed</span>
-                  {failedPosts.length > 0 && (
-                    <Badge
-                      variant="secondary"
-                      className="ml-1 h-5 min-w-5 px-1.5 text-xs font-normal"
-                    >
-                      {failedPosts.length}
                     </Badge>
                   )}
                 </div>
@@ -688,86 +676,6 @@ function PostsPage() {
                       onPlatformChange={handlePlatformChange}
                       onPreview={(id) => handleScheduledAction("preview", id)}
                     />
-                  ))}
-                </div>
-              )}
-            </TabsContent>
-
-            {/* Publishing Tab */}
-            <TabsContent value="publishing" className="mt-0">
-              {isLoadingPosts ? (
-                <div className="flex flex-col items-center justify-center py-16">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  <p className="mt-4 text-sm text-muted-foreground">
-                    Loading posts...
-                  </p>
-                </div>
-              ) : publishingPosts.length === 0 ? (
-                <div className="flex flex-col items-center justify-center text-center py-16 px-4">
-                  <div className="rounded-full bg-muted/50 p-6 mb-4">
-                    <Loader2 className="h-10 w-10 text-muted-foreground" />
-                  </div>
-                  <h3 className="text-xl font-semibold mb-1">
-                    No publishing posts
-                  </h3>
-                </div>
-              ) : (
-                <div className="w-full pb-20 divide-y">
-                  {publishingPosts.map((post) => (
-                    <div key={post.id} className="p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-medium truncate">
-                          {post.content}
-                        </p>
-                        <Badge variant="secondary">Publishing</Badge>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </TabsContent>
-
-            {/* Failed Tab */}
-            <TabsContent value="failed" className="mt-0">
-              {isLoadingPosts ? (
-                <div className="flex flex-col items-center justify-center py-16">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  <p className="mt-4 text-sm text-muted-foreground">
-                    Loading posts...
-                  </p>
-                </div>
-              ) : failedPosts.length === 0 ? (
-                <div className="flex flex-col items-center justify-center text-center py-16 px-4">
-                  <div className="rounded-full bg-muted/50 p-6 mb-4">
-                    <X className="h-10 w-10 text-muted-foreground" />
-                  </div>
-                  <h3 className="text-xl font-semibold mb-1">
-                    No failed posts
-                  </h3>
-                </div>
-              ) : (
-                <div className="w-full pb-20 divide-y">
-                  {failedPosts.map((post) => (
-                    <div key={post.id} className="p-4 space-y-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-medium truncate">
-                          {post.content}
-                        </p>
-                        <Badge variant="secondary">Failed</Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {post.error_message || "Publish failed"}
-                      </p>
-                      {canRetry ? (
-                        <Button
-                          size="sm"
-                          onClick={() => retryMutation.mutate(post.id)}
-                          disabled={retryMutation.isPending}
-                        >
-                          Retry
-                        </Button>
-                      ) : null}
-                    </div>
                   ))}
                 </div>
               )}
@@ -903,8 +811,6 @@ function PostsPage() {
                     <SelectContent>
                       <SelectItem value="all">All Status</SelectItem>
                       <SelectItem value="scheduled">Scheduled</SelectItem>
-                      <SelectItem value="publishing">Publishing</SelectItem>
-                      <SelectItem value="failed">Failed</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -983,6 +889,91 @@ function PostsPage() {
                     postedPosts.length}
                 </span>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4" />
+                  Publishing
+                </span>
+                <Badge variant="secondary" className="font-semibold">
+                  {publishingPosts.length}
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {publishingPosts.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No posts publishing.</p>
+              ) : (
+                <div className="space-y-2">
+                  {publishingPosts.slice(0, 3).map((post) => (
+                    <div key={post.id} className="rounded-md border px-3 py-2">
+                      <div className="text-sm font-medium truncate">
+                        {post.content}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        In progress…
+                      </div>
+                    </div>
+                  ))}
+                  {publishingPosts.length > 3 ? (
+                    <p className="text-xs text-muted-foreground">
+                      Showing first 3.
+                    </p>
+                  ) : null}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <X className="h-4 w-4" />
+                  Failed
+                </span>
+                <Badge variant="secondary" className="font-semibold">
+                  {failedPosts.length}
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {failedPosts.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No failed posts.</p>
+              ) : (
+                <div className="space-y-2">
+                  {failedPosts.slice(0, 3).map((post) => (
+                    <div key={post.id} className="rounded-md border px-3 py-2 space-y-2">
+                      <div className="text-sm font-medium truncate">
+                        {post.content}
+                      </div>
+                      <div className="text-xs text-muted-foreground line-clamp-2">
+                        {post.error_message || "Publish failed"}
+                      </div>
+                      {canRetry ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => retryMutation.mutate(post.id)}
+                          disabled={retryMutation.isPending}
+                          className="w-full"
+                        >
+                          Retry
+                        </Button>
+                      ) : null}
+                    </div>
+                  ))}
+                  {failedPosts.length > 3 ? (
+                    <p className="text-xs text-muted-foreground">
+                      Showing first 3.
+                    </p>
+                  ) : null}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
