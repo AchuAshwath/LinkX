@@ -1,33 +1,35 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import {
+  ChevronDown,
+  ChevronRight,
   ExternalLink,
-  Link2,
   Linkedin,
   MoreHorizontal,
   Plus,
-  Twitter,
   Users,
 } from "lucide-react"
 import * as React from "react"
 import { z } from "zod"
 
-import { ApiError } from "@/client"
 import {
-  LinkedInService,
-  type PersonaApi,
+  ApiError,
+  AuthService,
+  LinkedinService,
+  type PersonaPublic,
   PersonasService,
-} from "@/client/social-accounts"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+  type TeamPublic,
+  TeamsService,
+} from "@/client"
+import { OpenAPI } from "@/client/core/OpenAPI"
+import { request } from "@/client/core/request"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -46,15 +48,17 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
+import useAuth from "@/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
 import { usePersona } from "@/hooks/usePersona"
 import { handleError } from "@/utils"
@@ -63,20 +67,40 @@ type Persona = {
   id: string
   name: string
   description: string
-  createdAt: string
-  updatedAt: string
 }
 
-const mapPersona = (persona: PersonaApi): Persona => ({
+const mapPersona = (persona: PersonaPublic): Persona => ({
   id: persona.id,
   name: persona.name,
   description: persona.description ?? "",
-  createdAt: persona.created_at ?? new Date().toISOString(),
-  updatedAt:
-    persona.updated_at ?? persona.created_at ?? new Date().toISOString(),
+})
+
+type Team = {
+  id: string
+  name: string
+  description: string
+}
+
+const mapTeam = (team: TeamPublic): Team => ({
+  id: team.id,
+  name: team.name,
+  description: team.description ?? "",
 })
 
 const personaSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, { message: "Name is required." })
+    .max(255, { message: "Name must be 255 characters or fewer." }),
+  description: z
+    .string()
+    .trim()
+    .max(500, { message: "Description must be 500 characters or fewer." })
+    .optional(),
+})
+
+const teamSchema = z.object({
   name: z
     .string()
     .trim()
@@ -100,9 +124,68 @@ export const Route = createFileRoute("/_layout/social-accounts")({
   }),
 })
 
+type LinkedinStatusView = {
+  badge: React.ReactNode
+  connected: boolean
+  needsReconnect: boolean
+}
+
+function getLinkedinStatusView(status: unknown): LinkedinStatusView {
+  const data = status as Record<string, unknown> | undefined
+  if (!data) {
+    return {
+      badge: (
+        <Badge variant="secondary" className="font-normal">
+          Loading…
+        </Badge>
+      ),
+      connected: false,
+      needsReconnect: false,
+    }
+  }
+
+  const connected = Boolean(data.connected)
+  const needsReconnect = Boolean(data.needs_reconnect)
+
+  if (connected && !needsReconnect) {
+    return {
+      badge: (
+        <Badge variant="secondary" className="font-normal">
+          Connected
+        </Badge>
+      ),
+      connected: true,
+      needsReconnect: false,
+    }
+  }
+
+  if (needsReconnect) {
+    return {
+      badge: (
+        <Badge variant="secondary" className="font-normal">
+          Reconnect required
+        </Badge>
+      ),
+      connected: false,
+      needsReconnect: true,
+    }
+  }
+
+  return {
+    badge: (
+      <Badge variant="secondary" className="font-normal">
+        Not connected
+      </Badge>
+    ),
+    connected: false,
+    needsReconnect: false,
+  }
+}
+
 function SocialAccountsPage() {
   const queryClient = useQueryClient()
   const { showErrorToast, showSuccessToast } = useCustomToast()
+  const { user: currentUser } = useAuth()
   const { selectedPersonaId, setSelectedPersonaId } = usePersona()
 
   const {
@@ -111,17 +194,72 @@ function SocialAccountsPage() {
     error: personasError,
   } = useQuery({
     queryKey: ["personas"],
-    queryFn: PersonasService.listPersonas,
+    queryFn: () => PersonasService.readPersonas(),
   })
 
-  const personas = React.useMemo(
-    () => (personasData?.data ?? []).map(mapPersona),
-    [personasData],
-  )
+  const personas = React.useMemo(() => {
+    const list = (personasData?.data ?? []).map(mapPersona)
+    return list.sort((a, b) => a.name.localeCompare(b.name))
+  }, [personasData])
 
-  const selectedPersona = React.useMemo(() => {
-    return personas.find((p) => p.id === selectedPersonaId) ?? null
-  }, [personas, selectedPersonaId])
+  const rawPersonaById = React.useMemo(() => {
+    const map: Record<string, PersonaPublic> = {}
+    for (const p of personasData?.data ?? []) map[p.id] = p
+    return map
+  }, [personasData])
+
+  const personaById = React.useMemo(() => {
+    const map: Record<string, Persona> = {}
+    for (const p of personas) map[p.id] = p
+    return map
+  }, [personas])
+
+  const {
+    data: teamsData,
+    isLoading: teamsLoading,
+    error: teamsError,
+  } = useQuery({
+    queryKey: ["teams"],
+    queryFn: () => TeamsService.readTeams(),
+  })
+
+  const teams = React.useMemo(() => {
+    const list = (teamsData?.data ?? []).map(mapTeam)
+    return list.sort((a, b) => a.name.localeCompare(b.name))
+  }, [teamsData])
+
+  const [expandedTeams, setExpandedTeams] = React.useState<
+    Record<string, boolean>
+  >({})
+
+  React.useEffect(() => {
+    if (!teams.length) return
+    setExpandedTeams((prev) => {
+      const next = { ...prev }
+      for (const team of teams) {
+        if (next[team.id] === undefined) next[team.id] = false
+      }
+      return next
+    })
+  }, [teams])
+
+  const teamPersonasQueries = useQueries({
+    queries: teams.map((team) => ({
+      queryKey: ["team-personas", team.id],
+      queryFn: () => TeamsService.readTeamPersonas({ teamId: team.id }),
+      enabled: Boolean(team.id),
+      staleTime: 30_000,
+    })),
+  })
+
+  const teamPersonasById = React.useMemo(() => {
+    const map: Record<string, Persona[]> = {}
+    teams.forEach((team, idx) => {
+      const data = teamPersonasQueries[idx]?.data
+      map[team.id] = (data?.data ?? []).map(mapPersona)
+    })
+    return map
+  }, [teams, teamPersonasQueries])
 
   React.useEffect(() => {
     if (personasError) {
@@ -130,25 +268,70 @@ function SocialAccountsPage() {
   }, [personasError, showErrorToast])
 
   React.useEffect(() => {
-    if (!personas.length) {
-      return
+    if (teamsError) {
+      handleError.bind(showErrorToast)(teamsError as any)
     }
+  }, [teamsError, showErrorToast])
 
-    const nextSelectedPersonaId =
-      (selectedPersonaId &&
-        personas.some((persona) => persona.id === selectedPersonaId) &&
-        selectedPersonaId) ||
-      personas[0]?.id ||
-      ""
-
-    if (nextSelectedPersonaId !== selectedPersonaId) {
-      setSelectedPersonaId(nextSelectedPersonaId)
+  const visiblePersonaIds = React.useMemo(() => {
+    const ids = new Set<string>()
+    for (const team of teams) {
+      if (!(expandedTeams[team.id] ?? false)) continue
+      for (const p of teamPersonasById[team.id] ?? []) ids.add(p.id)
     }
-  }, [personas, selectedPersonaId, setSelectedPersonaId])
+    return Array.from(ids)
+  }, [expandedTeams, teamPersonasById, teams])
+
+  const linkedinStatusQueries = useQueries({
+    queries: visiblePersonaIds.map((personaId) => ({
+      queryKey: ["linkedin-status", personaId],
+      queryFn: async () => {
+        return await LinkedinService.linkedinStatus({ personaId })
+      },
+      enabled: Boolean(personaId),
+      staleTime: 30_000,
+      retry: (failureCount: number, error: unknown) => {
+        if (error instanceof ApiError && error.status === 403) return false
+        return failureCount < 2
+      },
+    })),
+  })
+
+  const linkedinStatusByPersonaId = React.useMemo(() => {
+    const map: Record<string, unknown> = {}
+    visiblePersonaIds.forEach((personaId, idx) => {
+      map[personaId] = linkedinStatusQueries[idx]?.data
+    })
+    return map
+  }, [linkedinStatusQueries, visiblePersonaIds])
 
   const [createPersonaOpen, setCreatePersonaOpen] = React.useState(false)
   const [editPersonaOpen, setEditPersonaOpen] = React.useState(false)
   const [deletePersonaOpen, setDeletePersonaOpen] = React.useState(false)
+  const [createTeamOpen, setCreateTeamOpen] = React.useState(false)
+  const [disconnectPersonaOpen, setDisconnectPersonaOpen] =
+    React.useState(false)
+
+  const [editTeamOpen, setEditTeamOpen] = React.useState(false)
+  const [deleteTeamOpen, setDeleteTeamOpen] = React.useState(false)
+  const [sharePersonaOpen, setSharePersonaOpen] = React.useState(false)
+
+  const [activePersonaId, setActivePersonaId] = React.useState<string>("")
+  const [activeTeamId, setActiveTeamId] = React.useState<string>("")
+
+  const activePersona = React.useMemo(() => {
+    const id = activePersonaId || selectedPersonaId
+    return id ? (personaById[id] ?? null) : null
+  }, [activePersonaId, personaById, selectedPersonaId])
+
+  const activeTeam = React.useMemo(() => {
+    return activeTeamId ? teams.find((t) => t.id === activeTeamId) ?? null : null
+  }, [activeTeamId, teams])
+
+  const canManageActivePersona = React.useMemo(() => {
+    if (!activePersona || !currentUser) return false
+    return rawPersonaById[activePersona.id]?.user_id === currentUser.id
+  }, [activePersona, currentUser, rawPersonaById])
 
   const [personaDraft, setPersonaDraft] = React.useState<{
     name: string
@@ -157,9 +340,17 @@ function SocialAccountsPage() {
     name: "",
     description: "",
   })
-  const [deleteConfirmText, setDeleteConfirmText] = React.useState("")
+  const [teamDraft, setTeamDraft] = React.useState<{
+    name: string
+    description: string
+  }>({
+    name: "",
+    description: "",
+  })
 
-  const [connecting, setConnecting] = React.useState(false)
+  const [deleteConfirmText, setDeleteConfirmText] = React.useState("")
+  const [connectingPersonaId, setConnectingPersonaId] =
+    React.useState<string>("")
 
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -179,63 +370,187 @@ function SocialAccountsPage() {
     }
   }, [queryClient, showErrorToast, showSuccessToast])
 
-  const {
-    data: linkedInStatus,
-    isLoading: statusLoading,
-    error: linkedInStatusError,
-  } = useQuery({
-    queryKey: ["linkedin-status", selectedPersonaId],
-    queryFn: async () => {
-      return await LinkedInService.readStatus({ personaId: selectedPersonaId })
-    },
-    enabled: Boolean(selectedPersonaId),
-  })
-
-  React.useEffect(() => {
-    if (linkedInStatusError) {
-      if (
-        linkedInStatusError instanceof ApiError &&
-        linkedInStatusError.status === 403
-      ) {
-        // No persona access: treat as "not connected" without nagging the user
-        return
-      }
-      handleError.bind(showErrorToast)(linkedInStatusError as any)
-    }
-  }, [linkedInStatusError, showErrorToast])
-
-  const resetPersonaDraft = React.useCallback(() => {
-    setPersonaDraft({
-      name: "",
-      description: "",
-    })
+  const openCreateTeam = React.useCallback(() => {
+    setTeamDraft({ name: "", description: "" })
+    setCreateTeamOpen(true)
   }, [])
 
+  const openEditTeam = React.useCallback(
+    (teamId: string) => {
+      const team = teams.find((t) => t.id === teamId)
+      if (!team) {
+        showErrorToast("Team not found.")
+        return
+      }
+      setActiveTeamId(teamId)
+      setTeamDraft({
+        name: team.name,
+        description: team.description,
+      })
+      setEditTeamOpen(true)
+    },
+    [showErrorToast, teams],
+  )
+
+  const openDeleteTeam = React.useCallback(
+    (teamId: string) => {
+      const team = teams.find((t) => t.id === teamId)
+      if (!team) {
+        showErrorToast("Team not found.")
+        return
+      }
+      setActiveTeamId(teamId)
+      setDeleteTeamOpen(true)
+    },
+    [showErrorToast, teams],
+  )
+
   const openCreatePersona = React.useCallback(() => {
-    resetPersonaDraft()
+    setPersonaDraft({ name: "", description: "" })
     setCreatePersonaOpen(true)
-  }, [resetPersonaDraft])
+  }, [])
 
-  const openEditPersona = React.useCallback(() => {
-    if (!selectedPersona) {
-      showErrorToast("Select a persona to edit.")
-      return
-    }
-    setPersonaDraft({
-      name: selectedPersona.name,
-      description: selectedPersona.description,
-    })
-    setEditPersonaOpen(true)
-  }, [selectedPersona, showErrorToast])
+  const openEditPersona = React.useCallback(
+    (personaId: string) => {
+      const persona = personaById[personaId]
+      if (!persona) {
+        showErrorToast("Persona not found.")
+        return
+      }
+      setActivePersonaId(personaId)
+      setSelectedPersonaId(personaId)
+      setPersonaDraft({ name: persona.name, description: persona.description })
+      setEditPersonaOpen(true)
+    },
+    [personaById, setSelectedPersonaId, showErrorToast],
+  )
 
-  const openDeletePersona = React.useCallback(() => {
-    if (!selectedPersona) {
-      showErrorToast("Select a persona to delete.")
-      return
-    }
-    setDeleteConfirmText("")
-    setDeletePersonaOpen(true)
-  }, [selectedPersona, showErrorToast])
+  const openDeletePersona = React.useCallback(
+    (personaId: string) => {
+      const persona = personaById[personaId]
+      if (!persona) {
+        showErrorToast("Persona not found.")
+        return
+      }
+      setActivePersonaId(personaId)
+      setDeleteConfirmText("")
+      setDeletePersonaOpen(true)
+    },
+    [personaById, showErrorToast],
+  )
+
+  const openDisconnectPersona = React.useCallback(
+    (personaId: string) => {
+      const persona = personaById[personaId]
+      if (!persona) {
+        showErrorToast("Persona not found.")
+        return
+      }
+      setActivePersonaId(personaId)
+      setSelectedPersonaId(personaId)
+      setDisconnectPersonaOpen(true)
+    },
+    [personaById, setSelectedPersonaId, showErrorToast],
+  )
+
+  const openSharePersona = React.useCallback(
+    (personaId: string) => {
+      const persona = personaById[personaId]
+      if (!persona) {
+        showErrorToast("Persona not found.")
+        return
+      }
+      setActivePersonaId(personaId)
+      setSharePersonaOpen(true)
+    },
+    [personaById, showErrorToast],
+  )
+
+  const createTeamMutation = useMutation({
+    mutationFn: async () => {
+      const parsed = teamSchema.safeParse(teamDraft)
+      if (!parsed.success) {
+        throw new Error(
+          parsed.error.issues[0]?.message ?? "Invalid team details.",
+        )
+      }
+      return await TeamsService.createTeam({
+        requestBody: {
+          name: parsed.data.name,
+          description: parsed.data.description?.trim()
+            ? parsed.data.description.trim()
+            : null,
+        },
+      })
+    },
+    onSuccess: (created) => {
+      showSuccessToast(`Created team “${created.name}”.`)
+      setCreateTeamOpen(false)
+      queryClient.invalidateQueries({ queryKey: ["teams"] })
+    },
+    onError: handleError.bind(showErrorToast),
+  })
+
+  const updateTeamMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeTeam) throw new Error("Select a team to edit.")
+      const parsed = teamSchema.safeParse(teamDraft)
+      if (!parsed.success) {
+        throw new Error(parsed.error.issues[0]?.message ?? "Invalid team details.")
+      }
+      return await TeamsService.updateTeam({
+        teamId: activeTeam.id,
+        requestBody: {
+          name: parsed.data.name,
+          description: parsed.data.description?.trim()
+            ? parsed.data.description.trim()
+            : null,
+        },
+      })
+    },
+    onSuccess: (updated) => {
+      showSuccessToast(`Updated team “${updated.name}”.`)
+      setEditTeamOpen(false)
+      queryClient.invalidateQueries({ queryKey: ["teams"] })
+    },
+    onError: handleError.bind(showErrorToast),
+  })
+
+  const deleteTeamMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeTeam) throw new Error("Select a team to delete.")
+      await TeamsService.deleteTeam({ teamId: activeTeam.id })
+      return activeTeam.id
+    },
+    onSuccess: () => {
+      showSuccessToast("Deleted team.")
+      setDeleteTeamOpen(false)
+      queryClient.invalidateQueries({ queryKey: ["teams"] })
+    },
+    onError: handleError.bind(showErrorToast),
+  })
+
+  const sharePersonaMutation = useMutation({
+    mutationFn: async (teamId: string) => {
+      if (!activePersona) throw new Error("Select a persona to share.")
+      await PersonasService.sharePersona({
+        personaId: activePersona.id,
+        requestBody: {
+          team_id: teamId,
+          role: "member",
+        },
+      })
+      return teamId
+    },
+    onSuccess: (teamId) => {
+      showSuccessToast("Persona shared with team.")
+      setSharePersonaOpen(false)
+      queryClient.invalidateQueries({
+        queryKey: ["team-personas", teamId],
+      })
+    },
+    onError: handleError.bind(showErrorToast),
+  })
 
   const createPersonaMutation = useMutation({
     mutationFn: async () => {
@@ -254,18 +569,38 @@ function SocialAccountsPage() {
         },
       })
     },
-    onSuccess: (created) => {
+    onSuccess: async (created) => {
       showSuccessToast(`Created persona “${created.name}”.`)
       setCreatePersonaOpen(false)
-      queryClient.invalidateQueries({ queryKey: ["personas"] })
+      setActivePersonaId(created.id)
       setSelectedPersonaId(created.id)
+      queryClient.invalidateQueries({ queryKey: ["personas"] })
+
+      // Automatically share new persona with either the active team or primary team
+      const targetTeamId = activeTeamId || teams[0]?.id
+      if (targetTeamId) {
+        try {
+          await PersonasService.sharePersona({
+            personaId: created.id,
+            requestBody: {
+              team_id: targetTeamId,
+              role: "owner",
+            },
+          })
+          queryClient.invalidateQueries({
+            queryKey: ["team-personas", targetTeamId],
+          })
+        } catch (error) {
+          handleError.bind(showErrorToast)(error as any)
+        }
+      }
     },
     onError: handleError.bind(showErrorToast),
   })
 
   const updatePersonaMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedPersona) throw new Error("Select a persona to edit.")
+      if (!activePersona) throw new Error("Select a persona to edit.")
       const parsed = personaSchema.safeParse(personaDraft)
       if (!parsed.success) {
         throw new Error(
@@ -273,7 +608,7 @@ function SocialAccountsPage() {
         )
       }
       return await PersonasService.updatePersona({
-        personaId: selectedPersona.id,
+        personaId: activePersona.id,
         requestBody: {
           name: parsed.data.name,
           description: parsed.data.description?.trim()
@@ -292,31 +627,52 @@ function SocialAccountsPage() {
 
   const deletePersonaMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedPersona) throw new Error("Select a persona to delete.")
-      if (deleteConfirmText.trim() !== selectedPersona.name.trim()) {
+      if (!activePersona) throw new Error("Select a persona to delete.")
+      if (deleteConfirmText.trim() !== activePersona.name.trim()) {
         throw new Error("Confirmation does not match persona name.")
       }
-      await PersonasService.deletePersona({ personaId: selectedPersona.id })
-      return selectedPersona.id
+      await PersonasService.deletePersona({ personaId: activePersona.id })
+      return activePersona.id
     },
     onSuccess: () => {
-      showSuccessToast(`Deleted persona “${selectedPersona?.name ?? ""}”.`)
+      showSuccessToast("Deleted persona.")
       setDeletePersonaOpen(false)
       queryClient.invalidateQueries({ queryKey: ["personas"] })
-      setSelectedPersonaId("")
+      setActivePersonaId("")
     },
     onError: handleError.bind(showErrorToast),
   })
 
-  const handleConnectLinkedIn = async () => {
-    if (!selectedPersona) {
-      showErrorToast("Select a persona first.")
+  const disconnectLinkedInMutation = useMutation({
+    mutationFn: async (personaId: string) => {
+      await request(OpenAPI, {
+        method: "DELETE",
+        url: "/api/v1/linkedin/disconnect",
+        query: { persona_id: personaId },
+      })
+      return personaId
+    },
+    onSuccess: (personaId) => {
+      showSuccessToast("Disconnected LinkedIn.")
+      setDisconnectPersonaOpen(false)
+      queryClient.invalidateQueries({
+        queryKey: ["linkedin-status", personaId],
+      })
+      queryClient.invalidateQueries({ queryKey: ["linkedin-status"] })
+    },
+    onError: handleError.bind(showErrorToast),
+  })
+
+  const handleConnectLinkedIn = async (personaId: string) => {
+    const persona = personaById[personaId]
+    if (!persona) {
+      showErrorToast("Persona not found.")
       return
     }
     try {
-      setConnecting(true)
-      const data = await LinkedInService.authorize({
-        personaId: selectedPersona.id,
+      setConnectingPersonaId(personaId)
+      const data = await AuthService.linkedinAuthorize({
+        personaId: persona.id,
       })
       if (!data.authorize_url) throw new Error("No authorize_url in response.")
       window.location.href = data.authorize_url
@@ -324,7 +680,7 @@ function SocialAccountsPage() {
       let message =
         e instanceof Error ? e.message : "Could not start LinkedIn OAuth."
       try {
-        const config = await LinkedInService.configCheck()
+        const config = await AuthService.linkedinConfigCheck()
         if (!config.configured) {
           message = `LinkedIn not configured in backend. ${config.hint ?? ""}`
         } else if (config.hint) {
@@ -334,309 +690,477 @@ function SocialAccountsPage() {
         // ignore config-check failure
       }
       showErrorToast(message)
-      setConnecting(false)
+      setConnectingPersonaId("")
     }
   }
 
-  const needsReconnect = Boolean(linkedInStatus?.needs_reconnect)
-  const personaLinkedInProfile = linkedInStatus?.profile ?? null
-  const linkedInConnected = Boolean(
-    linkedInStatus?.connected && !linkedInStatus.needs_reconnect,
-  )
-  const linkedInStatusBadge = statusLoading ? (
-    <Badge variant="secondary" className="font-normal">
-      Loading…
-    </Badge>
-  ) : linkedInConnected ? (
-    <Badge variant="secondary" className="font-normal">
-      Connected
-    </Badge>
-  ) : needsReconnect ? (
-    <Badge variant="secondary" className="font-normal">
-      Reconnect required
-    </Badge>
-  ) : (
-    <Badge variant="secondary" className="font-normal">
-      Not connected
-    </Badge>
-  )
   const personaValidation = personaSchema.safeParse(personaDraft)
   const personaDraftError = personaValidation.success
     ? null
     : personaValidation.error.issues[0]?.message
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl min-h-[calc(100vh-3.5rem)]">
-      {/* Main Column */}
-      <div className="border-border min-w-0 flex-1 border-r md:max-w-2xl flex flex-col">
-        {/* Sticky Top Bar */}
-        <div className="sticky top-0 z-10 shrink-0 border-b bg-background/80 backdrop-blur-sm p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <h1 className="text-xl font-semibold tracking-tight truncate">
-                Social Accounts
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Connect accounts for each persona.
-              </p>
-            </div>
-            <Button type="button" size="sm" onClick={openCreatePersona}>
-              <Plus className="mr-2 h-4 w-4" />
-              New persona
-            </Button>
-          </div>
+    <div className="flex flex-col gap-6 p-3 sm:p-4 md:p-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Social Accounts</h1>
+          <p className="text-muted-foreground">
+            Teams expand to show personas. Connect or disconnect per persona.
+          </p>
         </div>
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" onClick={openCreateTeam}>
+            <Users className="mr-2 h-4 w-4" />
+            New team
+          </Button>
+        </div>
+      </div>
 
-        {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="w-full pb-20 p-4 space-y-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <Users className="h-4 w-4" />
-                  Persona
-                </CardTitle>
-                <CardDescription>
-                  Choose who you’re posting as, then connect platforms.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                  <div className="space-y-1">
-                    <Label className="text-sm">Selected persona</Label>
-                    <Select
-                      value={selectedPersonaId}
-                      onValueChange={setSelectedPersonaId}
-                    >
-                      <SelectTrigger
-                        className="w-full sm:w-[280px]"
-                        disabled={personasLoading}
+      <Table>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead>Team / Persona</TableHead>
+            <TableHead>Platform</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {teamsLoading ? (
+            <TableRow className="hover:bg-transparent">
+              <TableCell colSpan={4} className="h-24 text-muted-foreground">
+                Loading teams…
+              </TableCell>
+            </TableRow>
+          ) : teams.length ? (
+            teams.map((team) => {
+              const expanded = expandedTeams[team.id] ?? false
+              const teamPersonas = teamPersonasById[team.id] ?? []
+
+              return (
+                <React.Fragment key={team.id}>
+                  <TableRow>
+                    <TableCell className="whitespace-normal">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedTeams((prev) => ({
+                            ...prev,
+                            [team.id]: !expanded,
+                          }))
+                        }
+                        className="flex w-full items-start gap-2 text-left"
                       >
-                        <SelectValue
-                          placeholder={
-                            personasLoading
-                              ? "Loading personas..."
-                              : "Select a persona"
-                          }
-                        />
-                      </SelectTrigger>
-                      <SelectContent align="start">
-                        {personas.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="flex items-center justify-end gap-2">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
+                        <span className="mt-0.5 text-muted-foreground">
+                          {expanded ? (
+                            <ChevronDown className="h-4 w-4" aria-hidden />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" aria-hidden />
+                          )}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="font-medium">{team.name}</span>
+                          {team.description ? (
+                            <span className="block text-xs text-muted-foreground line-clamp-1">
+                              {team.description}
+                            </span>
+                          ) : null}
+                        </span>
+                      </button>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-muted-foreground">—</span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="font-normal">
+                        {teamPersonas.length} personas
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => {
+                            setActiveTeamId(team.id)
+                            openCreatePersona()
+                          }}
+                        >
+                          <Plus className="mr-1 h-3 w-3" />
+                          New persona
+                        </Button>
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
-                          disabled={!selectedPersona}
+                          onClick={() => openEditTeam(team.id)}
                         >
-                          <MoreHorizontal className="mr-2 h-4 w-4" />
-                          Manage
+                          Edit
                         </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Persona actions</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onSelect={openEditPersona}>
-                          Edit persona
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onSelect={openDeletePersona}
-                          variant="destructive"
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="text-destructive border-destructive/40 hover:bg-destructive/10"
+                          onClick={() => openDeleteTeam(team.id)}
                         >
-                          Delete persona
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {!selectedPersona ? (
-              <div className="flex flex-col items-center justify-center text-center py-16 px-4">
-                <div className="rounded-full bg-muted/50 p-6 mb-4">
-                  <Link2 className="h-10 w-10 text-muted-foreground" />
-                </div>
-                <h3 className="text-xl font-semibold mb-1">
-                  No persona selected
-                </h3>
-                <p className="text-muted-foreground text-sm max-w-sm">
-                  Create a persona to start connecting social accounts.
-                </p>
-              </div>
-            ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Connections</CardTitle>
-                  <CardDescription>
-                    Social accounts for {selectedPersona.name}.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-0">
-                  {/* LinkedIn */}
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-center gap-4 min-w-0">
-                      {personaLinkedInProfile?.profile_picture_url ? (
-                        <Avatar className="h-12 w-12 shrink-0">
-                          <AvatarImage
-                            src={
-                              personaLinkedInProfile.profile_picture_url ?? ""
-                            }
-                            alt={
-                              personaLinkedInProfile.display_name ?? "LinkedIn"
-                            }
-                          />
-                          <AvatarFallback className="text-sm">
-                            LI
-                          </AvatarFallback>
-                        </Avatar>
-                      ) : (
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-muted">
-                          <Linkedin
-                            className="h-6 w-6 text-muted-foreground"
-                            aria-hidden
-                          />
-                        </div>
-                      )}
-                      <div className="space-y-1 min-w-0">
-                        <Label className="text-base">LinkedIn</Label>
-                        {personaLinkedInProfile?.display_name ? (
-                          <p className="text-muted-foreground text-sm truncate">
-                            {personaLinkedInProfile.display_name}
-                            {personaLinkedInProfile.email
-                              ? ` · ${personaLinkedInProfile.email}`
-                              : ""}
-                          </p>
-                        ) : (
-                          <p className="text-muted-foreground text-sm">
-                            Connect LinkedIn to publish and schedule posts.
-                          </p>
-                        )}
+                          Delete
+                        </Button>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      {linkedInStatusBadge}
-                      <Button
-                        type="button"
-                        variant={linkedInConnected ? "outline" : "default"}
-                        size="sm"
-                        onClick={handleConnectLinkedIn}
-                        disabled={connecting}
-                      >
-                        <ExternalLink className="mr-2 h-4 w-4" />
-                        {needsReconnect
-                          ? "Reconnect"
-                          : linkedInConnected
-                            ? "Manage"
-                            : "Connect"}
-                      </Button>
-                    </div>
-                  </div>
+                    </TableCell>
+                  </TableRow>
 
-                  <Separator className="my-6" />
+                  {expanded ? (
+                    teamPersonas.length ? (
+                      teamPersonas.map((p) => {
+                        const view = getLinkedinStatusView(
+                          linkedinStatusByPersonaId[p.id],
+                        )
+                        const canEdit =
+                          Boolean(currentUser) &&
+                          rawPersonaById[p.id]?.user_id === currentUser?.id
+                        const isSelected = selectedPersonaId === p.id
 
-                  {/* X (Twitter) */}
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-center gap-4 min-w-0">
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-muted">
-                        <Twitter
-                          className="h-6 w-6 text-muted-foreground"
-                          aria-hidden
-                        />
-                      </div>
-                      <div className="space-y-1 min-w-0">
-                        <Label className="text-base">X (Twitter)</Label>
-                        <p className="text-muted-foreground text-sm">
-                          Coming soon.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <Badge variant="secondary" className="font-normal">
-                        Coming soon
-                      </Badge>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled
-                      >
-                        <ExternalLink className="mr-2 h-4 w-4" />
-                        Connect
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                        return (
+                          <TableRow
+                            key={p.id}
+                            className={`bg-background ${
+                              isSelected ? "bg-accent/40" : ""
+                            }`}
+                            onClick={() => {
+                              setActivePersonaId(p.id)
+                              setSelectedPersonaId(p.id)
+                            }}
+                          >
+                            <TableCell className="pl-10 whitespace-normal">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <div className="font-medium">{p.name}</div>
+                                  {p.description ? (
+                                    <div className="text-xs text-muted-foreground line-clamp-2">
+                                      {p.description}
+                                    </div>
+                                  ) : null}
+                                </div>
+                                {isSelected ? (
+                                  <Badge
+                                    variant="secondary"
+                                    className="shrink-0 text-[11px] font-normal"
+                                  >
+                                    Selected
+                                  </Badge>
+                                ) : null}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Linkedin className="h-4 w-4 text-muted-foreground" />
+                                <span>LinkedIn</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>{view.badge}</TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant={
+                                    view.connected ? "outline" : "default"
+                                  }
+                                  onClick={() => handleConnectLinkedIn(p.id)}
+                                  disabled={connectingPersonaId === p.id}
+                                >
+                                  <ExternalLink className="mr-2 h-4 w-4" />
+                                  {view.needsReconnect
+                                    ? "Reconnect"
+                                    : view.connected
+                                      ? "Manage"
+                                      : "Connect"}
+                                </Button>
+
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                    >
+                                      <MoreHorizontal className="h-4 w-4" />
+                                      <span className="sr-only">
+                                        Persona actions
+                                      </span>
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuLabel>
+                                      Persona
+                                    </DropdownMenuLabel>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      onSelect={() => openEditPersona(p.id)}
+                                      disabled={!canEdit}
+                                    >
+                                      Edit
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onSelect={() => openSharePersona(p.id)}
+                                      disabled={teams.length <= 1}
+                                    >
+                                      Share with team…
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onSelect={() => openDeletePersona(p.id)}
+                                      disabled={!canEdit}
+                                      variant="destructive"
+                                    >
+                                      Delete
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      onSelect={() =>
+                                        openDisconnectPersona(p.id)
+                                      }
+                                      disabled={!view.connected}
+                                      variant="destructive"
+                                    >
+                                      Disconnect LinkedIn
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })
+                    ) : (
+                      <TableRow className="hover:bg-transparent">
+                        <TableCell
+                          colSpan={4}
+                          className="pl-10 text-muted-foreground"
+                        >
+                          No personas in this team yet.
+                        </TableCell>
+                      </TableRow>
+                    )
+                  ) : null}
+                </React.Fragment>
+              )
+            })
+          ) : (
+            <TableRow className="hover:bg-transparent">
+              <TableCell
+                colSpan={4}
+                className="h-32 text-center text-muted-foreground"
+              >
+                You’re not in any teams yet.
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+
+      <Dialog open={createTeamOpen} onOpenChange={setCreateTeamOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create team</DialogTitle>
+            <DialogDescription>
+              Teams let you share personas with role-based access.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="team-create-name">Name</Label>
+              <Input
+                id="team-create-name"
+                value={teamDraft.name}
+                onChange={(e) =>
+                  setTeamDraft((d) => ({ ...d, name: e.target.value }))
+                }
+                placeholder="Acme Social Team"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="team-create-description">
+                Description{" "}
+                <span className="text-muted-foreground">(optional)</span>
+              </Label>
+              <Textarea
+                id="team-create-description"
+                value={teamDraft.description}
+                onChange={(e) =>
+                  setTeamDraft((d) => ({ ...d, description: e.target.value }))
+                }
+                placeholder="Who’s in this team and what it’s for…"
+              />
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* Right Sidebar */}
-      <div className="hidden w-80 md:block">
-        <div className="sticky top-0 self-start p-4 space-y-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Quick Stats
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Personas</span>
-                <Badge variant="secondary" className="font-semibold">
-                  {personas.length}
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">
-                  Platforms supported
-                </span>
-                <Badge variant="secondary" className="font-semibold">
-                  1
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between pt-2 border-t">
-                <span className="text-sm font-medium">Selected</span>
-                <span className="text-sm font-semibold truncate max-w-40 text-right">
-                  {selectedPersona?.name ?? "—"}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCreateTeamOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => createTeamMutation.mutate()}
+              disabled={createTeamMutation.isPending}
+            >
+              {createTeamMutation.isPending ? "Creating…" : "Create team"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <Link2 className="h-4 w-4" />
-                About connections
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Connections are per-persona. Choose a persona, then connect a
-                platform to publish as that voice.
-              </p>
-              <p className="text-sm text-muted-foreground">
-                If you see “Reconnect required”, your token expired and you’ll
-                need to re-authorize.
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      <Dialog open={editTeamOpen} onOpenChange={setEditTeamOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit team</DialogTitle>
+            <DialogDescription>Update team details.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="team-edit-name">Name</Label>
+              <Input
+                id="team-edit-name"
+                value={teamDraft.name}
+                onChange={(e) =>
+                  setTeamDraft((d) => ({ ...d, name: e.target.value }))
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="team-edit-description">
+                Description{" "}
+                <span className="text-muted-foreground">(optional)</span>
+              </Label>
+              <Textarea
+                id="team-edit-description"
+                value={teamDraft.description}
+                onChange={(e) =>
+                  setTeamDraft((d) => ({ ...d, description: e.target.value }))
+                }
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setEditTeamOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => updateTeamMutation.mutate()}
+              disabled={updateTeamMutation.isPending}
+            >
+              {updateTeamMutation.isPending ? "Saving…" : "Save changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteTeamOpen} onOpenChange={setDeleteTeamOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete team</DialogTitle>
+            <DialogDescription>
+              This will remove the team and its persona access links. Personas
+              themselves are not deleted.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-lg border bg-muted/20 p-3 text-sm">
+            Team:{" "}
+            <span className="font-semibold">{activeTeam?.name ?? "—"}</span>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeleteTeamOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => deleteTeamMutation.mutate()}
+              disabled={deleteTeamMutation.isPending}
+            >
+              {deleteTeamMutation.isPending ? "Deleting…" : "Delete team"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={sharePersonaOpen} onOpenChange={setSharePersonaOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Share persona with team</DialogTitle>
+            <DialogDescription>
+              Make this persona available to another team.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="text-sm">
+              Persona:{" "}
+              <span className="font-semibold">
+                {activePersona?.name ?? "—"}
+              </span>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="share-persona-team">Team</Label>
+              <select
+                id="share-persona-team"
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                value={activeTeamId || ""}
+                onChange={(e) => setActiveTeamId(e.target.value)}
+              >
+                <option value="" disabled>
+                  Select a team
+                </option>
+                {teams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setSharePersonaOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (!activeTeamId) return
+                sharePersonaMutation.mutate(activeTeamId)
+              }}
+              disabled={!activeTeamId || sharePersonaMutation.isPending}
+            >
+              {sharePersonaMutation.isPending ? "Sharing…" : "Share"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={createPersonaOpen} onOpenChange={setCreatePersonaOpen}>
         <DialogContent>
@@ -713,6 +1237,12 @@ function SocialAccountsPage() {
             <DialogDescription>Update persona details.</DialogDescription>
           </DialogHeader>
 
+          {!canManageActivePersona ? (
+            <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
+              You can only edit personas you created.
+            </div>
+          ) : null}
+
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="persona-edit-name">Name</Label>
@@ -760,7 +1290,9 @@ function SocialAccountsPage() {
               type="button"
               onClick={() => updatePersonaMutation.mutate()}
               disabled={
-                Boolean(personaDraftError) || updatePersonaMutation.isPending
+                !canManageActivePersona ||
+                Boolean(personaDraftError) ||
+                updatePersonaMutation.isPending
               }
             >
               {updatePersonaMutation.isPending ? "Saving..." : "Save changes"}
@@ -780,24 +1312,35 @@ function SocialAccountsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          {selectedPersona ? (
+          {activePersona ? (
             <div className="space-y-4">
-              <div className="rounded-lg border bg-muted/20 p-3">
-                <p className="text-sm">
-                  To confirm, type{" "}
-                  <span className="font-semibold">{selectedPersona.name}</span>.
-                </p>
-              </div>
+              {!canManageActivePersona ? (
+                <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
+                  You can only delete personas you created.
+                </div>
+              ) : (
+                <>
+                  <div className="rounded-lg border bg-muted/20 p-3">
+                    <p className="text-sm">
+                      To confirm, type{" "}
+                      <span className="font-semibold">
+                        {activePersona.name}
+                      </span>
+                      .
+                    </p>
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="persona-delete-confirm">Confirmation</Label>
-                <Input
-                  id="persona-delete-confirm"
-                  value={deleteConfirmText}
-                  onChange={(e) => setDeleteConfirmText(e.target.value)}
-                  placeholder={selectedPersona.name}
-                />
-              </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="persona-delete-confirm">Confirmation</Label>
+                    <Input
+                      id="persona-delete-confirm"
+                      value={deleteConfirmText}
+                      onChange={(e) => setDeleteConfirmText(e.target.value)}
+                      placeholder={activePersona.name}
+                    />
+                  </div>
+                </>
+              )}
             </div>
           ) : null}
 
@@ -814,8 +1357,9 @@ function SocialAccountsPage() {
               variant="destructive"
               onClick={() => deletePersonaMutation.mutate()}
               disabled={
-                !selectedPersona ||
-                deleteConfirmText.trim() !== selectedPersona.name.trim() ||
+                !activePersona ||
+                !canManageActivePersona ||
+                deleteConfirmText.trim() !== activePersona.name.trim() ||
                 deletePersonaMutation.isPending
               }
             >
@@ -824,6 +1368,58 @@ function SocialAccountsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={disconnectPersonaOpen}
+        onOpenChange={setDisconnectPersonaOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Disconnect LinkedIn</DialogTitle>
+            <DialogDescription>
+              This will revoke LinkX’s access for this persona. You can
+              reconnect anytime.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-lg border bg-muted/20 p-3 text-sm">
+            Persona:{" "}
+            <span className="font-semibold">{activePersona?.name ?? "—"}</span>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDisconnectPersonaOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                if (!activePersona) return
+                disconnectLinkedInMutation.mutate(activePersona.id)
+              }}
+              disabled={!activePersona || disconnectLinkedInMutation.isPending}
+            >
+              {disconnectLinkedInMutation.isPending
+                ? "Disconnecting…"
+                : "Disconnect"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Separator />
+
+      <div className="text-xs text-muted-foreground">
+        Tip: “Reconnect required” means the stored token expired; click
+        Reconnect.
+      </div>
+
+      {personasLoading ? null : null}
     </div>
   )
 }

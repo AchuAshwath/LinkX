@@ -9,6 +9,7 @@ from app.models import (
     User,
     UserPublic,
 )
+from app.services.bootstrap import ensure_default_team_and_persona
 
 router = APIRouter(tags=["private"], prefix="/private")
 
@@ -33,6 +34,10 @@ def create_user(user_in: PrivateUserCreate, session: SessionDep) -> Any:
     )
 
     session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    ensure_default_team_and_persona(session=session, user_id=user.id)
     session.commit()
 
     return user

@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.routes import (
+    admin,
     items,
     linkedin,
     linkedin_auth,
@@ -24,6 +25,7 @@ api_router.include_router(linkedin_auth.router)
 api_router.include_router(linkedin.router)
 api_router.include_router(personas.router)
 api_router.include_router(teams.router)
+api_router.include_router(admin.router)
 
 
 if settings.ENVIRONMENT == "local":

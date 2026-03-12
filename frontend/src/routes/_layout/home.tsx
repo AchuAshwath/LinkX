@@ -119,7 +119,7 @@ function TimelinePage() {
     queryKey: ["posts", selectedPersonaId, "scheduled"],
     queryFn: async () => {
       return await PostsService.readPosts({
-        persona_id: selectedPersonaId,
+        personaId: selectedPersonaId,
         status: "scheduled",
         skip: 0,
         limit: 100,
@@ -132,7 +132,7 @@ function TimelinePage() {
     queryKey: ["posts", selectedPersonaId, "published"],
     queryFn: async () => {
       return await PostsService.readPosts({
-        persona_id: selectedPersonaId,
+        personaId: selectedPersonaId,
         status: "published",
         skip: 0,
         limit: 100,
@@ -155,7 +155,7 @@ function TimelinePage() {
           } | null,
           content: p.content,
           image_url: p.image_url ?? null,
-          created_at: p.created_at,
+          created_at: p.created_at ?? new Date().toISOString(),
           scheduled_at: p.scheduled_at ?? null,
           platform: p.platform ?? "linkedin",
         }),
@@ -174,10 +174,10 @@ function TimelinePage() {
           } | null,
           content: p.content,
           image_url: p.image_url ?? null,
-          created_at: p.created_at,
-          likes: p.likes,
-          reposts: p.reposts,
-          comments: p.comments,
+          created_at: p.created_at ?? new Date().toISOString(),
+          likes: p.likes ?? 0,
+          reposts: p.reposts ?? 0,
+          comments: p.comments ?? 0,
           platform: p.platform ?? "linkedin",
         }),
         type: "posted" as const,
@@ -191,7 +191,7 @@ function TimelinePage() {
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (postId: string) => {
-      await PostsService.deletePost({ postId })
+      await PostsService.deleteExistingPost({ postId })
     },
     onSuccess: () => {
       if (postToDelete) {
@@ -224,7 +224,7 @@ function TimelinePage() {
         status?: string
       }
     }) => {
-      return await PostsService.updatePost({
+      return await PostsService.updateExistingPost({
         postId,
         requestBody: data,
       })
