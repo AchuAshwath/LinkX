@@ -520,12 +520,7 @@ function PostsPage() {
         <Tabs
           value={activeTab}
           onValueChange={(value) =>
-            setActiveTab(
-              value as
-                | "drafts"
-                | "scheduled"
-                | "posted",
-            )
+            setActiveTab(value as "drafts" | "scheduled" | "posted")
           }
           className="w-full flex flex-col"
         >
@@ -906,7 +901,9 @@ function PostsPage() {
             </CardHeader>
             <CardContent className="space-y-2">
               {publishingPosts.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No posts publishing.</p>
+                <p className="text-sm text-muted-foreground">
+                  No posts publishing.
+                </p>
               ) : (
                 <div className="space-y-2">
                   {publishingPosts.slice(0, 3).map((post) => (
@@ -943,11 +940,16 @@ function PostsPage() {
             </CardHeader>
             <CardContent className="space-y-2">
               {failedPosts.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No failed posts.</p>
+                <p className="text-sm text-muted-foreground">
+                  No failed posts.
+                </p>
               ) : (
                 <div className="space-y-2">
                   {failedPosts.slice(0, 3).map((post) => (
-                    <div key={post.id} className="rounded-md border px-3 py-2 space-y-2">
+                    <div
+                      key={post.id}
+                      className="rounded-md border px-3 py-2 space-y-2"
+                    >
                       <div className="text-sm font-medium truncate">
                         {post.content}
                       </div>

@@ -7,6 +7,9 @@ from sqlmodel import col, func, select
 from app.api.deps import CurrentUser, SessionDep
 from app.models import (
     Message,
+    Persona,
+    PersonasPublic,
+    PersonaAccess,
     Team,
     TeamCreate,
     TeamMembership,
@@ -93,6 +96,39 @@ def read_team(
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
     return team
+
+
+@router.get("/{team_id}/personas", response_model=PersonasPublic)
+def read_team_personas(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    team_id: uuid.UUID,
+    skip: int = 0,
+    limit: int = 100,
+) -> Any:
+    role = get_team_role(session=session, team_id=team_id, user_id=current_user.id)
+    if not role:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    statement = (
+        select(Persona)
+        .join(PersonaAccess, col(PersonaAccess.persona_id) == col(Persona.id))
+        .where(col(PersonaAccess.team_id) == team_id)
+        .order_by(col(Persona.created_at).desc().nulls_last())
+        .offset(skip)
+        .limit(limit)
+    )
+    count_statement = (
+        select(func.count())
+        .select_from(Persona)
+        .join(PersonaAccess, col(PersonaAccess.persona_id) == col(Persona.id))
+        .where(col(PersonaAccess.team_id) == team_id)
+    )
+
+    personas = session.exec(statement).all()
+    count = session.exec(count_statement).one()
+    return PersonasPublic(data=list(personas), count=count)
 
 
 @router.put("/{team_id}", response_model=TeamPublic)

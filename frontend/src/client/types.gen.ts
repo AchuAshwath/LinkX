@@ -242,6 +242,8 @@ export type ValidationError = {
     type: string;
 };
 
+export type AdminReadSchedulerStatusResponse = (unknown);
+
 export type AuthLinkedinConfigCheckResponse = ({
     [key: string]: unknown;
 });
@@ -470,6 +472,14 @@ export type TeamsDeleteTeamData = {
 };
 
 export type TeamsDeleteTeamResponse = (Message);
+
+export type TeamsReadTeamPersonasData = {
+    limit?: number;
+    skip?: number;
+    teamId: string;
+};
+
+export type TeamsReadTeamPersonasResponse = (PersonasPublic);
 
 export type TeamsAddTeamMemberData = {
     requestBody: TeamMembershipCreate;
