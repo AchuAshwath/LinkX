@@ -11,7 +11,7 @@ from sqlmodel import select
 from app.api.deps import CurrentUser, SessionDep
 from app.core.redis import get_redis
 from app.models import SocialAccount
-from app.services.access import get_persona_role
+from app.services.access import get_persona_role, has_min_role
 
 router = APIRouter(prefix="/linkedin", tags=["linkedin"])
 
@@ -92,3 +92,49 @@ def linkedin_status(
         "expires_at": expires_at,
         "profile": profile,
     }
+
+
+@router.delete("/disconnect")
+def linkedin_disconnect(
+    current_user: CurrentUser,
+    session: SessionDep,
+    persona_id: uuid.UUID,
+) -> dict[str, Any]:
+    """
+    Disconnect LinkedIn for a persona.
+    - Deletes token from Redis (best-effort).
+    - Deletes persisted SocialAccount row for LinkedIn.
+    """
+    role = get_persona_role(
+        session=session,
+        persona_id=persona_id,
+        user_id=current_user.id,
+    )
+    if not role or not has_min_role(role=role, minimum="admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions",
+        )
+
+    # Best-effort delete token keys from Redis
+    try:
+        r = get_redis()
+        r.delete(_redis_token_key(persona_id=persona_id))
+        # Legacy key (older flows)
+        r.delete(f"linkedin:token:{current_user.id}")
+        r.delete(f"linkedin:profile:{persona_id}")
+        r.delete(f"linkedin:profile:{current_user.id}")
+    except Exception:
+        pass
+
+    account = session.exec(
+        select(SocialAccount).where(
+            SocialAccount.persona_id == persona_id,
+            SocialAccount.platform == "linkedin",
+        )
+    ).first()
+    if account is not None:
+        session.delete(account)
+        session.commit()
+
+    return {"ok": True}

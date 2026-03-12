@@ -26,7 +26,7 @@ export function usePostForm() {
       status: string
       persona_id: string
     }) => {
-      return await PostsService.createPost({ requestBody: data })
+      return await PostsService.createNewPost({ requestBody: data })
     },
     onSuccess: (_, variables) => {
       const statusMessages = {

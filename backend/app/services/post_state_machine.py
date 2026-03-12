@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "draft": {"scheduled", "publishing"},
     "scheduled": {"publishing", "failed"},

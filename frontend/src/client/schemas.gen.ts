@@ -226,6 +226,254 @@ export const NewPasswordSchema = {
     title: 'NewPassword'
 } as const;
 
+export const PersonaAccessCreateSchema = {
+    properties: {
+        team_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Team Id'
+        },
+        role: {
+            type: 'string',
+            maxLength: 50,
+            title: 'Role',
+            default: 'member'
+        }
+    },
+    type: 'object',
+    required: ['team_id'],
+    title: 'PersonaAccessCreate'
+} as const;
+
+export const PersonaAccessPublicSchema = {
+    properties: {
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        persona_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Persona Id'
+        },
+        team_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Team Id'
+        },
+        granted_by_user_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Granted By User Id'
+        },
+        role: {
+            type: 'string',
+            title: 'Role'
+        },
+        created_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Created At'
+        },
+        updated_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Updated At'
+        }
+    },
+    type: 'object',
+    required: ['id', 'persona_id', 'team_id', 'granted_by_user_id', 'role'],
+    title: 'PersonaAccessPublic'
+} as const;
+
+export const PersonaCreateSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            maxLength: 255,
+            title: 'Name'
+        },
+        description: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 500
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Description'
+        }
+    },
+    type: 'object',
+    required: ['name'],
+    title: 'PersonaCreate'
+} as const;
+
+export const PersonaPublicSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            maxLength: 255,
+            title: 'Name'
+        },
+        description: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 500
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Description'
+        },
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        user_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'User Id'
+        },
+        created_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Created At'
+        },
+        updated_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Updated At'
+        }
+    },
+    type: 'object',
+    required: ['name', 'id', 'user_id'],
+    title: 'PersonaPublic'
+} as const;
+
+export const PersonaRolePublicSchema = {
+    properties: {
+        role: {
+            type: 'string',
+            title: 'Role'
+        }
+    },
+    type: 'object',
+    required: ['role'],
+    title: 'PersonaRolePublic'
+} as const;
+
+export const PersonaUpdateSchema = {
+    properties: {
+        name: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 255
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Name'
+        },
+        description: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 500
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Description'
+        }
+    },
+    type: 'object',
+    title: 'PersonaUpdate'
+} as const;
+
+export const PersonasPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/PersonaPublic'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count'],
+    title: 'PersonasPublic'
+} as const;
+
+export const PostAuthorSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            title: 'Name'
+        },
+        username: {
+            type: 'string',
+            title: 'Username'
+        },
+        avatarUrl: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Avatarurl'
+        }
+    },
+    type: 'object',
+    required: ['name', 'username'],
+    title: 'PostAuthor'
+} as const;
+
 export const PostCreateSchema = {
     properties: {
         content: {
@@ -249,14 +497,12 @@ export const PostCreateSchema = {
         platform: {
             type: 'string',
             maxLength: 50,
-            title: 'Platform',
-            default: 'all'
+            title: 'Platform'
         },
         status: {
             type: 'string',
             maxLength: 50,
-            title: 'Status',
-            default: 'draft'
+            title: 'Status'
         },
         scheduled_at: {
             anyOf: [
@@ -269,10 +515,22 @@ export const PostCreateSchema = {
                 }
             ],
             title: 'Scheduled At'
+        },
+        persona_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Persona Id'
         }
     },
     type: 'object',
-    required: ['content'],
+    required: ['content', 'platform', 'status'],
     title: 'PostCreate'
 } as const;
 
@@ -299,24 +557,12 @@ export const PostPublicSchema = {
         platform: {
             type: 'string',
             maxLength: 50,
-            title: 'Platform',
-            default: 'all'
+            title: 'Platform'
         },
         status: {
             type: 'string',
             maxLength: 50,
-            title: 'Status',
-            default: 'draft'
-        },
-        id: {
-            type: 'string',
-            format: 'uuid',
-            title: 'Id'
-        },
-        owner_id: {
-            type: 'string',
-            format: 'uuid',
-            title: 'Owner Id'
+            title: 'Status'
         },
         scheduled_at: {
             anyOf: [
@@ -330,6 +576,28 @@ export const PostPublicSchema = {
             ],
             title: 'Scheduled At'
         },
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        owner_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Owner Id'
+        },
+        persona_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Persona Id'
+        },
         published_at: {
             anyOf: [
                 {
@@ -342,43 +610,132 @@ export const PostPublicSchema = {
             ],
             title: 'Published At'
         },
-        likes: {
-            type: 'integer',
-            title: 'Likes'
-        },
-        reposts: {
-            type: 'integer',
-            title: 'Reposts'
-        },
-        comments: {
-            type: 'integer',
-            title: 'Comments'
-        },
-        created_at: {
-            type: 'string',
-            format: 'date-time',
-            title: 'Created At'
-        },
-        updated_at: {
-            type: 'string',
-            format: 'date-time',
-            title: 'Updated At'
-        },
-        author: {
+        publishing_started_at: {
             anyOf: [
                 {
-                    additionalProperties: true,
-                    type: 'object'
+                    type: 'string',
+                    format: 'date-time'
                 },
                 {
                     type: 'null'
                 }
             ],
-            title: 'Author'
+            title: 'Publishing Started At'
+        },
+        retry_count: {
+            type: 'integer',
+            title: 'Retry Count',
+            default: 0
+        },
+        last_retry_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Last Retry At'
+        },
+        next_retry_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Next Retry At'
+        },
+        error_code: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Error Code'
+        },
+        error_message: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Error Message'
+        },
+        likes: {
+            type: 'integer',
+            title: 'Likes',
+            default: 0
+        },
+        reposts: {
+            type: 'integer',
+            title: 'Reposts',
+            default: 0
+        },
+        comments: {
+            type: 'integer',
+            title: 'Comments',
+            default: 0
+        },
+        created_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Created At'
+        },
+        updated_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Updated At'
+        },
+        external_post_id: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'External Post Id'
+        },
+        author: {
+            anyOf: [
+                {
+                    '$ref': '#/components/schemas/PostAuthor'
+                },
+                {
+                    type: 'null'
+                }
+            ]
         }
     },
     type: 'object',
-    required: ['content', 'id', 'owner_id', 'scheduled_at', 'published_at', 'likes', 'reposts', 'comments', 'created_at', 'updated_at'],
+    required: ['content', 'platform', 'status', 'id', 'owner_id'],
     title: 'PostPublic'
 } as const;
 
@@ -421,18 +778,6 @@ export const PostUpdateSchema = {
             ],
             title: 'Platform'
         },
-        scheduled_at: {
-            anyOf: [
-                {
-                    type: 'string',
-                    format: 'date-time'
-                },
-                {
-                    type: 'null'
-                }
-            ],
-            title: 'Scheduled At'
-        },
         status: {
             anyOf: [
                 {
@@ -444,6 +789,30 @@ export const PostUpdateSchema = {
                 }
             ],
             title: 'Status'
+        },
+        persona_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Persona Id'
+        },
+        scheduled_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Scheduled At'
         }
     },
     type: 'object',
@@ -492,6 +861,186 @@ export const PrivateUserCreateSchema = {
     type: 'object',
     required: ['email', 'password', 'full_name'],
     title: 'PrivateUserCreate'
+} as const;
+
+export const TeamCreateSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            maxLength: 255,
+            title: 'Name'
+        },
+        description: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 500
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Description'
+        }
+    },
+    type: 'object',
+    required: ['name'],
+    title: 'TeamCreate'
+} as const;
+
+export const TeamMembershipCreateSchema = {
+    properties: {
+        user_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'User Id'
+        },
+        role: {
+            type: 'string',
+            maxLength: 50,
+            title: 'Role',
+            default: 'member'
+        }
+    },
+    type: 'object',
+    required: ['user_id'],
+    title: 'TeamMembershipCreate'
+} as const;
+
+export const TeamMembershipPublicSchema = {
+    properties: {
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        user_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'User Id'
+        },
+        team_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Team Id'
+        },
+        role: {
+            type: 'string',
+            title: 'Role'
+        }
+    },
+    type: 'object',
+    required: ['id', 'user_id', 'team_id', 'role'],
+    title: 'TeamMembershipPublic'
+} as const;
+
+export const TeamPublicSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            maxLength: 255,
+            title: 'Name'
+        },
+        description: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 500
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Description'
+        },
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        owner_user_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Owner User Id'
+        },
+        created_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Created At'
+        },
+        updated_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Updated At'
+        }
+    },
+    type: 'object',
+    required: ['name', 'id', 'owner_user_id'],
+    title: 'TeamPublic'
+} as const;
+
+export const TeamUpdateSchema = {
+    properties: {
+        name: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 255
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Name'
+        },
+        description: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 500
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Description'
+        }
+    },
+    type: 'object',
+    title: 'TeamUpdate'
+} as const;
+
+export const TeamsPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/TeamPublic'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count'],
+    title: 'TeamsPublic'
 } as const;
 
 export const TokenSchema = {
