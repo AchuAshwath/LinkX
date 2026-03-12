@@ -3,6 +3,7 @@ from sqlmodel import Session, create_engine, select
 from app import crud
 from app.core.config import settings
 from app.models import User, UserCreate
+from app.services.bootstrap import ensure_default_team_and_persona
 
 engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
 
@@ -31,3 +32,5 @@ def init_db(session: Session) -> None:
             is_superuser=True,
         )
         user = crud.create_user(session=session, user_create=user_in)
+        ensure_default_team_and_persona(session=session, user_id=user.id)
+        session.commit()
