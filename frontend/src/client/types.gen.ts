@@ -100,7 +100,7 @@ export type PostCreate = {
     platform: string;
     status: string;
     scheduled_at?: (string | null);
-    persona_id?: (string | null);
+    persona_id: string;
 };
 
 export type PostPublic = {
@@ -302,6 +302,14 @@ export type LinkedinLinkedinStatusData = {
 };
 
 export type LinkedinLinkedinStatusResponse = ({
+    [key: string]: unknown;
+});
+
+export type LinkedinLinkedinDisconnectData = {
+    personaId: string;
+};
+
+export type LinkedinLinkedinDisconnectResponse = ({
     [key: string]: unknown;
 });
 

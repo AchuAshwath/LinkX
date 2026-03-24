@@ -148,12 +148,6 @@ async def create_new_post(
     current_user: CurrentUser,
     post_in: PostCreate,
 ) -> Any:
-    if post_in.persona_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="persona_id is required",
-        )
-
     role = _require_persona_role(
         session=session,
         user_id=current_user.id,

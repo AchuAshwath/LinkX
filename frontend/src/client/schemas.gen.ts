@@ -517,20 +517,13 @@ export const PostCreateSchema = {
             title: 'Scheduled At'
         },
         persona_id: {
-            anyOf: [
-                {
-                    type: 'string',
-                    format: 'uuid'
-                },
-                {
-                    type: 'null'
-                }
-            ],
+            type: 'string',
+            format: 'uuid',
             title: 'Persona Id'
         }
     },
     type: 'object',
-    required: ['content', 'platform', 'status'],
+    required: ['content', 'platform', 'status', 'persona_id'],
     title: 'PostCreate'
 } as const;
 

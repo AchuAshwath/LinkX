@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { AdminReadSchedulerStatusResponse, AuthLinkedinConfigCheckResponse, AuthLinkedinAuthorizeData, AuthLinkedinAuthorizeResponse, AuthLinkedinCallbackData, AuthLinkedinCallbackResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, LinkedinLinkedinStatusData, LinkedinLinkedinStatusResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PersonasReadPersonasData, PersonasReadPersonasResponse, PersonasCreatePersonaData, PersonasCreatePersonaResponse, PersonasReadPersonaData, PersonasReadPersonaResponse, PersonasUpdatePersonaData, PersonasUpdatePersonaResponse, PersonasDeletePersonaData, PersonasDeletePersonaResponse, PersonasReadPersonaRoleData, PersonasReadPersonaRoleResponse, PersonasSharePersonaData, PersonasSharePersonaResponse, PersonasListPersonaAccessData, PersonasListPersonaAccessResponse, PersonasDeletePersonaAccessData, PersonasDeletePersonaAccessResponse, PostsReadPostsData, PostsReadPostsResponse, PostsCreateNewPostData, PostsCreateNewPostResponse, PostsReadPostData, PostsReadPostResponse, PostsUpdateExistingPostData, PostsUpdateExistingPostResponse, PostsDeleteExistingPostData, PostsDeleteExistingPostResponse, PostsPublishExistingPostData, PostsPublishExistingPostResponse, PostsRetryFailedPostData, PostsRetryFailedPostResponse, PrivateCreateUserData, PrivateCreateUserResponse, TeamsReadTeamsData, TeamsReadTeamsResponse, TeamsCreateTeamData, TeamsCreateTeamResponse, TeamsReadTeamData, TeamsReadTeamResponse, TeamsUpdateTeamData, TeamsUpdateTeamResponse, TeamsDeleteTeamData, TeamsDeleteTeamResponse, TeamsReadTeamPersonasData, TeamsReadTeamPersonasResponse, TeamsAddTeamMemberData, TeamsAddTeamMemberResponse, TeamsRemoveTeamMemberData, TeamsRemoveTeamMemberResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
+import type { AdminReadSchedulerStatusResponse, AuthLinkedinConfigCheckResponse, AuthLinkedinAuthorizeData, AuthLinkedinAuthorizeResponse, AuthLinkedinCallbackData, AuthLinkedinCallbackResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, LinkedinLinkedinStatusData, LinkedinLinkedinStatusResponse, LinkedinLinkedinDisconnectData, LinkedinLinkedinDisconnectResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PersonasReadPersonasData, PersonasReadPersonasResponse, PersonasCreatePersonaData, PersonasCreatePersonaResponse, PersonasReadPersonaData, PersonasReadPersonaResponse, PersonasUpdatePersonaData, PersonasUpdatePersonaResponse, PersonasDeletePersonaData, PersonasDeletePersonaResponse, PersonasReadPersonaRoleData, PersonasReadPersonaRoleResponse, PersonasSharePersonaData, PersonasSharePersonaResponse, PersonasListPersonaAccessData, PersonasListPersonaAccessResponse, PersonasDeletePersonaAccessData, PersonasDeletePersonaAccessResponse, PostsReadPostsData, PostsReadPostsResponse, PostsCreateNewPostData, PostsCreateNewPostResponse, PostsReadPostData, PostsReadPostResponse, PostsUpdateExistingPostData, PostsUpdateExistingPostResponse, PostsDeleteExistingPostData, PostsDeleteExistingPostResponse, PostsPublishExistingPostData, PostsPublishExistingPostResponse, PostsRetryFailedPostData, PostsRetryFailedPostResponse, PrivateCreateUserData, PrivateCreateUserResponse, TeamsReadTeamsData, TeamsReadTeamsResponse, TeamsCreateTeamData, TeamsCreateTeamResponse, TeamsReadTeamData, TeamsReadTeamResponse, TeamsUpdateTeamData, TeamsUpdateTeamResponse, TeamsDeleteTeamData, TeamsDeleteTeamResponse, TeamsReadTeamPersonasData, TeamsReadTeamPersonasResponse, TeamsAddTeamMemberData, TeamsAddTeamMemberResponse, TeamsRemoveTeamMemberData, TeamsRemoveTeamMemberResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
 
 export class AdminService {
     /**
@@ -218,6 +218,29 @@ export class LinkedinService {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/api/v1/linkedin/status',
+            query: {
+                persona_id: data.personaId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Linkedin Disconnect
+     * Disconnect LinkedIn for a persona.
+     * - Deletes token from Redis (best-effort).
+     * - Deletes persisted SocialAccount row for LinkedIn.
+     * @param data The data for the request.
+     * @param data.personaId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static linkedinDisconnect(data: LinkedinLinkedinDisconnectData): CancelablePromise<LinkedinLinkedinDisconnectResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/linkedin/disconnect',
             query: {
                 persona_id: data.personaId
             },

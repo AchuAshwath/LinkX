@@ -174,7 +174,7 @@ class PostBase(SQLModel):
 
 
 class PostCreate(PostBase):
-    persona_id: uuid.UUID | None = None
+    persona_id: uuid.UUID
 
 
 class PostUpdate(SQLModel):
