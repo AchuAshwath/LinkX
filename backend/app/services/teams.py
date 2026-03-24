@@ -20,7 +20,9 @@ def _default_team_name(*, user: User | None) -> str:
     return "My Team"
 
 
-def get_or_create_default_team_for_user(*, session: Session, user_id: uuid.UUID) -> Team:
+def get_or_create_default_team_for_user(
+    *, session: Session, user_id: uuid.UUID
+) -> Team:
     existing_team = session.exec(
         select(Team)
         .join(TeamMembership, col(TeamMembership.team_id) == col(Team.id))
@@ -42,4 +44,3 @@ def get_or_create_default_team_for_user(*, session: Session, user_id: uuid.UUID)
     session.flush()
 
     return team
-

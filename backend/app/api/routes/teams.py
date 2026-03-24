@@ -8,8 +8,8 @@ from app.api.deps import CurrentUser, SessionDep
 from app.models import (
     Message,
     Persona,
-    PersonasPublic,
     PersonaAccess,
+    PersonasPublic,
     Team,
     TeamCreate,
     TeamMembership,

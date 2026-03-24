@@ -31,4 +31,3 @@ def ensure_default_team_and_persona(
         session.add(access)
         session.flush()
     return team, persona
-

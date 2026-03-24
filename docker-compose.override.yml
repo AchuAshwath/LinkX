@@ -76,6 +76,10 @@ services:
           ignore:
             - ./backend/.venv
             - .venv
+        # Explicit sync so tests/ exists in the container for pytest (not in the runtime image)
+        - path: ./backend/tests
+          action: sync
+          target: /app/backend/tests
         - path: ./backend/pyproject.toml
           action: rebuild
     # TODO: remove once coverage is done locally

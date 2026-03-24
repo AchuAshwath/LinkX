@@ -325,7 +325,9 @@ function SocialAccountsPage() {
   }, [activePersonaId, personaById, selectedPersonaId])
 
   const activeTeam = React.useMemo(() => {
-    return activeTeamId ? teams.find((t) => t.id === activeTeamId) ?? null : null
+    return activeTeamId
+      ? (teams.find((t) => t.id === activeTeamId) ?? null)
+      : null
   }, [activeTeamId, teams])
 
   const canManageActivePersona = React.useMemo(() => {
@@ -496,7 +498,9 @@ function SocialAccountsPage() {
       if (!activeTeam) throw new Error("Select a team to edit.")
       const parsed = teamSchema.safeParse(teamDraft)
       if (!parsed.success) {
-        throw new Error(parsed.error.issues[0]?.message ?? "Invalid team details.")
+        throw new Error(
+          parsed.error.issues[0]?.message ?? "Invalid team details.",
+        )
       }
       return await TeamsService.updateTeam({
         teamId: activeTeam.id,
