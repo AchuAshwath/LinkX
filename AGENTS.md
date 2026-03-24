@@ -34,6 +34,8 @@ docker compose exec backend <command> # Run command in container
 
 ## Lint & Typecheck (Run in Docker)
 
+**Backend Python:** always run lint, format, pytest, Alembic, and one-off scripts **inside the backend container** — do **not** use a local `uv run`, `python`, or `pytest` on the host for repo checks (avoids env drift and matches CI). Use:
+
 ```bash
 # Backend lint (mypy + ruff)
 docker compose exec backend bash scripts/lint.sh
@@ -41,7 +43,7 @@ docker compose exec backend bash scripts/lint.sh
 # Backend format (auto-fix)
 docker compose exec backend bash scripts/format.sh
 
-# Backend tests
+# Backend tests (container WORKDIR is /app/backend)
 docker compose exec backend pytest tests/ -v
 
 # Frontend lint
@@ -108,6 +110,7 @@ git commit -m "descriptive message"
 **DO**:
 - Use `bun` for frontend
 - **Always run `docker compose watch backend` while working on the backend** so `./backend` stays synced to the container every day; do not rely on `docker compose up -d backend` for active development
+- Run **backend** lint, format, pytest, and Alembic **via `docker compose exec backend …`** only — not `uv run` / local `pytest` on the host
 - Run `bun run generate-client` in frontend after backend API changes
 - Use `.env` file for all config - auto-loaded by docker
 - Check logs when debugging: `docker compose logs backend`
@@ -118,6 +121,7 @@ git commit -m "descriptive message"
 
 **DO NOT**:
 - Use `docker compose up -d backend` as your habitual backend workflow when editing code—use **`docker compose watch backend`** instead
+- Use a **local** Python/uv environment for backend checks (`uv run pytest`, `python -m pytest`, etc.)—use **Docker** as above
 - Commit `.env` or any file with secrets/keys
 - Run `docker compose up --build` in CI - use pre-built images
 - Modify `compose.yml` for local changes - use `.env` or `compose.override.yml`
