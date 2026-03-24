@@ -107,17 +107,11 @@ def _set_post_status(*, session: Session, post: Post, status_value: str) -> Post
 def read_posts(
     session: SessionDep,
     current_user: CurrentUser,
-    persona_id: uuid.UUID | None = Query(default=None),
+    persona_id: uuid.UUID = Query(),
     skip: int = 0,
     limit: int = 100,
     post_status: str | None = Query(default=None, alias="status"),
 ) -> Any:
-    if persona_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="persona_id is required",
-        )
-
     _require_persona_role(
         session=session,
         user_id=current_user.id,

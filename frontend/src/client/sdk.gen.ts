@@ -550,7 +550,7 @@ export class PostsService {
      * @returns PostsPublic Successful Response
      * @throws ApiError
      */
-    public static readPosts(data: PostsReadPostsData = {}): CancelablePromise<PostsReadPostsResponse> {
+    public static readPosts(data: PostsReadPostsData): CancelablePromise<PostsReadPostsResponse> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/api/v1/posts',

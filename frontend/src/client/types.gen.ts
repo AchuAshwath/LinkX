@@ -399,7 +399,7 @@ export type PersonasDeletePersonaAccessResponse = (Message);
 
 export type PostsReadPostsData = {
     limit?: number;
-    personaId?: (string | null);
+    personaId: string;
     skip?: number;
     status?: (string | null);
 };
