@@ -455,6 +455,13 @@ function SocialAccountsPage() {
     [personaById, setSelectedPersonaId, showErrorToast],
   )
 
+  const handleSharePersonaOpenChange = React.useCallback((open: boolean) => {
+    setSharePersonaOpen(open)
+    if (!open) {
+      setActiveTeamId("")
+    }
+  }, [])
+
   const openSharePersona = React.useCallback(
     (personaId: string) => {
       const persona = personaById[personaId]
@@ -462,10 +469,11 @@ function SocialAccountsPage() {
         showErrorToast("Persona not found.")
         return
       }
+      setActiveTeamId("")
       setActivePersonaId(personaId)
-      setSharePersonaOpen(true)
+      handleSharePersonaOpenChange(true)
     },
-    [personaById, showErrorToast],
+    [handleSharePersonaOpenChange, personaById, showErrorToast],
   )
 
   const createTeamMutation = useMutation({
@@ -548,7 +556,7 @@ function SocialAccountsPage() {
     },
     onSuccess: (teamId) => {
       showSuccessToast("Persona shared with team.")
-      setSharePersonaOpen(false)
+      handleSharePersonaOpenChange(false)
       queryClient.invalidateQueries({
         queryKey: ["team-personas", teamId],
       })
@@ -1108,7 +1116,10 @@ function SocialAccountsPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={sharePersonaOpen} onOpenChange={setSharePersonaOpen}>
+      <Dialog
+        open={sharePersonaOpen}
+        onOpenChange={handleSharePersonaOpenChange}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Share persona with team</DialogTitle>
@@ -1148,7 +1159,7 @@ function SocialAccountsPage() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => setSharePersonaOpen(false)}
+              onClick={() => handleSharePersonaOpenChange(false)}
             >
               Cancel
             </Button>
