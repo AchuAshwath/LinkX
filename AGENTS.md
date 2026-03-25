@@ -67,7 +67,7 @@ After backend API or schema changes, regenerate the typed client under `frontend
 bash ./scripts/generate-client.sh
 ```
 
-[`scripts/generate-client.sh`](scripts/generate-client.sh) runs `docker compose exec` to dump the OpenAPI JSON from the container app into `./openapi.json`, copies it to `frontend/openapi.json`, runs `bun run --filter frontend generate-client`, then `bun run lint` on the host.
+[`scripts/generate-client.sh`](scripts/generate-client.sh) runs `docker compose exec` to dump the OpenAPI JSON from the container app into `frontend/openapi.json`, runs `bun run --filter frontend generate-client`, then `bun run lint` on the host.
 
 **Git hooks:** this repo uses [**prek**](https://prek.j178.dev/) with [`.pre-commit-config.yaml`](.pre-commit-config.yaml) (see [`development.md`](development.md)). Install once from `backend`: `uv run prek install -f`. To run the same checks as the hook **without committing**, from `backend` run:
 
@@ -95,6 +95,8 @@ docker compose exec backend alembic revision --autogenerate -m "add field"
 ## Running Tests
 
 API tests use a **per-test DB transaction**: [`backend/tests/conftest.py`](backend/tests/conftest.py) opens a connection-level transaction, binds a [`Session`](backend/tests/conftest.py) with `join_transaction_mode="create_savepoint"`, overrides [`get_db`](backend/app/api/deps.py) for `TestClient`, and **rolls back** after each test so commits inside routes do not leak across cases. Session-wide setup (e.g. superuser) still runs once via `init_db`.
+
+Optional session teardown: exporting `LINKX_PYTEST_CLEANUP_EPHEMERAL_USERS=1` before `pytest` runs a **destructive** cleanup that deletes every user outside the superuser + seeded TODO email allowlist (see `conftest.py`). Use only on a throwaway DB you are sure is safe.
 
 ```bash
 # Backend - inside container (with docker compose watch backend running so app + tests are synced)

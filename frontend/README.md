@@ -51,7 +51,7 @@ But it would be only to clean them up, leaving them won't really have any effect
 bash ./scripts/generate-client.sh
 ```
 
-This writes `openapi.json` at the repo root from the running container (a snapshot for debugging), **copies** it to `frontend/openapi.json`, then runs `openapi-ts` against that file (no live `localhost:8000` fetch) and `bun run lint` for the frontend workspace.
+This writes OpenAPI JSON from the running container to `frontend/openapi.json`, then runs `openapi-ts` against that file (no live `localhost:8000` fetch) and `bun run lint` for the frontend workspace.
 
 * Commit the changes (including updates under `frontend/src/client` when the schema changed).
 

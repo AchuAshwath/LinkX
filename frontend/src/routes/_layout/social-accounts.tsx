@@ -162,6 +162,21 @@ function getLinkedinStatusView(status: unknown): LinkedinStatusView {
     }
   }
 
+  if (needsReconnect) {
+    return {
+      badge: (
+        <Badge
+          variant="outline"
+          className="border-amber-500/45 bg-amber-500/10 font-normal text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200"
+        >
+          Reconnect required
+        </Badge>
+      ),
+      connected: false,
+      needsReconnect: true,
+    }
+  }
+
   return {
     badge: (
       <Badge variant="secondary" className="font-normal">
@@ -169,7 +184,7 @@ function getLinkedinStatusView(status: unknown): LinkedinStatusView {
       </Badge>
     ),
     connected: false,
-    needsReconnect,
+    needsReconnect: false,
   }
 }
 

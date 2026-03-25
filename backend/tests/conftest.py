@@ -1,3 +1,4 @@
+import os
 from collections.abc import Generator
 
 import pytest
@@ -47,8 +48,10 @@ def _cleanup_ephemeral_test_users() -> None:
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:  # noqa: ARG001
     if getattr(session.config.option, "collectonly", False):
         return
-    # If any tests/scripts created stray users outside the normal per-test rollback,
-    # clean them up so local dev DB stays usable.
+    # Destructive: deletes every user not in the superuser + seeded TODO allowlist.
+    # Only run when explicitly opted in so pytest cannot wipe a misconfigured non-test DB.
+    if os.environ.get("LINKX_PYTEST_CLEANUP_EPHEMERAL_USERS") != "1":
+        return
     _cleanup_ephemeral_test_users()
 
 
