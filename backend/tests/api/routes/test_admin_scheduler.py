@@ -23,4 +23,3 @@ def test_scheduler_status_requires_superuser(
     assert "due_scheduled" in data
     assert "due_retries" in data
     assert "recent_failures" in data
-

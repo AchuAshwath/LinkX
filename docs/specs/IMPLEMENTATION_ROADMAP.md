@@ -1,7 +1,7 @@
 # LinkX Implementation Roadmap
 
-**Status:** Planning → In Progress  
-**Last Updated:** March 11, 2026  
+**Status:** Planning → In Progress
+**Last Updated:** March 11, 2026
 **Related Spec:** [PERSONA_TEAM_SPEC.md](./PERSONA_TEAM_SPEC.md)
 
 ---
@@ -28,8 +28,8 @@ This roadmap outlines the remaining implementation work for the Persona + Team I
 
 ### 1. Scheduler Service Implementation (Backend)
 
-**Priority:** HIGH  
-**Effort:** 20-25 hours  
+**Priority:** HIGH
+**Effort:** 20-25 hours
 **Status:** Not started
 
 #### 1.1 Service Architecture
@@ -152,8 +152,8 @@ Prometheus metrics to add:
 
 ### 2. Admin Endpoints (Backend)
 
-**Priority:** HIGH  
-**Effort:** 5-8 hours  
+**Priority:** HIGH
+**Effort:** 5-8 hours
 **Status:** Not started
 
 #### 2.1 New Endpoints
@@ -201,8 +201,8 @@ All admin endpoints require:
 
 ### 3. Frontend UI Updates
 
-**Priority:** MEDIUM  
-**Effort:** 10-15 hours  
+**Priority:** MEDIUM
+**Effort:** 10-15 hours
 **Status:** Not started
 
 #### 3.1 Post State Display
@@ -264,8 +264,8 @@ Create `frontend/src/pages/AdminScheduler.tsx`:
 
 ### 4. Testing
 
-**Priority:** MEDIUM  
-**Effort:** 8-10 hours  
+**Priority:** MEDIUM
+**Effort:** 8-10 hours
 **Status:** Not started
 
 #### 4.1 Unit Tests
@@ -313,8 +313,8 @@ Tests to implement:
 
 ### 5. Configuration & Environment
 
-**Priority:** MEDIUM  
-**Effort:** 2-3 hours  
+**Priority:** MEDIUM
+**Effort:** 2-3 hours
 **Status:** Not started
 
 #### 5.1 Environment Variables
@@ -474,6 +474,6 @@ Create `docs/SCHEDULER_DEPLOYMENT.md`:
 
 ---
 
-**Version:** 1.0  
-**Last Updated:** March 11, 2026  
+**Version:** 1.0
+**Last Updated:** March 11, 2026
 **Maintained By:** Tech Lead

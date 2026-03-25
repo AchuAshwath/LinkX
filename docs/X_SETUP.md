@@ -93,7 +93,7 @@ https://yourdomain.com/api/v1/auth/x/callback
 | **Client ID** | OAuth 2.0 Client ID | Under "OAuth 2.0 Client ID and Client Secret" |
 | **Client Secret** | OAuth 2.0 Client Secret | Click "Regenerate" to reveal |
 
-> **Important**: 
+> **Important**:
 > - The Client Secret is only shown once. Save it securely!
 > - These are different from API Key/Secret (used for OAuth 1.0a)
 

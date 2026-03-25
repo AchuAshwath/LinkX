@@ -52,4 +52,3 @@ def downgrade():
     op.drop_index(op.f("ix_social_account_user_platform"), table_name="social_account")
     op.drop_index(op.f("ix_social_account_platform"), table_name="social_account")
     op.drop_table("social_account")
-

@@ -108,23 +108,23 @@ for commit in "${COMMITS[@]}"; do
   CURRENT=$((CURRENT + 1))
   COMMIT_MSG=$(git log -1 --pretty=format:'%s' "$commit")
   echo "[$CURRENT/$TOTAL] Processing: $commit - $COMMIT_MSG"
-  
+
   # Try to cherry-pick without committing first
   if git cherry-pick "$commit" --no-commit 2>/dev/null; then
     echo "  ✓ Applied cleanly"
     git commit -m "$COMMIT_MSG" --no-verify
   else
     echo "  ⚠ Conflicts detected, auto-resolving..."
-    
+
     # Check for conflicts
     CONFLICTED_FILES=$(git diff --name-only --diff-filter=U)
-    
+
     if [ -z "$CONFLICTED_FILES" ]; then
       echo "  ✓ No conflicts, committing..."
       git commit -m "$COMMIT_MSG" --no-verify
       continue
     fi
-    
+
     # Resolve conflicts based on file patterns
     for file in $CONFLICTED_FILES; do
       # Check if file matches OUR_FILES patterns
@@ -135,7 +135,7 @@ for commit in "${COMMITS[@]}"; do
           break
         fi
       done
-      
+
       # Check if file matches THEIR_FILES patterns
       USE_THEIRS=false
       for pattern in "${THEIR_FILES[@]}"; do
@@ -144,7 +144,7 @@ for commit in "${COMMITS[@]}"; do
           break
         fi
       done
-      
+
       if [ "$USE_OURS" = true ]; then
         echo "    → Keeping OUR version: $file"
         git checkout --ours "$file"
@@ -160,7 +160,7 @@ for commit in "${COMMITS[@]}"; do
         git add "$file"
       fi
     done
-    
+
     # Complete the cherry-pick
     git commit -m "$COMMIT_MSG [merged]" --no-verify
     echo "  ✓ Resolved and committed"

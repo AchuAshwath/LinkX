@@ -1,9 +1,9 @@
 # X (Twitter) Integration - Technical Specification
 
-**Version**: 1.0  
-**Status**: Draft  
-**Author**: LinkX Team  
-**Date**: January 2026  
+**Version**: 1.0
+**Status**: Draft
+**Author**: LinkX Team
+**Date**: January 2026
 **Parent Spec**: [SOCIAL_MEDIA_INTEGRATION.md](./SOCIAL_MEDIA_INTEGRATION.md)
 
 ---
@@ -171,29 +171,29 @@ from app.core.config import settings
 
 class XAdapter(SocialPlatformAdapter):
     """X (Twitter) platform adapter implementation."""
-    
+
     PLATFORM = "x"
     API_BASE_URL = "https://api.x.com/2"
     MEDIA_UPLOAD_URL = "https://upload.twitter.com/1.1/media/upload.json"
     OAUTH_AUTHORIZE_URL = "https://twitter.com/i/oauth2/authorize"
     OAUTH_TOKEN_URL = "https://api.x.com/2/oauth2/token"
-    
+
     REQUIRED_SCOPES = [
         "tweet.read",
-        "tweet.write", 
+        "tweet.write",
         "users.read",
         "offline.access",
     ]
-    
+
     def __init__(self):
         self.client_id = settings.X_CLIENT_ID
         self.client_secret = settings.X_CLIENT_SECRET
         self.redirect_uri = settings.X_REDIRECT_URI
-    
+
     # ─────────────────────────────────────────────────────────────
     # PKCE Helpers
     # ─────────────────────────────────────────────────────────────
-    
+
     @staticmethod
     def generate_pkce_pair() -> tuple[str, str]:
         """Generate PKCE code_verifier and code_challenge."""
@@ -202,11 +202,11 @@ class XAdapter(SocialPlatformAdapter):
             hashlib.sha256(code_verifier.encode()).digest()
         ).decode().rstrip('=')
         return code_verifier, code_challenge
-    
+
     # ─────────────────────────────────────────────────────────────
     # OAuth 2.0 Methods
     # ─────────────────────────────────────────────────────────────
-    
+
     def get_authorization_url(self, state: str, code_challenge: str) -> str:
         """Generate OAuth 2.0 authorization URL with PKCE."""
         params = {
@@ -220,10 +220,10 @@ class XAdapter(SocialPlatformAdapter):
         }
         query = "&".join(f"{k}={v}" for k, v in params.items())
         return f"{self.OAUTH_AUTHORIZE_URL}?{query}"
-    
+
     async def authenticate(
-        self, 
-        auth_code: str, 
+        self,
+        auth_code: str,
         code_verifier: str
     ) -> TokenResponse:
         """Exchange authorization code for tokens."""
@@ -241,7 +241,7 @@ class XAdapter(SocialPlatformAdapter):
             )
             response.raise_for_status()
             data = response.json()
-            
+
             return TokenResponse(
                 access_token=data["access_token"],
                 refresh_token=data.get("refresh_token"),
@@ -249,7 +249,7 @@ class XAdapter(SocialPlatformAdapter):
                 scope=data["scope"],
                 token_type=data["token_type"],
             )
-    
+
     async def refresh_token(self, refresh_token: str) -> TokenResponse:
         """Refresh an expired access token."""
         async with httpx.AsyncClient() as client:
@@ -264,7 +264,7 @@ class XAdapter(SocialPlatformAdapter):
             )
             response.raise_for_status()
             data = response.json()
-            
+
             return TokenResponse(
                 access_token=data["access_token"],
                 refresh_token=data.get("refresh_token", refresh_token),
@@ -272,11 +272,11 @@ class XAdapter(SocialPlatformAdapter):
                 scope=data["scope"],
                 token_type=data["token_type"],
             )
-    
+
     # ─────────────────────────────────────────────────────────────
     # Profile Methods
     # ─────────────────────────────────────────────────────────────
-    
+
     async def get_profile(self, access_token: str) -> ProfileInfo:
         """Get authenticated user's profile."""
         async with httpx.AsyncClient() as client:
@@ -290,7 +290,7 @@ class XAdapter(SocialPlatformAdapter):
             )
             response.raise_for_status()
             data = response.json()["data"]
-            
+
             return ProfileInfo(
                 platform_user_id=data["id"],
                 username=data["username"],
@@ -305,14 +305,14 @@ class XAdapter(SocialPlatformAdapter):
                     "tweet_count": data.get("public_metrics", {}).get("tweet_count"),
                 },
             )
-    
+
     # ─────────────────────────────────────────────────────────────
     # Media Upload Methods
     # ─────────────────────────────────────────────────────────────
-    
+
     async def upload_media(
-        self, 
-        access_token: str, 
+        self,
+        access_token: str,
         file_path: str,
         media_type: str,  # 'image', 'gif', 'video'
         mime_type: str,
@@ -320,7 +320,7 @@ class XAdapter(SocialPlatformAdapter):
         """Upload media to X."""
         # For images and GIFs: simple upload
         # For videos: chunked upload (INIT, APPEND, FINALIZE)
-        
+
         if media_type == "video":
             return await self._upload_video_chunked(
                 access_token, file_path, mime_type
@@ -329,7 +329,7 @@ class XAdapter(SocialPlatformAdapter):
             return await self._upload_media_simple(
                 access_token, file_path, mime_type
             )
-    
+
     async def _upload_media_simple(
         self,
         access_token: str,
@@ -338,10 +338,10 @@ class XAdapter(SocialPlatformAdapter):
     ) -> MediaUploadResult:
         """Simple media upload for images and GIFs."""
         import aiofiles
-        
+
         async with aiofiles.open(file_path, 'rb') as f:
             media_data = await f.read()
-        
+
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 self.MEDIA_UPLOAD_URL,
@@ -350,14 +350,14 @@ class XAdapter(SocialPlatformAdapter):
             )
             response.raise_for_status()
             data = response.json()
-            
+
             return MediaUploadResult(
                 media_id=data["media_id_string"],
                 media_key=data.get("media_key"),
                 status="ready",
                 expires_at=None,
             )
-    
+
     async def _upload_video_chunked(
         self,
         access_token: str,
@@ -367,10 +367,10 @@ class XAdapter(SocialPlatformAdapter):
         """Chunked upload for videos (required for files > 5MB)."""
         import aiofiles
         import os
-        
+
         file_size = os.path.getsize(file_path)
         headers = {"Authorization": f"Bearer {access_token}"}
-        
+
         async with httpx.AsyncClient() as client:
             # INIT
             init_response = await client.post(
@@ -385,17 +385,17 @@ class XAdapter(SocialPlatformAdapter):
             )
             init_response.raise_for_status()
             media_id = init_response.json()["media_id_string"]
-            
+
             # APPEND (in chunks)
             chunk_size = 5 * 1024 * 1024  # 5MB chunks
             segment_index = 0
-            
+
             async with aiofiles.open(file_path, 'rb') as f:
                 while True:
                     chunk = await f.read(chunk_size)
                     if not chunk:
                         break
-                    
+
                     append_response = await client.post(
                         self.MEDIA_UPLOAD_URL,
                         headers=headers,
@@ -408,7 +408,7 @@ class XAdapter(SocialPlatformAdapter):
                     )
                     append_response.raise_for_status()
                     segment_index += 1
-            
+
             # FINALIZE
             finalize_response = await client.post(
                 self.MEDIA_UPLOAD_URL,
@@ -420,7 +420,7 @@ class XAdapter(SocialPlatformAdapter):
             )
             finalize_response.raise_for_status()
             finalize_data = finalize_response.json()
-            
+
             # Check processing status for videos
             if "processing_info" in finalize_data:
                 return MediaUploadResult(
@@ -429,13 +429,13 @@ class XAdapter(SocialPlatformAdapter):
                     status="processing",
                     processing_info=finalize_data["processing_info"],
                 )
-            
+
             return MediaUploadResult(
                 media_id=media_id,
                 media_key=finalize_data.get("media_key"),
                 status="ready",
             )
-    
+
     async def check_media_status(
         self,
         access_token: str,
@@ -453,10 +453,10 @@ class XAdapter(SocialPlatformAdapter):
             )
             response.raise_for_status()
             data = response.json()
-            
+
             processing_info = data.get("processing_info", {})
             state = processing_info.get("state", "succeeded")
-            
+
             return MediaUploadResult(
                 media_id=media_id,
                 media_key=data.get("media_key"),
@@ -464,38 +464,38 @@ class XAdapter(SocialPlatformAdapter):
                 processing_info=processing_info if state != "succeeded" else None,
                 error=processing_info.get("error") if state == "failed" else None,
             )
-    
+
     # ─────────────────────────────────────────────────────────────
     # Post Methods
     # ─────────────────────────────────────────────────────────────
-    
+
     async def create_post(
-        self, 
-        access_token: str, 
+        self,
+        access_token: str,
         post: PostContent
     ) -> PostResult:
         """Create a tweet."""
         payload = {"text": post.text}
-        
+
         # Add media if present
         if post.media_ids:
             payload["media"] = {"media_ids": post.media_ids}
-        
+
         # Add reply settings
         if post.platform_settings:
             x_settings = post.platform_settings.get("x", {})
-            
+
             if x_settings.get("reply_settings"):
                 payload["reply_settings"] = x_settings["reply_settings"]
-            
+
             if x_settings.get("reply_to_tweet_id"):
                 payload["reply"] = {
                     "in_reply_to_tweet_id": x_settings["reply_to_tweet_id"]
                 }
-            
+
             if x_settings.get("quote_tweet_id"):
                 payload["quote_tweet_id"] = x_settings["quote_tweet_id"]
-        
+
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{self.API_BASE_URL}/tweets",
@@ -507,16 +507,16 @@ class XAdapter(SocialPlatformAdapter):
             )
             response.raise_for_status()
             data = response.json()["data"]
-            
+
             return PostResult(
                 platform_post_id=data["id"],
                 platform_post_url=f"https://x.com/i/status/{data['id']}",
                 text=data.get("text"),
             )
-    
+
     async def delete_post(
-        self, 
-        access_token: str, 
+        self,
+        access_token: str,
         post_id: str
     ) -> bool:
         """Delete a tweet."""
@@ -527,11 +527,11 @@ class XAdapter(SocialPlatformAdapter):
             )
             response.raise_for_status()
             return response.json()["data"]["deleted"]
-    
+
     # ─────────────────────────────────────────────────────────────
     # Thread Support
     # ─────────────────────────────────────────────────────────────
-    
+
     async def create_thread(
         self,
         access_token: str,
@@ -540,17 +540,17 @@ class XAdapter(SocialPlatformAdapter):
         """Create a thread of tweets."""
         results = []
         reply_to_id = None
-        
+
         for tweet in tweets:
             if reply_to_id:
                 tweet.platform_settings = tweet.platform_settings or {}
                 tweet.platform_settings["x"] = tweet.platform_settings.get("x", {})
                 tweet.platform_settings["x"]["reply_to_tweet_id"] = reply_to_id
-            
+
             result = await self.create_post(access_token, tweet)
             results.append(result)
             reply_to_id = result.platform_post_id
-        
+
         return results
 ```
 
@@ -637,10 +637,10 @@ async def authorize_x(current_user: CurrentUser):
     """Initiate X OAuth 2.0 flow."""
     state = secrets.token_urlsafe(32)
     code_verifier, code_challenge = x_adapter.generate_pkce_pair()
-    
+
     # Store verifier for callback (use Redis in production)
     pkce_storage[state] = code_verifier
-    
+
     auth_url = x_adapter.get_authorization_url(state, code_challenge)
     return {"authorization_url": auth_url, "state": state}
 
@@ -657,14 +657,14 @@ async def x_callback(
     code_verifier = pkce_storage.pop(state, None)
     if not code_verifier:
         raise HTTPException(status_code=400, detail="Invalid state parameter")
-    
+
     try:
         # Exchange code for tokens
         tokens = await x_adapter.authenticate(code, code_verifier)
-        
+
         # Get user profile
         profile = await x_adapter.get_profile(tokens.access_token)
-        
+
         # Store account
         account = create_social_account(
             session=session,
@@ -679,12 +679,12 @@ async def x_callback(
             token_expires_at=tokens.expires_in,
             metadata=profile.metadata,
         )
-        
+
         # Redirect to frontend with success
         return RedirectResponse(
             url=f"{settings.FRONTEND_URL}/settings?x_connected=true"
         )
-    
+
     except Exception as e:
         # Redirect to frontend with error
         return RedirectResponse(
@@ -717,7 +717,7 @@ async def create_x_post(
 ):
     """Create a new tweet (immediate or scheduled)."""
     service = SocialPostService(session, x_adapter)
-    
+
     if post_data.scheduled_at:
         # Schedule for later
         return await service.schedule_post(
@@ -750,34 +750,34 @@ async def upload_x_media(
     # Validate file type
     allowed_types = {
         "image/jpeg": "image",
-        "image/png": "image", 
+        "image/png": "image",
         "image/gif": "gif",
         "image/webp": "image",
         "video/mp4": "video",
     }
-    
+
     if file.content_type not in allowed_types:
         raise HTTPException(
             status_code=400,
             detail=f"Unsupported file type: {file.content_type}"
         )
-    
+
     media_type = allowed_types[file.content_type]
-    
+
     # Save file temporarily
     temp_path = await save_temp_file(file)
-    
+
     try:
         # Get account and upload
         account = get_social_account(session, account_id, current_user.id)
-        
+
         result = await x_adapter.upload_media(
             access_token=account.access_token,
             file_path=temp_path,
             media_type=media_type,
             mime_type=file.content_type,
         )
-        
+
         # Store in media library
         media = create_media_record(
             session=session,
@@ -788,9 +788,9 @@ async def upload_x_media(
             filename=file.filename,
             mime_type=file.content_type,
         )
-        
+
         return media
-    
+
     finally:
         # Cleanup temp file
         os.unlink(temp_path)
@@ -804,11 +804,11 @@ async def delete_x_post(
 ):
     """Delete a tweet."""
     post = get_social_post(session, post_id, current_user.id)
-    
+
     if post.status == "published" and post.platform_post_id:
         account = get_social_account(session, post.social_account_id)
         await x_adapter.delete_post(account.access_token, post.platform_post_id)
-    
+
     delete_post_record(session, post_id)
     return {"deleted": True}
 ```
@@ -956,33 +956,33 @@ class XValidationResult:
 class XValidator:
     MAX_TWEET_LENGTH = 280
     URL_LENGTH = 23  # All URLs are shortened to 23 chars
-    
+
     # URL regex pattern
     URL_PATTERN = re.compile(
         r'https?://[^\s<>"{}|\\^`\[\]]+',
         re.IGNORECASE
     )
-    
+
     def validate_tweet(self, text: str, media_count: int = 0) -> XValidationResult:
         errors = []
         warnings = []
-        
+
         # Calculate effective length (URLs = 23 chars each)
         effective_text = self.URL_PATTERN.sub('x' * self.URL_LENGTH, text)
         char_count = len(effective_text)
-        
+
         if char_count > self.MAX_TWEET_LENGTH:
             errors.append(
                 f"Tweet exceeds {self.MAX_TWEET_LENGTH} characters "
                 f"({char_count} characters)"
             )
-        
+
         if media_count > 4:
             errors.append("Maximum 4 images per tweet")
-        
+
         if char_count > 250:
             warnings.append("Long tweets may have lower engagement")
-        
+
         return XValidationResult(
             valid=len(errors) == 0,
             character_count=char_count,
@@ -1060,22 +1060,22 @@ interface XCharacterCounterProps {
   maxLength?: number
 }
 
-export function XCharacterCounter({ 
-  text, 
-  maxLength = 280 
+export function XCharacterCounter({
+  text,
+  maxLength = 280
 }: XCharacterCounterProps) {
   // Calculate effective length (URLs = 23 chars)
   const urlPattern = /https?:\/\/[^\s<>"{}|\\^`[\]]+/gi
   const effectiveText = text.replace(urlPattern, 'x'.repeat(23))
   const count = effectiveText.length
   const remaining = maxLength - count
-  
+
   const getColor = () => {
     if (remaining < 0) return 'text-red-500'
     if (remaining < 20) return 'text-yellow-500'
     return 'text-muted-foreground'
   }
-  
+
   return (
     <div className={`text-sm ${getColor()}`}>
       {remaining < 0 ? (
@@ -1107,13 +1107,13 @@ class TestXAdapter:
     @pytest.fixture
     def adapter(self):
         return XAdapter()
-    
+
     def test_generate_pkce_pair(self, adapter):
         verifier, challenge = adapter.generate_pkce_pair()
         assert len(verifier) >= 43
         assert len(challenge) >= 43
         assert verifier != challenge
-    
+
     @pytest.mark.asyncio
     async def test_authenticate_success(self, adapter):
         with patch('httpx.AsyncClient.post') as mock_post:
@@ -1125,12 +1125,12 @@ class TestXAdapter:
                 "token_type": "bearer",
             }
             mock_post.return_value.raise_for_status = lambda: None
-            
+
             result = await adapter.authenticate("code", "verifier")
-            
+
             assert result.access_token == "test_token"
             assert result.expires_in == 7200
-    
+
     @pytest.mark.asyncio
     async def test_create_post_with_media(self, adapter):
         with patch('httpx.AsyncClient.post') as mock_post:
@@ -1141,15 +1141,15 @@ class TestXAdapter:
                 }
             }
             mock_post.return_value.raise_for_status = lambda: None
-            
+
             from app.services.social.base import PostContent
             post = PostContent(
                 text="Test tweet",
                 media_ids=["media_123"]
             )
-            
+
             result = await adapter.create_post("token", post)
-            
+
             assert result.platform_post_id == "123456789"
             assert "x.com" in result.platform_post_url
 ```
@@ -1172,7 +1172,7 @@ async def test_x_authorize_returns_url():
             "/api/v1/auth/x/authorize",
             headers={"Authorization": "Bearer test_token"}
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert "authorization_url" in data
@@ -1190,24 +1190,24 @@ import { test, expect } from '@playwright/test'
 test.describe('X Integration', () => {
   test('should connect X account', async ({ page }) => {
     await page.goto('/settings')
-    
+
     // Click connect X button
     await page.click('[data-testid="connect-x-button"]')
-    
+
     // Should redirect to X OAuth
     await expect(page).toHaveURL(/twitter\.com\/i\/oauth2\/authorize/)
   })
-  
+
   test('should create tweet with character counter', async ({ page }) => {
     await page.goto('/compose')
-    
+
     // Select X platform
     await page.click('[data-testid="platform-x"]')
-    
+
     // Type tweet
     const composer = page.locator('[data-testid="tweet-composer"]')
     await composer.fill('Hello, world!')
-    
+
     // Check character counter
     const counter = page.locator('[data-testid="char-counter"]')
     await expect(counter).toContainText('267')
@@ -1274,7 +1274,7 @@ X_BEARER_TOKEN=your_bearer_token  # For app-only auth (not user context)
 
 class Settings(BaseSettings):
     # ... existing settings ...
-    
+
     # X (Twitter) OAuth 2.0
     X_CLIENT_ID: str = ""
     X_CLIENT_SECRET: str = ""

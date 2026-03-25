@@ -231,4 +231,3 @@ def downgrade() -> None:
 
     # Drop persona table
     op.drop_table("persona")
-
