@@ -99,11 +99,16 @@ docker compose exec backend pytest tests/ -v
 docker cp linkx-backend-1:/app/backend/app/. ./backend/app/
 # (With docker compose watch, you usually edit on the host; copy-back is only needed when tools wrote into the container.)
 
-# 6. Verify git status and commit
+# 6. Verify git status; commit only after explicit approval (see AI Agents below)
 git status
 git add .
 git commit -m "descriptive message"
 ```
+
+## AI Agents (Cursor, Copilot, etc.)
+
+- **Do not** run `git commit` on your own. **Always confirm with the user** before committing (they must explicitly ask you to commit or approve the commit in the same turn).
+- Prefer: finish edits → summarize changes → propose a commit message → **wait for confirmation** → then commit if asked.
 
 ## Important Quirks & Guardrails
 
@@ -128,6 +133,7 @@ git commit -m "descriptive message"
 - Use `Optional[X]` - use `X | None` instead
 - Use `List[X]` - use `list[x]` instead
 - Commit code without running the full workflow first
+- **(Agents)** Commit without **explicit user confirmation** — never
 
 ## Code Style (repo-specific)
 
