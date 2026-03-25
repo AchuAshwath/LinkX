@@ -47,6 +47,8 @@ def _cleanup_ephemeral_test_users() -> None:
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:  # noqa: ARG001
     if getattr(session.config.option, "collectonly", False):
         return
+    # If any tests/scripts created stray users outside the normal per-test rollback,
+    # clean them up so local dev DB stays usable.
     _cleanup_ephemeral_test_users()
 
 
@@ -62,6 +64,9 @@ def db() -> Generator[Session, None, None]:
     """
     Per-test DB session: outer connection transaction is rolled back after each test
     so API commits do not leak across tests (savepoints via join_transaction_mode).
+
+    Note: this assumes tests use the synchronous TestClient (one request at a time).
+    If you add async/concurrent tests, you may need a different session strategy.
     """
     connection = engine.connect()
     transaction = connection.begin()

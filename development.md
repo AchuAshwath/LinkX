@@ -180,6 +180,8 @@ ruff-format..............................................................Passed
 biome check..............................................................Passed
 ```
 
+Some changes (for example under `backend/` or `scripts/generate-client.sh`) may also trigger the local `generate-frontend-sdk` hook, which regenerates the typed frontend SDK by running `bash ./scripts/generate-client.sh`. That hook requires the Docker `backend` service to be up and healthy.
+
 ## URLs
 
 The production or staging URLs would use these same paths, but with your own domain.
