@@ -2,15 +2,15 @@
 
 This repo is a FastAPI + React full-stack app. Below are repo-specific quirks and guardrails.
 
-## Development Workflow (Docker Only)
+## Development Workflow (frontend local, backend Docker)
 
-**Every day:** keep the backend running under **Compose watch** so your local `./backend` tree stays synced into the container while you work (save files on the host; the running API sees updates without rebuilds or `docker cp`).
+**Typical setup:** run the **frontend on the host** with Bun/Vite, and run the **API only inside Docker** (no local Python/uv for the backend day to day).
 
 ```bash
-# Terminal 1: Frontend (local)
+# Terminal 1: Frontend (local — recommended)
 cd frontend && bun run dev
 
-# Terminal 2: Backend — always use watch for local development (leave this running)
+# Terminal 2: Backend API — Docker only; use watch so ./backend stays synced into the container
 docker compose watch backend
 ```
 
@@ -32,9 +32,9 @@ docker compose restart backend        # Restart backend
 docker compose exec backend <command> # Run command in container
 ```
 
-## Lint & Typecheck (Run in Docker)
+## Lint & Typecheck
 
-**Backend Python:** always run lint, format, pytest, Alembic, and one-off scripts **inside the backend container** — do **not** use a local `uv run`, `python`, or `pytest` on the host for repo checks (avoids env drift and matches CI). Use:
+**Backend Python:** run lint, format, pytest, and Alembic **inside the backend container** — do **not** use a local `uv run`, `python`, or `pytest` on the host for backend checks (avoids env drift and matches how the API runs).
 
 ```bash
 # Backend lint (mypy + ruff)
@@ -45,13 +45,39 @@ docker compose exec backend bash scripts/format.sh
 
 # Backend tests (container WORKDIR is /app/backend)
 docker compose exec backend pytest tests/ -v
-
-# Frontend lint
-docker compose exec frontend bun run lint
-
-# Frontend build
-docker compose exec frontend bun run build
 ```
+
+**Frontend:** develop with **`bun` on the host**; lint and build the same way (matches local `bun run dev`).
+
+```bash
+cd frontend && bun run lint
+cd frontend && bun run build
+```
+
+If you run the **frontend** service in Compose, you can alternatively use `docker compose exec frontend bun run lint` / `bun run build`, but that is optional.
+
+## Generate frontend API client (OpenAPI)
+
+After backend API or schema changes, regenerate the typed client under `frontend/src/client`.
+
+- **`frontend/openapi.json`** is the input for `@hey-api/openapi-ts` (see [`frontend/openapi-ts.config.ts`](frontend/openapi-ts.config.ts)). Codegen does **not** fetch `http://localhost:8000/...`; it reads that file on disk.
+- **Backend must be running in Docker** (`docker compose ps backend` healthy). From the **repo root**:
+
+```bash
+bash ./scripts/generate-client.sh
+```
+
+[`scripts/generate-client.sh`](scripts/generate-client.sh) runs `docker compose exec` to dump the OpenAPI JSON from the container app into `./openapi.json`, copies it to `frontend/openapi.json`, runs `bun run --filter frontend generate-client`, then `bun run lint` on the host.
+
+**Git hooks:** this repo uses [**prek**](https://prek.j178.dev/) with [`.pre-commit-config.yaml`](.pre-commit-config.yaml) (see [`development.md`](development.md)). Install once from `backend`: `uv run prek install -f`. To run the same checks as the hook **without committing**, from `backend` run:
+
+```bash
+uv run prek run --all-files
+```
+
+Changing files under `backend/` or `scripts/generate-client.sh` runs the **Generate Frontend SDK** hook. That runs [`scripts/generate-client.sh`](scripts/generate-client.sh), so **Docker backend must be up** and **`bun`** available on the host.
+
+Without Docker (e.g. offline API): copy or download a spec into `frontend/openapi.json`, then `cd frontend && bun run generate-client` (see [`frontend/README.md`](frontend/README.md)).
 
 ## Alembic Migrations
 
@@ -95,11 +121,16 @@ docker compose exec backend bash scripts/format.sh
 # 4. Run full test suite
 docker compose exec backend pytest tests/ -v
 
+# 4b. If you changed backend OpenAPI, regenerate the frontend client (Docker backend must be running)
+bash ./scripts/generate-client.sh
+
 # 5. Copy code back to local (if ruff/format ran in the container and changed files)
 docker cp linkx-backend-1:/app/backend/app/. ./backend/app/
 # (With docker compose watch, you usually edit on the host; copy-back is only needed when tools wrote into the container.)
 
-# 6. Verify git status; commit only after explicit approval (see AI Agents below)
+# 6. (Optional) Run git hook checks locally — from `backend`: `uv run prek run --all-files`
+
+# 7. Verify git status; commit only after explicit approval (see AI Agents below)
 git status
 git add .
 git commit -m "descriptive message"
@@ -116,7 +147,7 @@ git commit -m "descriptive message"
 - Use `bun` for frontend
 - **Always run `docker compose watch backend` while working on the backend** so `./backend` stays synced to the container every day; do not rely on `docker compose up -d backend` for active development
 - Run **backend** lint, format, pytest, and Alembic **via `docker compose exec backend …`** only — not `uv run` / local `pytest` on the host
-- Run `bun run generate-client` in frontend after backend API changes
+- After backend API changes, run **`bash ./scripts/generate-client.sh`** from the repo root with **Docker backend up** (or rely on prek’s SDK hook under the same conditions) so `frontend/openapi.json` and `frontend/src/client` stay in sync
 - Use `.env` file for all config - auto-loaded by docker
 - Check logs when debugging: `docker compose logs backend`
 - Run full workflow before commits: lint → format → test → copy-back → commit

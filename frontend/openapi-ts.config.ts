@@ -1,7 +1,19 @@
+import { existsSync } from "node:fs"
+import { fileURLToPath } from "node:url"
 import { defineConfig } from "@hey-api/openapi-ts"
 
+const openApiInputPath = fileURLToPath(
+  new URL("./openapi.json", import.meta.url),
+)
+
+if (!existsSync(openApiInputPath)) {
+  throw new Error(
+    `Missing OpenAPI spec at "${openApiInputPath}". Run "bash ./scripts/generate-client.sh" first.`,
+  )
+}
+
 export default defineConfig({
-  input: "http://localhost:8000/api/v1/openapi.json",
+  input: openApiInputPath,
   output: "./src/client",
 
   plugins: [

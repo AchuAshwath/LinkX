@@ -20,9 +20,10 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
-    }
+    },
+    "types": ["node"]
   },
-  "include": ["src", "tests", "playwright.config.ts"],
+  "include": ["src", "tests", "playwright.config.ts", "openapi-ts.config.ts"],
   "references": [
     {
       "path": "./tsconfig.node.json"
