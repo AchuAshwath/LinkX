@@ -94,6 +94,8 @@ docker compose exec backend alembic revision --autogenerate -m "add field"
 
 ## Running Tests
 
+API tests use a **per-test DB transaction**: [`backend/tests/conftest.py`](backend/tests/conftest.py) opens a connection-level transaction, binds a [`Session`](backend/tests/conftest.py) with `join_transaction_mode="create_savepoint"`, overrides [`get_db`](backend/app/api/deps.py) for `TestClient`, and **rolls back** after each test so commits inside routes do not leak across cases. Session-wide setup (e.g. superuser) still runs once via `init_db`.
+
 ```bash
 # Backend - inside container (with docker compose watch backend running so app + tests are synced)
 docker compose exec backend pytest tests/api/routes/test_users.py -v

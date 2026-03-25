@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
+from app.api.deps import get_db
 from app.core.config import settings
 from app.core.db import engine, init_db
 from app.main import app
@@ -43,31 +44,57 @@ def _cleanup_ephemeral_test_users() -> None:
         session.commit()
 
 
-def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:  # noqa: ARG001
     if getattr(session.config.option, "collectonly", False):
         return
     _cleanup_ephemeral_test_users()
 
 
 @pytest.fixture(scope="session", autouse=True)
-def db() -> Generator[Session, None, None]:
+def _init_db_session() -> None:
+    """One-time committed seed (superuser, default team/persona) for all tests."""
     with Session(engine) as session:
         init_db(session)
+
+
+@pytest.fixture(scope="function")
+def db() -> Generator[Session, None, None]:
+    """
+    Per-test DB session: outer connection transaction is rolled back after each test
+    so API commits do not leak across tests (savepoints via join_transaction_mode).
+    """
+    connection = engine.connect()
+    transaction = connection.begin()
+    session = Session(
+        bind=connection,
+        expire_on_commit=False,
+        join_transaction_mode="create_savepoint",
+    )
+    try:
         yield session
+    finally:
+        session.close()
+        transaction.rollback()
+        connection.close()
 
 
-@pytest.fixture(scope="module")
-def client() -> Generator[TestClient, None, None]:
-    with TestClient(app) as c:
-        yield c
+@pytest.fixture(scope="function")
+def client(db: Session) -> Generator[TestClient, None, None]:
+    def override_get_db() -> Generator[Session, None, None]:
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def superuser_token_headers(client: TestClient) -> dict[str, str]:
     return get_superuser_token_headers(client)
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def normal_user_token_headers(client: TestClient, db: Session) -> dict[str, str]:
     return authentication_token_from_email(
         client=client, email=settings.EMAIL_TEST_USER, db=db
