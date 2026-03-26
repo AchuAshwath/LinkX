@@ -89,8 +89,13 @@ def test_read_posts_requires_persona_id(
         f"{settings.API_V1_STR}/posts",
         headers=normal_user_token_headers,
     )
-    assert response.status_code == 400
-    assert response.json()["detail"] == "persona_id is required"
+    assert response.status_code == 422
+    errors = response.json()["detail"]
+    assert isinstance(errors, list)
+    assert any(
+        err.get("type") == "missing" and err.get("loc") == ["query", "persona_id"]
+        for err in errors
+    )
 
 
 def test_create_post_requires_persona_id(
@@ -106,8 +111,13 @@ def test_create_post_requires_persona_id(
             "status": "draft",
         },
     )
-    assert response.status_code == 400
-    assert response.json()["detail"] == "persona_id is required"
+    assert response.status_code == 422
+    errors = response.json()["detail"]
+    assert isinstance(errors, list)
+    assert any(
+        err.get("type") == "missing" and err.get("loc") == ["body", "persona_id"]
+        for err in errors
+    )
 
 
 def test_read_posts_scoped_to_persona(

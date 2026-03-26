@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 import uuid
 from typing import Any
@@ -12,6 +13,8 @@ from app.api.deps import CurrentUser, SessionDep
 from app.core.redis import get_redis
 from app.models import SocialAccount
 from app.services.access import get_persona_role, has_min_role
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/linkedin", tags=["linkedin"])
 
@@ -125,7 +128,10 @@ def linkedin_disconnect(
         r.delete(f"linkedin:profile:{persona_id}")
         r.delete(f"linkedin:profile:{current_user.id}")
     except Exception:
-        pass
+        logger.warning(
+            "LinkedIn disconnect: Redis delete failed (best-effort); continuing",
+            exc_info=True,
+        )
 
     account = session.exec(
         select(SocialAccount).where(

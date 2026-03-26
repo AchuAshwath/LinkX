@@ -6,7 +6,7 @@ export const Body_login_login_access_tokenSchema = {
             anyOf: [
                 {
                     type: 'string',
-                    pattern: '^password$'
+                    pattern: 'password'
                 },
                 {
                     type: 'null'
@@ -20,7 +20,6 @@ export const Body_login_login_access_tokenSchema = {
         },
         password: {
             type: 'string',
-            format: 'password',
             title: 'Password'
         },
         scope: {
@@ -48,7 +47,6 @@ export const Body_login_login_access_tokenSchema = {
                     type: 'null'
                 }
             ],
-            format: 'password',
             title: 'Client Secret'
         }
     },
@@ -517,20 +515,13 @@ export const PostCreateSchema = {
             title: 'Scheduled At'
         },
         persona_id: {
-            anyOf: [
-                {
-                    type: 'string',
-                    format: 'uuid'
-                },
-                {
-                    type: 'null'
-                }
-            ],
+            type: 'string',
+            format: 'uuid',
             title: 'Persona Id'
         }
     },
     type: 'object',
-    required: ['content', 'platform', 'status'],
+    required: ['content', 'platform', 'status', 'persona_id'],
     title: 'PostCreate'
 } as const;
 

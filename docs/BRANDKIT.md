@@ -213,25 +213,25 @@ Add to `frontend/index.html` once assets are ready:
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  
+
   <!-- Primary Meta Tags -->
   <title>LinkX</title>
   <meta name="title" content="LinkX - Open Source Typefully Alternative" />
   <meta name="description" content="Self-hosted social media scheduling and publishing platform. The open-source alternative to Typefully." />
-  
+
   <!-- Favicons -->
   <link rel="icon" type="image/x-icon" href="/assets/images/favicon.ico" />
   <link rel="icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32x32.png" />
   <link rel="icon" type="image/png" sizes="16x16" href="/assets/images/favicon-16x16.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png" />
-  
+
   <!-- Open Graph / Facebook -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://linkx.dev/" />
   <meta property="og:title" content="LinkX - Open Source Typefully Alternative" />
   <meta property="og:description" content="Self-hosted social media scheduling and publishing platform." />
   <meta property="og:image" content="https://linkx.dev/assets/images/og-image.png" />
-  
+
   <!-- Twitter -->
   <meta property="twitter:card" content="summary_large_image" />
   <meta property="twitter:url" content="https://linkx.dev/" />

@@ -20,9 +20,7 @@ def test_default_team_and_persona_created_once(db: Session) -> None:
     assert persona1.id == persona2.id
 
     persona_count = db.exec(
-        select(func.count())
-        .select_from(Persona)
-        .where(col(Persona.user_id) == user.id)
+        select(func.count()).select_from(Persona).where(col(Persona.user_id) == user.id)
     ).one()
     assert persona_count == 1
 
@@ -34,9 +32,6 @@ def test_default_team_and_persona_created_once(db: Session) -> None:
     assert team_memberships[0].role == "owner"
 
     team_count = db.exec(
-        select(func.count())
-        .select_from(Team)
-        .where(col(Team.owner_user_id) == user.id)
+        select(func.count()).select_from(Team).where(col(Team.owner_user_id) == user.id)
     ).one()
     assert team_count == 1
-

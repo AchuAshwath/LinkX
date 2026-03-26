@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends
-from sqlmodel import func, select
+from sqlmodel import col, func, select
 
 from app.api.deps import SessionDep, get_current_active_superuser
 from app.models import Post
@@ -25,15 +25,15 @@ def read_scheduler_status(*, session: SessionDep) -> Any:
     by_status_rows = session.exec(
         select(Post.status, func.count()).group_by(Post.status)
     ).all()
-    by_status = {status: count for status, count in by_status_rows}
+    by_status = dict(by_status_rows)
 
     due_scheduled = session.exec(
         select(func.count())
         .select_from(Post)
         .where(
             Post.status == "scheduled",
-            Post.scheduled_at.is_not(None),
-            Post.scheduled_at <= now,
+            col(Post.scheduled_at).is_not(None),
+            col(Post.scheduled_at) <= now,
         )
     ).one()
 
@@ -41,15 +41,15 @@ def read_scheduler_status(*, session: SessionDep) -> Any:
         select(func.count())
         .select_from(Post)
         .where(
-            Post.next_retry_at.is_not(None),
-            Post.next_retry_at <= now,
+            col(Post.next_retry_at).is_not(None),
+            col(Post.next_retry_at) <= now,
         )
     ).one()
 
     failed_recent = session.exec(
         select(Post)
         .where(Post.status == "failed")
-        .order_by(Post.updated_at.desc().nulls_last())
+        .order_by(col(Post.updated_at).desc().nulls_last())
         .limit(10)
     ).all()
 
@@ -72,4 +72,3 @@ def read_scheduler_status(*, session: SessionDep) -> Any:
             for p in failed_recent
         ],
     }
-

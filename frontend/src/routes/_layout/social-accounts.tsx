@@ -6,15 +6,17 @@ import {
 } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import {
+  Check,
   ChevronDown,
   ChevronRight,
   ExternalLink,
-  Linkedin,
+  Loader2,
   MoreHorizontal,
   Plus,
   Users,
 } from "lucide-react"
 import * as React from "react"
+import { FaLinkedinIn } from "react-icons/fa"
 import { z } from "zod"
 
 import {
@@ -26,8 +28,6 @@ import {
   type TeamPublic,
   TeamsService,
 } from "@/client"
-import { OpenAPI } from "@/client/core/OpenAPI"
-import { request } from "@/client/core/request"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -150,8 +150,11 @@ function getLinkedinStatusView(status: unknown): LinkedinStatusView {
   if (connected && !needsReconnect) {
     return {
       badge: (
-        <Badge variant="secondary" className="font-normal">
-          Connected
+        <Badge
+          variant="outline"
+          className="border-emerald-500/45 bg-emerald-500/10 font-normal text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-300"
+        >
+          Signed in
         </Badge>
       ),
       connected: true,
@@ -162,7 +165,10 @@ function getLinkedinStatusView(status: unknown): LinkedinStatusView {
   if (needsReconnect) {
     return {
       badge: (
-        <Badge variant="secondary" className="font-normal">
+        <Badge
+          variant="outline"
+          className="border-amber-500/45 bg-amber-500/10 font-normal text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200"
+        >
           Reconnect required
         </Badge>
       ),
@@ -174,13 +180,25 @@ function getLinkedinStatusView(status: unknown): LinkedinStatusView {
   return {
     badge: (
       <Badge variant="secondary" className="font-normal">
-        Not connected
+        Disconnected
       </Badge>
     ),
     connected: false,
     needsReconnect: false,
   }
 }
+
+/** True when this persona has LinkedIn linked (signed in or needs reconnect). */
+function personaLinkedinInUse(status: unknown): boolean {
+  const data = status as Record<string, unknown> | undefined
+  if (!data) return false
+  return Boolean(data.connected) || Boolean(data.needs_reconnect)
+}
+
+/** Platforms we can aggregate onto the team row (extend when adding networks). */
+type TeamPlatformKey = "linkedin"
+
+const TEAM_PLATFORM_ORDER: TeamPlatformKey[] = ["linkedin"]
 
 function SocialAccountsPage() {
   const queryClient = useQueryClient()
@@ -273,17 +291,25 @@ function SocialAccountsPage() {
     }
   }, [teamsError, showErrorToast])
 
-  const visiblePersonaIds = React.useMemo(() => {
+  /** All personas listed under any team (stable order for query ↔ index mapping). */
+  const allTeamPersonaIds = React.useMemo(() => {
     const ids = new Set<string>()
     for (const team of teams) {
-      if (!(expandedTeams[team.id] ?? false)) continue
       for (const p of teamPersonasById[team.id] ?? []) ids.add(p.id)
     }
-    return Array.from(ids)
-  }, [expandedTeams, teamPersonasById, teams])
+    return Array.from(ids).sort()
+  }, [teams, teamPersonasById])
+
+  const linkedinPersonaIdToQueryIndex = React.useMemo(() => {
+    const map: Record<string, number> = {}
+    allTeamPersonaIds.forEach((id, i) => {
+      map[id] = i
+    })
+    return map
+  }, [allTeamPersonaIds])
 
   const linkedinStatusQueries = useQueries({
-    queries: visiblePersonaIds.map((personaId) => ({
+    queries: allTeamPersonaIds.map((personaId) => ({
       queryKey: ["linkedin-status", personaId],
       queryFn: async () => {
         return await LinkedinService.linkedinStatus({ personaId })
@@ -299,11 +325,44 @@ function SocialAccountsPage() {
 
   const linkedinStatusByPersonaId = React.useMemo(() => {
     const map: Record<string, unknown> = {}
-    visiblePersonaIds.forEach((personaId, idx) => {
+    allTeamPersonaIds.forEach((personaId, idx) => {
       map[personaId] = linkedinStatusQueries[idx]?.data
     })
     return map
-  }, [linkedinStatusQueries, visiblePersonaIds])
+  }, [linkedinStatusQueries, allTeamPersonaIds])
+
+  const teamPlatformSummary = React.useMemo(() => {
+    const summary: Record<
+      string,
+      { platforms: TeamPlatformKey[]; showLoadingPlaceholder: boolean }
+    > = {}
+    for (const team of teams) {
+      const personas = teamPersonasById[team.id] ?? []
+      if (!personas.length) {
+        summary[team.id] = { platforms: [], showLoadingPlaceholder: false }
+        continue
+      }
+      const platforms = new Set<TeamPlatformKey>()
+      let showLoadingPlaceholder = false
+      for (const p of personas) {
+        const idx = linkedinPersonaIdToQueryIndex[p.id]
+        if (idx === undefined) continue
+        const q = linkedinStatusQueries[idx]
+        if (q?.isLoading) showLoadingPlaceholder = true
+        if (personaLinkedinInUse(q?.data)) platforms.add("linkedin")
+      }
+      summary[team.id] = {
+        platforms: TEAM_PLATFORM_ORDER.filter((k) => platforms.has(k)),
+        showLoadingPlaceholder,
+      }
+    }
+    return summary
+  }, [
+    teams,
+    teamPersonasById,
+    linkedinPersonaIdToQueryIndex,
+    linkedinStatusQueries,
+  ])
 
   const [createPersonaOpen, setCreatePersonaOpen] = React.useState(false)
   const [editPersonaOpen, setEditPersonaOpen] = React.useState(false)
@@ -325,7 +384,9 @@ function SocialAccountsPage() {
   }, [activePersonaId, personaById, selectedPersonaId])
 
   const activeTeam = React.useMemo(() => {
-    return activeTeamId ? teams.find((t) => t.id === activeTeamId) ?? null : null
+    return activeTeamId
+      ? (teams.find((t) => t.id === activeTeamId) ?? null)
+      : null
   }, [activeTeamId, teams])
 
   const canManageActivePersona = React.useMemo(() => {
@@ -453,6 +514,13 @@ function SocialAccountsPage() {
     [personaById, setSelectedPersonaId, showErrorToast],
   )
 
+  const handleSharePersonaOpenChange = React.useCallback((open: boolean) => {
+    setSharePersonaOpen(open)
+    if (!open) {
+      setActiveTeamId("")
+    }
+  }, [])
+
   const openSharePersona = React.useCallback(
     (personaId: string) => {
       const persona = personaById[personaId]
@@ -460,10 +528,11 @@ function SocialAccountsPage() {
         showErrorToast("Persona not found.")
         return
       }
+      setActiveTeamId("")
       setActivePersonaId(personaId)
-      setSharePersonaOpen(true)
+      handleSharePersonaOpenChange(true)
     },
-    [personaById, showErrorToast],
+    [handleSharePersonaOpenChange, personaById, showErrorToast],
   )
 
   const createTeamMutation = useMutation({
@@ -496,7 +565,9 @@ function SocialAccountsPage() {
       if (!activeTeam) throw new Error("Select a team to edit.")
       const parsed = teamSchema.safeParse(teamDraft)
       if (!parsed.success) {
-        throw new Error(parsed.error.issues[0]?.message ?? "Invalid team details.")
+        throw new Error(
+          parsed.error.issues[0]?.message ?? "Invalid team details.",
+        )
       }
       return await TeamsService.updateTeam({
         teamId: activeTeam.id,
@@ -544,7 +615,7 @@ function SocialAccountsPage() {
     },
     onSuccess: (teamId) => {
       showSuccessToast("Persona shared with team.")
-      setSharePersonaOpen(false)
+      handleSharePersonaOpenChange(false)
       queryClient.invalidateQueries({
         queryKey: ["team-personas", teamId],
       })
@@ -645,11 +716,7 @@ function SocialAccountsPage() {
 
   const disconnectLinkedInMutation = useMutation({
     mutationFn: async (personaId: string) => {
-      await request(OpenAPI, {
-        method: "DELETE",
-        url: "/api/v1/linkedin/disconnect",
-        query: { persona_id: personaId },
-      })
+      await LinkedinService.linkedinDisconnect({ personaId })
       return personaId
     },
     onSuccess: (personaId) => {
@@ -736,6 +803,10 @@ function SocialAccountsPage() {
             teams.map((team) => {
               const expanded = expandedTeams[team.id] ?? false
               const teamPersonas = teamPersonasById[team.id] ?? []
+              const platformSummary = teamPlatformSummary[team.id] ?? {
+                platforms: [] as TeamPlatformKey[],
+                showLoadingPlaceholder: false,
+              }
 
               return (
                 <React.Fragment key={team.id}>
@@ -769,7 +840,35 @@ function SocialAccountsPage() {
                       </button>
                     </TableCell>
                     <TableCell>
-                      <span className="text-muted-foreground">—</span>
+                      {platformSummary.platforms.length ? (
+                        <ul
+                          className="flex list-none flex-wrap items-center gap-1 p-0"
+                          aria-label="Platforms in use by personas in this team"
+                        >
+                          {platformSummary.platforms.map((plat) =>
+                            plat === "linkedin" ? (
+                              <li key={plat}>
+                                <span
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border bg-background text-[#0A66C2] shadow-xs"
+                                  title="LinkedIn"
+                                >
+                                  <FaLinkedinIn
+                                    className="h-3.5 w-3.5"
+                                    aria-hidden
+                                  />
+                                </span>
+                              </li>
+                            ) : null,
+                          )}
+                        </ul>
+                      ) : platformSummary.showLoadingPlaceholder ? (
+                        <Loader2
+                          className="h-4 w-4 animate-spin text-muted-foreground"
+                          aria-label="Loading platforms"
+                        />
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary" className="font-normal">
@@ -777,35 +876,47 @@ function SocialAccountsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-1.5">
                         <Button
                           type="button"
                           size="sm"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation()
                             setActiveTeamId(team.id)
                             openCreatePersona()
                           }}
                         >
-                          <Plus className="mr-1 h-3 w-3" />
+                          <Plus className="h-3 w-3" />
                           New persona
                         </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openEditTeam(team.id)}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="text-destructive border-destructive/40 hover:bg-destructive/10"
-                          onClick={() => openDeleteTeam(team.id)}
-                        >
-                          Delete
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                              <span className="sr-only">Team actions</span>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Team</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onSelect={() => openEditTeam(team.id)}
+                            >
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onSelect={() => openDeleteTeam(team.id)}
+                              variant="destructive"
+                            >
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -833,7 +944,15 @@ function SocialAccountsPage() {
                             }}
                           >
                             <TableCell className="pl-10 whitespace-normal">
-                              <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-start gap-2">
+                                <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+                                  {isSelected ? (
+                                    <Check
+                                      className="h-4 w-4 text-emerald-600 dark:text-emerald-400"
+                                      aria-label="Selected persona"
+                                    />
+                                  ) : null}
+                                </span>
                                 <div className="min-w-0">
                                   <div className="font-medium">{p.name}</div>
                                   {p.description ? (
@@ -842,41 +961,38 @@ function SocialAccountsPage() {
                                     </div>
                                   ) : null}
                                 </div>
-                                {isSelected ? (
-                                  <Badge
-                                    variant="secondary"
-                                    className="shrink-0 text-[11px] font-normal"
-                                  >
-                                    Selected
-                                  </Badge>
-                                ) : null}
                               </div>
                             </TableCell>
                             <TableCell>
-                              <div className="flex items-center gap-2">
-                                <Linkedin className="h-4 w-4 text-muted-foreground" />
-                                <span>LinkedIn</span>
-                              </div>
+                              <span
+                                className="inline-flex text-[#0A66C2]"
+                                title="LinkedIn"
+                              >
+                                <FaLinkedinIn className="h-4 w-4" aria-hidden />
+                                <span className="sr-only">LinkedIn</span>
+                              </span>
                             </TableCell>
                             <TableCell>{view.badge}</TableCell>
                             <TableCell className="text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant={
-                                    view.connected ? "outline" : "default"
-                                  }
-                                  onClick={() => handleConnectLinkedIn(p.id)}
-                                  disabled={connectingPersonaId === p.id}
-                                >
-                                  <ExternalLink className="mr-2 h-4 w-4" />
-                                  {view.needsReconnect
-                                    ? "Reconnect"
-                                    : view.connected
-                                      ? "Manage"
+                              <div className="flex items-center justify-end gap-1.5">
+                                {view.connected &&
+                                !view.needsReconnect ? null : (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="default"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      void handleConnectLinkedIn(p.id)
+                                    }}
+                                    disabled={connectingPersonaId === p.id}
+                                  >
+                                    <ExternalLink className="h-4 w-4" />
+                                    {view.needsReconnect
+                                      ? "Reconnect"
                                       : "Connect"}
-                                </Button>
+                                  </Button>
+                                )}
 
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
@@ -884,6 +1000,7 @@ function SocialAccountsPage() {
                                       type="button"
                                       size="sm"
                                       variant="outline"
+                                      onClick={(e) => e.stopPropagation()}
                                     >
                                       <MoreHorizontal className="h-4 w-4" />
                                       <span className="sr-only">
@@ -908,6 +1025,16 @@ function SocialAccountsPage() {
                                     >
                                       Share with team…
                                     </DropdownMenuItem>
+                                    {view.connected && !view.needsReconnect ? (
+                                      <DropdownMenuItem
+                                        onSelect={() => {
+                                          void handleConnectLinkedIn(p.id)
+                                        }}
+                                        disabled={connectingPersonaId === p.id}
+                                      >
+                                        Refresh LinkedIn connection…
+                                      </DropdownMenuItem>
+                                    ) : null}
                                     <DropdownMenuItem
                                       onSelect={() => openDeletePersona(p.id)}
                                       disabled={!canEdit}
@@ -920,7 +1047,9 @@ function SocialAccountsPage() {
                                       onSelect={() =>
                                         openDisconnectPersona(p.id)
                                       }
-                                      disabled={!view.connected}
+                                      disabled={
+                                        !(view.connected || view.needsReconnect)
+                                      }
                                       variant="destructive"
                                     >
                                       Disconnect LinkedIn
@@ -1104,7 +1233,10 @@ function SocialAccountsPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={sharePersonaOpen} onOpenChange={setSharePersonaOpen}>
+      <Dialog
+        open={sharePersonaOpen}
+        onOpenChange={handleSharePersonaOpenChange}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Share persona with team</DialogTitle>
@@ -1144,7 +1276,7 @@ function SocialAccountsPage() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => setSharePersonaOpen(false)}
+              onClick={() => handleSharePersonaOpenChange(false)}
             >
               Cancel
             </Button>

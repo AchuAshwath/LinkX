@@ -21,10 +21,11 @@ repos:
     hooks:
       - id: local-biome-check
         name: biome check
-        entry: npm run lint
+        entry: bash -lc 'cd frontend && bun run lint'
         language: system
         types: [text]
         files: ^frontend/
+        pass_filenames: false
 
       - id: local-ruff-check
         name: ruff check

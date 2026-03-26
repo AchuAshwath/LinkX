@@ -119,4 +119,3 @@ def downgrade() -> None:
         .where(social_account.c.persona_id.isnot(None))
         .values(persona_id=None)
     )
-

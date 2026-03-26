@@ -45,7 +45,7 @@ After creating your app:
    ```
    # Development
    http://localhost:8000/api/v1/auth/linkedin/callback
-   
+
    # Production
    https://yourdomain.com/api/v1/auth/linkedin/callback
    ```
@@ -78,7 +78,7 @@ After products are approved, check the **Auth** tab. You should see:
 ```
 OAuth 2.0 scopes:
 - openid
-- profile  
+- profile
 - email
 - w_member_social        # For personal posts
 - w_organization_social  # For org posts (if approved)

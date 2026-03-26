@@ -391,4 +391,3 @@ When you add a new feature (e.g. `Foo`), use this checklist:
 The original **Items** feature is a complete, end-to-end example of this
 process. Refer back to the files referenced above whenever you need a concrete
 pattern to copy.
-

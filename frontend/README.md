@@ -44,20 +44,21 @@ But it would be only to clean them up, leaving them won't really have any effect
 
 ### Automatically
 
-* Activate the backend virtual environment.
-* From the top level project directory, run the script:
+* Start the **backend in Docker** (for example `docker compose watch backend` from the repo root) so `docker compose ps backend` is healthy.
+* From the **repository root**, run (uses **`docker compose exec`** — no local Python/uv needed for the API):
 
 ```bash
 bash ./scripts/generate-client.sh
 ```
 
-* Commit the changes.
+This writes OpenAPI JSON from the running container to `frontend/openapi.json`, then runs `openapi-ts` against that file (no live `localhost:8000` fetch) and `bun run lint` for the frontend workspace.
+
+* Commit the changes (including updates under `frontend/src/client` when the schema changed).
 
 ### Manually
 
-* Start the Docker Compose stack.
-
-* Download the OpenAPI JSON file from `http://localhost/api/v1/openapi.json` and copy it to a new file `openapi.json` at the root of the `frontend` directory.
+* With the stack up, download the OpenAPI JSON from `http://localhost:8000/api/v1/openapi.json` (or save it however you prefer) into `frontend/openapi.json`.
+* `bun run generate-client` reads the local `frontend/openapi.json` file as the source of truth.
 
 * To generate the frontend client, run:
 

@@ -667,7 +667,7 @@ ALTER TABLE post ADD COLUMN last_retry_at TIMESTAMP;
 ALTER TABLE post ADD COLUMN next_retry_at TIMESTAMP;
 ALTER TABLE post ADD COLUMN publishing_started_at TIMESTAMP;
 
-CREATE INDEX idx_post_persona_status_scheduled 
+CREATE INDEX idx_post_persona_status_scheduled
 ON post(persona_id, status, scheduled_at);
 ```
 

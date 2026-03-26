@@ -100,7 +100,7 @@ export type PostCreate = {
     platform: string;
     status: string;
     scheduled_at?: (string | null);
-    persona_id?: (string | null);
+    persona_id: string;
 };
 
 export type PostPublic = {
@@ -305,6 +305,14 @@ export type LinkedinLinkedinStatusResponse = ({
     [key: string]: unknown;
 });
 
+export type LinkedinLinkedinDisconnectData = {
+    personaId: string;
+};
+
+export type LinkedinLinkedinDisconnectResponse = ({
+    [key: string]: unknown;
+});
+
 export type LoginLoginAccessTokenData = {
     formData: Body_login_login_access_token;
 };
@@ -391,7 +399,7 @@ export type PersonasDeletePersonaAccessResponse = (Message);
 
 export type PostsReadPostsData = {
     limit?: number;
-    personaId?: (string | null);
+    personaId: string;
     skip?: number;
     status?: (string | null);
 };

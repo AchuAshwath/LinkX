@@ -44,4 +44,3 @@ def test_get_or_create_persona_reuses_existing(db: Session) -> None:
     assert first.id == second.id
     # Name should remain the one from the first creation.
     assert second.name == first.name == "First Name"
-

@@ -1,8 +1,8 @@
 # Social Media Integration - Feature Specification
 
-**Version**: 1.0 (Draft)  
-**Status**: Approved  
-**Author**: LinkX Team  
+**Version**: 1.0 (Draft)
+**Status**: Approved
+**Author**: LinkX Team
 **Date**: January 2026
 
 ---
@@ -118,34 +118,34 @@ Enable LinkX users to connect their social media accounts (LinkedIn, Twitter/X) 
 CREATE TABLE linkedin_accounts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    
+
     -- LinkedIn identifiers
     linkedin_person_urn VARCHAR(255) NOT NULL,  -- urn:li:person:{id}
     linkedin_user_id VARCHAR(255) NOT NULL,
-    
+
     -- Profile info (cached)
     display_name VARCHAR(255),
     email VARCHAR(255),
     profile_picture_url TEXT,
-    
+
     -- OAuth tokens (encrypted)
     access_token TEXT NOT NULL,
     refresh_token TEXT,
     token_expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    
+
     -- Account type
     account_type VARCHAR(50) DEFAULT 'personal',  -- 'personal' or 'organization'
     organization_urn VARCHAR(255),  -- urn:li:organization:{id} for org accounts
     organization_name VARCHAR(255),
-    
+
     -- Status
     is_active BOOLEAN DEFAULT TRUE,
     last_used_at TIMESTAMP WITH TIME ZONE,
-    
+
     -- Timestamps
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    
+
     UNIQUE(user_id, linkedin_person_urn),
     UNIQUE(user_id, organization_urn) WHERE organization_urn IS NOT NULL
 );
@@ -155,30 +155,30 @@ CREATE TABLE linkedin_posts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     linkedin_account_id UUID NOT NULL REFERENCES linkedin_accounts(id) ON DELETE CASCADE,
-    
+
     -- Post content
     content_text TEXT,
     visibility VARCHAR(50) DEFAULT 'PUBLIC',  -- 'PUBLIC', 'CONNECTIONS'
-    
+
     -- Media attachments (JSON array of media items)
     media JSONB DEFAULT '[]',
     -- Example: [{"type": "image", "url": "...", "linkedin_urn": "urn:li:image:..."}]
-    
+
     -- Scheduling
-    status VARCHAR(50) DEFAULT 'draft',  
+    status VARCHAR(50) DEFAULT 'draft',
     -- 'draft', 'scheduled', 'publishing', 'published', 'failed', 'cancelled'
     scheduled_at TIMESTAMP WITH TIME ZONE,
     published_at TIMESTAMP WITH TIME ZONE,
-    
+
     -- LinkedIn response
     linkedin_post_urn VARCHAR(255),  -- urn:li:share:{id} or urn:li:ugcPost:{id}
     linkedin_post_url TEXT,
-    
+
     -- Error handling
     error_message TEXT,
     retry_count INTEGER DEFAULT 0,
     last_retry_at TIMESTAMP WITH TIME ZONE,
-    
+
     -- Timestamps
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -189,21 +189,21 @@ CREATE TABLE linkedin_media (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     linkedin_account_id UUID NOT NULL REFERENCES linkedin_accounts(id) ON DELETE CASCADE,
-    
+
     -- Media info
     media_type VARCHAR(50) NOT NULL,  -- 'image', 'video', 'document'
     original_filename VARCHAR(255),
     file_size_bytes BIGINT,
     mime_type VARCHAR(100),
-    
+
     -- Local storage (temporary)
     local_path TEXT,
-    
+
     -- LinkedIn upload status
-    upload_status VARCHAR(50) DEFAULT 'pending',  
+    upload_status VARCHAR(50) DEFAULT 'pending',
     -- 'pending', 'uploading', 'ready', 'failed'
     linkedin_asset_urn VARCHAR(255),  -- urn:li:image:{id}, urn:li:video:{id}, etc.
-    
+
     -- Timestamps
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     expires_at TIMESTAMP WITH TIME ZONE  -- For cleanup
@@ -213,7 +213,7 @@ CREATE TABLE linkedin_media (
 CREATE INDEX idx_linkedin_accounts_user ON linkedin_accounts(user_id);
 CREATE INDEX idx_linkedin_posts_user ON linkedin_posts(user_id);
 CREATE INDEX idx_linkedin_posts_status ON linkedin_posts(status);
-CREATE INDEX idx_linkedin_posts_scheduled ON linkedin_posts(scheduled_at) 
+CREATE INDEX idx_linkedin_posts_scheduled ON linkedin_posts(scheduled_at)
     WHERE status = 'scheduled';
 CREATE INDEX idx_linkedin_media_user ON linkedin_media(user_id);
 ```
@@ -236,13 +236,13 @@ GET  /api/v1/auth/linkedin/callback
 ```
 GET    /api/v1/linkedin/accounts
        - List user's connected LinkedIn accounts
-       
+
 GET    /api/v1/linkedin/accounts/{id}
        - Get specific account details
-       
+
 DELETE /api/v1/linkedin/accounts/{id}
        - Disconnect/remove a LinkedIn account
-       
+
 POST   /api/v1/linkedin/accounts/{id}/refresh
        - Manually refresh access token
 ```
@@ -255,16 +255,16 @@ POST   /api/v1/linkedin/posts
 
 GET    /api/v1/linkedin/posts
        - List user's posts (with filters: status, date range)
-       
+
 GET    /api/v1/linkedin/posts/{id}
        - Get specific post details
-       
+
 PATCH  /api/v1/linkedin/posts/{id}
        - Update a draft/scheduled post
-       
+
 DELETE /api/v1/linkedin/posts/{id}
        - Delete/cancel a post (only if not published)
-       
+
 POST   /api/v1/linkedin/posts/{id}/publish
        - Publish a draft post immediately
 ```
@@ -278,7 +278,7 @@ POST   /api/v1/linkedin/media/upload
 
 GET    /api/v1/linkedin/media/{id}/status
        - Check upload/processing status (for videos)
-       
+
 DELETE /api/v1/linkedin/media/{id}
        - Delete uploaded media (if not used in published post)
 ```
@@ -527,36 +527,36 @@ Instead of LinkedIn-specific tables, we create a generic "social accounts" syste
 CREATE TABLE social_accounts (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users(id),
-    
+
     -- Platform identification
     platform VARCHAR(50) NOT NULL,  -- 'linkedin', 'twitter', 'instagram'
     account_type VARCHAR(50) NOT NULL,  -- 'personal', 'organization', 'page'
-    
+
     -- Platform-specific identifiers
     platform_user_id VARCHAR(255) NOT NULL,
     platform_account_urn VARCHAR(255),  -- LinkedIn URN, Twitter handle, etc.
-    
+
     -- Display info
     display_name VARCHAR(255),
     username VARCHAR(255),
     profile_picture_url TEXT,
-    
+
     -- OAuth tokens (encrypted, platform-agnostic)
     access_token TEXT NOT NULL,
     refresh_token TEXT,
     token_expires_at TIMESTAMP WITH TIME ZONE,
     token_scopes TEXT[],  -- Array of granted scopes
-    
+
     -- Status
     is_active BOOLEAN DEFAULT TRUE,
     last_sync_at TIMESTAMP WITH TIME ZONE,
-    
+
     -- Metadata (platform-specific extras)
     metadata JSONB DEFAULT '{}',
-    
+
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    
+
     UNIQUE(user_id, platform, platform_user_id)
 );
 
@@ -564,24 +564,24 @@ CREATE TABLE social_accounts (
 CREATE TABLE social_posts (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users(id),
-    
+
     -- Can target multiple accounts
     target_accounts UUID[] NOT NULL,  -- Array of social_account IDs
-    
+
     -- Content (platform-agnostic base)
     content_text TEXT,
-    
+
     -- Media (references to media library)
     media_ids UUID[],
-    
+
     -- Scheduling
     status VARCHAR(50) DEFAULT 'draft',
     scheduled_at TIMESTAMP WITH TIME ZONE,
-    
+
     -- Platform-specific content/settings
     platform_settings JSONB DEFAULT '{}',
     -- Example: { "linkedin": { "visibility": "PUBLIC" }, "twitter": { "reply_settings": "everyone" } }
-    
+
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -591,18 +591,18 @@ CREATE TABLE social_post_results (
     id UUID PRIMARY KEY,
     post_id UUID NOT NULL REFERENCES social_posts(id),
     social_account_id UUID NOT NULL REFERENCES social_accounts(id),
-    
+
     status VARCHAR(50) DEFAULT 'pending',  -- 'pending', 'published', 'failed'
     published_at TIMESTAMP WITH TIME ZONE,
-    
+
     -- Platform response
     platform_post_id VARCHAR(255),
     platform_post_url TEXT,
-    
+
     -- Errors
     error_message TEXT,
     retry_count INTEGER DEFAULT 0,
-    
+
     UNIQUE(post_id, social_account_id)
 );
 
@@ -610,25 +610,25 @@ CREATE TABLE social_post_results (
 CREATE TABLE media_library (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users(id),
-    
+
     -- File info
     filename VARCHAR(255),
     mime_type VARCHAR(100),
     file_size_bytes BIGINT,
-    
+
     -- Storage
     storage_path TEXT NOT NULL,  -- Local path or S3 URL
     thumbnail_path TEXT,
-    
+
     -- Metadata
     width INTEGER,
     height INTEGER,
     duration_seconds INTEGER,  -- For videos
-    
+
     -- Platform uploads (cached URNs to avoid re-uploading)
     platform_uploads JSONB DEFAULT '{}',
     -- Example: { "linkedin": { "urn": "urn:li:image:123", "uploaded_at": "..." } }
-    
+
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 ```
@@ -648,19 +648,19 @@ CREATE TABLE media_library (
 class SocialPlatformAdapter(ABC):
     @abstractmethod
     def authenticate(self, auth_code: str) -> TokenResponse: ...
-    
+
     @abstractmethod
     def refresh_token(self, refresh_token: str) -> TokenResponse: ...
-    
+
     @abstractmethod
     def get_profile(self, access_token: str) -> ProfileInfo: ...
-    
+
     @abstractmethod
     def upload_media(self, access_token: str, file: File) -> MediaUploadResult: ...
-    
+
     @abstractmethod
     def create_post(self, access_token: str, post: PostContent) -> PostResult: ...
-    
+
     @abstractmethod
     def delete_post(self, access_token: str, post_id: str) -> bool: ...
 
@@ -669,7 +669,7 @@ class LinkedInAdapter(SocialPlatformAdapter):
     def authenticate(self, auth_code: str) -> TokenResponse:
         # LinkedIn OAuth implementation
         ...
-    
+
     def create_post(self, access_token: str, post: PostContent) -> PostResult:
         # LinkedIn Posts API implementation
         ...
@@ -685,11 +685,11 @@ class TwitterAdapter(SocialPlatformAdapter):
    - ~~Option A: Build LinkedIn-specific now, refactor to generic later~~
    - ~~Option B: Build generic architecture now, LinkedIn as first adapter~~
    - **Decision: Generic architecture from day 1, with LinkedIn and Twitter as initial platforms**
-   
+
 2. **Cross-posting UX**
    - Should users see one composer for all platforms?
    - Or separate flows per platform?
-   
+
 3. **Platform-specific features**
    - Some platforms have unique features (LinkedIn polls, Twitter threads)
    - How to handle in a generic system?
