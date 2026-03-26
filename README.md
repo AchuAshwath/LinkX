@@ -37,10 +37,15 @@ It gives you a unified dashboard to draft, schedule, and publish posts across pl
 
 ### Screenshots
 
+Captured from the app running locally (`bun run dev` in `frontend/`, dark theme): sign-in, home timeline, posts, and social personas.
+
 <p align="center">
-  <img src="img/login.png" alt="Login" width="32%" />
-  <img src="img/dashboard.png" alt="Dashboard" width="32%" />
-  <img src="img/dashboard-dark.png" alt="Dashboard dark" width="32%" />
+  <img src="img/login.png" alt="Log in – LinkX" width="49%" />
+  <img src="img/timeline.png" alt="Home timeline – LinkX" width="49%" />
+</p>
+<p align="center">
+  <img src="img/posts.png" alt="Posts – LinkX" width="49%" />
+  <img src="img/social-accounts.png" alt="Social accounts and personas – LinkX" width="49%" />
 </p>
 
 ## Quick start
