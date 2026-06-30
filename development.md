@@ -198,6 +198,28 @@ Some changes (for example under `backend/` or `scripts/generate-client.sh`) may 
 
 In addition, the hook executes `bun run` commands in the `frontend/` workspace, so you must have `bun` installed on the host.
 
+## Combined Validation & Testing Commands
+
+To make code verification simpler and faster, several combined workspace-level commands are configured in the root `package.json`:
+
+*   **Static Code Checks:**
+    ```bash
+    bun run check
+    ```
+    This runs static analysis across both frontend and backend without running test suites or touching databases. It checks formatting and lint rules (using Biome and Ruff) and performs full TypeScript typechecking (`tsc --noEmit`) and Python typechecking (`mypy`).
+
+*   **Run All Tests:**
+    ```bash
+    bun run test
+    ```
+    Runs the backend `pytest` suite first, then runs the frontend `playwright` end-to-end test suite. *(Note: Backend DB/Redis services must be running for this command).*
+
+*   **Full verification (CI simulation):**
+    ```bash
+    bun run verify
+    ```
+    Runs `bun run check` and `bun run test` consecutively. Use this to fully verify your changes before proposing commits or creating pull requests.
+
 ## URLs
 
 The production or staging URLs would use these same paths, but with your own domain.

@@ -66,6 +66,11 @@ Typical local setup (see [`AGENTS.md`](./AGENTS.md) and [`development.md`](./dev
 
   # 2. Spin up databases and launch both local dev servers
   bun run dev:local
+
+  # 3. Validate and test your changes
+  bun run check  # Static validation: Lint & Typecheck (frontend + backend)
+  bun run test   # Run full test suite (frontend playwright + backend pytest)
+  bun run verify # Run both check and test suites back-to-back
   ```
 
 - **Option B: Full Docker Setup**
