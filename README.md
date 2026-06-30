@@ -58,8 +58,26 @@ cd LinkX
 
 Typical local setup (see [`AGENTS.md`](./AGENTS.md) and [`development.md`](./development.md) for details):
 
-- **Backend:** `docker compose watch backend`
-- **Frontend:** `cd frontend && bun install && bun run dev`
+- **Option A: Lightweight Hybrid Setup (Recommended)**
+  Runs database & redis in Docker, but runs the frontend & backend code natively on the host. Fast hot-reloading and low memory/storage footprint.
+  ```bash
+  # 1. Create your local override configuration (.env.local is gitignored)
+  echo -e "POSTGRES_SERVER=localhost\nREDIS_URL=redis://localhost:6379/0" > .env.local
+
+  # 2. Spin up databases and launch both local dev servers
+  bun run dev:local
+
+  # 3. Validate and test your changes
+  bun run check  # Static validation: Lint & Typecheck (frontend + backend)
+  bun run test   # Run full test suite (frontend playwright + backend pytest)
+  bun run verify # Run both check and test suites back-to-back
+  ```
+
+- **Option B: Full Docker Setup**
+  Runs all services inside Docker Compose (includes watch mode for live sync).
+  ```bash
+  docker compose watch
+  ```
 
 Configure secrets in `.env` (`SECRET_KEY`, `FIRST_SUPERUSER_PASSWORD`, `POSTGRES_PASSWORD`, etc.) before a real deployment.
 

@@ -15,13 +15,32 @@ if [ "${SKIP_GENERATE_CLIENT:-0}" = "1" ]; then
   exit 0
 fi
 
+# Try generating locally on the host first
+if [ -d "$ROOT/.venv" ] && command -v uv &> /dev/null; then
+  echo "Generating OpenAPI client locally on host..."
+  if (cd backend && uv run python -c "import app.main; import json; print(json.dumps(app.main.app.openapi()))") > frontend/openapi.json 2> local_err.log; then
+    bun run --filter frontend generate-client
+    bun run lint
+    rm -f local_err.log
+    exit 0
+  else
+    echo "Local generation failed. Error:"
+    cat local_err.log >&2
+    rm -f local_err.log
+    echo "Falling back to Docker check..." >&2
+  fi
+fi
+
 BACKEND_ID="$(docker compose ps -q backend 2>/dev/null || true)"
 if [ -z "$BACKEND_ID" ]; then
   cat >&2 <<'EOF'
-Backend container is not running.
+Backend container is not running, and local host environment could not be used.
 
 Start the API (from repo root) and re-run:
   docker compose watch backend
+
+Or set up local virtual env:
+  cd backend && uv sync
 
 Then re-run:
   bash ./scripts/generate-client.sh
