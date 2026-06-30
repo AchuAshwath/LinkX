@@ -18,14 +18,15 @@ fi
 # Try generating locally on the host first
 if [ -d "$ROOT/.venv" ] && command -v uv &> /dev/null; then
   echo "Generating OpenAPI client locally on host..."
-  if OUT=$(cd backend && uv run python -c "import app.main; import json; print(json.dumps(app.main.app.openapi()))" 2>&1); then
-    echo "$OUT" > frontend/openapi.json
+  if (cd backend && uv run python -c "import app.main; import json; print(json.dumps(app.main.app.openapi()))") > frontend/openapi.json 2> local_err.log; then
     bun run --filter frontend generate-client
     bun run lint
+    rm -f local_err.log
     exit 0
   else
     echo "Local generation failed. Error:"
-    echo "$OUT" >&2
+    cat local_err.log >&2
+    rm -f local_err.log
     echo "Falling back to Docker check..." >&2
   fi
 fi
