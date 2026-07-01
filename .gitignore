@@ -23,8 +23,11 @@ openapi.json
 
 # Environment files (do not commit secrets)
 .env
+.env.*
 *.env
 frontend/.env
+frontend/.env.*
+*.key
 
 # macOS metadata
 .DS_Store
