@@ -4,59 +4,47 @@
 
 ## Phases
 
-### Phase 0: Foundation
-> Build the core infrastructure that everything else depends on.
+### Phase 0: Core Automation Loop (MVP Focus)
+> Build the absolute minimum pipeline to prove the browser and AI loops work.
 
 | Spec | Deliverable |
 |------|-------------|
-| [browser-engine](./specs/browser-engine.md) | Playwright lifecycle, stealth, browser contexts |
-| [session-management](./specs/session-management.md) | Persistent login, cookie storage, health checks |
-| [scheduler](./specs/scheduler.md) | APScheduler worker, retry logic, Redis lock |
-| [data-model](./specs/data-model.md) | Schema changes for new features |
+| [browser-engine](./specs/browser-engine.md) | Playwright lifecycle, rebrowser-playwright evasion, 3-tier self-healing |
+| [session-management](./specs/session-management.md) | Persistent login, browser-use profile integration |
+| [ai-stack](./specs/ai-stack.md) | 3 HTTP Pillars (Ollama, OpenCode Serve, LiteLLM) |
+| [trending-topics](./specs/trending-topics.md) | browser-use agent to scrape X trending topics to JSON |
 
-### Phase 1: Platform Connectivity
-> Connect to social platforms via browser automation.
-
-| Spec | Deliverable |
-|------|-------------|
-| [platform-adapters](./specs/platform-adapters.md) | LinkedIn + X adapters (login, post, scrape) |
-| [trending-topics](./specs/trending-topics.md) | Scrape and surface trending topics |
-
-### Phase 2: AI Agent
-> The AI brain that curates content.
+### Phase 1: Posting Adapter
+> Implement the logic to actually publish posts using persistent sessions.
 
 | Spec | Deliverable |
 |------|-------------|
-| [ai-stack](./specs/ai-stack.md) | LangGraph + LangChain + LiteLLM wiring |
-| [brand-voice](./specs/brand-voice.md) | Brand tone configuration, prompt engineering |
-| [content-curation](./specs/content-curation.md) | Daily agent: trends → drafts pipeline |
+| [platform-adapters](./specs/platform-adapters.md) | X & LinkedIn posting scripts with self-healing fallback |
 
-### Phase 3: Workflow & Polish
-> The user-facing workflow that ties it all together.
+### Phase 2: Post-MVP Foundations (Future)
+> Move scheduler, advanced database schema, and custom UI into focus only after the core loop is stable.
 
 | Spec | Deliverable |
 |------|-------------|
-| [post-lifecycle](./specs/post-lifecycle.md) | Review/approve/schedule flow, calendar UI |
+| [data-model](./specs/data-model.md) | Schema changes, BrandVoice tables, post logging |
+| [scheduler](./specs/scheduler.md) | APScheduler worker, concurrency locks, retry queues |
+| [post-lifecycle](./specs/post-lifecycle.md) | Review/approve inbox, calendar UI |
 
 ---
 
 ## Implementation Order
 
-> To be determined after specs are discussed. The rough idea:
-
 ```
-[data-model] ──→ [browser-engine] ──→ [session-management] ──→ [platform-adapters]
-                                                                       │
-[scheduler] ────────────────────────────────────────────→ [post-lifecycle]
-                                                                       │
-[ai-stack] ──→ [brand-voice] ──→ [trending-topics] ──→ [content-curation]
+[browser-engine] ──→ [session-management] ──→ [ai-stack]
+                                                   │
+[platform-adapters] 🖲️ (Post agent) ←── [trending-topics] 🖲️ (Scrape agent)
 ```
 
 ## Milestones
 
 | Milestone | Definition of Done |
 |-----------|--------------------|
-| **M1: "I can post from the browser"** | Login via Playwright, post text to LinkedIn |
-| **M2: "Posts happen on schedule"** | Scheduler picks up queued posts and publishes them |
-| **M3: "AI writes my posts"** | LangGraph agent drafts posts from trending topics |
-| **M4: "Full loop"** | Trends → AI drafts → Review inbox → Approve → Auto-publish |
+| **M1: Headed Login & Sessions** | Run a script to log into LinkedIn/X, saving profiles to `sessions/` |
+| **M2: Trend Scraping** | browser-use agent successfully extracts trending topics as structured JSON |
+| **M3: Manual Post Trigger** | Post text successfully to LinkedIn/X using the persistent session |
+| **M4: Complete Core Loop** | Single Python command: Scrape Trends ➔ Draft via AI ➔ Post to platforms |
