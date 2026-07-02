@@ -1,40 +1,93 @@
-# Spec: AI Stack (LangGraph + LangChain + LiteLLM)
+# Spec: AI Stack
 
-> **Status:** 🔲 Outline — needs discussion
+> **Status:** 📝 Draft — under review
 > **Depends on:** Nothing (foundation)
 > **Depended on by:** [brand-voice](./brand-voice.md), [content-curation](./content-curation.md)
 
 ## Problem
 
-We need to build a sophisticated AI agent that can reason about trending topics, draft posts matching a specific brand voice, and interact with the user for review/approval. We want to avoid provider lock-in and allow users to bring their own API keys (or run local models).
+LinkX needs AI to write posts, generate ideas from trending topics, and self-heal broken
+browser selectors. We want to avoid forcing developers to get a new API key and pay for tokens
+separately — they should be able to reuse existing subscriptions or local hardware.
 
-## Context
+---
 
-We have decided on the following stack:
-1. **LiteLLM**: Provider abstraction. One interface for OpenAI, Anthropic, Gemini, Ollama, etc.
-2. **LangChain**: Prompt templates, chains, output parsers, and tool calling wrappers.
-3. **LangGraph**: Stateful agent workflows, modeling the curation pipeline as a graph with "human-in-the-loop" pauses for review.
+## Core Architecture: The 3 HTTP Pillars
 
-## Questions to Discuss
+We do **not** use brittle CLI subprocess wrappers. LinkX communicates exclusively via standard HTTP APIs (primarily the OpenAI-compatible specification). This keeps the orchestration layer (LangGraph/LangChain) robust and native.
 
-### LLM Configuration
-- [ ] How does the user configure their preferred model and API key? (Environment variables vs database settings)
-- [ ] Should we support configuring different models for different tasks? (e.g., fast cheap model for topic filtering, smart expensive model for drafting)
-- [ ] How do we handle API errors, rate limits, and failovers? (LiteLLM has built-in features for this)
+We support three distinct provider paths based on the user's preference and available hardware:
 
-### LangGraph Workflows
-- [ ] What is the exact state object passed between nodes in the curation graph?
-- [ ] Where does the graph execution pause for human intervention? (e.g., `interrupt_before=["publish"]`)
-- [ ] How is the graph state persisted? (LangGraph supports PostgreSQL/Redis checkpointers — which should we use?)
+### 1. Ollama (The True Offline Path)
+**How it works:** Ollama runs a local OpenAI-compatible HTTP server at `http://localhost:11434`.
+Uses `langchain-ollama` for native integration. Fully offline, free, no subscription, no key.
 
-### Tools and Capabilities
-- [ ] What tools does the agent need access to? (e.g., `search_web`, `read_trending_topics`, `get_brand_guidelines`)
-- [ ] Should the agent be able to trigger browser actions directly, or just output structured data for the scheduler?
+**When to use:** Self-hosted deployments on hardware with sufficient RAM/GPU.
+*   **Raspberry Pi 5:** `gemma3:4b` (~3GB RAM)
+*   **Mac Mini / Laptop:** `llama3.1:8b` (~6GB RAM)
 
-## Topics to Spec Out
+### 2. OpenCode Serve (The "Bring Your Own Subscription" Path)
+**How it works:** Tools like OpenCode have a local headless server mode (`opencode serve`).
+This exposes a local REST API (default `http://localhost:4096`).
+LinkX sends standard JSON payloads to this endpoint.
 
-1. LiteLLM configuration and initialization (the `langchain-litellm` bridge)
-2. Global AI settings (user config)
-3. LangGraph state schema for the curation workflow
-4. Checkpointer integration (saving agent state to DB)
-5. Agent tools definition
+**When to use:** The developer already pays for Claude Pro or Google One AI Premium. They configure OpenCode to use their Gemini/Claude account, launch `opencode serve`, and LinkX routes tasks through it for **zero additional API cost**. (Note: OpenCode supports plugins/providers for Gemini, Anthropic, etc.)
+
+### 3. LiteLLM (The Direct API Path)
+**How it works:** LiteLLM is a translation layer that abstracts over 100+ LLM providers into the standard OpenAI API format.
+User sets `AI_MODEL` and `AI_API_KEY` in `.env`.
+
+**When to use:** When the user wants to use a direct API.
+*   **Gemini Free Tier:** `AI_MODEL=gemini/gemini-2.0-flash`. Google AI Studio provides 1,500 requests/day completely for free.
+*   **OpenRouter Free Tier:** `AI_MODEL=openrouter/google/gemma-3-12b-it:free`.
+*   **Paid APIs:** `AI_MODEL=anthropic/claude-3-5-sonnet` (for users who want to pay standard API rates).
+
+---
+
+## Unified Client Interface
+
+All LangGraph nodes in the backend interact with a single `AIClient` interface. The client abstracts whether the underlying provider is Ollama, OpenCode, or LiteLLM.
+
+```python
+# backend/app/services/ai/client.py
+from litellm import completion
+
+class AIClient:
+    def __init__(self, provider: str = "litellm", base_url: str = None):
+        self.provider = provider
+        self.base_url = base_url
+
+    async def complete_structured(self, prompt: str, schema: type) -> dict:
+        """Ask for JSON output and validate against a Pydantic schema."""
+
+        # If using OpenCode Serve
+        if self.provider == "opencode":
+            # Send HTTP request to self.base_url (e.g. localhost:4096)
+            return await self._call_opencode(prompt, schema)
+
+        # If using LiteLLM (handles Gemini API, Anthropic, OpenAI, etc)
+        # or Ollama (if configured via LiteLLM custom base_url)
+        response = completion(
+            model="your_configured_model",
+            messages=[{"role": "user", "content": prompt}],
+            # LiteLLM handles translating this structured output request to the specific provider
+            response_format=schema.model_json_schema()
+        )
+        raw_json = response.choices[0].message.content
+        return schema.model_validate_json(raw_json)
+```
+
+## AI Task Tiers
+
+Not all AI tasks need the same model quality. We use two tiers:
+
+| Task | Tier | Recommended Model | Tokens used |
+|---|---|---|---|
+| **Selector healing** | Fast / cheap | `gemma3:4b` / `gemini-2.0-flash` | ~2K per heal event |
+| **Trend summarization** | Fast / cheap | `gemma3:4b` / `gemini-2.0-flash` | ~1K per topic |
+| **Post drafting** | Quality | `llama3.1:8b` / `claude-3-5-sonnet` | ~3K per draft |
+| **Brand voice analysis** | Quality | `llama3.1:8b` / `claude-3-5-sonnet` | ~2K one-time setup |
+
+Users can override the default models in `.env`:
+`AI_MODEL_CHEAP=gemini/gemini-2.0-flash`
+`AI_MODEL_QUALITY=anthropic/claude-3-5-sonnet`
