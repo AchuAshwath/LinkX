@@ -40,6 +40,7 @@ These were written for the original API-based approach. Keep for reference but s
 
 | Document | Description |
 |----------|-------------|
+| [SESSION_BOOTSTRAP.md](./SESSION_BOOTSTRAP.md) | **How sessions work** — macOS Keychain problem, mock keychain solution, step-by-step login guide |
 | [LINKEDIN_SETUP.md](./LINKEDIN_SETUP.md) | LinkedIn app setup (legacy OAuth — will be replaced by browser auth) |
 | [X_SETUP.md](./X_SETUP.md) | X/Twitter app setup (legacy API — will be replaced by browser auth) |
 | [BRANDKIT.md](./BRANDKIT.md) | Brand assets and design tokens |
