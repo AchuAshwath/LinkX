@@ -23,11 +23,17 @@ Two approaches exist in Playwright for session persistence. After research, we u
 |---|---|---|
 | **What it saves** | Cookies + localStorage only | Everything: cookies, localStorage, IndexedDB, service workers, cache |
 | **LinkedIn `JSESSIONID`** | ❌ Lost — session cookie, not persisted | ✅ Saved — stored in the profile dir |
-| **Security** | Plain JSON — raw tokens on disk | Chromium encrypts its own DB via OS keychain (macOS) / DPAPI (Windows) |
 | **Matches real browser?** | No — fresh fingerprint every load | Yes — identical to a real user's Chrome profile |
 
 **Verdict:** `storageState` misses `IndexedDB` tokens that LinkedIn uses for auth. Sessions
 drop unexpectedly after a few hours. `launch_persistent_context` captures everything.
+
+> **macOS Keychain caveat:** On macOS, Chrome normally encrypts its cookie database via the
+> system Keychain. Playwright-controlled Chrome processes are blocked from Keychain access by
+> the OS (because they run under a debugger/CDP connection). The solution is to pass
+> `--use-mock-keychain --password-store=basic` to **both** the login subprocess and the
+> Playwright launch — this makes Chrome use a local profile-bound key instead. See
+> [SESSION_BOOTSTRAP.md](../SESSION_BOOTSTRAP.md) for the full explanation.
 
 ### Decision 2: One `user_data_dir` Per Brand × Platform
 
@@ -135,21 +141,30 @@ class SessionManager:
         platform: str,
         headless: bool = True,
     ) -> BrowserContext:
-        """Launch a persistent browser context from the saved session dir."""
+        """Launch a persistent browser context from the saved session dir.
+
+        IMPORTANT — macOS Keychain:
+            Pass --use-mock-keychain and --password-store=basic so that both
+            the login subprocess (headed_login.py) and this Playwright context
+            use the same local cookie encryption key. Without these flags,
+            Playwright cannot decrypt cookies written by normal Chrome and loads
+            an empty session. See docs/SESSION_BOOTSTRAP.md for details.
+        """
         async with async_playwright() as p:
             context = await p.chromium.launch_persistent_context(
                 user_data_dir=str(self.session_dir(brand_id, platform)),
                 headless=headless,
+                channel="chrome",      # use installed Chrome for correct OS integration
                 viewport={"width": 1280, "height": 800},
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/125.0.0.0 Safari/537.36"
-                ),
+                ignore_default_args=["--enable-automation"],
                 args=[
                     "--disable-gpu",
                     "--disable-dev-shm-usage",
                     "--no-sandbox",
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-infobars",
+                    "--use-mock-keychain",     # bypass macOS Keychain lock
+                    "--password-store=basic",  # store key locally in profile dir
                 ],
             )
             return context
@@ -256,16 +271,31 @@ async def check_session_health(context: BrowserContext, platform: str) -> dict:
 When a user connects a new social account in the UI:
 
 1. **Backend** receives request: `POST /api/v1/accounts/connect` with `{brand_id, platform}`
-2. **Backend** launches a headed browser on the same machine: `headless=False`
-3. **Frontend** shows a "Complete login in the browser window that just opened" modal
-4. **User** completes login + 2FA in the visible Chromium window
-5. **Backend** polls the `user_data_dir` until the sentinel element is detected (session saved)
-6. **Backend** marks account as `connected` in the database
-7. **Headed browser** is closed; all future automation runs headless
+2. **Backend** checks no Chrome instance is already running (singleton guard)
+3. **Backend** launches a vanilla Chrome **subprocess** (not Playwright) with
+   `--use-mock-keychain --password-store=basic --user-data-dir=sessions/{brand}/{platform}`
+4. **Frontend** shows a "Complete login in the browser window that just opened" modal
+5. **User** completes login + 2FA in the visible Chrome window
+6. **User** waits ~10 seconds on the feed, then quits Chrome with `Cmd+Q`
+7. **Backend** detects Chrome process exit and verifies `auth_token` cookie exists in the DB
+8. **Backend** marks account as `connected` in the database
+9. All future automation runs use `launch_persistent_context` with the same mock-keychain flags
+
+> **Why a subprocess, not Playwright, for login?**
+> X (and likely LinkedIn) detect the Chrome DevTools Protocol connection that Playwright
+> opens and block login with an error. A vanilla `subprocess.run(chrome, ...)` has zero
+> automation surface — X sees a completely normal browser.
+
+> **Why must Chrome be quit with `Cmd+Q`?**
+> Chrome only flushes its SQLite cookie database to disk on a clean shutdown. Closing just
+> the window (`✕`) leaves Chrome running in the background on macOS; the cookie file may
+> not be fully written until the process exits.
 
 For Pi / server deployments with no physical display, we will expose the browser via a
 **VNC session** (using `DISPLAY=:99 Xvfb :99` + `x11vnc`). The user connects via VNC
 once to complete login. Implementation to be detailed in the deployment guide.
+
+For the full step-by-step guide, see [SESSION_BOOTSTRAP.md](../SESSION_BOOTSTRAP.md).
 
 ---
 
