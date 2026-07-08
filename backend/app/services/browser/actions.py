@@ -6,6 +6,7 @@ import asyncio
 import logging
 import math
 import random
+import string
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -36,9 +37,16 @@ class EvasionMouse:
     def __init__(self, page: Page):
         self.page = page
         self.lock = asyncio.Lock()
-        # Start at a random "natural" position instead of (0,0)
-        self.x = random.uniform(200.0, 800.0)
-        self.y = random.uniform(200.0, 600.0)
+
+        # Determine dynamic viewport boundaries
+        viewport = page.viewport_size
+        self._max_x = float(viewport["width"]) if viewport else 1200.0
+        self._max_y = float(viewport["height"]) if viewport else 700.0
+
+        # Start at a random "natural" position within the dynamic viewport
+        self.x = random.uniform(self._max_x * 0.2, self._max_x * 0.8)
+        self.y = random.uniform(self._max_y * 0.2, self._max_y * 0.8)
+
         self._idle_task: asyncio.Task | None = None
         self._is_idling = False
 
@@ -70,9 +78,9 @@ class EvasionMouse:
             target_x = self.x + random.uniform(-50, 50)
             target_y = self.y + random.uniform(-50, 50)
 
-            # Ensure coordinates stay roughly within a standard viewport
-            target_x = max(10.0, min(1200.0, target_x))
-            target_y = max(10.0, min(700.0, target_y))
+            # Ensure coordinates stay strictly within the viewport to avoid anomaly detection
+            target_x = max(5.0, min(self._max_x - 5.0, target_x))
+            target_y = max(5.0, min(self._max_y - 5.0, target_y))
 
             # Use lock to prevent racing with real clicks
             try:
@@ -162,7 +170,7 @@ class EvasionMouse:
         await self.human_click(selector=selector)
         await random_delay(min_sec=0.2, max_sec=0.5)
 
-        keyboard_chars = "abcdefghijklmnopqrstuvwxyz"
+        keyboard_chars = string.ascii_lowercase
 
         for char in text:
             # Simulate making a typo and backspacing
