@@ -75,10 +75,17 @@ class EvasionMouse:
             target_y = max(10.0, min(700.0, target_y))
 
             # Use lock to prevent racing with real clicks
-            async with self.lock:
-                await self._move_mouse_internal(
-                    target_x, target_y, steps=random.randint(15, 30)
+            try:
+                async with self.lock:
+                    await self._move_mouse_internal(
+                        target_x, target_y, steps=random.randint(15, 30)
+                    )
+            except Exception as e:
+                logger.debug(
+                    "Idle loop caught exception (likely Target Closed), stopping: %s", e
                 )
+                self._is_idling = False
+                break
 
     async def _move_mouse_internal(
         self, target_x: float, target_y: float, steps: int = 20
