@@ -13,7 +13,7 @@ import asyncio
 import logging
 import sys
 
-from app.services.browser import PLATFORMS, BrowserManager
+from app.services.browser import PLATFORMS, BrowserManager, human_navigation
 
 logging.basicConfig(
     level=logging.INFO,
@@ -56,7 +56,7 @@ async def main() -> None:
             for p in context.pages[1:]:
                 await p.close()
             logger.info("Navigating to %s ...", config.url)
-            await page.goto(config.url, wait_until="domcontentloaded")
+            await human_navigation(page=page, url=config.url)
 
             logger.info("Checking authentication state...")
             await asyncio.sleep(5)  # allow JS to settle
