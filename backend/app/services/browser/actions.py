@@ -6,8 +6,9 @@ import asyncio
 import logging
 import math
 import random
-import string
 from typing import TYPE_CHECKING
+
+from humantyping.integration import HumanTyper  # type: ignore
 
 if TYPE_CHECKING:
     from rebrowser_playwright.async_api import Page
@@ -47,7 +48,7 @@ class EvasionMouse:
         self.x = random.uniform(self._max_x * 0.2, self._max_x * 0.8)
         self.y = random.uniform(self._max_y * 0.2, self._max_y * 0.8)
 
-        self._idle_task: asyncio.Task | None = None
+        self._idle_task: asyncio.Task[None] | None = None
         self._is_idling = False
 
     async def start_idle(self) -> None:
@@ -163,51 +164,21 @@ class EvasionMouse:
             # Resume sitting duck idle wiggles
             await self.start_idle()
 
-    async def human_type(
-        self, *, selector: str, text: str, delay: int = 100, mistake_prob: float = 0.05
-    ) -> None:
-        """Type text into a field with randomized keystroke delays and occasional typos/backspacing."""
+    async def human_type(self, *, selector: str, text: str, wpm: float = 90.0) -> None:
+        """Type text into a field with realistic human behavior using humantyping."""
         await self.human_click(selector=selector)
         await random_delay(min_sec=0.2, max_sec=0.5)
 
-        keyboard_chars = string.ascii_lowercase
+        # HumanTyper inherently handles IKI log-normal distribution,
+        # Markov chain fatigue states, and QWERTY neighbor mistakes.
+        typer = HumanTyper(wpm=wpm)
+        locator = self.page.locator(selector).first
 
-        for char in text:
-            # Simulate making a typo and backspacing
-            if char.isalpha() and random.random() < mistake_prob:
-                num_wrong = random.randint(1, 3)
+        # Release the mouse lock since typing doesn't move the mouse,
+        # and we want the mouse to idle-wiggle while typing happens
+        asyncio.create_task(self.start_idle())
 
-                # Type the wrong characters
-                for _ in range(num_wrong):
-                    wrong_char = random.choice(keyboard_chars)
-                    jitter = random.uniform(-0.5, 0.5) * delay
-                    await self.page.keyboard.type(
-                        wrong_char, delay=int(max(10, delay + jitter))
-                    )
-
-                # Human reaction time to notice the mistake (longer if more characters)
-                await random_delay(min_sec=0.2, max_sec=0.4 + (0.1 * num_wrong))
-
-                # Press backspace rapidly
-                for _ in range(num_wrong):
-                    # Backspacing is usually slightly faster/more rhythmic than normal typing
-                    backspace_delay = max(
-                        10, (delay * 0.7) + random.uniform(-0.2, 0.2) * delay
-                    )
-                    await self.page.keyboard.press(
-                        "Backspace", delay=int(backspace_delay)
-                    )
-
-                # Slight pause before typing the correct character to reorient
-                await asyncio.sleep(random.uniform(0.1, 0.3))
-
-            # Type the correct character
-            jitter = random.uniform(-0.5, 0.5) * delay
-            actual_delay_ms = max(10, delay + jitter)
-            await self.page.keyboard.type(char, delay=int(actual_delay_ms))
-
-            if random.random() < 0.05:
-                await random_delay(min_sec=0.5, max_sec=1.5)
+        await typer.type(locator, text)
 
     async def human_scroll(self, *, scrolls: int = 3) -> None:
         """Perform randomized smooth scrolling down the page."""
