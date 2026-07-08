@@ -1,0 +1,16 @@
+{
+  "compose": {
+    "post_input": "[data-testid=\"tweetTextarea_0\"], .public-DraftEditor-content",
+    "post_button": "[data-testid=\"tweetButtonInline\"], div[role=\"button\"]:has-text(\"Post\")",
+    "reply_button": "[data-testid=\"reply\"]"
+  },
+  "navigation": {
+    "home": "a[href=\"/home\"]",
+    "explore": "a[href=\"/explore\"]",
+    "notifications": "a[href*=\"/notifications\"]"
+  },
+  "feed": {
+    "news_trends": "[data-testid=\"trend\"]",
+    "timeline_post": "[data-testid=\"tweet\"]"
+  }
+}
