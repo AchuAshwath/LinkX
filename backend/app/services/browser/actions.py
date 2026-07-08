@@ -15,27 +15,14 @@ async def inject_stealth(context: BrowserContext) -> None:
 
     Masks the most obvious automation signals like navigator.webdriver.
     """
-    script = """
-        // Pass the Webdriver Test
-        Object.defineProperty(navigator, 'webdriver', {
-            get: () => undefined,
-        });
-
-        // Pass the Plugins Length Test
-        Object.defineProperty(navigator, 'plugins', {
-            get: () => [1, 2, 3, 4, 5],
-        });
-
-        // Spoof Hardware Concurrency (hide server CPUs)
-        Object.defineProperty(navigator, 'hardwareConcurrency', {
-            get: () => 8,
-        });
-
-        // Pass the Chrome Test
-        window.chrome = {
-            runtime: {}
-        };
-    """
+    script = (
+        "Object.defineProperty(navigator,'webdriver',{get:()=>undefined});"
+        "Object.defineProperty(navigator,'plugins',{get:()=>[1,2,3,4,5]});"
+        "Object.defineProperty(navigator,'hardwareConcurrency',{get:()=>8});"
+        "Object.defineProperty(window,'screen',{get:()=>({width:1280,height:800,"
+        "availWidth:1280,availHeight:800,colorDepth:24,pixelDepth:24})});"
+        "window.chrome={runtime:{}};"
+    )
     await context.add_init_script(script)
 
 
