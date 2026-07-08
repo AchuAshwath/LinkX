@@ -9,7 +9,6 @@ from contextlib import asynccontextmanager
 
 from rebrowser_playwright.async_api import BrowserContext, async_playwright
 
-from .actions import inject_stealth
 from .core import (
     find_chrome,
     get_playwright_args,
@@ -148,8 +147,6 @@ class BrowserManager:
                     ignore_default_args=["--enable-automation"],
                     args=playwright_args,
                 )
-
-            await inject_stealth(context)
 
             try:
                 yield context
