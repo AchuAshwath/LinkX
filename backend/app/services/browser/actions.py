@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 import random
 from typing import TYPE_CHECKING
@@ -10,63 +11,13 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from rebrowser_playwright.async_api import Page
 
-
-# Track mouse positions per page in Python to avoid DOM pollution.
-# WAFs detect custom variables like window.mouseX.
-_mouse_positions: dict[int, tuple[float, float]] = {}
+logger = logging.getLogger(__name__)
 
 
 async def random_delay(*, min_sec: float = 0.5, max_sec: float = 2.0) -> None:
     """Pause execution for a random duration between min_sec and max_sec."""
     delay = random.uniform(min_sec, max_sec)
     await asyncio.sleep(delay)
-
-
-async def human_type(*, page: Page, selector: str, text: str, delay: int = 100) -> None:
-    """Type text into a field with randomized keystroke delays.
-
-    Args:
-        page: The Playwright page.
-        selector: CSS selector for the input field.
-        text: The text to type.
-        delay: Base delay between keystrokes in milliseconds.
-    """
-    await page.wait_for_selector(selector)
-    # Use human_click instead of vanilla page.click to avoid teleportation
-    await human_click(page=page, selector=selector)
-    await random_delay(min_sec=0.2, max_sec=0.5)
-
-    for char in text:
-        # Add some jitter to the typing speed (+/- 50% of base delay)
-        jitter = random.uniform(-0.5, 0.5) * delay
-        actual_delay_ms = max(10, delay + jitter)
-        await page.keyboard.type(char, delay=int(actual_delay_ms))
-
-        # Occasionally pause longer (simulate reading or thinking)
-        if random.random() < 0.05:
-            await random_delay(min_sec=0.5, max_sec=1.5)
-
-
-async def human_scroll(*, page: Page, scrolls: int = 3) -> None:
-    """Perform randomized scrolling down the page.
-
-    Useful for triggering lazy-loaded feeds or making the session look human.
-    """
-    for _ in range(scrolls):
-        # Scroll down by a random fraction of the viewport height
-        scroll_amount = random.randint(300, 800)
-        await page.mouse.wheel(delta_x=0, delta_y=scroll_amount)
-        await random_delay(min_sec=1.0, max_sec=3.0)
-
-
-async def human_navigation(*, page: Page, url: str) -> None:
-    """Navigate to a URL with humanized delays.
-
-    Prevents instant robotic navigation loops.
-    """
-    await random_delay(min_sec=0.5, max_sec=1.5)
-    await page.goto(url, wait_until="domcontentloaded")
-    await random_delay(min_sec=1.0, max_sec=2.5)
 
 
 def _cubic_bezier(t: float, p0: float, p1: float, p2: float, p3: float) -> float:
@@ -79,60 +30,197 @@ def _cubic_bezier(t: float, p0: float, p1: float, p2: float, p3: float) -> float
     )
 
 
-async def human_click(*, page: Page, selector: str) -> None:
-    """Click an element using simulated, non-linear mouse movements.
+class EvasionMouse:
+    """Stateful mouse tracker that simulates persistent human movements and idle wiggles."""
 
-    Computes a cubic Bezier curve for the mouse path to evade behavioral detection.
-    """
-    await page.wait_for_selector(selector)
+    def __init__(self, page: Page):
+        self.page = page
+        self.lock = asyncio.Lock()
+        # Start at a random "natural" position instead of (0,0)
+        self.x = random.uniform(200.0, 800.0)
+        self.y = random.uniform(200.0, 600.0)
+        self._idle_task: asyncio.Task | None = None
+        self._is_idling = False
 
-    # Get element bounding box
-    locator = page.locator(selector).first
-    box = await locator.bounding_box()
-    if not box:
-        # Fallback to standard click if box can't be computed
-        await locator.click()
-        return
+    async def start_idle(self) -> None:
+        """Start background task to wiggle mouse randomly while waiting (sitting duck)."""
+        if self._idle_task is not None:
+            return
+        self._is_idling = True
+        self._idle_task = asyncio.create_task(self._idle_loop())
 
-    # Pick a random point inside the bounding box (not perfectly centered)
-    x = box["x"] + (box["width"] * random.uniform(0.2, 0.8))
-    y = box["y"] + (box["height"] * random.uniform(0.2, 0.8))
+    async def stop_idle(self) -> None:
+        """Stop background wiggling."""
+        self._is_idling = False
+        if self._idle_task:
+            self._idle_task.cancel()
+            try:
+                await self._idle_task
+            except asyncio.CancelledError:
+                pass
+            self._idle_task = None
 
-    page_id = id(page)
-    start_x, start_y = _mouse_positions.get(page_id, (0.0, 0.0))
+    async def _idle_loop(self) -> None:
+        """Background loop to wiggle the mouse."""
+        while self._is_idling:
+            # Wait 2-5 seconds between idle wiggles
+            await asyncio.sleep(random.uniform(2.0, 5.0))
 
-    dist = math.hypot(x - start_x, y - start_y)
+            # Wiggle randomly by 10-50 pixels to simulate reading/fidgeting
+            target_x = self.x + random.uniform(-50, 50)
+            target_y = self.y + random.uniform(-50, 50)
 
-    # Generate control points for a natural curve
-    cp1_x = start_x + random.uniform(-dist * 0.2, dist * 0.2)
-    cp1_y = start_y + random.uniform(-dist * 0.2, dist * 0.2)
-    cp2_x = x + random.uniform(-dist * 0.2, dist * 0.2)
-    cp2_y = y + random.uniform(-dist * 0.2, dist * 0.2)
+            # Ensure coordinates stay roughly within a standard viewport
+            target_x = max(10.0, min(1200.0, target_x))
+            target_y = max(10.0, min(700.0, target_y))
 
-    # Scale steps with distance (at least 10, max 40)
-    steps = max(10, min(40, int(dist / 20)))
+            # Use lock to prevent racing with real clicks
+            async with self.lock:
+                await self._move_mouse_internal(
+                    target_x, target_y, steps=random.randint(15, 30)
+                )
 
-    for i in range(1, steps + 1):
-        raw_t = i / steps
-        # Ease-in-out to simulate Fitts's Law (slow start/end, fast middle)
-        t = -(math.cos(math.pi * raw_t) - 1) / 2
+    async def _move_mouse_internal(
+        self, target_x: float, target_y: float, steps: int = 20
+    ) -> None:
+        """Internal Bezier movement logic (assumes lock is held)."""
+        start_x, start_y = self.x, self.y
+        dist = math.hypot(target_x - start_x, target_y - start_y)
+        if dist < 1.0:
+            return
 
-        step_x = _cubic_bezier(t, start_x, cp1_x, cp2_x, x)
-        step_y = _cubic_bezier(t, start_y, cp1_y, cp2_y, y)
+        cp1_x = start_x + random.uniform(-dist * 0.2, dist * 0.2)
+        cp1_y = start_y + random.uniform(-dist * 0.2, dist * 0.2)
+        cp2_x = target_x + random.uniform(-dist * 0.2, dist * 0.2)
+        cp2_y = target_y + random.uniform(-dist * 0.2, dist * 0.2)
 
-        # Tiny high-frequency jitter
-        step_x += random.uniform(-1.0, 1.0)
-        step_y += random.uniform(-1.0, 1.0)
+        for i in range(1, steps + 1):
+            raw_t = i / steps
+            t = -(math.cos(math.pi * raw_t) - 1) / 2
 
-        await page.mouse.move(step_x, step_y)
-        # Sleep duration varies slightly to simulate processing limits
-        await asyncio.sleep(random.uniform(0.01, 0.02))
+            step_x = _cubic_bezier(t, start_x, cp1_x, cp2_x, target_x)
+            step_y = _cubic_bezier(t, start_y, cp1_y, cp2_y, target_y)
 
-    # Final deliberate move to exact target
-    await page.mouse.move(x, y)
-    _mouse_positions[page_id] = (x, y)
+            step_x += random.uniform(-1.0, 1.0)
+            step_y += random.uniform(-1.0, 1.0)
 
-    await random_delay(min_sec=0.1, max_sec=0.3)
-    await page.mouse.down()
-    await random_delay(min_sec=0.05, max_sec=0.15)
-    await page.mouse.up()
+            await self.page.mouse.move(step_x, step_y)
+            await asyncio.sleep(random.uniform(0.015, 0.035))
+
+        await self.page.mouse.move(target_x, target_y)
+        self.x = target_x
+        self.y = target_y
+
+    async def human_click(self, *, selector: str) -> None:
+        """Click an element using a smooth Bezier path."""
+        # Pause idle task to claim exclusive mouse control
+        await self.stop_idle()
+
+        try:
+            async with self.lock:
+                await self.page.wait_for_selector(selector)
+                locator = self.page.locator(selector).first
+                await locator.scroll_into_view_if_needed()
+                box = await locator.bounding_box()
+
+                if not box:
+                    logger.warning(
+                        "human_click: bounding_box for '%s' is None! Falling back to instant locator.click().",
+                        selector,
+                    )
+                    await locator.click()
+                    return
+
+                # Pick a random point inside the bounding box
+                target_x = box["x"] + (box["width"] * random.uniform(0.2, 0.8))
+                target_y = box["y"] + (box["height"] * random.uniform(0.2, 0.8))
+
+                dist = math.hypot(target_x - self.x, target_y - self.y)
+                steps = max(20, min(60, int(dist / 10)))
+
+                await self._move_mouse_internal(target_x, target_y, steps)
+
+                await random_delay(min_sec=0.1, max_sec=0.3)
+                await self.page.mouse.down()
+                await random_delay(min_sec=0.05, max_sec=0.15)
+                await self.page.mouse.up()
+        finally:
+            # Resume sitting duck idle wiggles
+            await self.start_idle()
+
+    async def human_type(
+        self, *, selector: str, text: str, delay: int = 100, mistake_prob: float = 0.05
+    ) -> None:
+        """Type text into a field with randomized keystroke delays and occasional typos/backspacing."""
+        await self.human_click(selector=selector)
+        await random_delay(min_sec=0.2, max_sec=0.5)
+
+        keyboard_chars = "abcdefghijklmnopqrstuvwxyz"
+
+        for char in text:
+            # Simulate making a typo and backspacing
+            if char.isalpha() and random.random() < mistake_prob:
+                num_wrong = random.randint(1, 3)
+
+                # Type the wrong characters
+                for _ in range(num_wrong):
+                    wrong_char = random.choice(keyboard_chars)
+                    jitter = random.uniform(-0.5, 0.5) * delay
+                    await self.page.keyboard.type(
+                        wrong_char, delay=int(max(10, delay + jitter))
+                    )
+
+                # Human reaction time to notice the mistake (longer if more characters)
+                await random_delay(min_sec=0.2, max_sec=0.4 + (0.1 * num_wrong))
+
+                # Press backspace rapidly
+                for _ in range(num_wrong):
+                    # Backspacing is usually slightly faster/more rhythmic than normal typing
+                    backspace_delay = max(
+                        10, (delay * 0.7) + random.uniform(-0.2, 0.2) * delay
+                    )
+                    await self.page.keyboard.press(
+                        "Backspace", delay=int(backspace_delay)
+                    )
+
+                # Slight pause before typing the correct character to reorient
+                await asyncio.sleep(random.uniform(0.1, 0.3))
+
+            # Type the correct character
+            jitter = random.uniform(-0.5, 0.5) * delay
+            actual_delay_ms = max(10, delay + jitter)
+            await self.page.keyboard.type(char, delay=int(actual_delay_ms))
+
+            if random.random() < 0.05:
+                await random_delay(min_sec=0.5, max_sec=1.5)
+
+    async def human_scroll(self, *, scrolls: int = 3) -> None:
+        """Perform randomized smooth scrolling down the page."""
+        await self.stop_idle()
+        try:
+            async with self.lock:
+                for _ in range(scrolls):
+                    scroll_amount = random.randint(300, 800)
+                    chunks = random.randint(15, 30)
+
+                    for i in range(1, chunks + 1):
+                        raw_t = i / chunks
+                        t = math.sin(raw_t * math.pi / 2)
+
+                        prev_raw_t = (i - 1) / chunks
+                        prev_t = math.sin(prev_raw_t * math.pi / 2)
+
+                        chunk_delta = (t - prev_t) * scroll_amount
+                        await self.page.mouse.wheel(delta_x=0, delta_y=chunk_delta)
+                        await asyncio.sleep(random.uniform(0.01, 0.04))
+
+                    await random_delay(min_sec=0.5, max_sec=2.0)
+        finally:
+            await self.start_idle()
+
+
+async def human_navigation(*, page: Page, url: str) -> None:
+    """Navigate to a URL with humanized delays."""
+    await random_delay(min_sec=0.5, max_sec=1.5)
+    await page.goto(url, wait_until="domcontentloaded")
+    await random_delay(min_sec=1.0, max_sec=2.5)

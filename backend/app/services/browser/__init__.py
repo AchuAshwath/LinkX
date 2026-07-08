@@ -5,7 +5,7 @@ headed login sessions (to bypass bot detection) and headless automation
 contexts via Playwright.
 """
 
-from .actions import human_navigation, human_scroll, human_type, random_delay
+from .actions import EvasionMouse, human_navigation, random_delay
 from .manager import BrowserManager
 from .platforms import PLATFORMS, LinkedInConfig, PlatformConfig, XConfig
 
@@ -16,7 +16,6 @@ __all__ = [
     "LinkedInConfig",
     "PLATFORMS",
     "random_delay",
-    "human_type",
-    "human_scroll",
+    "EvasionMouse",
     "human_navigation",
 ]
