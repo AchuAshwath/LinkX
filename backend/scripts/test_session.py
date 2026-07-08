@@ -52,7 +52,9 @@ async def main() -> None:
             cookies = await context.cookies()
             logger.info("Cookies loaded into context: %s", [c["name"] for c in cookies])
 
-            page = await context.new_page()
+            page = context.pages[0] if context.pages else await context.new_page()
+            for p in context.pages[1:]:
+                await p.close()
             logger.info("Navigating to %s ...", config.url)
             await page.goto(config.url, wait_until="domcontentloaded")
 
