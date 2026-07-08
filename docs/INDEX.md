@@ -14,6 +14,7 @@ Work through these one at a time. Each spec starts as an outline, gets discussed
 | # | Spec | Status | Description | Depends On |
 |---|------|--------|-------------|------------|
 | 1 | [browser-engine](./specs/browser-engine.md) | 🔲 Outline | Playwright automation core: lifecycle, stealth, contexts | — |
+| 1b| [evasion-strategy](./specs/evasion-strategy.md) | ✅ Done | Strategy for evading TLS, Javascript, and behavioral bot detection | #1 |
 | 2 | [platform-adapters](./specs/platform-adapters.md) | 🔲 Outline | Per-platform adapter interface (LinkedIn, X, Threads) | #1 |
 | 3 | [session-management](./specs/session-management.md) | 🔲 Outline | Cookie persistence, health checks, re-auth flows | #1 |
 | 4 | [scheduler](./specs/scheduler.md) | 🔲 Outline | Background job processing, retry, distributed lock | — |
