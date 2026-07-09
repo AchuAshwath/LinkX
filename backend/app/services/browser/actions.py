@@ -9,6 +9,16 @@ import random
 import string
 from typing import TYPE_CHECKING
 
+from humantyping.integration import HumanTyper  # type: ignore
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+
+
+class PostButtonDisabledError(Exception):
+    """Raised when a button remains in an unclickable/disabled state."""
+
+    pass
+
+
 if TYPE_CHECKING:
     from rebrowser_playwright.async_api import Page
 
@@ -19,6 +29,22 @@ async def random_delay(*, min_sec: float = 0.5, max_sec: float = 2.0) -> None:
     """Pause execution for a random duration between min_sec and max_sec."""
     delay = random.uniform(min_sec, max_sec)
     await asyncio.sleep(delay)
+
+
+def normalize_post_text(text: str) -> str:
+    """Sanitize and normalize text for humantyping and social media platforms.
+
+    1. Removes emojis and non-ascii characters that crash the Playwright/humantyping QWERTY mapping.
+    2. Ensures the text ends with a space to dismiss any hashtag/mention suggestion overlays.
+    """
+    # Sanitize text for humantyping
+    sanitized = "".join(c for c in text if c in string.printable or c.isascii())
+
+    # Always append a space at the end to dismiss dropdown overlays
+    if not sanitized.endswith(" "):
+        sanitized += " "
+
+    return sanitized
 
 
 def _cubic_bezier(t: float, p0: float, p1: float, p2: float, p3: float) -> float:
@@ -47,7 +73,7 @@ class EvasionMouse:
         self.x = random.uniform(self._max_x * 0.2, self._max_x * 0.8)
         self.y = random.uniform(self._max_y * 0.2, self._max_y * 0.8)
 
-        self._idle_task: asyncio.Task | None = None
+        self._idle_task: asyncio.Task[None] | None = None
         self._is_idling = False
 
     async def start_idle(self) -> None:
@@ -133,8 +159,22 @@ class EvasionMouse:
 
         try:
             async with self.lock:
-                await self.page.wait_for_selector(selector)
-                locator = self.page.locator(selector).first
+                await self.page.wait_for_selector(selector, state="visible")
+
+                # Find all matching locators and pick the first visible one
+                locators = await self.page.locator(selector).all()
+                locator = None
+                for loc in locators:
+                    if await loc.is_visible():
+                        locator = loc
+                        break
+
+                if not locator:
+                    logger.warning(
+                        f"human_click: No visible element found for {selector}, falling back to .first"
+                    )
+                    locator = self.page.locator(selector).first
+
                 await locator.scroll_into_view_if_needed()
                 box = await locator.bounding_box()
 
@@ -156,58 +196,50 @@ class EvasionMouse:
                 await self._move_mouse_internal(target_x, target_y, steps)
 
                 await random_delay(min_sec=0.1, max_sec=0.3)
-                await self.page.mouse.down()
-                await random_delay(min_sec=0.05, max_sec=0.15)
-                await self.page.mouse.up()
+
+                # Use locator.click with our precise offset to ensure it waits for actionable/enabled state
+                # rather than blindly dispatching mouse events that fail on disabled React buttons
+                try:
+                    await locator.click(
+                        position={"x": target_x - box["x"], "y": target_y - box["y"]},
+                        delay=random.randint(50, 150),
+                        timeout=5000,
+                    )
+                except PlaywrightTimeoutError as e:
+                    logger.error(
+                        f"human_click: Timeout clicking {selector}. Button might be permanently disabled (e.g., text too long)."
+                    )
+                    raise PostButtonDisabledError(
+                        f"Button {selector} remained disabled for 5 seconds."
+                    ) from e
+
         finally:
             # Resume sitting duck idle wiggles
             await self.start_idle()
 
-    async def human_type(
-        self, *, selector: str, text: str, delay: int = 100, mistake_prob: float = 0.05
-    ) -> None:
-        """Type text into a field with randomized keystroke delays and occasional typos/backspacing."""
+    async def human_type(self, *, selector: str, text: str, wpm: float = 90.0) -> None:
+        """Type text into a field with realistic human behavior using humantyping."""
+        # Normalize text to strip emojis and handle hashtag overlays safely
+        original_text = text
+        text = normalize_post_text(text)
+        if text.strip() != original_text.strip():
+            logger.info(
+                "human_type: Normalized text to remove emojis/non-ascii characters."
+            )
+
         await self.human_click(selector=selector)
         await random_delay(min_sec=0.2, max_sec=0.5)
 
-        keyboard_chars = string.ascii_lowercase
+        # HumanTyper inherently handles IKI log-normal distribution,
+        # Markov chain fatigue states, and QWERTY neighbor mistakes.
+        typer = HumanTyper(wpm=wpm)
+        locator = self.page.locator(selector).first
 
-        for char in text:
-            # Simulate making a typo and backspacing
-            if char.isalpha() and random.random() < mistake_prob:
-                num_wrong = random.randint(1, 3)
+        # Release the mouse lock since typing doesn't move the mouse,
+        # and we want the mouse to idle-wiggle while typing happens
+        asyncio.create_task(self.start_idle())
 
-                # Type the wrong characters
-                for _ in range(num_wrong):
-                    wrong_char = random.choice(keyboard_chars)
-                    jitter = random.uniform(-0.5, 0.5) * delay
-                    await self.page.keyboard.type(
-                        wrong_char, delay=int(max(10, delay + jitter))
-                    )
-
-                # Human reaction time to notice the mistake (longer if more characters)
-                await random_delay(min_sec=0.2, max_sec=0.4 + (0.1 * num_wrong))
-
-                # Press backspace rapidly
-                for _ in range(num_wrong):
-                    # Backspacing is usually slightly faster/more rhythmic than normal typing
-                    backspace_delay = max(
-                        10, (delay * 0.7) + random.uniform(-0.2, 0.2) * delay
-                    )
-                    await self.page.keyboard.press(
-                        "Backspace", delay=int(backspace_delay)
-                    )
-
-                # Slight pause before typing the correct character to reorient
-                await asyncio.sleep(random.uniform(0.1, 0.3))
-
-            # Type the correct character
-            jitter = random.uniform(-0.5, 0.5) * delay
-            actual_delay_ms = max(10, delay + jitter)
-            await self.page.keyboard.type(char, delay=int(actual_delay_ms))
-
-            if random.random() < 0.05:
-                await random_delay(min_sec=0.5, max_sec=1.5)
+        await typer.type(locator, text)
 
     async def human_scroll(self, *, scrolls: int = 3) -> None:
         """Perform randomized smooth scrolling down the page."""
