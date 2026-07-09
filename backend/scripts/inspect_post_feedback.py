@@ -6,7 +6,6 @@ from pathlib import Path
 # Add backend to path so we can run from anywhere
 sys.path.append(str(Path(__file__).parent.parent))
 
-from app.services.browser.actions import random_delay
 from app.services.browser.manager import BrowserManager
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -14,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 async def main() -> None:
-    """Launch headed browser, go to X, and dump DOM."""
+    """Launch headed browser, wait for user to post, and dump DOM to find toast."""
 
     logger.info("Initializing BrowserManager...")
     manager = BrowserManager()
@@ -28,11 +27,16 @@ async def main() -> None:
             logger.info("Navigating to https://x.com/home")
             await page.goto("https://x.com/home", wait_until="domcontentloaded")
 
-            logger.info("Waiting 5 seconds for feed to populate...")
-            await random_delay(min_sec=5.0, max_sec=6.0)
+            logger.info("Playwright paused. Please:")
+            logger.info("1. Write a random test post manually.")
+            logger.info("2. Click the 'Post' button.")
+            logger.info(
+                "3. The MOMENT you see the 'Your post was sent' toast popup, click the 'Resume' button in the Playwright Inspector!"
+            )
+            await page.pause()
 
-            # Extract the raw HTML content
-            logger.info("Extracting DOM...")
+            # Extract the raw HTML content right after resume
+            logger.info("Extracting DOM to find the success toast...")
             html_content = await page.content()
 
             # Save it to the artifacts scratch directory for the AI to read
@@ -46,37 +50,14 @@ async def main() -> None:
             )
             scratch_dir.mkdir(parents=True, exist_ok=True)
 
-            output_file = scratch_dir / "x_dom.html"
+            output_file = scratch_dir / "x_toast_dom.html"
             with open(output_file, "w", encoding="utf-8") as f:
                 f.write(html_content)
 
             logger.info(f"Successfully saved full HTML to {output_file}")
 
-            # Create a simple JSON configuration stub since we are here
-            json_file = (
-                Path(__file__).parent.parent
-                / "app"
-                / "services"
-                / "browser"
-                / "selectors"
-                / "x_selectors.json"
-            )
-            json_file.parent.mkdir(parents=True, exist_ok=True)
-            if not json_file.exists():
-                with open(json_file, "w") as f:
-                    f.write("{}")
-                logger.info(f"Created empty JSON at {json_file}")
-
-            logger.info("Pausing Playwright. You can now inspect the browser visually!")
-            logger.info(
-                "Close the Playwright Inspector window to resume/quit the script."
-            )
-            await page.pause()
-
     except Exception as e:
         logger.error(f"Error during inspection: {e}")
-    finally:
-        await manager.cleanup()
 
 
 if __name__ == "__main__":
