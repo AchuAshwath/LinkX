@@ -1,0 +1,23 @@
+{
+  "max_topics_to_scrape": 3,
+  "scrolls_per_topic": 2,
+  "min_delay_between_topics": 4.0,
+  "max_delay_between_topics": 7.0,
+  "output_directory": "./data/scraped_trends",
+  "selectors": {
+    "sidebar_container": "[data-testid='sidebarColumn']",
+    "sidebar_link": "[data-testid^='news_sidebar_article'], a[href*='/search?q=']",
+    "tweet_container": "[data-testid='tweet']",
+    "summary_selectors": [
+      "xpath=//nav[@aria-label='Trend Timeline']/preceding-sibling::div[1]",
+      "[data-testid='grok-summary']",
+      "[data-testid='eventSummary']",
+      "div[data-testid='cellInnerDiv']"
+    ]
+  },
+  "link_heuristic": {
+    "must_contain_newline": false,
+    "exclude_texts": ["Show more", "Subscribe"],
+    "exclude_prefix": "@"
+  }
+}
