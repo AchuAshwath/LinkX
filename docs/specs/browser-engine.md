@@ -3,6 +3,8 @@
 > **Status:** 📝 Draft — under review
 > **Depends on:** Nothing (foundation)
 > **Depended on by:** [platform-adapters](./platform-adapters.md), [session-management](./session-management.md), [trending-topics](./trending-topics.md)
+>
+> **Research role:** This spec describes the core of **System A** — the "control case" in our comparative study. System A deliberately operates within the platform's technical boundary (DOM interaction via Playwright) to document what forensic artifacts are left behind and which ToS clauses are triggered. See [`RESEARCH.md`](../RESEARCH.md) §4.
 
 ## Problem
 
