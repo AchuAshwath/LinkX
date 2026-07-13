@@ -4,7 +4,11 @@
 
 ## Vision
 
-LinkX is an AI-powered social media agent that discovers trending topics, curates daily posts matching your brand voice, and publishes them automatically — no expensive API keys required.
+LinkX is a research platform that implements two contrasting AI agent strategies for social media interaction — direct browser automation (System A) and screen observation (System B) — to study the jurisdictional boundaries of platform Terms of Service.
+
+As a functional artifact, it also serves as a self‑hosted social media scheduler with AI‑powered content curation, demonstrating the complete pipeline from trend discovery to publishing.
+
+See [`RESEARCH.md`](./RESEARCH.md) for the full thesis and [`../ETHICS.md`](../ETHICS.md) for the ethical framework.
 
 ## Tech Stack
 
@@ -14,7 +18,7 @@ LinkX is an AI-powered social media agent that discovers trending topics, curate
 | **API Framework** | FastAPI (Python) | Async, typed, existing codebase |
 | **Database** | PostgreSQL | Existing, relational data |
 | **Cache / Queues** | Redis | Existing, session state + job queues |
-| **Browser Automation** | Playwright (Python) | Auth, posting, scraping — no API keys needed |
+| **Browser Automation** | Playwright (Python) | System A: auth, posting, scraping — no API keys needed |
 | **AI Orchestration** | LangGraph | Stateful agent workflows, human-in-the-loop |
 | **AI Chains/Tools** | LangChain | Prompt chains, output parsing, tool integrations |
 | **LLM Provider Layer** | LiteLLM (via `langchain-litellm`) | One interface → any LLM provider |
@@ -41,7 +45,7 @@ LinkX is an AI-powered social media agent that discovers trending topics, curate
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        React Frontend (Vite)                        │
 │  Dashboard · Draft Inbox · Calendar · Brand Config · Settings       │
-└───────────────────────────────┬─────────────────────────────────────┘
+└───────────────────────────────────┬─────────────────────────────────┘
                                 │ HTTP/REST
 ┌───────────────────────────────▼─────────────────────────────────────┐
 │                        FastAPI Backend                               │
@@ -106,11 +110,37 @@ graph TD
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Browser over APIs | Playwright headless | X API costs $100+/mo, LinkedIn OAuth is painful. Browser automation is free. |
+| Browser over APIs | Playwright headless | Research: proves System A triggers ToS "automated means" clauses regardless of evasion. Also free vs $100+/mo API costs. |
 | LiteLLM over direct SDKs | `langchain-litellm` | User brings their own provider. Zero vendor lock-in. |
 | LangGraph over raw chains | Stateful agent graphs | Human-in-the-loop review, complex multi-step curation workflows. |
 | APScheduler over Celery | In-process scheduler | Simpler for single-instance. Redis lock for multi-worker. Celery is overkill at this stage. |
 | Persona → Brand (UI only) | UI rename, keep model name | Avoids migration churn. Backend says `Persona`, frontend says `Brand`. |
+
+## Research Architecture
+
+The system is designed to support comparative analysis between two fundamentally different approaches to platform interaction. See [`RESEARCH.md`](./RESEARCH.md) for the full thesis.
+
+### System A: Browser Automation (Implemented)
+
+The control case. Operates *within* the platform's technical boundary.
+
+- Playwright controls browser DOM directly via `rebrowser-playwright` (CDP stealth)
+- `EvasionMouse` for humanized behavioral patterns (Bézier curves, idle wiggle, typing jitter)
+- Persistent sessions via cookie / localStorage / IndexedDB reuse
+- 3‑tier self‑healing: hardcoded selectors → AI agent fallback → human alert
+- **Conclusion:** Violates ToS "automated means" clauses regardless of evasion sophistication
+
+### System B: Screen Observation (Planning / Ideation)
+
+The experimental case. Operates *outside* the platform's technical boundary.
+
+- Screen capture via native OS tools (macOS `screencapture`, HDMI capture, OBS)
+- Vision‑Language Model analyzes captured frames — never touches the DOM
+- Content drafted in an isolated staging area (text editor or LinkX dashboard)
+- Human‑in‑the‑loop for final posting action
+- **Conclusion:** No ToS clause covers observation of rendered pixels on a user's own device
+
+Architecture spec to be written — see [`ROADMAP.md`](./ROADMAP.md) Phase 2.
 
 ## Open Decisions
 

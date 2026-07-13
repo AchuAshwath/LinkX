@@ -1,12 +1,49 @@
-# LinkX – Open Source Social Posting & Scheduling
+# LinkX – AI Agent × Platform Policy Research
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Sponsor](https://img.shields.io/badge/Sponsor-AchuAshwath-ea4aaa?logo=github)](https://github.com/sponsors/AchuAshwath)
 
-LinkX is an **open‑source social media planner** that you can **self‑host** with Docker Compose.
-It gives you a unified dashboard to draft, schedule, and publish posts across platforms while you retain full control of your data and infrastructure.
+LinkX is an open‑source research platform that explores how AI‑powered social media agents interact with platform Terms of Service. It implements **direct browser automation** (System A) and is designing a contrasting **screen‑observation pipeline** (System B) to study the jurisdictional boundaries of platform automation policies.
 
-## Technology Stack and Features
+As a working artifact, LinkX is also a fully functional self‑hosted social media scheduler — draft, schedule, and publish posts across platforms while retaining full control of your data and infrastructure.
+
+> ⚠️ **Research use only.** This project exists to study and document the boundaries of platform automation policies. It is not intended to encourage or facilitate ToS violations. See [`ETHICS.md`](./ETHICS.md).
+
+---
+
+## Research Context
+
+### The Question
+
+When an AI agent reads your screen (via video capture + a vision model) and drafts content in a separate text editor — never touching the platform's DOM, API, or network layer — does that constitute "automation" under a platform's Terms of Service?
+
+### The Short Answer
+
+Current ToS frameworks define automation by **interface access method**, not by how intelligent the software is. This creates a policy vacuum around AI systems that operate entirely outside the platform's technical boundary while still producing platform‑directed output.
+
+### Two Systems, One Thesis
+
+| | System A | System B |
+|---|---|---|
+| **Approach** | Browser automation via Playwright | Screen observation via VLM + OCR |
+| **Platform contact** | Yes — controls DOM directly | No — reads flat pixel frames |
+| **ToS status** | Violates "any automated means" clauses | Jurisdictional gray area |
+| **Detectable by platform** | Yes (with effort) | No |
+| **Status** | ✅ Implemented | 💡 Planning / ideation |
+
+**System A** (this repo) proves that even sophisticated evasion — CDP masking, Bézier mouse curves, humanized typing — doesn't change the legal classification. The ToS catches it regardless.
+
+**System B** (in design) would demonstrate the observation gap: no ToS clause covers you reading your own screen with software.
+
+For the full analysis, see [`docs/RESEARCH.md`](./docs/RESEARCH.md).
+
+---
+
+## The Software
+
+LinkX is a real, working social media scheduler built with a modern full‑stack architecture.
+
+### Technology Stack and Features
 
 - ⚡ [**FastAPI**](https://fastapi.tiangolo.com) backend API.
   - 🧰 [SQLModel](https://sqlmodel.tiangolo.com) ORM over PostgreSQL.
@@ -24,16 +61,22 @@ It gives you a unified dashboard to draft, schedule, and publish posts across pl
 - 📞 [Traefik](https://traefik.io) reverse proxy / load balancer (optional layouts).
 - 🚢 Deployment docs for running LinkX as your own self‑hosted social scheduler.
 
-### Social Integrations (LinkX)
+### Social Integrations
 
 - **LinkedIn member posting (self‑hosted)**:
   - Connect a personal LinkedIn account and publish or delete posts directly from LinkX.
   - Uses OAuth 2.0 with scopes `openid profile email w_member_social`.
   - Tokens are stored server‑side only in your deployment; no secrets are exposed to the browser.
   - See [`docs/LINKEDIN_SETUP.md`](./docs/LINKEDIN_SETUP.md) for step‑by‑step configuration.
+- **Browser automation engine (System A)**:
+  - Persistent sessions via real Chrome login (cookies, localStorage, IndexedDB).
+  - `rebrowser-playwright` for CDP stealth, Bézier mouse curves, humanized typing.
+  - 3‑tier self‑healing: hardcoded selectors → AI agent fallback → human alert.
+  - See [`docs/specs/browser-engine.md`](./docs/specs/browser-engine.md).
 - **Planned**:
   - X (Twitter) integration.
-  - Richer media workflows and cross‑posting, tracked in [`docs/specs/SOCIAL_MEDIA_INTEGRATION.md`](./docs/specs/SOCIAL_MEDIA_INTEGRATION.md) and related specs.
+  - System B observation architecture (see [`docs/RESEARCH.md`](./docs/RESEARCH.md)).
+  - Richer media workflows and cross‑posting, tracked in [`docs/specs/SOCIAL_MEDIA_INTEGRATION.md`](./docs/specs/SOCIAL_MEDIA_INTEGRATION.md).
 
 ### Screenshots
 
@@ -47,6 +90,8 @@ Captured from the app running locally (`bun run dev` in `frontend/`, dark theme)
   <img src="img/posts.png" alt="Posts – LinkX" width="49%" />
   <img src="img/social-accounts.png" alt="Social accounts and personas – LinkX" width="49%" />
 </p>
+
+---
 
 ## Quick start
 
@@ -91,6 +136,8 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 | Topic | Location |
 |--------|----------|
+| **Research thesis** | [`docs/RESEARCH.md`](./docs/RESEARCH.md) |
+| **Ethics & responsible use** | [`ETHICS.md`](./ETHICS.md) |
 | Backend | [`backend/README.md`](./backend/README.md) |
 | Frontend | [`frontend/README.md`](./frontend/README.md) |
 | Deployment | [`deployment.md`](./deployment.md) |

@@ -1,5 +1,12 @@
 # LinkX Documentation
 
+## Research
+
+| Document | Status | Description |
+|----------|--------|-------------|
+| [RESEARCH.md](./RESEARCH.md) | 📝 Draft | Full thesis: AI agents and platform ToS jurisdictional boundaries |
+| [ETHICS.md](../ETHICS.md) | 📝 Draft | Ethical framework and responsible disclosure |
+
 ## Architecture & Vision
 
 | Document | Status | Description |
@@ -11,12 +18,26 @@
 
 Work through these one at a time. Each spec starts as an outline, gets discussed and fleshed out, then drives implementation.
 
+### System A — Browser Automation (Control Case)
+
 | # | Spec | Status | Description | Depends On |
 |---|------|--------|-------------|------------|
 | 1 | [browser-engine](./specs/browser-engine.md) | 🔲 Outline | Playwright automation core: lifecycle, stealth, contexts | — |
 | 1b| [evasion-strategy](./specs/evasion-strategy.md) | ✅ Done | Strategy for evading TLS, Javascript, and behavioral bot detection | #1 |
 | 2 | [platform-adapters](./specs/platform-adapters.md) | 🔲 Outline | Per-platform adapter interface (LinkedIn, X, Threads) | #1 |
 | 3 | [session-management](./specs/session-management.md) | 🔲 Outline | Cookie persistence, health checks, re-auth flows | #1 |
+
+### System B — Screen Observation (Research / Ideation)
+
+| # | Spec | Status | Description | Depends On |
+|---|------|--------|-------------|------------|
+| 11 | observation-architecture | 💡 Planning | System B design: capture → VLM → staging → human gate | #5 |
+| 12 | forensic-comparison | 💡 Planning | Side-by-side artifact analysis: System A vs B | #1, #1b, #11 |
+
+### AI & Content Pipeline
+
+| # | Spec | Status | Description | Depends On |
+|---|------|--------|-------------|------------|
 | 4 | [scheduler](./specs/scheduler.md) | 🔲 Outline | Background job processing, retry, distributed lock | — |
 | 5 | [ai-stack](./specs/ai-stack.md) | 🔲 Outline | LangGraph + LangChain + LiteLLM integration | — |
 | 6 | [brand-voice](./specs/brand-voice.md) | 🔲 Outline | Tone/style configuration and prompt engineering per brand | #5 |
