@@ -1053,6 +1053,97 @@ export const TokenSchema = {
     title: 'Token'
 } as const;
 
+export const TrendingTopicPublicSchema = {
+    properties: {
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        topic_title: {
+            type: 'string',
+            title: 'Topic Title'
+        },
+        category: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Category'
+        },
+        post_count: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Post Count'
+        },
+        topic_url: {
+            type: 'string',
+            title: 'Topic Url'
+        },
+        first_seen_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'First Seen At'
+        },
+        last_seen_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Last Seen At'
+        },
+        scraped_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Scraped At'
+        }
+    },
+    type: 'object',
+    required: ['id', 'topic_title', 'category', 'post_count', 'topic_url', 'first_seen_at', 'last_seen_at', 'scraped_at'],
+    title: 'TrendingTopicPublic'
+} as const;
+
+export const TrendingTopicsPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/TrendingTopicPublic'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count'],
+    title: 'TrendingTopicsPublic'
+} as const;
+
 export const UpdatePasswordSchema = {
     properties: {
         current_password: {

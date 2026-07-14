@@ -190,6 +190,22 @@ export type Token = {
     token_type?: string;
 };
 
+export type TrendingTopicPublic = {
+    id: string;
+    topic_title: string;
+    category: (string | null);
+    post_count: (number | null);
+    topic_url: string;
+    first_seen_at: (string | null);
+    last_seen_at: (string | null);
+    scraped_at: string;
+};
+
+export type TrendingTopicsPublic = {
+    data: Array<TrendingTopicPublic>;
+    count: number;
+};
+
 export type UpdatePassword = {
     current_password: string;
     new_password: string;
@@ -502,6 +518,8 @@ export type TeamsRemoveTeamMemberData = {
 };
 
 export type TeamsRemoveTeamMemberResponse = (Message);
+
+export type TrendingGetTrendingResponse = (TrendingTopicsPublic);
 
 export type UsersReadUsersData = {
     limit?: number;

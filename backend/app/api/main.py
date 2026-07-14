@@ -10,6 +10,7 @@ from app.api.routes import (
     posts,
     private,
     teams,
+    trending,
     users,
     utils,
 )
@@ -26,6 +27,7 @@ api_router.include_router(linkedin.router)
 api_router.include_router(personas.router)
 api_router.include_router(teams.router)
 api_router.include_router(admin.router)
+api_router.include_router(trending.router)
 
 
 if settings.ENVIRONMENT == "local":

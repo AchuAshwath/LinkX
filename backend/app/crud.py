@@ -2,7 +2,8 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlmodel import Session, func, select
+from sqlalchemy.dialects.postgresql import insert
+from sqlmodel import Session, delete, func, select
 
 from app.core.security import get_password_hash, verify_password
 from app.models import (
@@ -11,6 +12,8 @@ from app.models import (
     Post,
     PostCreate,
     PostUpdate,
+    TrendingTopic,
+    TrendingTweet,
     User,
     UserCreate,
     UserUpdate,
@@ -164,3 +167,75 @@ def delete_post(*, session: Session, post_id: uuid.UUID) -> None:
     if post:
         session.delete(post)
         session.commit()
+
+
+# --- Trending Topics ---
+
+
+def upsert_trending_topic(
+    *, session: Session, topic_data: dict[str, Any]
+) -> TrendingTopic:
+    """Insert or update a trending topic based on (user_id, topic_url)."""
+    insert_stmt = insert(TrendingTopic).values(**topic_data)
+
+    # Update all fields except id, user_id, topic_url, and created_at on conflict
+    update_dict = {
+        c.name: c
+        for c in insert_stmt.excluded
+        if c.name not in ["id", "user_id", "topic_url", "created_at", "updated_at"]
+    }
+    update_dict["updated_at"] = func.now()  # type: ignore[assignment]
+
+    upsert_stmt = insert_stmt.on_conflict_do_update(
+        constraint="uq_trending_topic_user_url", set_=update_dict
+    ).returning(TrendingTopic)
+
+    row = session.exec(upsert_stmt).first()
+    session.commit()
+    if not row:
+        raise RuntimeError(
+            "upsert_trending_topic returned no row — constraint or driver issue"
+        )
+    return row[0]  # type: ignore[no-any-return]
+
+
+def replace_trending_tweets(
+    *, session: Session, topic_id: uuid.UUID, tweets_data: list[dict[str, Any]]
+) -> None:
+    """Delete old tweets for a topic and insert new ones."""
+    # Delete old tweets in a single query
+    stmt_delete = delete(TrendingTweet).where(TrendingTweet.topic_id == topic_id)  # type: ignore
+    session.exec(stmt_delete)
+
+    # Insert new tweets
+    for t_data in tweets_data:
+        db_tweet = TrendingTweet(**t_data, topic_id=topic_id)
+        session.add(db_tweet)
+
+    session.commit()
+
+
+def get_latest_trending_topics(
+    *, session: Session, user_id: uuid.UUID
+) -> list[TrendingTopic]:
+    """Get the most recent batch of trending topics for a user."""
+    # 1. Find MAX(scraped_at) for this user
+    max_scraped_at = session.exec(
+        select(func.max(TrendingTopic.scraped_at)).where(
+            TrendingTopic.user_id == user_id
+        )
+    ).first()
+
+    if not max_scraped_at:
+        return []
+
+    # 2. Return topics from that batch
+    stmt = (
+        select(TrendingTopic)
+        .where(
+            TrendingTopic.user_id == user_id, TrendingTopic.scraped_at == max_scraped_at
+        )
+        .order_by(TrendingTopic.post_count.desc().nulls_last())  # type: ignore
+    )
+
+    return list(session.exec(stmt).all())
