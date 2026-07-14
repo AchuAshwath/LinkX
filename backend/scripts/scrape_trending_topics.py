@@ -16,16 +16,23 @@ import json
 import logging
 import os
 import random
+import re
 import sys
+import traceback
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Add backend to path so we can run from anywhere
 sys.path.append(str(Path(__file__).parent.parent))
 
 from rebrowser_playwright.async_api import Error as PlaywrightError
+from sqlmodel import Session, select
 
+from app import crud
+from app.core.config import settings
+from app.core.db import engine
+from app.models import User
 from app.services.browser.actions import EvasionMouse, random_delay
 from app.services.browser.diagnostics import detect_page_state, extract_grok_summary
 from app.services.browser.manager import BrowserManager
@@ -66,7 +73,6 @@ class ScrapeResult:
     topics_found: int = 0
     topics_scraped: int = 0
     topics_failed: list[TopicFailure] = field(default_factory=list)
-    files_written: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
 
@@ -77,13 +83,39 @@ class ScrapeResult:
 MAX_TWEETS_PER_AUTHOR = 2
 
 
-async def extract_tweet_data(locator) -> dict | None:
-    """Parse author, text, and raw content from a tweet locator.
+async def _expand_tweet(locator) -> None:
+    """Click the 'Show more' link inside a tweet article if present.
 
+    X.com truncates long tweets with a clickable span that is *not* a button.
+    We try the stable data-testid first, then fall back to text-matching.
+    Errors are swallowed — short tweets have no 'Show more' and that's fine.
+    """
+    try:
+        show_more = locator.locator('[data-testid="tweet-text-show-more-link"]')
+        if await show_more.count() > 0:
+            await show_more.first.click(timeout=3000)
+            await locator.page.wait_for_timeout(400)
+            return
+        # Fallback: plain span with text "Show more"
+        fallback = locator.locator("span").filter(has_text="Show more")
+        if await fallback.count() > 0:
+            await fallback.first.click(timeout=3000)
+            await locator.page.wait_for_timeout(400)
+    except PlaywrightError:
+        pass  # No expansion needed for short tweets
+
+
+async def extract_tweet_data(locator) -> dict | None:
+    """Parse author, full text, and raw content from a tweet article locator.
+
+    Expands truncated tweets by clicking 'Show more' before reading text.
     Catches only Playwright errors (stale elements, closed pages).
     Raises unexpected exceptions so bugs are not silently swallowed.
     """
     try:
+        # Expand truncated tweet text before reading
+        await _expand_tweet(locator)
+
         # Use .first because quote-tweets can have 2 tweetText elements
         text_element = locator.locator('[data-testid="tweetText"]').first
         text = await text_element.inner_text() if await text_element.count() > 0 else ""
@@ -153,6 +185,92 @@ def parse_title_metadata(
     }
 
 
+def parse_post_count(count_str: str | None) -> int | None:
+    if not count_str:
+        return None
+    clean = (
+        count_str.lower()
+        .replace("posts", "")
+        .replace("post", "")
+        .replace(",", "")
+        .strip()
+    )
+    if not clean:
+        return None
+    try:
+        if "k" in clean:
+            return int(float(clean.replace("k", "")) * 1000)
+        elif "m" in clean:
+            return int(float(clean.replace("m", "")) * 1000000)
+        return int(clean)
+    except ValueError:
+        logger.warning(f"Failed to parse post count: {count_str}")
+        return None
+
+
+def parse_relative_time(time_str: str | None, base_time: datetime) -> datetime | None:
+    if not time_str:
+        return None
+    clean = time_str.lower().strip()
+    try:
+        if "hour" in clean:
+            match = re.search(r"(\d+)", clean)
+            hours = int(match.group(1)) if match else 1
+            return base_time - timedelta(hours=hours)
+        elif "minute" in clean:
+            match = re.search(r"(\d+)", clean)
+            minutes = int(match.group(1)) if match else 1
+            return base_time - timedelta(minutes=minutes)
+        elif "day" in clean:
+            match = re.search(r"(\d+)", clean)
+            days = int(match.group(1)) if match else 1
+            return base_time - timedelta(days=days)
+        elif "yesterday" in clean:
+            return base_time - timedelta(days=1)
+        return None
+    except Exception:
+        logger.warning(f"Failed to parse relative time: {time_str}")
+        return None
+
+
+def parse_engagement_metrics(raw_text: str) -> dict[str, int | None]:
+    """Parse engagement metrics from a tweet's raw inner text.
+
+    Assumes X.com renders the last 4 non-empty lines as
+    (from bottom): views, likes, retweets, replies.
+    If the format changes, metrics will silently be wrong —
+    log a warning when an unexpected line count is seen.
+    """
+
+    def parse_metric(val: str) -> int | None:
+        clean = val.lower().replace(",", "").strip()
+        try:
+            if "k" in clean:
+                return int(float(clean.replace("k", "")) * 1000)
+            elif "m" in clean:
+                return int(float(clean.replace("m", "")) * 1000000)
+            return int(clean)
+        except ValueError:
+            return None
+
+    lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
+    if len(lines) < 4:
+        return {"replies": None, "retweets": None, "likes": None, "views": None}
+
+    if len(lines) > 6:
+        logger.warning(
+            f"Unexpected line count ({len(lines)}) in tweet raw text — "
+            "engagement metric parsing may be inaccurate."
+        )
+
+    metrics = {}
+    metrics["views"] = parse_metric(lines[-1])
+    metrics["likes"] = parse_metric(lines[-2])
+    metrics["retweets"] = parse_metric(lines[-3])
+    metrics["replies"] = parse_metric(lines[-4])
+    return metrics
+
+
 # ---------------------------------------------------------------------------
 # Reading simulation — makes the scraper look like a human browsing
 # ---------------------------------------------------------------------------
@@ -192,6 +310,16 @@ async def scrape_trending_topics() -> ScrapeResult:
     if "PLAYWRIGHT_HEADLESS" not in os.environ:
         os.environ["PLAYWRIGHT_HEADLESS"] = "0"
 
+    db_user_id = None
+    with Session(engine) as session:
+        user = session.exec(
+            select(User).where(User.email == settings.FIRST_SUPERUSER)
+        ).first()
+        if user:
+            db_user_id = user.id
+        else:
+            logger.warning("No default user found. DB save will be skipped.")
+
     # Load config
     config_path = Path(__file__).parent.parent / "scrape_config.json"
     with open(config_path) as f:
@@ -221,9 +349,6 @@ async def scrape_trending_topics() -> ScrapeResult:
     must_contain_newline = heuristic.get("must_contain_newline", True)
     exclude_texts = heuristic.get("exclude_texts", ["Show more", "Subscribe"])
     exclude_prefix = heuristic.get("exclude_prefix", "@")
-
-    out_dir = Path(config.get("output_directory", "./data/scraped_trends"))
-    out_dir.mkdir(parents=True, exist_ok=True)
 
     result = ScrapeResult(status="error")
     manager = BrowserManager()
@@ -450,29 +575,71 @@ async def scrape_trending_topics() -> ScrapeResult:
                 # ── Parse title metadata ────────────────────────
                 title_data = parse_title_metadata(target_title)
 
-                # ── Save to disk ────────────────────────────────
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                safe_title = "".join(
-                    c if c.isalnum() else "_" for c in title_data["topic_title"]
-                )[:30].strip("_")
-                filename = f"topic_{safe_title}_{timestamp}.json"
+                # ── Save to DB ──────────────────────────────────
+                scraped_at = datetime.now(timezone.utc)
+                if not db_user_id:
+                    logger.error("No default user found. Skipping DB save.")
+                else:
+                    try:
+                        with Session(engine) as session:
+                            db_topic_data = {
+                                "user_id": db_user_id,
+                                "topic_url": page.url,
+                                "topic_title": title_data["topic_title"],
+                                "category": title_data.get("category"),
+                                "post_count": parse_post_count(
+                                    title_data.get("post_count")
+                                ),
+                                "summary": summary_text,
+                                "first_seen_at": parse_relative_time(
+                                    title_data.get("time_ago"), scraped_at
+                                ),
+                                "last_seen_at": scraped_at,
+                                "scraped_at": scraped_at,
+                            }
 
-                output_data = {
-                    "topic_id": target_id,
-                    "topic_url": page.url,
-                    **title_data,
-                    "summary": summary_text,
-                    "scraped_at": datetime.now().isoformat(),
-                    "conversations": conversations,
-                }
+                            db_topic = crud.upsert_trending_topic(
+                                session=session, topic_data=db_topic_data
+                            )
 
-                filepath = out_dir / filename
-                with open(filepath, "w") as f:
-                    json.dump(output_data, f, indent=2)
+                            db_tweets_data = []
+                            for conv in conversations:
+                                metrics = parse_engagement_metrics(conv["raw"])
+                                db_tweets_data.append(
+                                    {
+                                        "author_handle": conv["author"],
+                                        "text": conv["text"],
+                                        "replies": metrics["replies"],
+                                        "retweets": metrics["retweets"],
+                                        "likes": metrics["likes"],
+                                        "views": metrics["views"],
+                                    }
+                                )
 
-                result.files_written.append(str(filepath))
+                            crud.replace_trending_tweets(
+                                session=session,
+                                topic_id=db_topic.id,
+                                tweets_data=db_tweets_data,
+                            )
+                            logger.info(
+                                f"💾 Saved topic '{db_topic.topic_title}' to DB."
+                            )
+                    except Exception as e:
+                        logger.error(
+                            f"DB save failed for topic '{title_data.get('topic_title')}':\n{traceback.format_exc()}"
+                        )
+                        result.topics_failed.append(
+                            TopicFailure(
+                                topic_id=target_id,
+                                reason="db_error",
+                                detail=str(e),
+                            )
+                        )
+
                 result.topics_scraped += 1
-                logger.info(f"✅ Saved {len(conversations)} tweets to {filename}")
+                logger.info(
+                    f"✅ Saved {len(conversations)} tweets from topic '{title_data['topic_title']}'"
+                )
 
                 if len(conversations) == 0:
                     result.topics_failed.append(
@@ -555,7 +722,6 @@ async def main() -> None:
                     {"topic_id": f.topic_id, "reason": f.reason, "detail": f.detail}
                     for f in result.topics_failed
                 ],
-                "files_written": result.files_written,
                 "errors": result.errors,
             },
             indent=2,
