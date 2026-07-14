@@ -10,12 +10,13 @@ File writing is optional — pass output_path=None to skip disk I/O.
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 async def extract_dom_snapshot(
-    page,
+    page: Any,
     *,
     output_path: str | Path | None = None,
 ) -> str:
@@ -34,15 +35,15 @@ async def extract_dom_snapshot(
             f.write(html_content)
         logger.info(f"Saved full HTML snapshot to {out}")
 
-    return html_content
+    return str(html_content)
 
 
 async def extract_structural_map(
-    page,
+    page: Any,
     selector: str,
     *,
     output_path: str | Path | None = None,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Extract a simplified JSON structure of a specific DOM element.
 
     Strips away all styling and extraneous tags, keeping only semantic tags,
@@ -102,10 +103,10 @@ async def extract_structural_map(
             json.dump(structure_data, f, indent=2)
         logger.info(f"Saved structural map to {out}")
 
-    return structure_data
+    return structure_data  # type: ignore
 
 
-async def detect_page_state(page) -> str:
+async def detect_page_state(page: Any) -> str:
     """Detect the current state of the X.com page.
 
     Returns one of:
@@ -167,7 +168,7 @@ async def detect_page_state(page) -> str:
     return "ok"
 
 
-async def extract_grok_summary(page) -> str:
+async def extract_grok_summary(page: Any) -> str:
     """Extract the Grok/X summary from a trending topic page.
 
     Uses a two-phase approach:
@@ -211,7 +212,7 @@ async def extract_grok_summary(page) -> str:
     }"""
 
     try:
-        return await page.evaluate(js_code)
+        return str(await page.evaluate(js_code))
     except Exception as e:
         logger.debug(f"JS summary extraction failed: {e}")
         return ""

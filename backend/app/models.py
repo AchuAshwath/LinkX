@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import EmailStr
-from sqlalchemy import Column, DateTime
+from sqlalchemy import Column, DateTime, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Relationship, SQLModel
 
@@ -427,3 +427,61 @@ class PersonaAccessPublic(SQLModel):
     role: str
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+
+# --- Trending Topics ---
+
+
+class TrendingTopic(TimestampedUUIDModel, table=True):
+    __tablename__ = "trending_topic"
+    __table_args__ = (
+        UniqueConstraint("user_id", "topic_url", name="uq_trending_topic_user_url"),
+    )
+
+    user_id: uuid.UUID = Field(
+        foreign_key="user.id", nullable=False, ondelete="CASCADE"
+    )
+    topic_url: str = Field(max_length=512, index=True)
+    topic_title: str = Field(max_length=500)
+    category: str | None = Field(default=None, max_length=100)
+    post_count: int | None = Field(default=None)
+    summary: str | None = Field(default=None)
+    first_seen_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    last_seen_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    scraped_at: datetime = Field(sa_type=DateTime(timezone=True))  # type: ignore
+
+
+class TrendingTweet(TimestampedUUIDModel, table=True):
+    __tablename__ = "trending_tweet"
+
+    topic_id: uuid.UUID = Field(
+        foreign_key="trending_topic.id", nullable=False, ondelete="CASCADE"
+    )
+    author_handle: str = Field(max_length=255)
+    text: str
+    replies: int | None = Field(default=None)
+    retweets: int | None = Field(default=None)
+    likes: int | None = Field(default=None)
+    views: int | None = Field(default=None)
+
+
+class TrendingTopicPublic(SQLModel):
+    id: uuid.UUID
+    topic_title: str
+    category: str | None
+    post_count: int | None
+    topic_url: str
+    first_seen_at: datetime | None
+    last_seen_at: datetime | None
+    scraped_at: datetime
+
+
+class TrendingTopicsPublic(SQLModel):
+    data: list[TrendingTopicPublic]
+    count: int
