@@ -13,6 +13,7 @@ from app.api.routes import (
     trending,
     users,
     utils,
+    x_auth,
 )
 from app.core.config import settings
 
@@ -28,6 +29,7 @@ api_router.include_router(personas.router)
 api_router.include_router(teams.router)
 api_router.include_router(admin.router)
 api_router.include_router(trending.router)
+api_router.include_router(x_auth.router)
 
 
 if settings.ENVIRONMENT == "local":
