@@ -10,6 +10,7 @@ from sqlmodel import Session, select
 from app.models import Post, PublishErrorResponse, SocialAccount
 from app.services.linkedin_posts import LinkedInPostClient, LinkedInPostError
 from app.services.post_state_machine import validate_transition
+from app.services.x_posts import XPostClient
 
 logger = logging.getLogger(__name__)
 
@@ -42,15 +43,61 @@ def _linkedin_account_for_persona(
     return session.exec(statement).first()
 
 
-def _as_failure(*, err: LinkedInPostError) -> PublishFailure:
+def _handle_publish_error(
+    *, session: Session, post: Post, user_id: uuid.UUID, err: Exception
+) -> PublishFailure:
+    validate_transition(current_status=post.status, target_status="failed")
+    post.status = "failed"
+
+    if hasattr(err, "code") and hasattr(err, "detail") and hasattr(err, "retryable"):
+        code = err.code
+        detail = str(err.detail)
+        retryable = err.retryable
+        details = getattr(err, "details", {})
+        trace_id = getattr(err, "trace_id", str(uuid.uuid4()))
+        status_code = getattr(err, "status_code", 500)
+    else:
+        code = "internal_error"
+        detail = f"Unexpected system error: {err}"
+        retryable = False
+        details = {}
+        trace_id = str(uuid.uuid4())
+        status_code = 500
+
+    post.error_code = code
+    post.error_message = detail
+
+    if retryable and post.retry_count < MAX_RETRIES:
+        post.retry_count += 1
+        post.last_retry_at = _now_utc()
+        post.next_retry_at = _next_retry_time(retry_count=post.retry_count)
+    else:
+        post.next_retry_at = None
+
+    post.updated_at = _now_utc()
+    session.add(post)
+    session.commit()
+    session.refresh(post)
+
+    logger.warning(
+        "publish_failed post_id=%s persona_id=%s user_id=%s status=%s trace_id=%s code=%s retryable=%s",
+        post.id,
+        post.persona_id,
+        user_id,
+        post.status,
+        trace_id,
+        code,
+        retryable,
+    )
+
     return PublishFailure(
-        status_code=err.status_code,
+        status_code=status_code,
         payload=PublishErrorResponse(
-            error=err.code,
-            message=str(err.detail),
-            retryable=err.retryable,
-            details=err.details,
-            trace_id=err.trace_id,
+            error=code,
+            message=detail,
+            retryable=retryable,
+            details=details,
+            trace_id=trace_id,
         ),
     )
 
@@ -69,7 +116,9 @@ async def publish_post(
             retryable=False,
             details={"platform": "linkedin"},
         )
-        return _as_failure(err=failure)
+        return _handle_publish_error(
+            session=session, post=post, user_id=user_id, err=failure
+        )
 
     if post.external_post_id:
         if post.status != "published":
@@ -93,61 +142,47 @@ async def publish_post(
     session.commit()
     session.refresh(post)
 
-    linkedin_account = _linkedin_account_for_persona(
-        session=session,
-        persona_id=post.persona_id,
-    )
-    if not linkedin_account or not linkedin_account.external_user_id:
-        err = LinkedInPostError(
-            status_code=400,
-            detail="LinkedIn account not connected for this persona",
-            code="linkedin_not_connected",
-            retryable=False,
-            details={"platform": "linkedin"},
+    if post.platform == "linkedin":
+        linkedin_account = _linkedin_account_for_persona(
+            session=session,
+            persona_id=post.persona_id,
         )
-        validate_transition(current_status=post.status, target_status="failed")
-        post.status = "failed"
-        post.error_code = err.code
-        post.error_message = str(err.detail)
-        post.updated_at = _now_utc()
-        session.add(post)
-        session.commit()
-        session.refresh(post)
-        return _as_failure(err=err)
+        if not linkedin_account or not linkedin_account.external_user_id:
+            err = LinkedInPostError(
+                status_code=400,
+                detail="LinkedIn account not connected for this persona",
+                code="linkedin_not_connected",
+                retryable=False,
+                details={"platform": "linkedin"},
+            )
+            return _handle_publish_error(
+                session=session, post=post, user_id=user_id, err=err
+            )
 
-    try:
-        client = LinkedInPostClient()
-        external_post_id = await client.create_text_post(
-            persona_id=str(post.persona_id),
-            linkedin_person_id=linkedin_account.external_user_id,
-            content=post.content,
-        )
-    except LinkedInPostError as err:
-        validate_transition(current_status=post.status, target_status="failed")
-        post.status = "failed"
-        post.error_code = err.code
-        post.error_message = str(err.detail)
-        if err.retryable and post.retry_count < MAX_RETRIES:
-            post.retry_count += 1
-            post.last_retry_at = _now_utc()
-            post.next_retry_at = _next_retry_time(retry_count=post.retry_count)
-        else:
-            post.next_retry_at = None
-        post.updated_at = _now_utc()
-        session.add(post)
-        session.commit()
-        session.refresh(post)
-        logger.warning(
-            "publish_failed post_id=%s persona_id=%s user_id=%s status=%s trace_id=%s code=%s retryable=%s",
-            post.id,
-            post.persona_id,
-            user_id,
-            post.status,
-            err.trace_id,
-            err.code,
-            err.retryable,
-        )
-        return _as_failure(err=err)
+        try:
+            client = LinkedInPostClient()
+            external_post_id = await client.create_text_post(
+                persona_id=str(post.persona_id),
+                linkedin_person_id=linkedin_account.external_user_id,
+                content=post.content,
+            )
+        except Exception as err:
+            return _handle_publish_error(
+                session=session, post=post, user_id=user_id, err=err
+            )
+    elif post.platform == "x":
+        try:
+            x_client = XPostClient()
+            external_post_id = await x_client.create_text_post(
+                persona_id=str(post.persona_id),
+                content=post.content,
+            )
+        except Exception as err:
+            return _handle_publish_error(
+                session=session, post=post, user_id=user_id, err=err
+            )
+    else:
+        raise ValueError(f"Unsupported platform: {post.platform}")
 
     validate_transition(current_status=post.status, target_status="published")
     post.status = "published"
