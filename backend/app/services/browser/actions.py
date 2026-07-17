@@ -159,21 +159,8 @@ class EvasionMouse:
 
         try:
             async with self.lock:
-                await self.page.wait_for_selector(selector, state="visible")
-
-                # Find all matching locators and pick the first visible one
-                locators = await self.page.locator(selector).all()
-                locator = None
-                for loc in locators:
-                    if await loc.is_visible():
-                        locator = loc
-                        break
-
-                if not locator:
-                    logger.warning(
-                        f"human_click: No visible element found for {selector}, falling back to .first"
-                    )
-                    locator = self.page.locator(selector).first
+                await self.page.wait_for_selector(f"{selector} >> visible=true")
+                locator = self.page.locator(f"{selector} >> visible=true").first
 
                 await locator.scroll_into_view_if_needed()
                 box = await locator.bounding_box()
