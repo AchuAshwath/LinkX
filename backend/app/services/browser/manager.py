@@ -27,6 +27,20 @@ class BrowserManager:
     def __init__(self, brand_id: str = "default"):
         self.brand_id = brand_id
 
+    def session_exists(self, platform_name: str) -> bool:
+        """Check if a persistent session directory exists and contains cookies."""
+        if platform_name not in PLATFORMS:
+            raise ValueError(f"Unknown platform: {platform_name}")
+        session_dir = get_session_dir(self.brand_id, platform_name)
+        if not session_dir.exists():
+            return False
+
+        # Playwright creates the folder and skeletal files as soon as it launches,
+        # so checking if the directory is empty is insufficient. We check for cookies.
+        cookies_path = session_dir / "Default" / "Cookies"
+        network_cookies_path = session_dir / "Default" / "Network" / "Cookies"
+        return cookies_path.exists() or network_cookies_path.exists()
+
     def start_login_subprocess(self, platform_name: str, force: bool = False) -> None:
         """Launch a vanilla Chrome window for manual user login.
 

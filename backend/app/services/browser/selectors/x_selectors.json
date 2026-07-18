@@ -1,7 +1,7 @@
 {
   "compose": {
     "post_input": "[data-testid=\"tweetTextarea_0\"], .public-DraftEditor-content",
-    "post_button": "[data-testid=\"tweetButtonInline\"], div[role=\"button\"]:has-text(\"Post\")",
+    "post_button": "[data-testid=\"tweetButtonInline\"]",
     "reply_button": "[data-testid=\"reply\"]"
   },
   "navigation": {
