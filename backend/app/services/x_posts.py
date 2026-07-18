@@ -145,28 +145,35 @@ class XPostClient:
         except PlaywrightTimeoutError:
             pass
 
+    def _is_security_checkpoint(self, current_url: str, body: str) -> bool:
+        if "checkpoint" in current_url:
+            return True
+        if "Help us keep Twitter safe" in body:
+            return True
+        if "Confirm your phone number" in body:
+            return True
+        return False
+
     async def _verify_valid_url(self, current_url: str, body: str, mouse: EvasionMouse) -> None:
-        if "/home" not in current_url:
-            await mouse.stop_idle()
-            if (
-                "Help us keep Twitter safe" in body
-                or "Confirm your phone number" in body
-                or "checkpoint" in current_url
-            ):
-                raise XPostError(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="X session flagged by security checkpoint. Please re-login.",
-                    code="x_session_flagged",
-                    retryable=False,
-                    details={"platform": "x", "url": current_url},
-                )
+        if "/home" in current_url:
+            return
+
+        await mouse.stop_idle()
+        if self._is_security_checkpoint(current_url, body):
             raise XPostError(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="X session expired or invalid. Please re-login.",
-                code="x_session_expired",
+                detail="X session flagged by security checkpoint. Please re-login.",
+                code="x_session_flagged",
                 retryable=False,
                 details={"platform": "x", "url": current_url},
             )
+        raise XPostError(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="X session expired or invalid. Please re-login.",
+            code="x_session_expired",
+            retryable=False,
+            details={"platform": "x", "url": current_url},
+        )
 
     async def _type_and_publish(self, page: Any, mouse: EvasionMouse, content: str) -> str:
         await self._fill_post_content(mouse, content)
