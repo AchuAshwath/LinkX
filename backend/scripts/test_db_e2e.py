@@ -16,7 +16,7 @@ async def main():
         print(f"Using persona: {persona.name} ({persona.id})")
         
         # Create a post record
-        content = "The new Apex Legends season is actually looking incredibly solid. The weapon sandbox changes are exactly what the game needed to feel fresh again. Time to grind some ranked! 🎮🔥 #ApexLegends #Gaming"
+        content = sys.argv[2] if len(sys.argv) > 2 else "The new Apex Legends season is actually looking incredibly solid. The weapon sandbox changes are exactly what the game needed to feel fresh again. Time to grind some ranked! 🎮🔥 #ApexLegends #Gaming"
         
         post = Post(
             content=content,

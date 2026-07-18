@@ -51,16 +51,13 @@ class XPostClient:
         with open(self.selectors_path) as f:
             self.selectors = json.load(f)
 
-    async def create_text_post(
-        self,
-        *,
-        persona_id: str,
-        content: str,
-    ) -> str:
-        """Create a text-only post on X.com using Playwright.
+    async def create_text_post(self, *, persona_id: str, content: str) -> str:
+        """Create a text-only post on X.com using Playwright."""
+        self._validate_content(content)
+        manager = self._get_manager(persona_id)
+        return await self._execute_post_flow(manager, content)
 
-        Returns the X.com tweet ID (rest_id).
-        """
+    def _validate_content(self, content: str) -> None:
         normalized_content = normalize_post_text(content)
         if len(normalized_content) > 280:
             raise XPostError(
@@ -71,8 +68,8 @@ class XPostClient:
                 details={"platform": "x", "length": len(content)},
             )
 
+    def _get_manager(self, persona_id: str) -> BrowserManager:
         manager = BrowserManager(brand_id=persona_id)
-
         if not manager.session_exists("x"):
             raise XPostError(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -81,7 +78,9 @@ class XPostClient:
                 retryable=False,
                 details={"platform": "x"},
             )
+        return manager
 
+    async def _execute_post_flow(self, manager: BrowserManager, content: str) -> str:
         try:
             async with manager.get_context(
                 "x", headless=(os.environ.get("PLAYWRIGHT_HEADLESS", "1") == "1")
@@ -91,52 +90,64 @@ class XPostClient:
                 asyncio.create_task(mouse.start_idle())
 
                 await self._perform_sentinel_check(page, mouse)
-                rest_id = await self._type_and_publish(page, mouse, content)
-                return rest_id
+                return await self._type_and_publish(page, mouse, content)
 
         except XPostError:
             raise
         except PlaywrightError as e:
-            if "closed" in str(e).lower():
-                raise XPostError(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Browser window was closed manually.",
-                    code="x_browser_closed",
-                    retryable=False,
-                    details={"platform": "x"},
-                )
-            raise XPostError(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Browser automation error: {e}",
-                code="x_automation_error",
-                retryable=True,
-                details={"platform": "x"},
-            )
+            self._handle_playwright_error(e)
+            return ""
         except Exception as e:
+            self._handle_unexpected_error(e)
+            return ""
+
+    def _handle_playwright_error(self, e: PlaywrightError) -> None:
+        if "closed" in str(e).lower():
             raise XPostError(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Unexpected error: {e}",
-                code="x_internal_error",
+                detail="Browser window was closed manually.",
+                code="x_browser_closed",
                 retryable=False,
                 details={"platform": "x"},
             )
+        raise XPostError(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Browser automation error: {e}",
+            code="x_automation_error",
+            retryable=True,
+            details={"platform": "x"},
+        )
+
+    def _handle_unexpected_error(self, e: Exception) -> None:
+        raise XPostError(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error: {e}",
+            code="x_internal_error",
+            retryable=False,
+            details={"platform": "x"},
+        )
 
     async def _perform_sentinel_check(self, page: Any, mouse: EvasionMouse) -> None:
+        await self._navigate_to_home(page)
+        body = await page.inner_text("body")
+        await self._verify_valid_url(page.url, body, mouse)
+        logger.info("Sentinel check passed (URL routing confirmed), proceeding with post.")
+        await random_delay(min_sec=2.0, max_sec=4.0)
+
+    async def _navigate_to_home(self, page: Any) -> None:
         logger.info("Navigating to https://x.com/home")
         await page.goto("https://x.com/home", wait_until="domcontentloaded")
-
         try:
             await page.wait_for_url(
                 lambda url: "home" in url or "checkpoint" in url or "login" in url,
                 timeout=10000,
             )
         except PlaywrightTimeoutError:
-            pass  # Fallback to checking current_url directly
+            pass
 
-        current_url = page.url
+    async def _verify_valid_url(self, current_url: str, body: str, mouse: EvasionMouse) -> None:
         if "/home" not in current_url:
             await mouse.stop_idle()
-            body = await page.inner_text("body")
             if (
                 "Help us keep Twitter safe" in body
                 or "Confirm your phone number" in body
@@ -156,22 +167,22 @@ class XPostClient:
                 retryable=False,
                 details={"platform": "x", "url": current_url},
             )
-        
-        logger.info("Sentinel check passed (URL routing confirmed), proceeding with post.")
-        await random_delay(min_sec=2.0, max_sec=4.0)
 
     async def _type_and_publish(self, page: Any, mouse: EvasionMouse, content: str) -> str:
-        post_input_selector = self.selectors["compose"]["post_input"]
-        post_button_selector = self.selectors["compose"]["post_button"]
+        await self._fill_post_content(mouse, content)
+        return await self._click_publish_and_wait(page, mouse)
 
+    async def _fill_post_content(self, mouse: EvasionMouse, content: str) -> None:
+        post_input_selector = self.selectors["compose"]["post_input"]
         logger.info(f"Targeting post input box using selector: {post_input_selector}")
         await mouse.human_click(selector=post_input_selector)
 
         logger.info("Typing draft post")
         await mouse.human_type(selector=post_input_selector, text=content, wpm=90.0)
-
         await random_delay(min_sec=1.0, max_sec=2.0)
 
+    async def _click_publish_and_wait(self, page: Any, mouse: EvasionMouse) -> str:
+        post_button_selector = self.selectors["compose"]["post_button"]
         logger.info("Setting up network interceptor for CreateTweet GraphQL endpoint...")
         try:
             async with page.expect_response(

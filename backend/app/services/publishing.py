@@ -97,53 +97,62 @@ def _handle_publish_error(
     )
 
 
+async def _publish_linkedin(session: Session, post: Post, user_id: uuid.UUID) -> str | PublishFailure:
+    linkedin_account = _linkedin_account_for_persona(
+        session=session,
+        persona_id=post.persona_id,
+    )
+    if not linkedin_account or not linkedin_account.external_user_id:
+        err = LinkedInPostError(
+            status_code=400,
+            detail="LinkedIn account not connected for this persona",
+            code="linkedin_not_connected",
+            retryable=False,
+            details={"platform": "linkedin"},
+        )
+        return _handle_publish_error(
+            session=session, post=post, user_id=user_id, err=err
+        )
+
+    try:
+        client = LinkedInPostClient()
+        return await client.create_text_post(
+            persona_id=str(post.persona_id),
+            linkedin_person_id=linkedin_account.external_user_id,
+            content=post.content,
+        )
+    except Exception as err:
+        return _handle_publish_error(
+            session=session, post=post, user_id=user_id, err=err
+        )
+
+async def _publish_x(session: Session, post: Post, user_id: uuid.UUID) -> str | PublishFailure:
+    try:
+        x_client = XPostClient()
+        return await x_client.create_text_post(
+            persona_id=str(post.persona_id),
+            content=post.content,
+        )
+    except Exception as err:
+        return _handle_publish_error(
+            session=session, post=post, user_id=user_id, err=err
+        )
+
+_PLATFORM_PUBLISHERS = {
+    "linkedin": _publish_linkedin,
+    "x": _publish_x,
+}
+
 async def _publish_to_platform(
     session: Session, post: Post, user_id: uuid.UUID
 ) -> str | PublishFailure:
-    if post.platform == "linkedin":
-        linkedin_account = _linkedin_account_for_persona(
-            session=session,
-            persona_id=post.persona_id,
-        )
-        if not linkedin_account or not linkedin_account.external_user_id:
-            err = LinkedInPostError(
-                status_code=400,
-                detail="LinkedIn account not connected for this persona",
-                code="linkedin_not_connected",
-                retryable=False,
-                details={"platform": "linkedin"},
-            )
-            return _handle_publish_error(
-                session=session, post=post, user_id=user_id, err=err
-            )
-
-        try:
-            client = LinkedInPostClient()
-            return await client.create_text_post(
-                persona_id=str(post.persona_id),
-                linkedin_person_id=linkedin_account.external_user_id,
-                content=post.content,
-            )
-        except Exception as err:
-            return _handle_publish_error(
-                session=session, post=post, user_id=user_id, err=err
-            )
-    elif post.platform == "x":
-        try:
-            x_client = XPostClient()
-            return await x_client.create_text_post(
-                persona_id=str(post.persona_id),
-                content=post.content,
-            )
-        except Exception as err:
-            return _handle_publish_error(
-                session=session, post=post, user_id=user_id, err=err
-            )
-    else:
+    publisher = _PLATFORM_PUBLISHERS.get(post.platform)
+    if not publisher:
         err = ValueError(f"Unsupported platform: {post.platform}")
         return _handle_publish_error(
             session=session, post=post, user_id=user_id, err=err
         )
+    return await publisher(session, post, user_id)
 
 def _mark_as_published(session: Session, post: Post, external_post_id: str) -> None:
     validate_transition(current_status=post.status, target_status="published")
