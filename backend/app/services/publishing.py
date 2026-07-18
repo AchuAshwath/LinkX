@@ -49,20 +49,15 @@ def _handle_publish_error(
     validate_transition(current_status=post.status, target_status="failed")
     post.status = "failed"
 
-    if hasattr(err, "code") and hasattr(err, "detail") and hasattr(err, "retryable"):
-        code = err.code
-        detail = str(err.detail)
-        retryable = err.retryable
-        details = getattr(err, "details", {})
-        trace_id = getattr(err, "trace_id", str(uuid.uuid4()))
-        status_code = getattr(err, "status_code", 500)
-    else:
-        code = "internal_error"
-        detail = f"Unexpected system error: {err}"
-        retryable = False
-        details = {}
-        trace_id = str(uuid.uuid4())
-        status_code = 500
+    # Use duck-typing to extract structured error fields if available
+    is_structured = hasattr(err, "code") and hasattr(err, "detail")
+    
+    code = getattr(err, "code", "internal_error") if is_structured else "internal_error"
+    detail = str(getattr(err, "detail", f"Unexpected system error: {err}"))
+    retryable = getattr(err, "retryable", False) if is_structured else False
+    details = getattr(err, "details", {}) if is_structured else {}
+    trace_id = getattr(err, "trace_id", str(uuid.uuid4()))
+    status_code = getattr(err, "status_code", 500) if is_structured else 500
 
     post.error_code = code
     post.error_message = detail
@@ -121,17 +116,19 @@ async def publish_post(
         )
 
     if post.external_post_id:
-        if post.status != "published":
-            validate_transition(current_status=post.status, target_status="published")
-            post.status = "published"
-            post.published_at = post.published_at or _now_utc()
-            post.error_code = None
-            post.error_message = None
-            post.next_retry_at = None
-            post.updated_at = _now_utc()
-            session.add(post)
-            session.commit()
-            session.refresh(post)
+        if post.status == "published":
+            return None
+            
+        validate_transition(current_status=post.status, target_status="published")
+        post.status = "published"
+        post.published_at = post.published_at or _now_utc()
+        post.error_code = None
+        post.error_message = None
+        post.next_retry_at = None
+        post.updated_at = _now_utc()
+        session.add(post)
+        session.commit()
+        session.refresh(post)
         return None
 
     validate_transition(current_status=post.status, target_status="publishing")

@@ -93,6 +93,14 @@ Captured from the app running locally (`bun run dev` in `frontend/`, dark theme)
 
 ---
 
+## Active TODOs (WIP)
+
+- **Frontend wiring for X.com publishing**: Expose the X.com platform selector in the UI so users can create and schedule posts.
+- **Docker stateless integration**: Make sure the backend folder is properly integrated so the application can run statelessly in production without losing browser session data.
+- **Writing social account in database**: Persist the X.com auth session to the `social_account` DB table upon successful connection.
+
+---
+
 ## Quick start
 
 ```bash

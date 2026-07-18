@@ -29,15 +29,12 @@ class XPostError(HTTPException):
         *,
         status_code: int,
         detail: str,
-        code: str = "x_publish_failed",
-        retryable: bool = False,
-        details: dict[str, Any] | None = None,
-        trace_id: str | None = None,
+        **kwargs: Any,
     ) -> None:
-        self.code = code
-        self.retryable = retryable
-        self.details = details or {}
-        self.trace_id = trace_id or str(uuid.uuid4())
+        self.code = kwargs.get("code", "x_publish_failed")
+        self.retryable = kwargs.get("retryable", False)
+        self.details = kwargs.get("details", {})
+        self.trace_id = kwargs.get("trace_id", str(uuid.uuid4()))
         super().__init__(status_code=status_code, detail=detail)
 
 
