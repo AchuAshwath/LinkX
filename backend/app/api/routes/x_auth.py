@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlmodel import Session
 
 from app.api.deps import CurrentUser, SessionDep
-from app.services.access import get_persona_role
+from app.services.access import get_persona_role, has_min_role
 from app.services.browser.manager import BrowserManager
 
 router = APIRouter(prefix="/auth/x", tags=["auth"])
@@ -21,6 +21,7 @@ def _require_persona_role(
     session: Session,
     user_id: uuid.UUID,
     persona_id: uuid.UUID,
+    minimum: str | None = None,
 ) -> str:
     role = get_persona_role(
         session=session,
@@ -31,6 +32,11 @@ def _require_persona_role(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
+        )
+    if minimum and not has_min_role(role=role, minimum=minimum):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Not enough permissions (requires {minimum} role)",
         )
     return role
 
@@ -70,6 +76,7 @@ def x_connect(
         session=session,
         user_id=current_user.id,
         persona_id=persona_id,
+        minimum="admin",
     )
 
     manager = BrowserManager(brand_id=str(persona_id))
