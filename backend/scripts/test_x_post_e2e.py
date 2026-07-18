@@ -11,17 +11,18 @@ logging.basicConfig(
 )
 
 async def main():
-    post_content = "Just hit Immortal in Valorant! 🎮 The grind was real but the aim training finally paid off. Reyna diff all day! Who wants to queue? #Valorant #RiotGames #Gaming"
+    persona_id = sys.argv[1] if len(sys.argv) > 1 else "default"
+    post_content = sys.argv[2] if len(sys.argv) > 2 else "Just hit Immortal in Valorant! 🎮 The grind was real but the aim training finally paid off. Reyna diff all day! Who wants to queue? #Valorant #RiotGames #Gaming"
     
     print("========================================")
     print(f"Attempting to post: '{post_content}'")
-    print("Using persona_id: 'default'")
+    print(f"Using persona_id: '{persona_id}'")
     print("========================================\n")
     
     try:
         client = XPostClient()
         post_id = await client.create_text_post(
-            persona_id="default",
+            persona_id=persona_id,
             content=post_content
         )
         print(f"\n✅ Success! Tweet ID: {post_id}")

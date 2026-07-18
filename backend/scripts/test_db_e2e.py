@@ -1,15 +1,16 @@
 import asyncio
-import uuid
+import sys
 from sqlmodel import Session, select
 from app.core.db import engine
-from app.models import Post, PostCreate, Persona
+from app.models import Post, Persona
 from app.services.publishing import publish_post
 
 async def main():
+    persona_name = sys.argv[1] if len(sys.argv) > 1 else "Ashwath N"
     with Session(engine) as session:
-        persona = session.exec(select(Persona).where(Persona.name == "Ashwath N")).first()
+        persona = session.exec(select(Persona).where(Persona.name == persona_name)).first()
         if not persona:
-            print("Persona not found!")
+            print(f"Persona '{persona_name}' not found!")
             return
             
         print(f"Using persona: {persona.name} ({persona.id})")
