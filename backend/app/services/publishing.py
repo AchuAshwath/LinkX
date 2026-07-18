@@ -182,7 +182,10 @@ async def publish_post(
                 session=session, post=post, user_id=user_id, err=err
             )
     else:
-        raise ValueError(f"Unsupported platform: {post.platform}")
+        err = ValueError(f"Unsupported platform: {post.platform}")
+        return _handle_publish_error(
+            session=session, post=post, user_id=user_id, err=err
+        )
 
     validate_transition(current_status=post.status, target_status="published")
     post.status = "published"
