@@ -13,6 +13,7 @@ from rebrowser_playwright.async_api import TimeoutError as PlaywrightTimeoutErro
 from app.services.browser.actions import (
     EvasionMouse,
     PostButtonDisabledError,
+    normalize_post_text,
     random_delay,
 )
 from app.services.browser.manager import BrowserManager
@@ -63,7 +64,8 @@ class XPostClient:
 
         Returns the X.com tweet ID (rest_id).
         """
-        if len(content) > 280:
+        normalized_content = normalize_post_text(content)
+        if len(normalized_content) > 280:
             raise XPostError(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Post content exceeds X.com's 280 character limit.",
