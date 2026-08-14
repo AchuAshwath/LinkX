@@ -210,3 +210,100 @@ def test_publish_endpoint_success_updates_phase3_fields(
     assert data["published_at"] is not None
     assert data["error_code"] is None
     assert data["error_message"] is None
+
+
+def test_publish_x_platform(
+    client: TestClient,
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, headers = _create_user_with_auth(client=client, db=db)
+    post = Post(
+        owner_id=user.id,
+        content="publish to x only",
+        platform="x",
+        status="draft",
+    )
+    db.add(post)
+    db.commit()
+    db.refresh(post)
+
+    called_x = False
+
+    async def _mock_create_x_post(_self: object, **_: str) -> str:
+        nonlocal called_x
+        called_x = True
+        return "tweet_123456789"
+
+    monkeypatch.setattr(
+        "app.services.x_posts.XPostClient.create_text_post",
+        _mock_create_x_post,
+    )
+
+    response = client.post(
+        f"{settings.API_V1_STR}/posts/{post.id}/publish",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "published"
+    assert data["external_post_id"] == "tweet_123456789"
+    assert called_x is True
+
+
+def test_publish_linkx_both_platforms(
+    client: TestClient,
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, headers = _create_user_with_auth(client=client, db=db)
+    post = Post(
+        owner_id=user.id,
+        content="publish to both linkedin and x",
+        platform="linkx",
+        status="draft",
+    )
+    db.add(post)
+    account = SocialAccount(
+        user_id=user.id,
+        platform="linkedin",
+        external_user_id="abc123",
+    )
+    db.add(account)
+    db.commit()
+    db.refresh(post)
+
+    called_linkedin = False
+    called_x = False
+
+    async def _mock_create_linkedin_post(_self: object, **_: str) -> str:
+        nonlocal called_linkedin
+        called_linkedin = True
+        return "urn:li:share:111"
+
+    async def _mock_create_x_post(_self: object, **_: str) -> str:
+        nonlocal called_x
+        called_x = True
+        return "tweet_222"
+
+    monkeypatch.setattr(
+        "app.services.linkedin_posts.LinkedInPostClient.create_text_post",
+        _mock_create_linkedin_post,
+    )
+    monkeypatch.setattr(
+        "app.services.x_posts.XPostClient.create_text_post",
+        _mock_create_x_post,
+    )
+
+    response = client.post(
+        f"{settings.API_V1_STR}/posts/{post.id}/publish",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "published"
+    assert data["external_post_id"] == "linkedin:urn:li:share:111,x:tweet_222"
+    assert called_linkedin is True
+    assert called_x is True
