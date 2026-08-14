@@ -464,10 +464,14 @@ function PostsPage() {
           className="w-full flex flex-col"
         >
           {/* Tabs Header - Sticky */}
-          <div className="sticky top-0 z-10 shrink-0 border-b bg-background/80 backdrop-blur-sm p-4">
-            <TabsList className="grid w-full grid-cols-3 max-w-md">
-              <TabsTrigger value="drafts" className="text-sm">
-                <div className="flex items-center gap-2">
+          <div className="sticky top-0 z-10 shrink-0 border-b bg-background/80 backdrop-blur-sm">
+            <TabsList className="w-full h-auto p-0 bg-transparent rounded-none border-0 border-b border-border grid grid-cols-3 relative">
+              <TabsTrigger
+                value="drafts"
+                className="relative flex-1 h-14 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-base transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <FileText className="h-4 w-4" />
                   <span>Drafts</span>
                   {draftPosts.length > 0 && (
                     <Badge
@@ -479,8 +483,12 @@ function PostsPage() {
                   )}
                 </div>
               </TabsTrigger>
-              <TabsTrigger value="scheduled" className="text-sm">
-                <div className="flex items-center gap-2">
+              <TabsTrigger
+                value="scheduled"
+                className="relative flex-1 h-14 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-base transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <Calendar className="h-4 w-4" />
                   <span>Scheduled</span>
                   {scheduledPosts.length > 0 && (
                     <Badge
@@ -492,8 +500,12 @@ function PostsPage() {
                   )}
                 </div>
               </TabsTrigger>
-              <TabsTrigger value="posted" className="text-sm">
-                <div className="flex items-center gap-2">
+              <TabsTrigger
+                value="posted"
+                className="relative flex-1 h-14 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-base transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <CheckCircle2 className="h-4 w-4" />
                   <span>Posted</span>
                   {postedPosts.length > 0 && (
                     <Badge
