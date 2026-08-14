@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { Home as HomeIcon, Loader2 } from "lucide-react"
 import * as React from "react"
-import { PostsService, type PostUpdate, TrendingService } from "@/client"
+import { PostsService } from "@/client"
 import type { Platform } from "@/components/Common/PlatformSelector"
 import type { PostedData } from "@/components/Post/Posted"
 import { Posted } from "@/components/Post/Posted"
@@ -63,7 +63,10 @@ function TimelinePage() {
 
   // Delete confirmation dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
-  const [postToDelete, setPostToDelete] = React.useState<string | null>(null)
+  const [postToDelete, setPostToDelete] = React.useState<{
+    id: string
+    type: "draft" | "scheduled" | "posted"
+  } | null>(null)
 
   // Preview dialog state
   const [previewDialogOpen, setPreviewDialogOpen] = React.useState(false)
@@ -149,11 +152,13 @@ function TimelinePage() {
       await PostsService.deleteExistingPost({ postId })
     },
     onSuccess: () => {
-      showSuccessToast("Post deleted successfully")
-      setDeleteDialogOpen(false)
-      setPostToDelete(null)
-      // Invalidate and refetch posts
-      queryClient.invalidateQueries({ queryKey: ["posts"] })
+      if (postToDelete) {
+        showSuccessToast("Post deleted successfully")
+        setDeleteDialogOpen(false)
+        setPostToDelete(null)
+        // Invalidate and refetch posts
+        queryClient.invalidateQueries({ queryKey: ["posts"] })
+      }
     },
     onError: (error) => {
       console.error("Failed to delete post", error)
@@ -168,7 +173,14 @@ function TimelinePage() {
       data,
     }: {
       postId: string
-      data: PostUpdate
+      data: {
+        persona_id?: string
+        content?: string
+        image_url?: string
+        platform?: string
+        scheduled_at?: string
+        status?: string
+      }
     }) => {
       return await PostsService.updateExistingPost({
         postId,
@@ -186,35 +198,53 @@ function TimelinePage() {
     },
   })
 
-  const handleDelete = (postId: string) => {
-    setPostToDelete(postId)
+  const handleDelete = (
+    postId: string,
+    type: "draft" | "scheduled" | "posted",
+  ) => {
+    setPostToDelete({ id: postId, type })
     setDeleteDialogOpen(true)
   }
 
   const confirmDelete = () => {
     if (postToDelete) {
-      deleteMutation.mutate(postToDelete)
+      deleteMutation.mutate(postToDelete.id)
     }
   }
 
-  // Live trending topics from DB
-  const { data: trendingData } = useQuery({
-    queryKey: ["trending"],
-    queryFn: async () => {
-      return await TrendingService.getTrending()
-    },
-  })
+  // Sample trending topics
+  const trendingTopics: TrendingTopic[] = React.useMemo(
+    () => [
+      { id: "1", hashtag: "#TechInnovation", postCount: 5200 },
+      { id: "2", hashtag: "#ArtificialIntelligence", postCount: 12000 },
+      { id: "3", hashtag: "#ClimateAction", postCount: 8700 },
+      { id: "4", hashtag: "#SpaceExploration", postCount: 3900 },
+    ],
+    [],
+  )
 
-  const trendingTopics: TrendingTopic[] = React.useMemo(() => {
-    if (!trendingData?.data || trendingData.data.length === 0) {
-      return []
+  const handlePostAction = (action: string, postId: string) => {
+    if (action === "delete") {
+      handleDelete(postId, "posted")
+    } else if (action === "preview") {
+      handlePreview(postId)
+    } else {
+      // Handle post actions (like, repost, comment, share)
+      console.log(`${action} post ${postId}`)
     }
-    return trendingData.data.map((t) => ({
-      id: t.id,
-      hashtag: t.topic_title,
-      postCount: t.post_count ?? 0,
-    }))
-  }, [trendingData])
+  }
+
+  const handleScheduledAction = (action: string, postId: string) => {
+    if (action === "edit") {
+      setEditingPostId(postId)
+    } else if (action === "cancel" || action === "delete") {
+      handleDelete(postId, "scheduled")
+    } else if (action === "preview") {
+      handlePreview(postId)
+    } else {
+      console.log(`${action} scheduled post ${postId}`)
+    }
+  }
 
   const handlePostEdit = (postId: string) => {
     setEditingPostId(postId)
@@ -290,8 +320,8 @@ function TimelinePage() {
     }
   }
 
-  const handleTopicClick = (topic: TrendingTopic) => {
-    console.log(`View topic ${topic.hashtag}`)
+  const handleTopicClick = (_topicId: string, hashtag: string) => {
+    console.log(`View topic ${hashtag}`)
   }
 
   const handleClearFilters = () => {
@@ -331,12 +361,12 @@ function TimelinePage() {
             key={post.id}
             post={post}
             isEditing={isEditing}
-            onEdit={(id) => handlePostEdit(id)}
-            onDelete={(id) => handleDelete(id)}
+            onEdit={(id) => handleScheduledAction("edit", id)}
+            onDelete={(id) => handleScheduledAction("delete", id)}
             onSave={handleSaveScheduled}
             onCancel={handleCancel}
             onPlatformChange={handlePlatformChange}
-            onPreview={(id) => handlePreview(id)}
+            onPreview={(id) => handleScheduledAction("preview", id)}
           />
         )
       case "posted":
@@ -345,11 +375,15 @@ function TimelinePage() {
             key={post.id}
             post={post}
             isEditing={isEditing}
+            onLike={(id) => handlePostAction("like", id)}
+            onRepost={(id) => handlePostAction("repost", id)}
+            onComment={(id) => handlePostAction("comment", id)}
+            onShare={(id) => handlePostAction("share", id)}
             onEdit={(id) => handlePostEdit(id)}
             onSave={handleSavePosted}
             onCancel={handleCancel}
-            onPreview={(id) => handlePreview(id)}
-            onDelete={(id) => handleDelete(id)}
+            onPreview={(id) => handlePostAction("preview", id)}
+            onDelete={(id) => handlePostAction("delete", id)}
             onPlatformChange={handlePlatformChange}
           />
         )

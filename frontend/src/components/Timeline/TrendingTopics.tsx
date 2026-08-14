@@ -9,7 +9,7 @@ export interface TrendingTopic {
 export interface TrendingTopicsProps {
   topics: TrendingTopic[]
   title?: string
-  onTopicClick?: (topic: TrendingTopic) => void
+  onTopicClick?: (topicId: string, hashtag: string) => void
 }
 
 function formatPostCount(count: number): string {
@@ -42,7 +42,7 @@ export function TrendingTopics({
             <button
               key={topic.id}
               type="button"
-              onClick={() => onTopicClick?.(topic)}
+              onClick={() => onTopicClick?.(topic.id, topic.hashtag)}
               className="w-full flex items-center justify-between gap-2 rounded-lg p-2 -m-2 text-left transition-colors hover:bg-accent/50 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
               aria-label={`View ${topic.hashtag} with ${formatPostCount(topic.postCount)} posts`}
             >
