@@ -144,6 +144,7 @@ git commit -m "descriptive message"
 
 - **Do not** run `git commit` on your own. **Always confirm with the user** before committing (they must explicitly ask you to commit or approve the commit in the same turn).
 - Prefer: finish edits → summarize changes → propose a commit message → **wait for confirmation** → then commit if asked.
+- **Conventional Commits**: **Always** use Conventional Commits format for **both commit messages and PR titles** (`feat(...)`, `fix(...)`, `refactor(...)`, `test(...)`, `chore(...)`, `docs(...)`). Never use unstructured or generic commit/PR titles.
 
 ## Important Quirks & Guardrails
 
@@ -175,6 +176,7 @@ git commit -m "descriptive message"
 - Backend: keyword-only args `def foo(*, arg: Type)`
 - Frontend: double quotes, no trailing semicolons, `@/` alias for `src/`
 - Model naming: `{Entity}Base`, `{Entity}Create`, `{Entity}Update`, `{Entity}Public`
+- Git & PRs: **Conventional Commits** (`feat(scope): ...`, `fix(scope): ...`, `refactor(scope): ...`, `test(scope): ...`, `chore(scope): ...`, `docs(scope): ...`) across all commit messages and PR titles
 
 ## Services
 
