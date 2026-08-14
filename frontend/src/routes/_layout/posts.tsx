@@ -330,15 +330,11 @@ function PostsPage() {
     postId: string,
     data: { content: string; platform: Platform },
   ) => {
-    const platformForApi =
-      data.platform === "x" || data.platform === "all"
-        ? "linkedin"
-        : data.platform
     updateMutation.mutate({
       postId,
       data: {
         content: data.content,
-        platform: platformForApi,
+        platform: data.platform,
       },
     })
   }
@@ -347,15 +343,11 @@ function PostsPage() {
     postId: string,
     data: { content: string; platform: Platform; scheduledAt: Date },
   ) => {
-    const platformForApi =
-      data.platform === "x" || data.platform === "all"
-        ? "linkedin"
-        : data.platform
     updateMutation.mutate({
       postId,
       data: {
         content: data.content,
-        platform: platformForApi,
+        platform: data.platform,
         scheduled_at: data.scheduledAt.toISOString(),
       },
     })
@@ -365,15 +357,11 @@ function PostsPage() {
     postId: string,
     data: { content: string; platform: Platform },
   ) => {
-    const platformForApi =
-      data.platform === "x" || data.platform === "all"
-        ? "linkedin"
-        : data.platform
     updateMutation.mutate({
       postId,
       data: {
         content: data.content,
-        platform: platformForApi,
+        platform: data.platform,
       },
     })
   }
@@ -383,12 +371,9 @@ function PostsPage() {
   }
 
   const handlePlatformChange = (postId: string, platform: Platform) => {
-    // Only LinkedIn is enabled; coerce "x" / "all" to "linkedin" for API
-    const platformForApi =
-      platform === "x" || platform === "all" ? "linkedin" : platform
     updateMutation.mutate({
       postId,
-      data: { platform: platformForApi },
+      data: { platform },
     })
   }
 

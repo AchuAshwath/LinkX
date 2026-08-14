@@ -147,6 +147,9 @@ export function transformToDraftPost(post: {
   platform: string
 }): DraftPostData {
   const author = post.author || { name: "", username: "" }
+  const platform = (
+    post.platform === "all" ? "linkx" : post.platform
+  ) as Platform
   return {
     id: post.id,
     author: {
@@ -158,7 +161,7 @@ export function transformToDraftPost(post: {
     imageUrl: post.image_url || undefined,
     createdAt: post.created_at,
     relativeDate: formatRelativeTime(post.created_at),
-    platform: post.platform as Platform,
+    platform,
   }
 }
 
@@ -178,6 +181,9 @@ export function transformToScheduledPost(post: {
     throw new Error("scheduled_at is required for scheduled posts")
   }
   const author = post.author || { name: "", username: "" }
+  const platform = (
+    post.platform === "all" ? "linkx" : post.platform
+  ) as Platform
   return {
     id: post.id,
     author: {
@@ -190,7 +196,7 @@ export function transformToScheduledPost(post: {
     createdAt: post.created_at,
     scheduledAt: post.scheduled_at,
     relativeDate: formatRelativeTimeWithFuture(post.scheduled_at),
-    platform: post.platform as Platform,
+    platform,
   }
 }
 
@@ -209,6 +215,9 @@ export function transformToPostedPost(post: {
   platform: string
 }): PostedData {
   const author = post.author || { name: "", username: "" }
+  const platform = (
+    post.platform === "all" ? "linkx" : post.platform
+  ) as Platform
   return {
     id: post.id,
     author: {
@@ -223,7 +232,7 @@ export function transformToPostedPost(post: {
     likes: post.likes,
     reposts: post.reposts,
     comments: post.comments,
-    platform: post.platform as Platform,
+    platform,
   }
 }
 

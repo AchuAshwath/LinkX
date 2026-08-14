@@ -134,9 +134,24 @@ async def _publish_x(*, session: Session, post: Post) -> str | PublishFailure:
         return _handle_publish_error(session=session, post=post, err=err)
 
 
+async def _publish_all(*, session: Session, post: Post) -> str | PublishFailure:
+    """Publish to both LinkedIn and X platforms (cross-posting)."""
+    li_res = await _publish_linkedin(session=session, post=post)
+    if isinstance(li_res, PublishFailure):
+        return li_res
+
+    x_res = await _publish_x(session=session, post=post)
+    if isinstance(x_res, PublishFailure):
+        return x_res
+
+    return f"linkedin:{li_res},x:{x_res}"
+
+
 _PLATFORM_PUBLISHERS = {
     "linkedin": _publish_linkedin,
     "x": _publish_x,
+    "all": _publish_all,
+    "linkx": _publish_all,
 }
 
 

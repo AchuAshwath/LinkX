@@ -56,9 +56,6 @@ export function usePostForm() {
         return
       }
 
-      // Default platform from channel selection
-      const platformForApi = channel === "all" ? "linkedin" : channel
-
       const postData: {
         content: string
         platform: string
@@ -66,7 +63,7 @@ export function usePostForm() {
         status: string
       } = {
         content: content.trim(),
-        platform: platformForApi,
+        platform: channel,
         status:
           action === "draft"
             ? "draft"
