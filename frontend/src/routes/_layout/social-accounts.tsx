@@ -288,15 +288,19 @@ function ConnectedAccountsPage() {
             </div>
           </div>
 
-          {/* --- 2. X (TWITTER) ROW & EXPANDABLE CLI DRAWER --- */}
+          {/* --- 2. X (TWITTER) ROW (CLICK TO EXPAND CLI DRAWER) --- */}
           <div className="flex flex-col">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:px-6 hover:bg-muted/10 transition-colors">
-              <div className="flex items-center gap-3.5 min-w-0">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-foreground/10 text-foreground">
+              <button
+                type="button"
+                onClick={() => setIsCliExpanded((prev) => !prev)}
+                className="flex items-center gap-3.5 min-w-0 text-left cursor-pointer flex-1 group focus:outline-none"
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-foreground/10 text-foreground group-hover:bg-foreground/15 transition-colors">
                   <FaXTwitter className="h-5 w-5" />
                 </div>
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-semibold text-sm">X (Twitter)</span>
                     <Badge
                       variant="outline"
@@ -314,54 +318,55 @@ function ConnectedAccountsPage() {
                         No Session
                       </span>
                     )}
+
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="text-muted-foreground group-hover:text-foreground inline-flex items-center gap-0.5 text-[11px] font-sans ml-1 transition-colors">
+                          <Terminal className="h-3 w-3 opacity-60" />
+                          {isCliExpanded ? (
+                            <ChevronUp className="h-3 w-3 opacity-60" />
+                          ) : (
+                            <ChevronDown className="h-3 w-3 opacity-60" />
+                          )}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        Click to toggle terminal automation scripts
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
 
-                  {/* Session Path with lone Copy icon */}
+                  {/* Session Path */}
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
                     <Folder className="h-3 w-3 shrink-0 text-muted-foreground/70" />
                     <span className="font-mono text-[11px] text-foreground/75 truncate max-w-xs sm:max-w-sm">
                       {sessionPath}
                     </span>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-5 w-5 text-muted-foreground hover:text-foreground"
-                          onClick={() =>
-                            copyText(sessionPath, "path", "Session path")
-                          }
-                        >
-                          {copiedKey === "path" ? (
-                            <Check className="h-3 w-3 text-emerald-500" />
-                          ) : (
-                            <Copy className="h-3 w-3" />
-                          )}
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">Copy path</TooltipContent>
-                    </Tooltip>
                   </div>
                 </div>
-              </div>
+              </button>
 
               {/* Right Action Hub */}
               <div className="flex items-center gap-2 shrink-0 sm:self-center">
-                {/* CLI Expand Drawer Button */}
-                <Button
-                  variant={isCliExpanded ? "secondary" : "outline"}
-                  size="sm"
-                  onClick={() => setIsCliExpanded((prev) => !prev)}
-                  className="text-xs h-8 gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <Terminal className="h-3.5 w-3.5 text-primary" />
-                  CLI
-                  {isCliExpanded ? (
-                    <ChevronUp className="h-3 w-3 opacity-60" />
-                  ) : (
-                    <ChevronDown className="h-3 w-3 opacity-60" />
-                  )}
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                      onClick={() =>
+                        copyText(sessionPath, "path", "Session path")
+                      }
+                    >
+                      {copiedKey === "path" ? (
+                        <Check className="h-3.5 w-3.5 text-emerald-500" />
+                      ) : (
+                        <Copy className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">Copy session path</TooltipContent>
+                </Tooltip>
 
                 {/* Launch / Re-login */}
                 <Button
@@ -398,7 +403,7 @@ function ConnectedAccountsPage() {
               </div>
             </div>
 
-            {/* --- EXPANDABLE INLINE CLI DRAWER (Animated Accordion Stretch) --- */}
+            {/* --- EXPANDABLE INLINE CLI DRAWER --- */}
             {isCliExpanded && (
               <div className="px-4 pb-4 sm:px-6 pt-1 bg-muted/20 border-t border-border/40 animate-in slide-in-from-top-2 duration-200">
                 <div className="p-3 rounded-lg bg-background/80 border border-border/60 space-y-2.5">
@@ -424,13 +429,14 @@ function ConnectedAccountsPage() {
                             variant="ghost"
                             size="icon"
                             className="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0"
-                            onClick={() =>
+                            onClick={(e) => {
+                              e.stopPropagation()
                               copyText(
                                 headedLoginCmd,
                                 "cli-login",
                                 "Login command",
                               )
-                            }
+                            }}
                           >
                             {copiedKey === "cli-login" ? (
                               <Check className="h-3 w-3 text-emerald-500" />
@@ -459,13 +465,14 @@ function ConnectedAccountsPage() {
                             variant="ghost"
                             size="icon"
                             className="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0"
-                            onClick={() =>
+                            onClick={(e) => {
+                              e.stopPropagation()
                               copyText(
                                 testSessionCmd,
                                 "cli-verify",
                                 "Verify command",
                               )
-                            }
+                            }}
                           >
                             {copiedKey === "cli-verify" ? (
                               <Check className="h-3 w-3 text-emerald-500" />
