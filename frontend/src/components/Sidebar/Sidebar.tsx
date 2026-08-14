@@ -1,7 +1,7 @@
 "use client"
 
 import { Link } from "@tanstack/react-router"
-import { Home, Link2, MessageSquare, Package, X } from "lucide-react"
+import { Home, Link2, Package, X } from "lucide-react"
 import * as React from "react"
 import { Logo } from "@/components/Common/Logo"
 import { CreatePostDialog } from "@/components/PostInput/CreatePostDialog"
@@ -66,16 +66,6 @@ export function Sidebar({ sidebarOpen, onClose }: SidebarProps) {
             <Link to="/posts">
               <Package className="mr-2 h-4 w-4" />
               Posts
-            </Link>
-          </Button>
-          <Button
-            variant="ghost"
-            className="w-full justify-start text-base"
-            asChild
-          >
-            <Link to="/draft">
-              <MessageSquare className="mr-2 h-4 w-4" />
-              Draft
             </Link>
           </Button>
           <Button
