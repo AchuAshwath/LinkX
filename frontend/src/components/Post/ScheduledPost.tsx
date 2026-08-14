@@ -5,10 +5,8 @@ import {
   Heart,
   MessageCircle,
   MoreHorizontal,
-  Pencil,
   Repeat2,
   Share,
-  Trash2,
   X,
 } from "lucide-react"
 import * as React from "react"
@@ -65,8 +63,8 @@ export interface ScheduledPostProps {
 const ScheduledPost = React.memo(function ScheduledPost({
   post,
   isEditing = false,
-  onEdit,
-  onDelete,
+  onEdit: _onEdit,
+  onDelete: _onDelete,
   onSave,
   onCancel,
   onPlatformChange,
@@ -261,17 +259,6 @@ const ScheduledPost = React.memo(function ScheduledPost({
                     <DropdownMenuItem onClick={() => onPreview?.(post.id)}>
                       <Eye className="mr-2 h-4 w-4" />
                       Preview
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => onEdit?.(post.id)}>
-                      <Pencil className="mr-2 h-4 w-4" />
-                      Edit
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => onDelete?.(post.id)}
-                      className="text-destructive focus:text-destructive"
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Delete
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>

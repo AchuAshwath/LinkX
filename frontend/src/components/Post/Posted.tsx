@@ -4,10 +4,8 @@ import {
   Heart,
   MessageCircle,
   MoreHorizontal,
-  Pencil,
   Repeat2,
   Share,
-  Trash2,
   X,
 } from "lucide-react"
 import * as React from "react"
@@ -70,11 +68,11 @@ const Posted = React.memo(function Posted({
   onRepost,
   onComment,
   onShare,
-  onEdit,
+  onEdit: _onEdit,
   onSave,
   onCancel,
   onPreview,
-  onDelete,
+  onDelete: _onDelete,
   onPlatformChange,
 }: PostedProps) {
   const [isLiked, setIsLiked] = React.useState(post.isLiked ?? false)
@@ -228,17 +226,6 @@ const Posted = React.memo(function Posted({
                     <DropdownMenuItem onClick={() => onPreview?.(post.id)}>
                       <Eye className="mr-2 h-4 w-4" />
                       Preview
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => onEdit?.(post.id)}>
-                      <Pencil className="mr-2 h-4 w-4" />
-                      Edit
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => onDelete?.(post.id)}
-                      className="text-destructive focus:text-destructive"
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Delete
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
