@@ -5,7 +5,6 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
-  Code2,
   Copy,
   ExternalLink,
   Folder,
@@ -403,88 +402,79 @@ function ConnectedAccountsPage() {
               </div>
             </div>
 
-            {/* --- EXPANDABLE INLINE CLI DRAWER --- */}
+            {/* --- EXPANDABLE INLINE CLI SUB-ROWS (Ultra-Minimal Seamless Flow) --- */}
             {isCliExpanded && (
-              <div className="px-4 pb-4 sm:px-6 pt-1 bg-muted/20 border-t border-border/40 animate-in slide-in-from-top-2 duration-200">
-                <div className="p-3 rounded-lg bg-background/80 border border-border/60 space-y-2.5">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                    <Code2 className="h-3.5 w-3.5 text-primary" />
-                    Terminal Automation Scripts
+              <div className="divide-y divide-border/40 border-t border-border/40 bg-muted/10 animate-in slide-in-from-top-1 duration-150">
+                {/* Command 1: Headed Login */}
+                <div className="flex items-center justify-between gap-4 py-2.5 px-4 sm:px-6 sm:pl-17 hover:bg-muted/15 transition-colors">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground shrink-0 font-medium">
+                      Login CLI
+                    </span>
+                    <code className="text-[11px] font-mono text-foreground/85 truncate select-all">
+                      {headedLoginCmd}
+                    </code>
                   </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-foreground shrink-0"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          copyText(headedLoginCmd, "cli-login", "Login command")
+                        }}
+                      >
+                        {copiedKey === "cli-login" ? (
+                          <Check className="h-3.5 w-3.5 text-emerald-500" />
+                        ) : (
+                          <Copy className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      Copy login script command
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {/* Command 1: Headed Login */}
-                    <div className="p-2.5 rounded-md bg-muted/50 border border-border/40 flex items-center justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <span className="text-[10px] text-muted-foreground font-semibold block uppercase tracking-wider mb-0.5">
-                          1. Headed Login
-                        </span>
-                        <code className="text-[11px] font-mono text-primary block truncate select-all">
-                          {headedLoginCmd}
-                        </code>
-                      </div>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              copyText(
-                                headedLoginCmd,
-                                "cli-login",
-                                "Login command",
-                              )
-                            }}
-                          >
-                            {copiedKey === "cli-login" ? (
-                              <Check className="h-3 w-3 text-emerald-500" />
-                            ) : (
-                              <Copy className="h-3 w-3" />
-                            )}
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="top">Copy command</TooltipContent>
-                      </Tooltip>
-                    </div>
-
-                    {/* Command 2: Verify Session */}
-                    <div className="p-2.5 rounded-md bg-muted/50 border border-border/40 flex items-center justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <span className="text-[10px] text-muted-foreground font-semibold block uppercase tracking-wider mb-0.5">
-                          2. Verify Session
-                        </span>
-                        <code className="text-[11px] font-mono text-primary block truncate select-all">
-                          {testSessionCmd}
-                        </code>
-                      </div>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              copyText(
-                                testSessionCmd,
-                                "cli-verify",
-                                "Verify command",
-                              )
-                            }}
-                          >
-                            {copiedKey === "cli-verify" ? (
-                              <Check className="h-3 w-3 text-emerald-500" />
-                            ) : (
-                              <Copy className="h-3 w-3" />
-                            )}
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="top">Copy command</TooltipContent>
-                      </Tooltip>
-                    </div>
+                {/* Command 2: Verify Session */}
+                <div className="flex items-center justify-between gap-4 py-2.5 px-4 sm:px-6 sm:pl-17 hover:bg-muted/15 transition-colors">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground shrink-0 font-medium">
+                      Verify CLI
+                    </span>
+                    <code className="text-[11px] font-mono text-foreground/85 truncate select-all">
+                      {testSessionCmd}
+                    </code>
                   </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-foreground shrink-0"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          copyText(
+                            testSessionCmd,
+                            "cli-verify",
+                            "Verify command",
+                          )
+                        }}
+                      >
+                        {copiedKey === "cli-verify" ? (
+                          <Check className="h-3.5 w-3.5 text-emerald-500" />
+                        ) : (
+                          <Copy className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      Copy test session script command
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
               </div>
             )}
