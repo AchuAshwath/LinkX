@@ -300,16 +300,26 @@ async def simulate_reading(mouse: EvasionMouse) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _is_valid_topic_text(
+    text: str,
+    heuristic: dict[str, Any],
+) -> bool:
+    """Validate topic text against heuristics."""
+    if heuristic.get("must_contain_newline", True) and "\n" not in text:
+        return False
+    prefix = heuristic.get("exclude_prefix", "@")
+    if prefix and text.startswith(prefix):
+        return False
+    exclude_texts = heuristic.get("exclude_texts", ["Show more", "Subscribe"])
+    return not any(ex in text for ex in exclude_texts)
+
+
 async def _extract_sidebar_links(
     sidebar: Any,
     link_selector: str,
     heuristic: dict[str, Any],
 ) -> tuple[list[tuple[str, bool]], dict[str, str]]:
     """Extract valid sidebar news links according to heuristics."""
-    must_contain_newline = heuristic.get("must_contain_newline", True)
-    exclude_texts = heuristic.get("exclude_texts", ["Show more", "Subscribe"])
-    exclude_prefix = heuristic.get("exclude_prefix", "@")
-
     all_links = await sidebar.locator(link_selector).all()
     news_urls: list[tuple[str, bool]] = []
     news_titles: dict[str, str] = {}
@@ -322,16 +332,11 @@ async def _extract_sidebar_links(
             identifier = url if url else testid
             is_href = bool(url)
 
-            is_valid = True
-            if must_contain_newline and "\n" not in text:
-                is_valid = False
-            if exclude_prefix and text.startswith(exclude_prefix):
-                is_valid = False
-            for ex in exclude_texts:
-                if ex in text:
-                    is_valid = False
-
-            if identifier and is_valid and identifier not in news_titles:
+            if (
+                identifier
+                and _is_valid_topic_text(text, heuristic)
+                and identifier not in news_titles
+            ):
                 news_urls.append((identifier, is_href))
                 news_titles[identifier] = text
         except Exception:
@@ -382,38 +387,43 @@ async def _scrape_topic_tweets(
     return conversations[:5]
 
 
-def _save_topic_record(
-    db_user_id: Any,
-    topic_url: str,
-    title_data: dict,
-    summary_text: str | None,
-    conversations: list[dict],
-    scraped_at: datetime,
-) -> None:
+@dataclass
+class TopicRecordPayload:
+    """Payload bundle for saving scraped topic records."""
+
+    db_user_id: Any
+    topic_url: str
+    title_data: dict[str, Any]
+    summary_text: str | None
+    conversations: list[dict[str, Any]]
+    scraped_at: datetime
+
+
+def _save_topic_record(payload: TopicRecordPayload) -> None:
     """Save scraped topic and tweets to database."""
-    if not db_user_id:
+    if not payload.db_user_id:
         logger.error("No default user found. Skipping DB save.")
         return
 
     with Session(engine) as session:
         db_topic_data = {
-            "user_id": db_user_id,
-            "topic_url": topic_url,
-            "topic_title": title_data["topic_title"],
-            "category": title_data.get("category"),
-            "post_count": parse_post_count(title_data.get("post_count")),
-            "summary": summary_text,
+            "user_id": payload.db_user_id,
+            "topic_url": payload.topic_url,
+            "topic_title": payload.title_data["topic_title"],
+            "category": payload.title_data.get("category"),
+            "post_count": parse_post_count(payload.title_data.get("post_count")),
+            "summary": payload.summary_text,
             "first_seen_at": parse_relative_time(
-                title_data.get("time_ago"), scraped_at
+                payload.title_data.get("time_ago"), payload.scraped_at
             ),
-            "last_seen_at": scraped_at,
-            "scraped_at": scraped_at,
+            "last_seen_at": payload.scraped_at,
+            "scraped_at": payload.scraped_at,
         }
 
         db_topic = crud.upsert_trending_topic(session=session, topic_data=db_topic_data)
 
         db_tweets_data = []
-        for conv in conversations:
+        for conv in payload.conversations:
             metrics = parse_engagement_metrics(conv["raw"])
             db_tweets_data.append(
                 {
@@ -599,12 +609,14 @@ async def scrape_trending_topics() -> ScrapeResult:
 
                 try:
                     _save_topic_record(
-                        db_user_id,
-                        page.url,
-                        title_data,
-                        summary_text,
-                        conversations,
-                        scraped_at,
+                        TopicRecordPayload(
+                            db_user_id=db_user_id,
+                            topic_url=page.url,
+                            title_data=title_data,
+                            summary_text=summary_text,
+                            conversations=conversations,
+                            scraped_at=scraped_at,
+                        )
                     )
                 except Exception as e:
                     logger.error(f"DB save error: {e}")

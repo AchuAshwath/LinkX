@@ -48,6 +48,45 @@ export interface ScheduledPostProps {
   onMore?: (postId: string) => void
 }
 
+interface ScheduledBannerProps {
+  isEditing: boolean
+  editedScheduledAt: Date
+  onDateChange: (date: Date) => void
+  scheduledDateTime: string
+}
+
+function ScheduledBanner({
+  isEditing,
+  editedScheduledAt,
+  onDateChange,
+  scheduledDateTime,
+}: ScheduledBannerProps) {
+  if (isEditing) {
+    return (
+      <div className="px-4 py-2 border-b bg-muted/30 flex items-center gap-2">
+        <Calendar className="h-3 w-3 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground">Schedule for:</span>
+        <PostSchedulePicker
+          initialValue={editedScheduledAt}
+          onChangeDateTime={(date) => {
+            if (date) onDateChange(date)
+          }}
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div className="px-4 py-2 border-b bg-muted/30 flex items-center gap-2 text-xs text-muted-foreground">
+      <Calendar className="h-3 w-3" />
+      <span>
+        Scheduled for{" "}
+        <span className="font-medium text-foreground">{scheduledDateTime}</span>
+      </span>
+    </div>
+  )
+}
+
 const ScheduledPost = React.memo(function ScheduledPost({
   post,
   isEditing = false,
@@ -141,30 +180,12 @@ const ScheduledPost = React.memo(function ScheduledPost({
       }`}
       aria-label={`Scheduled post by ${post.author.name}`}
     >
-      <div className="px-4 py-2 border-b bg-muted/30">
-        {isEditing ? (
-          <div className="flex items-center gap-2">
-            <Calendar className="h-3 w-3 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">Schedule for:</span>
-            <PostSchedulePicker
-              initialValue={editedScheduledAt}
-              onChangeDateTime={(date) => {
-                if (date) setEditedScheduledAt(date)
-              }}
-            />
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Calendar className="h-3 w-3" />
-            <span>
-              Scheduled for{" "}
-              <span className="font-medium text-foreground">
-                {scheduledDateTime}
-              </span>
-            </span>
-          </div>
-        )}
-      </div>
+      <ScheduledBanner
+        isEditing={isEditing}
+        editedScheduledAt={editedScheduledAt}
+        onDateChange={setEditedScheduledAt}
+        scheduledDateTime={scheduledDateTime}
+      />
 
       <div className="p-3 sm:p-4">
         <div className="flex gap-2 sm:gap-3">
