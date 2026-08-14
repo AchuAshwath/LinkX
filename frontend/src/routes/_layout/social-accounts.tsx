@@ -335,38 +335,41 @@ function ConnectedAccountsPage() {
                     </Tooltip>
                   </div>
 
-                  {/* Session Path */}
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
-                    <Folder className="h-3 w-3 shrink-0 text-muted-foreground/70" />
-                    <span className="font-mono text-[11px] text-foreground/75 truncate max-w-xs sm:max-w-sm">
-                      {sessionPath}
-                    </span>
+                  {/* Session Path with embedded copy button */}
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-muted/60 border border-border/50 font-mono text-[11px] text-foreground/80 group/path">
+                      <Folder className="h-3 w-3 text-muted-foreground/70 shrink-0" />
+                      <span className="truncate max-w-[180px] sm:max-w-[260px] select-all">
+                        {sessionPath}
+                      </span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="text-muted-foreground hover:text-foreground p-0.5 rounded transition-colors ml-0.5 focus:outline-none"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              copyText(sessionPath, "path", "Session path")
+                            }}
+                          >
+                            {copiedKey === "path" ? (
+                              <Check className="h-3 w-3 text-emerald-500" />
+                            ) : (
+                              <Copy className="h-3 w-3" />
+                            )}
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          Copy session path
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
                   </div>
                 </div>
               </button>
 
               {/* Right Action Hub */}
               <div className="flex items-center gap-2 shrink-0 sm:self-center">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                      onClick={() =>
-                        copyText(sessionPath, "path", "Session path")
-                      }
-                    >
-                      {copiedKey === "path" ? (
-                        <Check className="h-3.5 w-3.5 text-emerald-500" />
-                      ) : (
-                        <Copy className="h-3.5 w-3.5" />
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">Copy session path</TooltipContent>
-                </Tooltip>
-
                 {/* Launch / Re-login */}
                 <Button
                   onClick={() => connectXMutation.mutate(true)}
