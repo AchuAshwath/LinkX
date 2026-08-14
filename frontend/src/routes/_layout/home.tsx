@@ -63,10 +63,7 @@ function TimelinePage() {
 
   // Delete confirmation dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
-  const [postToDelete, setPostToDelete] = React.useState<{
-    id: string
-    type: "draft" | "scheduled" | "posted"
-  } | null>(null)
+  const [postToDelete, setPostToDelete] = React.useState<string | null>(null)
 
   // Preview dialog state
   const [previewDialogOpen, setPreviewDialogOpen] = React.useState(false)
@@ -152,13 +149,11 @@ function TimelinePage() {
       await PostsService.deleteExistingPost({ postId })
     },
     onSuccess: () => {
-      if (postToDelete) {
-        showSuccessToast("Post deleted successfully")
-        setDeleteDialogOpen(false)
-        setPostToDelete(null)
-        // Invalidate and refetch posts
-        queryClient.invalidateQueries({ queryKey: ["posts"] })
-      }
+      showSuccessToast("Post deleted successfully")
+      setDeleteDialogOpen(false)
+      setPostToDelete(null)
+      // Invalidate and refetch posts
+      queryClient.invalidateQueries({ queryKey: ["posts"] })
     },
     onError: (error) => {
       console.error("Failed to delete post", error)
@@ -198,17 +193,14 @@ function TimelinePage() {
     },
   })
 
-  const handleDelete = (
-    postId: string,
-    type: "draft" | "scheduled" | "posted",
-  ) => {
-    setPostToDelete({ id: postId, type })
+  const handleDelete = (postId: string) => {
+    setPostToDelete(postId)
     setDeleteDialogOpen(true)
   }
 
   const confirmDelete = () => {
     if (postToDelete) {
-      deleteMutation.mutate(postToDelete.id)
+      deleteMutation.mutate(postToDelete)
     }
   }
 
@@ -305,8 +297,8 @@ function TimelinePage() {
     }
   }
 
-  const handleTopicClick = (_topicId: string, hashtag: string) => {
-    console.log(`View topic ${hashtag}`)
+  const handleTopicClick = (topic: TrendingTopic) => {
+    console.log(`View topic ${topic.hashtag}`)
   }
 
   const handleClearFilters = () => {
@@ -347,7 +339,7 @@ function TimelinePage() {
             post={post}
             isEditing={isEditing}
             onEdit={(id) => handlePostEdit(id)}
-            onDelete={(id) => handleDelete(id, "scheduled")}
+            onDelete={(id) => handleDelete(id)}
             onSave={handleSaveScheduled}
             onCancel={handleCancel}
             onPlatformChange={handlePlatformChange}
@@ -364,7 +356,7 @@ function TimelinePage() {
             onSave={handleSavePosted}
             onCancel={handleCancel}
             onPreview={(id) => handlePreview(id)}
-            onDelete={(id) => handleDelete(id, "posted")}
+            onDelete={(id) => handleDelete(id)}
             onPlatformChange={handlePlatformChange}
           />
         )
