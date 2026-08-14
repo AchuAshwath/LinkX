@@ -138,7 +138,7 @@ def linkedin_authorize(
 
 
 def _frontend_redirect(
-    *, path: str = "/accounts", linkedin: str = "error"
+    *, path: str = "/social-accounts", linkedin: str = "error"
 ) -> RedirectResponse:
     base = settings.FRONTEND_HOST.rstrip("/")
     url = f"{base}{path}?linkedin={linkedin}"
