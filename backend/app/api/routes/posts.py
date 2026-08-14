@@ -1,4 +1,4 @@
-"""Posts API routes with persona-scoped access and LinkedIn integration."""
+"""Posts API routes with direct user ownership and platform publishing."""
 
 from __future__ import annotations
 
@@ -21,7 +21,6 @@ from app.models import (
     PostUpdate,
     User,
 )
-from app.services.access import get_persona_role, has_min_role
 from app.services.post_state_machine import validate_transition
 from app.services.publishing import PublishFailure, publish_post
 
@@ -44,10 +43,10 @@ def _post_to_public(*, post: Post, author: PostAuthor | None = None) -> PostPubl
     return PostPublic(
         id=post.id,
         owner_id=post.owner_id,
-        persona_id=post.persona_id,
         content=post.content,
         image_url=post.image_url,
         platform=post.platform,
+        method=post.method,
         status=post.status,
         scheduled_at=post.scheduled_at,
         published_at=post.published_at,
@@ -67,23 +66,10 @@ def _post_to_public(*, post: Post, author: PostAuthor | None = None) -> PostPubl
     )
 
 
-def _require_persona_role(
-    *,
-    session: Session,
-    user_id: uuid.UUID,
-    persona_id: uuid.UUID,
-) -> str:
-    role = get_persona_role(
-        session=session,
-        persona_id=persona_id,
-        user_id=user_id,
-    )
-    if not role:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions",
-        )
-    return role
+def _serialize_post_with_author(*, session: Session, post: Post) -> PostPublic:
+    user = _get_user_details(session=session, user_id=post.owner_id)
+    author = _build_post_author(user=user) if user else None
+    return _post_to_public(post=post, author=author)
 
 
 def _raise_publish_failure(*, failure: PublishFailure) -> None:
@@ -105,22 +91,17 @@ def _set_post_status(*, session: Session, post: Post, status_value: str) -> Post
 
 @router.get("", response_model=PostsPublic)
 def read_posts(
+    *,
     session: SessionDep,
     current_user: CurrentUser,
-    persona_id: uuid.UUID = Query(),
     skip: int = 0,
     limit: int = 100,
     post_status: str | None = Query(default=None, alias="status"),
 ) -> Any:
-    _require_persona_role(
-        session=session,
-        user_id=current_user.id,
-        persona_id=persona_id,
-    )
-
+    """Read all posts owned by current user."""
     posts, count = get_posts(
         session=session,
-        persona_id=persona_id,
+        owner_id=current_user.id,
         status=post_status,
         skip=skip,
         limit=limit,
@@ -142,25 +123,11 @@ async def create_new_post(
     current_user: CurrentUser,
     post_in: PostCreate,
 ) -> Any:
-    role = _require_persona_role(
-        session=session,
-        user_id=current_user.id,
-        persona_id=post_in.persona_id,
-    )
-
+    """Create a new post for current user."""
     if post_in.status == "publishing":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Use publish action to enter publishing state",
-        )
-
-    if post_in.status != "draft" and not has_min_role(
-        role=role,
-        minimum="admin",
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Members can create and edit drafts only",
         )
 
     create_payload = post_in
@@ -180,15 +147,22 @@ async def create_new_post(
         failure = await publish_post(
             session=session,
             post=post,
-            user_id=current_user.id,
         )
         if failure:
             _raise_publish_failure(failure=failure)
 
-    user = _get_user_details(session=session, user_id=current_user.id)
-    author = _build_post_author(user=user) if user else None
+    return _serialize_post_with_author(session=session, post=post)
 
-    return _post_to_public(post=post, author=author)
+
+def _get_user_post_or_404(
+    *, session: Session, post_id: uuid.UUID, user_id: uuid.UUID
+) -> Post:
+    post = get_post(session=session, post_id=post_id)
+    if not post or post.owner_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        )
+    return post
 
 
 @router.get("/{post_id}", response_model=PostPublic)
@@ -198,28 +172,11 @@ def read_post(
     current_user: CurrentUser,
     post_id: uuid.UUID,
 ) -> Any:
-    post = get_post(session=session, post_id=post_id)
-
-    if not post:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
-        )
-
-    if post.persona_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
-        )
-
-    _require_persona_role(
-        session=session,
-        user_id=current_user.id,
-        persona_id=post.persona_id,
+    """Read a specific post owned by current user."""
+    post = _get_user_post_or_404(
+        session=session, post_id=post_id, user_id=current_user.id
     )
-
-    user = _get_user_details(session=session, user_id=post.owner_id)
-    author = _build_post_author(user=user) if user else None
-
-    return _post_to_public(post=post, author=author)
+    return _serialize_post_with_author(session=session, post=post)
 
 
 @router.patch("/{post_id}", response_model=PostPublic)
@@ -230,37 +187,12 @@ async def update_existing_post(
     post_id: uuid.UUID,
     post_in: PostUpdate,
 ) -> Any:
-    post = get_post(session=session, post_id=post_id)
-
-    if not post:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
-        )
-
-    if post.persona_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
-        )
-
-    role = _require_persona_role(
-        session=session,
-        user_id=current_user.id,
-        persona_id=post.persona_id,
+    """Update a post owned by current user."""
+    post = _get_user_post_or_404(
+        session=session, post_id=post_id, user_id=current_user.id
     )
 
     requested_status = post_in.status
-    if (
-        requested_status
-        and requested_status != "draft"
-        and not has_min_role(
-            role=role,
-            minimum="admin",
-        )
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Members can create and edit drafts only",
-        )
 
     if requested_status == "publishing":
         raise HTTPException(
@@ -286,7 +218,6 @@ async def update_existing_post(
             failure = await publish_post(
                 session=session,
                 post=post,
-                user_id=current_user.id,
             )
             if failure:
                 _raise_publish_failure(failure=failure)
@@ -300,10 +231,7 @@ async def update_existing_post(
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc))
 
-    user = _get_user_details(session=session, user_id=post.owner_id)
-    author = _build_post_author(user=user) if user else None
-
-    return _post_to_public(post=post, author=author)
+    return _serialize_post_with_author(session=session, post=post)
 
 
 @router.delete("/{post_id}", response_model=Message)
@@ -313,29 +241,8 @@ def delete_existing_post(
     current_user: CurrentUser,
     post_id: uuid.UUID,
 ) -> Any:
-    post = get_post(session=session, post_id=post_id)
-
-    if not post:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
-        )
-
-    if post.persona_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
-        )
-
-    role = _require_persona_role(
-        session=session,
-        user_id=current_user.id,
-        persona_id=post.persona_id,
-    )
-    if not has_min_role(role=role, minimum="admin"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Members can create and edit drafts only",
-        )
-
+    """Delete a post owned by current user."""
+    _get_user_post_or_404(session=session, post_id=post_id, user_id=current_user.id)
     delete_post(session=session, post_id=post_id)
     return Message(message="Post deleted successfully")
 
@@ -347,29 +254,15 @@ async def publish_existing_post(
     current_user: CurrentUser,
     post_id: uuid.UUID,
 ) -> Any:
-    post = get_post(session=session, post_id=post_id)
-    if not post or post.persona_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Post not found",
-        )
-
-    role = _require_persona_role(
-        session=session,
-        user_id=current_user.id,
-        persona_id=post.persona_id,
+    """Publish a post immediately."""
+    post = _get_user_post_or_404(
+        session=session, post_id=post_id, user_id=current_user.id
     )
-    if not has_min_role(role=role, minimum="admin"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Members can create and edit drafts only",
-        )
 
     try:
         failure = await publish_post(
             session=session,
             post=post,
-            user_id=current_user.id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -377,9 +270,7 @@ async def publish_existing_post(
     if failure:
         _raise_publish_failure(failure=failure)
 
-    user = _get_user_details(session=session, user_id=post.owner_id)
-    author = _build_post_author(user=user) if user else None
-    return _post_to_public(post=post, author=author)
+    return _serialize_post_with_author(session=session, post=post)
 
 
 @router.post("/{post_id}/retry", response_model=PostPublic)
@@ -389,23 +280,10 @@ async def retry_failed_post(
     current_user: CurrentUser,
     post_id: uuid.UUID,
 ) -> Any:
-    post = get_post(session=session, post_id=post_id)
-    if not post or post.persona_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Post not found",
-        )
-
-    role = _require_persona_role(
-        session=session,
-        user_id=current_user.id,
-        persona_id=post.persona_id,
+    """Retry a failed post."""
+    post = _get_user_post_or_404(
+        session=session, post_id=post_id, user_id=current_user.id
     )
-    if not has_min_role(role=role, minimum="admin"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Members cannot retry posts",
-        )
 
     if post.status != "failed":
         raise HTTPException(
@@ -432,11 +310,8 @@ async def retry_failed_post(
     failure = await publish_post(
         session=session,
         post=post,
-        user_id=current_user.id,
     )
     if failure:
         _raise_publish_failure(failure=failure)
 
-    user = _get_user_details(session=session, user_id=post.owner_id)
-    author = _build_post_author(user=user) if user else None
-    return _post_to_public(post=post, author=author)
+    return _serialize_post_with_author(session=session, post=post)

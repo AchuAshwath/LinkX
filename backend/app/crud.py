@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.dialects.postgresql import insert
@@ -90,7 +90,7 @@ def create_post(*, session: Session, post_in: PostCreate, owner_id: uuid.UUID) -
 
     db_post = Post.model_validate(
         post_in,
-        update={"owner_id": owner_id, "persona_id": post_in.persona_id},
+        update={"owner_id": owner_id},
     )
     session.add(db_post)
     session.commit()
@@ -107,7 +107,6 @@ def get_posts(
     *,
     session: Session,
     owner_id: uuid.UUID | None = None,
-    persona_id: uuid.UUID | None = None,
     status: str | None = None,
     skip: int = 0,
     limit: int = 100,
@@ -119,10 +118,6 @@ def get_posts(
     if owner_id:
         statement = statement.where(Post.owner_id == owner_id)
         count_statement = count_statement.where(Post.owner_id == owner_id)
-
-    if persona_id:
-        statement = statement.where(Post.persona_id == persona_id)
-        count_statement = count_statement.where(Post.persona_id == persona_id)
 
     if status:
         statement = statement.where(Post.status == status)
@@ -151,10 +146,10 @@ def update_post(*, session: Session, db_post: Post, post_in: PostUpdate) -> Post
         elif new_status == "published":
             # Set published_at if not already set
             if db_post.published_at is None:
-                update_data["published_at"] = datetime.utcnow()
+                update_data["published_at"] = datetime.now(timezone.utc)
 
     db_post.sqlmodel_update(update_data)
-    db_post.updated_at = datetime.utcnow()
+    db_post.updated_at = datetime.now(timezone.utc)
     session.add(db_post)
     session.commit()
     session.refresh(db_post)

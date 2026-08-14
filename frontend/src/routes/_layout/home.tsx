@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { Home as HomeIcon, Loader2 } from "lucide-react"
 import * as React from "react"
-import { OpenAPI, PostsService } from "@/client"
+import { PostsService } from "@/client"
 import type { Platform } from "@/components/Common/PlatformSelector"
 import type { PostedData } from "@/components/Post/Posted"
 import { Posted } from "@/components/Post/Posted"
@@ -31,7 +31,6 @@ import {
 import { LoadingButton } from "@/components/ui/loading-button"
 import useAuth from "@/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
-import { usePersona } from "@/hooks/usePersona"
 import { transformToPostedPost, transformToScheduledPost } from "@/utils"
 
 // Union type for timeline posts
@@ -53,10 +52,7 @@ export const Route = createFileRoute("/_layout/home")({
 function TimelinePage() {
   const queryClient = useQueryClient()
   const { user } = useAuth()
-  const { selectedPersonaId } = usePersona()
-  const [personaRole, setPersonaRole] = React.useState<
-    "owner" | "admin" | "member" | null
-  >(null)
+  const canPublishOrSchedule = true
 
   // Filter state
   const [dateFilter, setDateFilter] = React.useState<string>("all")
@@ -80,65 +76,27 @@ function TimelinePage() {
 
   const { showSuccessToast, showErrorToast } = useCustomToast()
 
-  React.useEffect(() => {
-    const loadPersonaRole = async () => {
-      if (!selectedPersonaId || !OpenAPI.BASE) {
-        setPersonaRole(null)
-        return
-      }
-      try {
-        const res = await fetch(
-          `${OpenAPI.BASE}/api/v1/personas/${selectedPersonaId}/role`,
-          {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem("access_token") || ""}`,
-            },
-          },
-        )
-        if (!res.ok) {
-          setPersonaRole(null)
-          return
-        }
-        const data = (await res.json()) as {
-          role: "owner" | "admin" | "member"
-        }
-        setPersonaRole(data.role)
-      } catch {
-        setPersonaRole(null)
-      }
-    }
-    loadPersonaRole()
-  }, [selectedPersonaId])
-
-  const canPublishOrSchedule =
-    personaRole === "owner" || personaRole === "admin"
-
   // Fetch scheduled and published posts for timeline
   const { data: scheduledData, isLoading: isLoadingScheduled } = useQuery({
-    queryKey: ["posts", selectedPersonaId, "scheduled"],
+    queryKey: ["posts", "scheduled"],
     queryFn: async () => {
       return await PostsService.readPosts({
-        personaId: selectedPersonaId,
         status: "scheduled",
         skip: 0,
         limit: 100,
       })
     },
-    enabled: Boolean(selectedPersonaId),
   })
 
   const { data: publishedData, isLoading: isLoadingPublished } = useQuery({
-    queryKey: ["posts", selectedPersonaId, "published"],
+    queryKey: ["posts", "published"],
     queryFn: async () => {
       return await PostsService.readPosts({
-        personaId: selectedPersonaId,
         status: "published",
         skip: 0,
         limit: 100,
       })
     },
-    enabled: Boolean(selectedPersonaId),
   })
 
   // Transform API data to timeline posts
@@ -157,7 +115,7 @@ function TimelinePage() {
           image_url: p.image_url ?? null,
           created_at: p.created_at ?? new Date().toISOString(),
           scheduled_at: p.scheduled_at ?? null,
-          platform: p.platform ?? "linkedin",
+          platform: p.platform ?? "linkx",
         }),
         type: "scheduled" as const,
       }))
@@ -178,7 +136,7 @@ function TimelinePage() {
           likes: p.likes ?? 0,
           reposts: p.reposts ?? 0,
           comments: p.comments ?? 0,
-          platform: p.platform ?? "linkedin",
+          platform: p.platform ?? "linkx",
         }),
         type: "posted" as const,
       }))
@@ -296,16 +254,11 @@ function TimelinePage() {
     postId: string,
     data: { content: string; platform: Platform; scheduledAt: Date },
   ) => {
-    const platformForApi =
-      data.platform === "x" || data.platform === "all"
-        ? "linkedin"
-        : data.platform
     updateMutation.mutate({
       postId,
       data: {
-        persona_id: selectedPersonaId || undefined,
         content: data.content,
-        platform: platformForApi,
+        platform: data.platform,
         scheduled_at: data.scheduledAt.toISOString(),
       },
     })
@@ -315,16 +268,11 @@ function TimelinePage() {
     postId: string,
     data: { content: string; platform: Platform },
   ) => {
-    const platformForApi =
-      data.platform === "x" || data.platform === "all"
-        ? "linkedin"
-        : data.platform
     updateMutation.mutate({
       postId,
       data: {
-        persona_id: selectedPersonaId || undefined,
         content: data.content,
-        platform: platformForApi,
+        platform: data.platform,
       },
     })
   }
@@ -334,12 +282,9 @@ function TimelinePage() {
   }
 
   const handlePlatformChange = (postId: string, platform: Platform) => {
-    // Only LinkedIn is enabled; coerce "x" / "all" to "linkedin" for API
-    const platformForApi =
-      platform === "x" || platform === "all" ? "linkedin" : platform
     updateMutation.mutate({
       postId,
-      data: { platform: platformForApi },
+      data: { platform },
     })
   }
 
@@ -417,7 +362,7 @@ function TimelinePage() {
             post={post}
             isEditing={isEditing}
             onEdit={(id) => handleScheduledAction("edit", id)}
-            onDelete={(id) => handleScheduledAction("cancel", id)}
+            onDelete={(id) => handleScheduledAction("delete", id)}
             onSave={handleSaveScheduled}
             onCancel={handleCancel}
             onPlatformChange={handlePlatformChange}
@@ -462,11 +407,6 @@ function TimelinePage() {
             onSubmit={handlePostCreated}
             canPublishOrSchedule={canPublishOrSchedule}
           />
-          {!selectedPersonaId && (
-            <p className="mt-2 text-sm text-muted-foreground">
-              Select a persona in Social Accounts to create and view posts.
-            </p>
-          )}
         </div>
 
         {/* Timeline Posts - Scrollable */}

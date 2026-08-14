@@ -62,7 +62,7 @@ def read_scheduler_status(*, session: SessionDep) -> Any:
         "recent_failures": [
             {
                 "id": str(p.id),
-                "persona_id": str(p.persona_id) if p.persona_id else None,
+                "owner_id": str(p.owner_id) if p.owner_id else None,
                 "platform": p.platform,
                 "retry_count": p.retry_count,
                 "error_code": p.error_code,

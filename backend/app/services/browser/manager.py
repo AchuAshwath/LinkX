@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import subprocess
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any
 
 from rebrowser_playwright.async_api import BrowserContext, async_playwright
 
@@ -24,14 +27,25 @@ logger = logging.getLogger(__name__)
 class BrowserManager:
     """Manages browser sessions and Playwright contexts for automation."""
 
-    def __init__(self, brand_id: str = "default"):
-        self.brand_id = brand_id
+    def __init__(
+        self,
+        brand_id: str | None = None,
+        *,
+        user_id: str | None = None,
+    ) -> None:
+        resolved_id = user_id or brand_id or "default"
+        self.user_id = resolved_id
+        self.brand_id = resolved_id
+
+    def get_session_dir_path(self, platform_name: str) -> Path:
+        """Return the directory path for this user and platform."""
+        return get_session_dir(self.brand_id, platform_name)
 
     def session_exists(self, platform_name: str) -> bool:
         """Check if a persistent session directory exists and contains cookies."""
         if platform_name not in PLATFORMS:
             raise ValueError(f"Unknown platform: {platform_name}")
-        session_dir = get_session_dir(self.brand_id, platform_name)
+        session_dir = self.get_session_dir_path(platform_name)
         if not session_dir.exists():
             return False
 
@@ -40,6 +54,46 @@ class BrowserManager:
         cookies_path = session_dir / "Default" / "Cookies"
         network_cookies_path = session_dir / "Default" / "Network" / "Cookies"
         return cookies_path.exists() or network_cookies_path.exists()
+
+    async def verify_session(self, platform_name: str = "x") -> dict[str, Any]:
+        """Verify that the browser session is valid and authenticated."""
+        if not self.session_exists(platform_name):
+            return {
+                "connected": False,
+                "authenticated": False,
+                "message": "No cookie session found. Please launch headed browser login.",
+            }
+
+        config = PLATFORMS.get(platform_name)
+        if not config:
+            raise ValueError(f"Unknown platform: {platform_name}")
+
+        try:
+            async with self.get_context(platform_name, headless=True) as context:
+                page = context.pages[0] if context.pages else await context.new_page()
+                for p in context.pages[1:]:
+                    await p.close()
+                await page.goto(
+                    config.url, wait_until="domcontentloaded", timeout=15000
+                )
+                await asyncio.sleep(3)
+
+                element = await page.query_selector(config.sentinel_selector)
+                is_logged_in = bool(element and await element.is_visible())
+                return {
+                    "connected": True,
+                    "authenticated": is_logged_in,
+                    "url": page.url,
+                    "message": "Session authenticated! Home feed verified."
+                    if is_logged_in
+                    else "Session cookies expired or login required.",
+                }
+        except Exception as e:
+            return {
+                "connected": True,
+                "authenticated": False,
+                "message": f"Verification error: {e}",
+            }
 
     def start_login_subprocess(self, platform_name: str, force: bool = False) -> None:
         """Launch a vanilla Chrome window for manual user login.

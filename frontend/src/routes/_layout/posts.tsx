@@ -12,7 +12,7 @@ import {
   X,
 } from "lucide-react"
 import * as React from "react"
-import { OpenAPI, PostsService } from "@/client"
+import { PostsService } from "@/client"
 import type { Platform } from "@/components/Common/PlatformSelector"
 import type { DraftPostData } from "@/components/Post/DraftPost"
 import { DraftPost } from "@/components/Post/DraftPost"
@@ -46,7 +46,6 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import useCustomToast from "@/hooks/useCustomToast"
-import { usePersona } from "@/hooks/usePersona"
 import {
   handleError,
   transformToDraftPost,
@@ -67,7 +66,6 @@ export const Route = createFileRoute("/_layout/posts")({
 
 function PostsPage() {
   const queryClient = useQueryClient()
-  const { selectedPersonaId } = usePersona()
   const [activeTab, setActiveTab] = React.useState<
     "drafts" | "scheduled" | "posted"
   >("drafts")
@@ -90,44 +88,9 @@ function PostsPage() {
   )
   const [previewPostPlatform, setPreviewPostPlatform] =
     React.useState<Platform>("linkedin")
-  const [personaRole, setPersonaRole] = React.useState<
-    "owner" | "admin" | "member" | null
-  >(null)
 
   const { showSuccessToast, showErrorToast } = useCustomToast()
-
-  React.useEffect(() => {
-    const loadPersonaRole = async () => {
-      if (!selectedPersonaId) {
-        setPersonaRole(null)
-        return
-      }
-      try {
-        const res = await fetch(
-          `${OpenAPI.BASE}/api/v1/personas/${selectedPersonaId}/role`,
-          {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem("access_token") || ""}`,
-            },
-          },
-        )
-        if (!res.ok) {
-          setPersonaRole(null)
-          return
-        }
-        const data = (await res.json()) as {
-          role: "owner" | "admin" | "member"
-        }
-        setPersonaRole(data.role)
-      } catch {
-        setPersonaRole(null)
-      }
-    }
-    loadPersonaRole()
-  }, [selectedPersonaId])
-
-  const canRetry = personaRole === "owner" || personaRole === "admin"
+  const canRetry = true
 
   // Map activeTab to API status filter
   const statusFilter = React.useMemo(() => {
@@ -143,44 +106,38 @@ function PostsPage() {
     isLoading: isLoadingPosts,
     error: postsError,
   } = useQuery({
-    queryKey: ["posts", selectedPersonaId, statusFilter],
+    queryKey: ["posts", statusFilter],
     queryFn: async () => {
       return await PostsService.readPosts({
-        personaId: selectedPersonaId,
         status: statusFilter,
         skip: 0,
         limit: 100,
       })
     },
-    enabled: Boolean(selectedPersonaId),
     staleTime: 30000, // Consider data fresh for 30 seconds
   })
 
   const { data: publishingData } = useQuery({
-    queryKey: ["posts", selectedPersonaId, "publishing"],
+    queryKey: ["posts", "publishing"],
     queryFn: async () => {
       return await PostsService.readPosts({
-        personaId: selectedPersonaId,
         status: "publishing",
         skip: 0,
         limit: 20,
       })
     },
-    enabled: Boolean(selectedPersonaId),
     staleTime: 15000,
   })
 
   const { data: failedData } = useQuery({
-    queryKey: ["posts", selectedPersonaId, "failed"],
+    queryKey: ["posts", "failed"],
     queryFn: async () => {
       return await PostsService.readPosts({
-        personaId: selectedPersonaId,
         status: "failed",
         skip: 0,
         limit: 20,
       })
     },
-    enabled: Boolean(selectedPersonaId),
     staleTime: 15000,
   })
 
@@ -201,7 +158,7 @@ function PostsPage() {
           content: p.content,
           image_url: p.image_url ?? null,
           created_at: p.created_at ?? new Date().toISOString(),
-          platform: p.platform ?? "linkedin",
+          platform: p.platform ?? "linkx",
         })
       })
   }, [postsData, activeTab])
@@ -223,7 +180,7 @@ function PostsPage() {
           image_url: p.image_url ?? null,
           created_at: p.created_at ?? new Date().toISOString(),
           scheduled_at: p.scheduled_at ?? null,
-          platform: p.platform ?? "linkedin",
+          platform: p.platform ?? "linkx",
         })
       })
   }, [postsData, activeTab])
@@ -247,7 +204,7 @@ function PostsPage() {
           likes: p.likes ?? 0,
           reposts: p.reposts ?? 0,
           comments: p.comments ?? 0,
-          platform: p.platform ?? "linkedin",
+          platform: p.platform ?? "linkx",
         })
       })
   }, [postsData, activeTab])
@@ -373,16 +330,11 @@ function PostsPage() {
     postId: string,
     data: { content: string; platform: Platform },
   ) => {
-    const platformForApi =
-      data.platform === "x" || data.platform === "all"
-        ? "linkedin"
-        : data.platform
     updateMutation.mutate({
       postId,
       data: {
-        persona_id: selectedPersonaId || undefined,
         content: data.content,
-        platform: platformForApi,
+        platform: data.platform,
       },
     })
   }
@@ -391,16 +343,11 @@ function PostsPage() {
     postId: string,
     data: { content: string; platform: Platform; scheduledAt: Date },
   ) => {
-    const platformForApi =
-      data.platform === "x" || data.platform === "all"
-        ? "linkedin"
-        : data.platform
     updateMutation.mutate({
       postId,
       data: {
-        persona_id: selectedPersonaId || undefined,
         content: data.content,
-        platform: platformForApi,
+        platform: data.platform,
         scheduled_at: data.scheduledAt.toISOString(),
       },
     })
@@ -410,16 +357,11 @@ function PostsPage() {
     postId: string,
     data: { content: string; platform: Platform },
   ) => {
-    const platformForApi =
-      data.platform === "x" || data.platform === "all"
-        ? "linkedin"
-        : data.platform
     updateMutation.mutate({
       postId,
       data: {
-        persona_id: selectedPersonaId || undefined,
         content: data.content,
-        platform: platformForApi,
+        platform: data.platform,
       },
     })
   }
@@ -429,12 +371,9 @@ function PostsPage() {
   }
 
   const handlePlatformChange = (postId: string, platform: Platform) => {
-    // Only LinkedIn is enabled; coerce "x" / "all" to "linkedin" for API
-    const platformForApi =
-      platform === "x" || platform === "all" ? "linkedin" : platform
     updateMutation.mutate({
       postId,
-      data: { platform: platformForApi },
+      data: { platform },
     })
   }
 
@@ -585,20 +524,7 @@ function PostsPage() {
           <div className="w-full">
             {/* Drafts Tab */}
             <TabsContent value="drafts" className="mt-0">
-              {!selectedPersonaId ? (
-                <div className="flex flex-col items-center justify-center text-center py-16 px-4">
-                  <div className="rounded-full bg-muted/50 p-6 mb-4">
-                    <FileText className="h-10 w-10 text-muted-foreground" />
-                  </div>
-                  <h3 className="text-xl font-semibold mb-1">
-                    Select a persona
-                  </h3>
-                  <p className="text-muted-foreground text-sm max-w-sm">
-                    Choose a persona in Social Accounts to manage drafts,
-                    scheduled, and published posts.
-                  </p>
-                </div>
-              ) : isLoadingPosts ? (
+              {isLoadingPosts ? (
                 <div className="flex flex-col items-center justify-center py-16">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   <p className="mt-4 text-sm text-muted-foreground">

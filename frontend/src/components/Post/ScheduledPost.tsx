@@ -1,17 +1,7 @@
-import {
-  Calendar,
-  Check,
-  Eye,
-  MoreHorizontal,
-  Pencil,
-  Trash2,
-  X,
-} from "lucide-react"
+import { Calendar, Check, Eye, MoreHorizontal, X } from "lucide-react"
 import * as React from "react"
-import {
-  type Platform,
-  PlatformSelector,
-} from "@/components/Common/PlatformSelector"
+import type { Platform } from "@/components/Common/PlatformSelector"
+import { PostActionFooter } from "@/components/Post/PostActionFooter"
 import { PostSchedulePicker } from "@/components/PostInput/PostSchedulePicker"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -58,18 +48,61 @@ export interface ScheduledPostProps {
   onMore?: (postId: string) => void
 }
 
+interface ScheduledBannerProps {
+  isEditing: boolean
+  editedScheduledAt: Date
+  onDateChange: (date: Date) => void
+  scheduledDateTime: string
+}
+
+function ScheduledBanner({
+  isEditing,
+  editedScheduledAt,
+  onDateChange,
+  scheduledDateTime,
+}: ScheduledBannerProps) {
+  if (isEditing) {
+    return (
+      <div className="px-4 py-2 border-b bg-muted/30 flex items-center gap-2">
+        <Calendar className="h-3 w-3 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground">Schedule for:</span>
+        <PostSchedulePicker
+          initialValue={editedScheduledAt}
+          onChangeDateTime={(date) => {
+            if (date) onDateChange(date)
+          }}
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div className="px-4 py-2 border-b bg-muted/30 flex items-center gap-2 text-xs text-muted-foreground">
+      <Calendar className="h-3 w-3" />
+      <span>
+        Scheduled for{" "}
+        <span className="font-medium text-foreground">{scheduledDateTime}</span>
+      </span>
+    </div>
+  )
+}
+
 const ScheduledPost = React.memo(function ScheduledPost({
   post,
   isEditing = false,
-  onEdit,
-  onDelete,
+  onEdit: _onEdit,
+  onDelete: _onDelete,
   onSave,
   onCancel,
   onPlatformChange,
   onPreview,
 }: ScheduledPostProps) {
+  const [isLiked, setIsLiked] = React.useState(false)
+  const [likeCount, setLikeCount] = React.useState(0)
+  const [isReposted, setIsReposted] = React.useState(false)
+  const [repostCount, setRepostCount] = React.useState(0)
   const [platform, setPlatform] = React.useState<Platform>(
-    post.platform || "linkedin",
+    post.platform || "linkx",
   )
   const [editedContent, setEditedContent] = React.useState(post.content)
   const [editedScheduledAt, setEditedScheduledAt] = React.useState<Date>(
@@ -81,7 +114,7 @@ const ScheduledPost = React.memo(function ScheduledPost({
 
   React.useEffect(() => {
     setEditedContent(post.content)
-    setPlatform(post.platform || "linkedin")
+    setPlatform(post.platform || "linkx")
     setEditedScheduledAt(
       typeof post.scheduledAt === "string"
         ? new Date(post.scheduledAt)
@@ -121,7 +154,7 @@ const ScheduledPost = React.memo(function ScheduledPost({
 
   const handleCancel = React.useCallback(() => {
     setEditedContent(post.content)
-    setPlatform(post.platform || "linkedin")
+    setPlatform(post.platform || "linkx")
     setEditedScheduledAt(
       typeof post.scheduledAt === "string"
         ? new Date(post.scheduledAt)
@@ -130,6 +163,16 @@ const ScheduledPost = React.memo(function ScheduledPost({
     onCancel?.()
   }, [onCancel, post.content, post.platform, post.scheduledAt])
 
+  const handleLike = React.useCallback(() => {
+    setIsLiked(!isLiked)
+    setLikeCount((prev) => (isLiked ? prev - 1 : prev + 1))
+  }, [isLiked])
+
+  const handleRepost = React.useCallback(() => {
+    setIsReposted(!isReposted)
+    setRepostCount((prev) => (isReposted ? prev - 1 : prev + 1))
+  }, [isReposted])
+
   return (
     <article
       className={`group border-b transition-colors ${
@@ -137,30 +180,12 @@ const ScheduledPost = React.memo(function ScheduledPost({
       }`}
       aria-label={`Scheduled post by ${post.author.name}`}
     >
-      <div className="px-4 py-2 border-b bg-muted/30">
-        {isEditing ? (
-          <div className="flex items-center gap-2">
-            <Calendar className="h-3 w-3 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">Schedule for:</span>
-            <PostSchedulePicker
-              initialValue={editedScheduledAt}
-              onChangeDateTime={(date) => {
-                if (date) setEditedScheduledAt(date)
-              }}
-            />
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Calendar className="h-3 w-3" />
-            <span>
-              Scheduled for{" "}
-              <span className="font-medium text-foreground">
-                {scheduledDateTime}
-              </span>
-            </span>
-          </div>
-        )}
-      </div>
+      <ScheduledBanner
+        isEditing={isEditing}
+        editedScheduledAt={editedScheduledAt}
+        onDateChange={setEditedScheduledAt}
+        scheduledDateTime={scheduledDateTime}
+      />
 
       <div className="p-3 sm:p-4">
         <div className="flex gap-2 sm:gap-3">
@@ -244,17 +269,6 @@ const ScheduledPost = React.memo(function ScheduledPost({
                       <Eye className="mr-2 h-4 w-4" />
                       Preview
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => onEdit?.(post.id)}>
-                      <Pencil className="mr-2 h-4 w-4" />
-                      Edit
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => onDelete?.(post.id)}
-                      className="text-destructive focus:text-destructive"
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Delete
-                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
@@ -288,13 +302,18 @@ const ScheduledPost = React.memo(function ScheduledPost({
               </div>
             ) : null}
 
-            <div className="flex items-center justify-end pt-2">
-              <PlatformSelector
-                value={platform}
-                onChange={handlePlatformChange}
-                size="sm"
-              />
-            </div>
+            <PostActionFooter
+              isEditing={isEditing}
+              platform={platform}
+              onPlatformChange={handlePlatformChange}
+              isLiked={isLiked}
+              likeCount={likeCount}
+              onLike={handleLike}
+              isReposted={isReposted}
+              repostCount={repostCount}
+              onRepost={handleRepost}
+              commentsCount={0}
+            />
           </div>
         </div>
       </div>

@@ -1,9 +1,7 @@
-import { Check, Eye, MoreHorizontal, Pencil, Trash2, X } from "lucide-react"
+import { Check, Eye, MoreHorizontal, X } from "lucide-react"
 import * as React from "react"
-import {
-  type Platform,
-  PlatformSelector,
-} from "@/components/Common/PlatformSelector"
+import type { Platform } from "@/components/Common/PlatformSelector"
+import { PostActionFooter } from "@/components/Post/PostActionFooter"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -25,7 +23,7 @@ export interface DraftPostData {
   content: string
   imageUrl?: string
   createdAt: Date | string
-  relativeDate?: string // e.g., "1 day ago"
+  relativeDate?: string
   platform: Platform
 }
 
@@ -47,30 +45,31 @@ export interface DraftPostProps {
 export function DraftPost({
   post,
   isEditing = false,
-  onEdit,
-  onDelete,
+  onEdit: _onEdit,
+  onDelete: _onDelete,
   onSave,
   onCancel,
   onPlatformChange,
   onPreview,
 }: DraftPostProps) {
+  const [isLiked, setIsLiked] = React.useState(false)
+  const [likeCount, setLikeCount] = React.useState(0)
+  const [isReposted, setIsReposted] = React.useState(false)
+  const [repostCount, setRepostCount] = React.useState(0)
   const [platform, setPlatform] = React.useState<Platform>(
-    post.platform || "linkedin",
+    post.platform || "linkx",
   )
   const [editedContent, setEditedContent] = React.useState(post.content)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
 
-  // Reset edited content when post changes or edit mode is toggled
   React.useEffect(() => {
     setEditedContent(post.content)
-    setPlatform(post.platform || "linkedin")
+    setPlatform(post.platform || "linkx")
   }, [post.content, post.platform])
 
-  // Focus textarea when entering edit mode
   React.useEffect(() => {
     if (isEditing && textareaRef.current) {
       textareaRef.current.focus()
-      // Move cursor to end
       textareaRef.current.setSelectionRange(
         textareaRef.current.value.length,
         textareaRef.current.value.length,
@@ -95,8 +94,18 @@ export function DraftPost({
 
   const handleCancel = () => {
     setEditedContent(post.content)
-    setPlatform(post.platform || "linkedin")
+    setPlatform(post.platform || "linkx")
     onCancel?.()
+  }
+
+  const handleLike = () => {
+    setIsLiked(!isLiked)
+    setLikeCount((prev) => (isLiked ? prev - 1 : prev + 1))
+  }
+
+  const handleRepost = () => {
+    setIsReposted(!isReposted)
+    setRepostCount((prev) => (isReposted ? prev - 1 : prev + 1))
   }
 
   return (
@@ -108,7 +117,6 @@ export function DraftPost({
     >
       <div className="p-3 sm:p-4">
         <div className="flex gap-2 sm:gap-3">
-          {/* Avatar - Left side */}
           <div className="flex-shrink-0">
             <Avatar className="h-10 w-10 cursor-pointer transition-transform hover:scale-105 sm:h-10 sm:w-10">
               {post.author.avatarUrl ? (
@@ -123,9 +131,7 @@ export function DraftPost({
             </Avatar>
           </div>
 
-          {/* Content - Right side */}
           <div className="min-w-0 flex-1 space-y-3 sm:space-y-4">
-            {/* Header: Username + More Menu / Save/Cancel */}
             <div className="flex items-start justify-between gap-2 sm:gap-3">
               <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-1.5">
                 <button
@@ -191,23 +197,11 @@ export function DraftPost({
                       <Eye className="mr-2 h-4 w-4" />
                       Preview
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => onEdit?.(post.id)}>
-                      <Pencil className="mr-2 h-4 w-4" />
-                      Edit
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => onDelete?.(post.id)}
-                      className="text-destructive focus:text-destructive"
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Delete
-                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
             </div>
 
-            {/* Post Content - Editable in edit mode */}
             {isEditing ? (
               <Textarea
                 ref={textareaRef}
@@ -225,7 +219,6 @@ export function DraftPost({
               </div>
             )}
 
-            {/* Image */}
             {post.imageUrl && !isEditing && (
               <div className="overflow-hidden rounded-2xl">
                 <img
@@ -237,14 +230,18 @@ export function DraftPost({
               </div>
             )}
 
-            {/* Platform Selector */}
-            <div className="flex items-center justify-end pt-2">
-              <PlatformSelector
-                value={platform}
-                onChange={handlePlatformChange}
-                size="sm"
-              />
-            </div>
+            <PostActionFooter
+              isEditing={isEditing}
+              platform={platform}
+              onPlatformChange={handlePlatformChange}
+              isLiked={isLiked}
+              likeCount={likeCount}
+              onLike={handleLike}
+              isReposted={isReposted}
+              repostCount={repostCount}
+              onRepost={handleRepost}
+              commentsCount={0}
+            />
           </div>
         </div>
       </div>

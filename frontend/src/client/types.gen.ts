@@ -45,49 +45,6 @@ export type NewPassword = {
     new_password: string;
 };
 
-export type PersonaAccessCreate = {
-    team_id: string;
-    role?: string;
-};
-
-export type PersonaAccessPublic = {
-    id: string;
-    persona_id: string;
-    team_id: string;
-    granted_by_user_id: string;
-    role: string;
-    created_at?: (string | null);
-    updated_at?: (string | null);
-};
-
-export type PersonaCreate = {
-    name: string;
-    description?: (string | null);
-};
-
-export type PersonaPublic = {
-    name: string;
-    description?: (string | null);
-    id: string;
-    user_id: string;
-    created_at?: (string | null);
-    updated_at?: (string | null);
-};
-
-export type PersonaRolePublic = {
-    role: string;
-};
-
-export type PersonasPublic = {
-    data: Array<PersonaPublic>;
-    count: number;
-};
-
-export type PersonaUpdate = {
-    name?: (string | null);
-    description?: (string | null);
-};
-
 export type PostAuthor = {
     name: string;
     username: string;
@@ -98,20 +55,20 @@ export type PostCreate = {
     content: string;
     image_url?: (string | null);
     platform: string;
+    method?: string;
     status: string;
     scheduled_at?: (string | null);
-    persona_id: string;
 };
 
 export type PostPublic = {
     content: string;
     image_url?: (string | null);
     platform: string;
+    method?: string;
     status: string;
     scheduled_at?: (string | null);
     id: string;
     owner_id: string;
-    persona_id?: (string | null);
     published_at?: (string | null);
     publishing_started_at?: (string | null);
     retry_count?: number;
@@ -137,8 +94,8 @@ export type PostUpdate = {
     content?: (string | null);
     image_url?: (string | null);
     platform?: (string | null);
+    method?: (string | null);
     status?: (string | null);
-    persona_id?: (string | null);
     scheduled_at?: (string | null);
 };
 
@@ -147,42 +104,6 @@ export type PrivateUserCreate = {
     password: string;
     full_name: string;
     is_verified?: boolean;
-};
-
-export type TeamCreate = {
-    name: string;
-    description?: (string | null);
-};
-
-export type TeamMembershipCreate = {
-    user_id: string;
-    role?: string;
-};
-
-export type TeamMembershipPublic = {
-    id: string;
-    user_id: string;
-    team_id: string;
-    role: string;
-};
-
-export type TeamPublic = {
-    name: string;
-    description?: (string | null);
-    id: string;
-    owner_user_id: string;
-    created_at?: (string | null);
-    updated_at?: (string | null);
-};
-
-export type TeamsPublic = {
-    data: Array<TeamPublic>;
-    count: number;
-};
-
-export type TeamUpdate = {
-    name?: (string | null);
-    description?: (string | null);
 };
 
 export type Token = {
@@ -258,15 +179,25 @@ export type ValidationError = {
     type: string;
 };
 
+export type XStatusPublic = {
+    status: string;
+    session_dir: string;
+    cookie_files_found: boolean;
+    login_method?: string;
+};
+
+export type XVerifyResponse = {
+    connected: boolean;
+    authenticated: boolean;
+    message: string;
+    url?: (string | null);
+};
+
 export type AdminReadSchedulerStatusResponse = (unknown);
 
 export type AuthLinkedinConfigCheckResponse = ({
     [key: string]: unknown;
 });
-
-export type AuthLinkedinAuthorizeData = {
-    personaId: string;
-};
 
 export type AuthLinkedinAuthorizeResponse = ({
     [key: string]: (string);
@@ -280,6 +211,16 @@ export type AuthLinkedinCallbackData = {
 };
 
 export type AuthLinkedinCallbackResponse = (unknown);
+
+export type AuthXStatusResponse = (XStatusPublic);
+
+export type AuthXVerifyResponse = (XVerifyResponse);
+
+export type AuthXConnectData = {
+    force?: boolean;
+};
+
+export type AuthXConnectResponse = (unknown);
 
 export type ItemsReadItemsData = {
     limit?: number;
@@ -313,17 +254,9 @@ export type ItemsDeleteItemData = {
 
 export type ItemsDeleteItemResponse = (Message);
 
-export type LinkedinLinkedinStatusData = {
-    personaId: string;
-};
-
 export type LinkedinLinkedinStatusResponse = ({
     [key: string]: unknown;
 });
-
-export type LinkedinLinkedinDisconnectData = {
-    personaId: string;
-};
 
 export type LinkedinLinkedinDisconnectResponse = ({
     [key: string]: unknown;
@@ -355,67 +288,8 @@ export type LoginRecoverPasswordHtmlContentData = {
 
 export type LoginRecoverPasswordHtmlContentResponse = (string);
 
-export type PersonasReadPersonasData = {
-    limit?: number;
-    skip?: number;
-};
-
-export type PersonasReadPersonasResponse = (PersonasPublic);
-
-export type PersonasCreatePersonaData = {
-    requestBody: PersonaCreate;
-};
-
-export type PersonasCreatePersonaResponse = (PersonaPublic);
-
-export type PersonasReadPersonaData = {
-    personaId: string;
-};
-
-export type PersonasReadPersonaResponse = (PersonaPublic);
-
-export type PersonasUpdatePersonaData = {
-    personaId: string;
-    requestBody: PersonaUpdate;
-};
-
-export type PersonasUpdatePersonaResponse = (PersonaPublic);
-
-export type PersonasDeletePersonaData = {
-    personaId: string;
-};
-
-export type PersonasDeletePersonaResponse = (Message);
-
-export type PersonasReadPersonaRoleData = {
-    personaId: string;
-};
-
-export type PersonasReadPersonaRoleResponse = (PersonaRolePublic);
-
-export type PersonasSharePersonaData = {
-    personaId: string;
-    requestBody: PersonaAccessCreate;
-};
-
-export type PersonasSharePersonaResponse = (PersonaAccessPublic);
-
-export type PersonasListPersonaAccessData = {
-    personaId: string;
-};
-
-export type PersonasListPersonaAccessResponse = (Array<PersonaAccessPublic>);
-
-export type PersonasDeletePersonaAccessData = {
-    personaId: string;
-    teamId: string;
-};
-
-export type PersonasDeletePersonaAccessResponse = (Message);
-
 export type PostsReadPostsData = {
     limit?: number;
-    personaId: string;
     skip?: number;
     status?: (string | null);
 };
@@ -464,60 +338,6 @@ export type PrivateCreateUserData = {
 };
 
 export type PrivateCreateUserResponse = (UserPublic);
-
-export type TeamsReadTeamsData = {
-    limit?: number;
-    skip?: number;
-};
-
-export type TeamsReadTeamsResponse = (TeamsPublic);
-
-export type TeamsCreateTeamData = {
-    requestBody: TeamCreate;
-};
-
-export type TeamsCreateTeamResponse = (TeamPublic);
-
-export type TeamsReadTeamData = {
-    teamId: string;
-};
-
-export type TeamsReadTeamResponse = (TeamPublic);
-
-export type TeamsUpdateTeamData = {
-    requestBody: TeamUpdate;
-    teamId: string;
-};
-
-export type TeamsUpdateTeamResponse = (TeamPublic);
-
-export type TeamsDeleteTeamData = {
-    teamId: string;
-};
-
-export type TeamsDeleteTeamResponse = (Message);
-
-export type TeamsReadTeamPersonasData = {
-    limit?: number;
-    skip?: number;
-    teamId: string;
-};
-
-export type TeamsReadTeamPersonasResponse = (PersonasPublic);
-
-export type TeamsAddTeamMemberData = {
-    requestBody: TeamMembershipCreate;
-    teamId: string;
-};
-
-export type TeamsAddTeamMemberResponse = (TeamMembershipPublic);
-
-export type TeamsRemoveTeamMemberData = {
-    teamId: string;
-    userId: string;
-};
-
-export type TeamsRemoveTeamMemberResponse = (Message);
 
 export type TrendingGetTrendingResponse = (TrendingTopicsPublic);
 
