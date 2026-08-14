@@ -16,9 +16,21 @@ def get_sessions_dir() -> Path:
     return settings.SESSIONS_DIR
 
 
-def get_session_dir(brand_id: str, platform_name: str) -> Path:
-    """Return the isolated user-data-dir for a specific brand and platform."""
-    return settings.SESSIONS_DIR / brand_id / platform_name
+def get_session_dir(brand_id: str | None = None, platform_name: str = "x") -> Path:
+    """Return the user-data-dir for a specific platform.
+
+    LinkX uses a single, dedicated session path per platform on the host machine:
+    `settings.SESSIONS_DIR / platform_name` (or `sessions/{brand_id}/{platform_name}`).
+    """
+    direct_path = settings.SESSIONS_DIR / platform_name
+    if direct_path.exists():
+        return direct_path
+    if brand_id and (settings.SESSIONS_DIR / brand_id / platform_name).exists():
+        return settings.SESSIONS_DIR / brand_id / platform_name
+    default_path = settings.SESSIONS_DIR / "default" / platform_name
+    if default_path.exists():
+        return default_path
+    return direct_path
 
 
 def find_chrome() -> str | None:

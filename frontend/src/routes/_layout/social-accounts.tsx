@@ -22,13 +22,7 @@ import { z } from "zod"
 import { AuthService, LinkedinService } from "@/client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import {
   Popover,
   PopoverContent,
@@ -118,13 +112,13 @@ function ConnectedAccountsPage() {
     },
   })
 
-  // X Connect (Launch Headed Browser)
+  // X Connect (Launch Headed Browser to login & replace session)
   const connectXMutation = useMutation({
     mutationFn: (force?: boolean) =>
-      AuthService.xConnect({ force: force ?? false }),
+      AuthService.xConnect({ force: force ?? true }),
     onSuccess: () => {
       showSuccessToast(
-        "Chrome window launched! Complete login on X.com and close the window.",
+        "Chrome window launched! Complete login on X.com to save session.",
       )
       setTimeout(() => {
         refetchX()
@@ -174,7 +168,7 @@ function ConnectedAccountsPage() {
   return (
     <TooltipProvider>
       <div className="container max-w-4xl mx-auto px-4 py-8 space-y-6">
-        {/* Page Header */}
+        {/* Page Header (single clean description) */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-5">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">
@@ -195,7 +189,7 @@ function ConnectedAccountsPage() {
                   className="gap-1.5 text-xs h-8"
                 >
                   <Terminal className="h-3.5 w-3.5" />
-                  CLI Shortcuts
+                  CLI Scripts
                 </Button>
               </PopoverTrigger>
               <PopoverContent
@@ -251,16 +245,6 @@ function ConnectedAccountsPage() {
 
         {/* Integration Rows Container Card */}
         <Card className="border shadow-sm overflow-hidden">
-          <CardHeader className="py-4 px-6 border-b bg-muted/20">
-            <CardTitle className="text-base font-semibold">
-              Platforms & Automation Engines
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Directly linked social channels and browser profiles configured
-              for this account.
-            </CardDescription>
-          </CardHeader>
-
           <CardContent className="p-0 divide-y divide-border/60">
             {/* ======================= LINKEDIN ROW ======================= */}
             <div className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-muted/10 transition-colors">
@@ -456,14 +440,14 @@ function ConnectedAccountsPage() {
                         className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs gap-1.5 py-0 px-2"
                       >
                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{" "}
-                        Session Active
+                        Connected
                       </Badge>
                     ) : (
                       <Badge
                         variant="secondary"
                         className="text-xs text-muted-foreground py-0 px-2"
                       >
-                        No Session
+                        Disconnected
                       </Badge>
                     )}
                   </div>
@@ -509,10 +493,10 @@ function ConnectedAccountsPage() {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
-                      onClick={() => connectXMutation.mutate(false)}
+                      onClick={() => connectXMutation.mutate(true)}
                       disabled={connectXMutation.isPending}
                       size="sm"
-                      variant="default"
+                      variant={isXCookiePresent ? "outline" : "default"}
                       className="text-xs h-8 gap-1.5 font-medium"
                     >
                       {connectXMutation.isPending ? (
@@ -521,38 +505,40 @@ function ConnectedAccountsPage() {
                         <Laptop className="h-3.5 w-3.5" />
                       )}
                       {isXCookiePresent
-                        ? "Re-launch Chrome"
+                        ? "Re-login (Chrome)"
                         : "Launch Chrome Login"}
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="max-w-xs">
                     Opens a Google Chrome window to log in and save cookies to
-                    disk.
+                    the persistent session directory.
                   </TooltipContent>
                 </Tooltip>
 
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => verifyXMutation.mutate()}
-                      disabled={verifyXMutation.isPending || !isXCookiePresent}
-                      className="text-xs h-8 gap-1.5"
-                    >
-                      {verifyXMutation.isPending ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <ShieldCheck className="h-3 w-3 text-primary" />
-                      )}
-                      Verify
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="max-w-xs">
-                    Runs a live headless check on x.com/home to test cookies and
-                    feed detection.
-                  </TooltipContent>
-                </Tooltip>
+                {isXCookiePresent && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => verifyXMutation.mutate()}
+                        disabled={verifyXMutation.isPending}
+                        className="text-xs h-8 gap-1.5"
+                      >
+                        {verifyXMutation.isPending ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <ShieldCheck className="h-3 w-3" />
+                        )}
+                        Verify Session
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-xs">
+                      Runs a live headless check on x.com/home to test cookies
+                      and feed detection.
+                    </TooltipContent>
+                  </Tooltip>
+                )}
               </div>
             </div>
           </CardContent>
