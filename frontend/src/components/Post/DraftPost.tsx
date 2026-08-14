@@ -1,4 +1,15 @@
-import { Check, Eye, MoreHorizontal, Pencil, Trash2, X } from "lucide-react"
+import {
+  Check,
+  Eye,
+  Heart,
+  MessageCircle,
+  MoreHorizontal,
+  Pencil,
+  Repeat2,
+  Share,
+  Trash2,
+  X,
+} from "lucide-react"
 import * as React from "react"
 import {
   type Platform,
@@ -54,8 +65,12 @@ export function DraftPost({
   onPlatformChange,
   onPreview,
 }: DraftPostProps) {
+  const [isLiked, setIsLiked] = React.useState(false)
+  const [likeCount, setLikeCount] = React.useState(0)
+  const [isReposted, setIsReposted] = React.useState(false)
+  const [repostCount, setRepostCount] = React.useState(0)
   const [platform, setPlatform] = React.useState<Platform>(
-    post.platform || "linkedin",
+    post.platform || "linkx",
   )
   const [editedContent, setEditedContent] = React.useState(post.content)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
@@ -63,7 +78,7 @@ export function DraftPost({
   // Reset edited content when post changes or edit mode is toggled
   React.useEffect(() => {
     setEditedContent(post.content)
-    setPlatform(post.platform || "linkedin")
+    setPlatform(post.platform || "linkx")
   }, [post.content, post.platform])
 
   // Focus textarea when entering edit mode
@@ -95,8 +110,18 @@ export function DraftPost({
 
   const handleCancel = () => {
     setEditedContent(post.content)
-    setPlatform(post.platform || "linkedin")
+    setPlatform(post.platform || "linkx")
     onCancel?.()
+  }
+
+  const handleLike = () => {
+    setIsLiked(!isLiked)
+    setLikeCount((prev) => (isLiked ? prev - 1 : prev + 1))
+  }
+
+  const handleRepost = () => {
+    setIsReposted(!isReposted)
+    setRepostCount((prev) => (isReposted ? prev - 1 : prev + 1))
   }
 
   return (
@@ -237,14 +262,77 @@ export function DraftPost({
               </div>
             )}
 
-            {/* Platform Selector */}
-            <div className="flex items-center justify-end pt-2">
-              <PlatformSelector
-                value={platform}
-                onChange={handlePlatformChange}
-                size="sm"
-              />
-            </div>
+            {/* Action Bar (with 0 engagement stats) & Platform Selector */}
+            {isEditing ? (
+              <div className="flex items-center justify-end pt-2">
+                <PlatformSelector
+                  value={platform}
+                  onChange={handlePlatformChange}
+                  size="sm"
+                />
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-1 sm:gap-4">
+                <div className="flex items-center gap-1 sm:gap-4">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="group/btn h-9 flex-1 justify-start gap-2 text-muted-foreground transition-colors hover:bg-blue-500/10 hover:text-blue-500 active:scale-95 sm:h-8 sm:flex-initial"
+                    onClick={handleLike}
+                    aria-label={`${isLiked ? "Unlike" : "Like"} post`}
+                    aria-pressed={isLiked}
+                  >
+                    <Heart
+                      className={`h-4 w-4 transition-colors sm:h-3.5 sm:w-3.5 ${
+                        isLiked ? "fill-red-500 text-red-500" : ""
+                      }`}
+                    />
+                    <span className="text-base">{likeCount}</span>
+                  </Button>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="group/btn h-9 flex-1 justify-start gap-2 text-muted-foreground transition-colors hover:bg-green-500/10 hover:text-green-500 active:scale-95 sm:h-8 sm:flex-initial"
+                    onClick={handleRepost}
+                    aria-label={`${isReposted ? "Undo repost" : "Repost"}`}
+                    aria-pressed={isReposted}
+                  >
+                    <Repeat2
+                      className={`h-4 w-4 transition-colors sm:h-3.5 sm:w-3.5 ${
+                        isReposted ? "text-green-500" : ""
+                      }`}
+                    />
+                    <span className="text-base">{repostCount}</span>
+                  </Button>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="group/btn h-9 flex-1 justify-start gap-2 text-muted-foreground transition-colors hover:bg-blue-500/10 hover:text-blue-500 active:scale-95 sm:h-8 sm:flex-initial"
+                    aria-label="Comments"
+                  >
+                    <MessageCircle className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
+                    <span className="text-base">0</span>
+                  </Button>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="group/btn h-9 w-9 shrink-0 text-muted-foreground transition-colors hover:bg-blue-500/10 hover:text-blue-500 active:scale-95 sm:h-8 sm:w-8"
+                    aria-label="Share post"
+                  >
+                    <Share className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
+                  </Button>
+                </div>
+
+                <PlatformSelector
+                  value={platform}
+                  onChange={handlePlatformChange}
+                  size="sm"
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>
