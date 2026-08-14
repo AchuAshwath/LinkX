@@ -351,7 +351,8 @@ async def scrape_trending_topics() -> ScrapeResult:
     exclude_prefix = heuristic.get("exclude_prefix", "@")
 
     result = ScrapeResult(status="error")
-    manager = BrowserManager()
+    brand_id = sys.argv[1] if len(sys.argv) > 1 else "default"
+    manager = BrowserManager(brand_id=brand_id)
 
     try:
         logger.info("Connecting to X.com...")

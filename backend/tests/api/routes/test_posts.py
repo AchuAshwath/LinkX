@@ -1,17 +1,14 @@
 import uuid
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
 from app import crud
 from app.core.config import settings
 from app.models import (
-    Persona,
-    PersonaAccess,
     Post,
     SocialAccount,
-    Team,
-    TeamMembership,
     User,
     UserCreate,
 )
@@ -31,20 +28,9 @@ def _create_user_with_auth(
     return user, headers
 
 
-def _create_persona(*, db: Session, user: User, name: str) -> Persona:
-    persona = Persona(user_id=user.id, name=name, description=None)
-    db.add(persona)
-    db.commit()
-    db.refresh(persona)
-    return persona
-
-
-def _create_post(
-    *, db: Session, owner_id: uuid.UUID, persona_id: uuid.UUID, content: str
-) -> Post:
+def _create_post(*, db: Session, owner_id: uuid.UUID, content: str) -> Post:
     post = Post(
         owner_id=owner_id,
-        persona_id=persona_id,
         content=content,
         platform="linkedin",
         status="draft",
@@ -55,92 +41,25 @@ def _create_post(
     return post
 
 
-def _grant_persona_role_via_team(
-    *, db: Session, owner: User, target_user: User, persona: Persona, role: str
-) -> None:
-    team = Team(owner_user_id=owner.id, name="role-team", description=None)
-    db.add(team)
-    db.commit()
-    db.refresh(team)
-
-    db.add(
-        TeamMembership(
-            user_id=target_user.id,
-            team_id=team.id,
-            role=role,
-        )
-    )
-    db.add(
-        PersonaAccess(
-            persona_id=persona.id,
-            team_id=team.id,
-            granted_by_user_id=owner.id,
-            role=role,
-        )
-    )
-    db.commit()
-
-
-def test_read_posts_requires_persona_id(
-    client: TestClient,
-    normal_user_token_headers: dict[str, str],
-) -> None:
-    response = client.get(
-        f"{settings.API_V1_STR}/posts",
-        headers=normal_user_token_headers,
-    )
-    assert response.status_code == 422
-    errors = response.json()["detail"]
-    assert isinstance(errors, list)
-    assert any(
-        err.get("type") == "missing" and err.get("loc") == ["query", "persona_id"]
-        for err in errors
-    )
-
-
-def test_create_post_requires_persona_id(
-    client: TestClient,
-    normal_user_token_headers: dict[str, str],
-) -> None:
-    response = client.post(
-        f"{settings.API_V1_STR}/posts",
-        headers=normal_user_token_headers,
-        json={
-            "content": "hello",
-            "platform": "linkedin",
-            "status": "draft",
-        },
-    )
-    assert response.status_code == 422
-    errors = response.json()["detail"]
-    assert isinstance(errors, list)
-    assert any(
-        err.get("type") == "missing" and err.get("loc") == ["body", "persona_id"]
-        for err in errors
-    )
-
-
-def test_read_posts_scoped_to_persona(
+def test_read_posts_scoped_to_user(
     client: TestClient,
     db: Session,
 ) -> None:
-    user, headers = _create_user_with_auth(client=client, db=db)
-    persona_one = _create_persona(db=db, user=user, name="One")
-    persona_two = _create_persona(db=db, user=user, name="Two")
+    user_one, headers_one = _create_user_with_auth(client=client, db=db)
+    user_two, _headers_two = _create_user_with_auth(client=client, db=db)
 
-    _create_post(db=db, owner_id=user.id, persona_id=persona_one.id, content="first")
-    _create_post(db=db, owner_id=user.id, persona_id=persona_two.id, content="second")
+    _create_post(db=db, owner_id=user_one.id, content="first")
+    _create_post(db=db, owner_id=user_two.id, content="second")
 
     response = client.get(
         f"{settings.API_V1_STR}/posts",
-        headers=headers,
-        params={"persona_id": str(persona_one.id)},
+        headers=headers_one,
     )
     assert response.status_code == 200
     data = response.json()["data"]
     assert len(data) == 1
-    assert data[0]["persona_id"] == str(persona_one.id)
     assert data[0]["content"] == "first"
+    assert data[0]["owner_id"] == str(user_one.id)
 
 
 def test_read_posts_forbidden_without_access(
@@ -149,29 +68,26 @@ def test_read_posts_forbidden_without_access(
 ) -> None:
     owner, _ = _create_user_with_auth(client=client, db=db)
     other_user, other_headers = _create_user_with_auth(client=client, db=db)
-    persona = _create_persona(db=db, user=owner, name="Owner Persona")
+    post = _create_post(db=db, owner_id=owner.id, content="private post")
 
     response = client.get(
-        f"{settings.API_V1_STR}/posts",
+        f"{settings.API_V1_STR}/posts/{post.id}",
         headers=other_headers,
-        params={"persona_id": str(persona.id)},
     )
-    assert response.status_code == 403
-    assert response.json()["detail"] == "Not enough permissions"
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Post not found"
 
 
-def test_create_published_post_requires_linkedin_for_persona(
+def test_create_published_post_requires_linkedin(
     client: TestClient,
     db: Session,
 ) -> None:
     user, headers = _create_user_with_auth(client=client, db=db)
-    persona = _create_persona(db=db, user=user, name="Publish Persona")
 
     response = client.post(
         f"{settings.API_V1_STR}/posts",
         headers=headers,
         json={
-            "persona_id": str(persona.id),
             "content": "publish me",
             "platform": "linkedin",
             "status": "published",
@@ -180,7 +96,7 @@ def test_create_published_post_requires_linkedin_for_persona(
     assert response.status_code == 400
     detail = response.json()["detail"]
     assert detail["error"] == "linkedin_not_connected"
-    assert detail["message"] == "LinkedIn account not connected for this persona"
+    assert detail["message"] == "LinkedIn account not connected for this user"
     assert detail["retryable"] is False
     assert isinstance(detail["trace_id"], str)
 
@@ -190,11 +106,9 @@ def test_update_post_rejects_invalid_transition(
     db: Session,
 ) -> None:
     user, headers = _create_user_with_auth(client=client, db=db)
-    persona = _create_persona(db=db, user=user, name="Transition Persona")
     post = _create_post(
         db=db,
         owner_id=user.id,
-        persona_id=persona.id,
         content="transition test",
     )
 
@@ -213,11 +127,9 @@ def test_retry_requires_failed_status(
     db: Session,
 ) -> None:
     user, headers = _create_user_with_auth(client=client, db=db)
-    persona = _create_persona(db=db, user=user, name="Retry Persona")
     post = _create_post(
         db=db,
         owner_id=user.id,
-        persona_id=persona.id,
         content="retry test",
     )
 
@@ -230,81 +142,13 @@ def test_retry_requires_failed_status(
     assert response.json()["detail"] == "Only failed posts can be retried"
 
 
-def test_publish_endpoint_member_is_forbidden(
-    client: TestClient,
-    db: Session,
-) -> None:
-    owner, _ = _create_user_with_auth(client=client, db=db)
-    member, member_headers = _create_user_with_auth(client=client, db=db)
-    persona = _create_persona(db=db, user=owner, name="Owner Persona")
-    post = _create_post(db=db, owner_id=owner.id, persona_id=persona.id, content="test")
-
-    _grant_persona_role_via_team(
-        db=db,
-        owner=owner,
-        target_user=member,
-        persona=persona,
-        role="member",
-    )
-
-    response = client.post(
-        f"{settings.API_V1_STR}/posts/{post.id}/publish",
-        headers=member_headers,
-    )
-
-    assert response.status_code == 403
-    assert response.json()["detail"] == "Members can create and edit drafts only"
-
-
-def test_retry_endpoint_member_is_forbidden(
-    client: TestClient,
-    db: Session,
-) -> None:
-    owner, owner_headers = _create_user_with_auth(client=client, db=db)
-    member, member_headers = _create_user_with_auth(client=client, db=db)
-    persona = _create_persona(db=db, user=owner, name="Owner Persona")
-
-    _grant_persona_role_via_team(
-        db=db,
-        owner=owner,
-        target_user=member,
-        persona=persona,
-        role="member",
-    )
-
-    post = _create_post(db=db, owner_id=owner.id, persona_id=persona.id, content="test")
-
-    owner_response = client.patch(
-        f"{settings.API_V1_STR}/posts/{post.id}",
-        headers=owner_headers,
-        json={"status": "published"},
-    )
-    assert owner_response.status_code == 400
-
-    db.refresh(post)
-    post.status = "failed"
-    db.add(post)
-    db.commit()
-
-    response = client.post(
-        f"{settings.API_V1_STR}/posts/{post.id}/retry",
-        headers=member_headers,
-    )
-
-    assert response.status_code == 403
-    assert response.json()["detail"] == "Members cannot retry posts"
-
-
 def test_publish_endpoint_is_idempotent_when_external_id_exists(
     client: TestClient,
     db: Session,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     user, headers = _create_user_with_auth(client=client, db=db)
-    persona = _create_persona(db=db, user=user, name="Persona")
-    post = _create_post(
-        db=db, owner_id=user.id, persona_id=persona.id, content="idempotent"
-    )
+    post = _create_post(db=db, owner_id=user.id, content="idempotent")
 
     post.status = "published"
     post.external_post_id = "urn:li:share:123"
@@ -332,17 +176,13 @@ def test_publish_endpoint_is_idempotent_when_external_id_exists(
 def test_publish_endpoint_success_updates_phase3_fields(
     client: TestClient,
     db: Session,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     user, headers = _create_user_with_auth(client=client, db=db)
-    persona = _create_persona(db=db, user=user, name="Persona")
-    post = _create_post(
-        db=db, owner_id=user.id, persona_id=persona.id, content="publish"
-    )
+    post = _create_post(db=db, owner_id=user.id, content="publish")
 
     account = SocialAccount(
         user_id=user.id,
-        persona_id=persona.id,
         platform="linkedin",
         external_user_id="abc123",
     )

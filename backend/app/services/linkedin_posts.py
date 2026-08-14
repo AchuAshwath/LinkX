@@ -40,8 +40,8 @@ _LINKEDIN_VERSION = "202511"
 _RESTLI_PROTOCOL_VERSION = "2.0.0"
 
 
-def _token_redis_key(persona_id: str) -> str:
-    return f"linkedin:token:{persona_id}"
+def _token_redis_key(user_id: str) -> str:
+    return f"linkedin:token:{user_id}"
 
 
 class LinkedInPostClient:
@@ -57,11 +57,11 @@ class LinkedInPostClient:
     def __init__(self) -> None:
         self.base_url = "https://api.linkedin.com/rest"
 
-    def _get_access_token(self, *, persona_id: str) -> str:
-        """Load and validate a LinkedIn access token for the given persona."""
+    def _get_access_token(self, *, user_id: str) -> str:
+        """Load and validate a LinkedIn access token for the given user."""
         try:
             r = get_redis()
-            raw = r.get(_token_redis_key(persona_id))
+            raw = r.get(_token_redis_key(user_id))
         except Exception:
             raw = None
 
@@ -131,7 +131,7 @@ class LinkedInPostClient:
     async def create_text_post(
         self,
         *,
-        persona_id: str,
+        user_id: str,
         linkedin_person_id: str,
         content: str,
     ) -> str:
@@ -139,7 +139,7 @@ class LinkedInPostClient:
 
         Returns the LinkedIn Post URN (e.g. `urn:li:ugcPost:...`).
         """
-        access_token = self._get_access_token(persona_id=persona_id)
+        access_token = self._get_access_token(user_id=user_id)
         author_urn = f"urn:li:person:{linkedin_person_id}"
 
         payload = {
@@ -200,12 +200,12 @@ class LinkedInPostClient:
     async def update_text_post(
         self,
         *,
-        persona_id: str,
+        user_id: str,
         linkedin_post_urn: str,
         content: str,
     ) -> None:
         """Update the commentary of an existing LinkedIn post."""
-        access_token = self._get_access_token(persona_id=persona_id)
+        access_token = self._get_access_token(user_id=user_id)
         encoded_urn = quote(linkedin_post_urn, safe="")
 
         payload = {
@@ -257,14 +257,14 @@ class LinkedInPostClient:
     async def delete_post(
         self,
         *,
-        persona_id: str,
+        user_id: str,
         linkedin_post_urn: str,
     ) -> None:
         """Delete a LinkedIn post.
 
         Deletions are idempotent: a missing post is treated as success.
         """
-        access_token = self._get_access_token(persona_id=persona_id)
+        access_token = self._get_access_token(user_id=user_id)
         encoded_urn = quote(linkedin_post_urn, safe="")
 
         headers = self._common_headers(access_token=access_token)

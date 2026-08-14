@@ -113,59 +113,14 @@ class ItemsPublic(SQLModel):
     count: int
 
 
-# --- Persona and Post (LinkedIn/social posts) ---
-
-
-class Persona(TimestampedUUIDModel, table=True):
-    """Content identity/brand owned by a user.
-
-    In the future this can be associated with teams and richer access controls
-    without changing this core shape.
-    """
-
-    user_id: uuid.UUID = Field(
-        foreign_key="user.id",
-        nullable=False,
-        ondelete="CASCADE",
-    )
-    name: str = Field(max_length=255)
-    description: str | None = Field(default=None, max_length=500)
-
-
-class PersonaBase(SQLModel):
-    name: str = Field(max_length=255)
-    description: str | None = Field(default=None, max_length=500)
-
-
-class PersonaCreate(PersonaBase):
-    pass
-
-
-class PersonaUpdate(SQLModel):
-    name: str | None = Field(default=None, max_length=255)
-    description: str | None = Field(default=None, max_length=500)
-
-
-class PersonaPublic(PersonaBase):
-    id: uuid.UUID
-    user_id: uuid.UUID
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
-
-
-class PersonasPublic(SQLModel):
-    data: list[PersonaPublic]
-    count: int
-
-
-class PersonaRolePublic(SQLModel):
-    role: str
+# --- Post (LinkedIn/X/social posts) ---
 
 
 class PostBase(SQLModel):
     content: str = Field(min_length=1, max_length=3000)
     image_url: str | None = Field(default=None, max_length=500)
     platform: str = Field(max_length=50)  # linkedin, x, all
+    method: str = Field(default="api", max_length=50)  # api, browser, vision
     status: str = Field(max_length=50)  # draft, scheduled, published, failed
     scheduled_at: datetime | None = Field(
         default=None,
@@ -174,15 +129,15 @@ class PostBase(SQLModel):
 
 
 class PostCreate(PostBase):
-    persona_id: uuid.UUID
+    pass
 
 
 class PostUpdate(SQLModel):
     content: str | None = Field(default=None, min_length=1, max_length=3000)
     image_url: str | None = Field(default=None, max_length=500)
     platform: str | None = Field(default=None, max_length=50)
+    method: str | None = Field(default=None, max_length=50)
     status: str | None = Field(default=None, max_length=50)
-    persona_id: uuid.UUID | None = None
     scheduled_at: datetime | None = Field(
         default=None,
         sa_type=DateTime(timezone=True),  # type: ignore
@@ -191,16 +146,8 @@ class PostUpdate(SQLModel):
 
 class Post(TimestampedUUIDModel, PostBase, table=True):
     __tablename__ = "post"
-    # Legacy owner_id kept for backward compatibility; will be removed
-    # after persona_id is fully adopted across the codebase.
     owner_id: uuid.UUID = Field(
         foreign_key="user.id", nullable=False, ondelete="CASCADE"
-    )
-    persona_id: uuid.UUID | None = Field(
-        default=None,
-        foreign_key="persona.id",
-        nullable=True,
-        ondelete="CASCADE",
     )
     scheduled_at: datetime | None = Field(
         default=None,
@@ -240,7 +187,6 @@ class PostAuthor(SQLModel):
 class PostPublic(PostBase):
     id: uuid.UUID
     owner_id: uuid.UUID
-    persona_id: uuid.UUID | None = None
     published_at: datetime | None = None
     publishing_started_at: datetime | None = None
     retry_count: int = 0
@@ -270,21 +216,16 @@ class PublishErrorResponse(SQLModel):
     trace_id: str
 
 
-# --- SocialAccount (OAuth / LinkedIn profile metadata) ---
+# --- SocialAccount (OAuth / Browser session metadata) ---
 
 
 class SocialAccount(TimestampedUUIDModel, table=True):
     __tablename__ = "social_account"
-    # Legacy user_id kept for backward compatibility; will be removed
-    # after persona_id is fully adopted across the codebase.
+    __table_args__ = (
+        UniqueConstraint("user_id", "platform", name="uq_social_account_user_platform"),
+    )
     user_id: uuid.UUID = Field(
         foreign_key="user.id", nullable=False, ondelete="CASCADE"
-    )
-    persona_id: uuid.UUID | None = Field(
-        default=None,
-        foreign_key="persona.id",
-        nullable=True,
-        ondelete="CASCADE",
     )
     platform: str = Field(max_length=50, index=True)
     external_user_id: str | None = Field(default=None, max_length=255)
@@ -313,120 +254,6 @@ class TokenPayload(SQLModel):
 class NewPassword(SQLModel):
     token: str
     new_password: str = Field(min_length=8, max_length=128)
-
-
-# --- Teams (future-ready) ---
-
-
-class Team(TimestampedUUIDModel, table=True):
-    """Team/organization grouping users.
-
-    For now this is a simple owner-owned team; richer access control can be
-    built on top via TeamMembership and roles.
-    """
-
-    owner_user_id: uuid.UUID = Field(
-        foreign_key="user.id",
-        nullable=False,
-        ondelete="CASCADE",
-    )
-    name: str = Field(max_length=255)
-    description: str | None = Field(default=None, max_length=500)
-
-
-class TeamBase(SQLModel):
-    name: str = Field(max_length=255)
-    description: str | None = Field(default=None, max_length=500)
-
-
-class TeamCreate(TeamBase):
-    pass
-
-
-class TeamUpdate(SQLModel):
-    name: str | None = Field(default=None, max_length=255)
-    description: str | None = Field(default=None, max_length=500)
-
-
-class TeamPublic(TeamBase):
-    id: uuid.UUID
-    owner_user_id: uuid.UUID
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
-
-
-class TeamsPublic(SQLModel):
-    data: list[TeamPublic]
-    count: int
-
-
-class TeamMembership(SQLModel, table=True):
-    """Join table between users and teams.
-
-    The `role` field is a simple string/enum for now and can later be
-    replaced or complemented by a ROLE dimension table.
-    """
-
-    __tablename__ = "team_membership"
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    user_id: uuid.UUID = Field(
-        foreign_key="user.id",
-        nullable=False,
-        ondelete="CASCADE",
-    )
-    team_id: uuid.UUID = Field(
-        foreign_key="team.id",
-        nullable=False,
-        ondelete="CASCADE",
-    )
-    role: str = Field(default="member", max_length=50)
-
-
-class TeamMembershipCreate(SQLModel):
-    user_id: uuid.UUID
-    role: str = Field(default="member", max_length=50)
-
-
-class TeamMembershipPublic(SQLModel):
-    id: uuid.UUID
-    user_id: uuid.UUID
-    team_id: uuid.UUID
-    role: str
-
-
-class PersonaAccess(TimestampedUUIDModel, table=True):
-    __tablename__ = "persona_access"
-    persona_id: uuid.UUID = Field(
-        foreign_key="persona.id",
-        nullable=False,
-        ondelete="CASCADE",
-    )
-    team_id: uuid.UUID = Field(
-        foreign_key="team.id",
-        nullable=False,
-        ondelete="CASCADE",
-    )
-    granted_by_user_id: uuid.UUID = Field(
-        foreign_key="user.id",
-        nullable=False,
-        ondelete="CASCADE",
-    )
-    role: str = Field(default="member", max_length=50)
-
-
-class PersonaAccessCreate(SQLModel):
-    team_id: uuid.UUID
-    role: str = Field(default="member", max_length=50)
-
-
-class PersonaAccessPublic(SQLModel):
-    id: uuid.UUID
-    persona_id: uuid.UUID
-    team_id: uuid.UUID
-    granted_by_user_id: uuid.UUID
-    role: str
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
 
 
 # --- Trending Topics ---

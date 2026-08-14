@@ -24,7 +24,6 @@ from app.models import (
     UserUpdate,
     UserUpdateMe,
 )
-from app.services.bootstrap import ensure_default_team_and_persona
 from app.utils import generate_new_account_email, send_email
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -69,8 +68,6 @@ def create_user(*, session: SessionDep, user_in: UserCreate) -> Any:
         )
 
     user = crud.create_user(session=session, user_create=user_in)
-    ensure_default_team_and_persona(session=session, user_id=user.id)
-    session.commit()
     if settings.emails_enabled and user_in.email:
         email_data = generate_new_account_email(
             email_to=user_in.email, username=user_in.email, password=user_in.password
@@ -161,8 +158,6 @@ def register_user(session: SessionDep, user_in: UserRegister) -> Any:
         )
     user_create = UserCreate.model_validate(user_in)
     user = crud.create_user(session=session, user_create=user_create)
-    ensure_default_team_and_persona(session=session, user_id=user.id)
-    session.commit()
     return user
 
 

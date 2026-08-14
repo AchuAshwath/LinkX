@@ -33,11 +33,11 @@ def _next_retry_time(*, retry_count: int) -> datetime:
     return _now_utc() + timedelta(seconds=delay_seconds)
 
 
-def _linkedin_account_for_persona(
-    *, session: Session, persona_id: uuid.UUID
+def _linkedin_account_for_user(
+    *, session: Session, user_id: uuid.UUID
 ) -> SocialAccount | None:
     statement = select(SocialAccount).where(
-        SocialAccount.persona_id == persona_id,
+        SocialAccount.user_id == user_id,
         SocialAccount.platform == "linkedin",
     )
     return session.exec(statement).first()
@@ -51,7 +51,7 @@ def _handle_publish_error(
 
     # Use duck-typing to extract structured error fields if available
     is_structured = hasattr(err, "code") and hasattr(err, "detail")
-    
+
     code = getattr(err, "code", "internal_error") if is_structured else "internal_error"
     detail = str(getattr(err, "detail", f"Unexpected system error: {err}"))
     retryable = getattr(err, "retryable", False) if is_structured else False
@@ -75,9 +75,8 @@ def _handle_publish_error(
     session.refresh(post)
 
     logger.warning(
-        "publish_failed post_id=%s persona_id=%s user_id=%s status=%s trace_id=%s code=%s retryable=%s",
+        "publish_failed post_id=%s user_id=%s status=%s trace_id=%s code=%s retryable=%s",
         post.id,
-        post.persona_id,
         user_id,
         post.status,
         trace_id,
@@ -97,15 +96,17 @@ def _handle_publish_error(
     )
 
 
-async def _publish_linkedin(session: Session, post: Post, user_id: uuid.UUID) -> str | PublishFailure:
-    linkedin_account = _linkedin_account_for_persona(
+async def _publish_linkedin(
+    session: Session, post: Post, user_id: uuid.UUID
+) -> str | PublishFailure:
+    linkedin_account = _linkedin_account_for_user(
         session=session,
-        persona_id=post.persona_id,
+        user_id=post.owner_id,
     )
     if not linkedin_account or not linkedin_account.external_user_id:
         err = LinkedInPostError(
             status_code=400,
-            detail="LinkedIn account not connected for this persona",
+            detail="LinkedIn account not connected for this user",
             code="linkedin_not_connected",
             retryable=False,
             details={"platform": "linkedin"},
@@ -117,7 +118,7 @@ async def _publish_linkedin(session: Session, post: Post, user_id: uuid.UUID) ->
     try:
         client = LinkedInPostClient()
         return await client.create_text_post(
-            persona_id=str(post.persona_id),
+            user_id=str(post.owner_id),
             linkedin_person_id=linkedin_account.external_user_id,
             content=post.content,
         )
@@ -126,11 +127,14 @@ async def _publish_linkedin(session: Session, post: Post, user_id: uuid.UUID) ->
             session=session, post=post, user_id=user_id, err=err
         )
 
-async def _publish_x(session: Session, post: Post, user_id: uuid.UUID) -> str | PublishFailure:
+
+async def _publish_x(
+    session: Session, post: Post, user_id: uuid.UUID
+) -> str | PublishFailure:
     try:
         x_client = XPostClient()
         return await x_client.create_text_post(
-            persona_id=str(post.persona_id),
+            user_id=str(post.owner_id),
             content=post.content,
         )
     except Exception as err:
@@ -138,10 +142,12 @@ async def _publish_x(session: Session, post: Post, user_id: uuid.UUID) -> str | 
             session=session, post=post, user_id=user_id, err=err
         )
 
+
 _PLATFORM_PUBLISHERS = {
     "linkedin": _publish_linkedin,
     "x": _publish_x,
 }
+
 
 async def _publish_to_platform(
     session: Session, post: Post, user_id: uuid.UUID
@@ -153,6 +159,7 @@ async def _publish_to_platform(
             session=session, post=post, user_id=user_id, err=err
         )
     return await publisher(session, post, user_id)
+
 
 def _mark_as_published(session: Session, post: Post, external_post_id: str) -> None:
     validate_transition(current_status=post.status, target_status="published")
@@ -167,25 +174,13 @@ def _mark_as_published(session: Session, post: Post, external_post_id: str) -> N
     session.commit()
     session.refresh(post)
 
+
 async def publish_post(
     *,
     session: Session,
     post: Post,
     user_id: uuid.UUID,
 ) -> PublishFailure | None:
-    if post.persona_id is None:
-        # We default to LinkedInPostError for legacy reasons, but this catches all
-        failure = LinkedInPostError(
-            status_code=400,
-            detail="persona_id is required",
-            code="persona_required",
-            retryable=False,
-            details={"platform": post.platform},
-        )
-        return _handle_publish_error(
-            session=session, post=post, user_id=user_id, err=failure
-        )
-
     if post.external_post_id:
         if post.status == "published":
             return None
@@ -206,9 +201,8 @@ async def publish_post(
 
     _mark_as_published(session, post, result)
     logger.info(
-        "publish_success post_id=%s persona_id=%s user_id=%s status=%s",
+        "publish_success post_id=%s user_id=%s status=%s",
         post.id,
-        post.persona_id,
         user_id,
         post.status,
     )

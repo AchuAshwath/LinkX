@@ -51,10 +51,10 @@ class XPostClient:
         with open(self.selectors_path) as f:
             self.selectors = json.load(f)
 
-    async def create_text_post(self, *, persona_id: str, content: str) -> str:
+    async def create_text_post(self, *, user_id: str, content: str) -> str:
         """Create a text-only post on X.com using Playwright."""
         self._validate_content(content)
-        manager = self._get_manager(persona_id)
+        manager = self._get_manager(user_id)
         return await self._execute_post_flow(manager, content)
 
     def _validate_content(self, content: str) -> None:
@@ -68,8 +68,8 @@ class XPostClient:
                 details={"platform": "x", "length": len(content)},
             )
 
-    def _get_manager(self, persona_id: str) -> BrowserManager:
-        manager = BrowserManager(brand_id=persona_id)
+    def _get_manager(self, user_id: str) -> BrowserManager:
+        manager = BrowserManager(brand_id=user_id)
         if not manager.session_exists("x"):
             raise XPostError(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -131,7 +131,9 @@ class XPostClient:
         await self._navigate_to_home(page)
         body = await page.inner_text("body")
         await self._verify_valid_url(page.url, body, mouse)
-        logger.info("Sentinel check passed (URL routing confirmed), proceeding with post.")
+        logger.info(
+            "Sentinel check passed (URL routing confirmed), proceeding with post."
+        )
         await random_delay(min_sec=2.0, max_sec=4.0)
 
     async def _navigate_to_home(self, page: Any) -> None:
@@ -154,7 +156,9 @@ class XPostClient:
             return True
         return False
 
-    async def _verify_valid_url(self, current_url: str, body: str, mouse: EvasionMouse) -> None:
+    async def _verify_valid_url(
+        self, current_url: str, body: str, mouse: EvasionMouse
+    ) -> None:
         if "/home" in current_url:
             return
 
@@ -175,7 +179,9 @@ class XPostClient:
             details={"platform": "x", "url": current_url},
         )
 
-    async def _type_and_publish(self, page: Any, mouse: EvasionMouse, content: str) -> str:
+    async def _type_and_publish(
+        self, page: Any, mouse: EvasionMouse, content: str
+    ) -> str:
         await self._fill_post_content(mouse, content)
         return await self._click_publish_and_wait(page, mouse)
 
@@ -190,7 +196,9 @@ class XPostClient:
 
     async def _click_publish_and_wait(self, page: Any, mouse: EvasionMouse) -> str:
         post_button_selector = self.selectors["compose"]["post_button"]
-        logger.info("Setting up network interceptor for CreateTweet GraphQL endpoint...")
+        logger.info(
+            "Setting up network interceptor for CreateTweet GraphQL endpoint..."
+        )
         try:
             async with page.expect_response(
                 lambda response: "graphql" in response.url
@@ -234,7 +242,9 @@ class XPostClient:
 
         response_json = await response.json()
         if "errors" in response_json:
-            logger.error(f"GraphQL returned errors: {json.dumps(response_json['errors'])}")
+            logger.error(
+                f"GraphQL returned errors: {json.dumps(response_json['errors'])}"
+            )
             raise XPostError(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="GraphQL application-level error during post.",
@@ -245,7 +255,9 @@ class XPostClient:
 
         rest_id = None
         try:
-            rest_id = response_json["data"]["create_tweet"]["tweet_results"]["result"]["rest_id"]
+            rest_id = response_json["data"]["create_tweet"]["tweet_results"]["result"][
+                "rest_id"
+            ]
         except (KeyError, TypeError):
             pass
 
