@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { Home as HomeIcon, Loader2 } from "lucide-react"
 import * as React from "react"
-import { PostsService, TrendingService } from "@/client"
+import { PostsService, type PostUpdate, TrendingService } from "@/client"
 import type { Platform } from "@/components/Common/PlatformSelector"
 import type { PostedData } from "@/components/Post/Posted"
 import { Posted } from "@/components/Post/Posted"
@@ -168,14 +168,7 @@ function TimelinePage() {
       data,
     }: {
       postId: string
-      data: {
-        persona_id?: string
-        content?: string
-        image_url?: string
-        platform?: string
-        scheduled_at?: string
-        status?: string
-      }
+      data: PostUpdate
     }) => {
       return await PostsService.updateExistingPost({
         postId,
