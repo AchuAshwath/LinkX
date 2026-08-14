@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import {
+  AlertTriangle,
   Check,
   Code2,
   Copy,
@@ -9,6 +10,7 @@ import {
   Laptop,
   Loader2,
   RefreshCw,
+  RotateCcw,
   ShieldCheck,
   Terminal,
   Unlink,
@@ -91,7 +93,7 @@ function ConnectedAccountsPage() {
     staleTime: 10000,
   })
 
-  // LinkedIn Connect (Authorize)
+  // LinkedIn Connect / Reconnect (Authorize)
   const connectLinkedInMutation = useMutation({
     mutationFn: () => AuthService.linkedinAuthorize(),
     onSuccess: (data) => {
@@ -152,6 +154,7 @@ function ConnectedAccountsPage() {
   })
 
   const isLinkedInConnected = Boolean(linkedinStatus?.connected)
+  const needsLinkedInReconnect = Boolean(linkedinStatus?.needs_reconnect)
   const isXCookiePresent = xStatus?.status === "connected"
   const linkedinProfile = linkedinStatus?.profile as
     | {
@@ -170,51 +173,54 @@ function ConnectedAccountsPage() {
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col gap-6 p-6 md:p-8 max-w-5xl mx-auto">
+      <div className="flex flex-col gap-6 p-6 md:p-10 max-w-2xl mx-auto">
         {/* Clean Header */}
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-4 border-b pb-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">
               Connected Accounts
             </h1>
-            <p className="text-muted-foreground text-sm mt-0.5">
-              Manage API connections and browser automation profiles.
+            <p className="text-muted-foreground text-xs md:text-sm mt-0.5">
+              Connect your social profiles for API publishing and browser
+              automation.
             </p>
           </div>
 
           <div className="flex items-center gap-2">
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-1.5 text-xs">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs h-8"
+                >
                   <Terminal className="h-3.5 w-3.5" />
-                  CLI Shortcuts
+                  CLI
                 </Button>
               </PopoverTrigger>
               <PopoverContent
                 align="end"
-                className="w-84 p-4 text-xs space-y-3"
+                className="w-80 p-3 text-xs space-y-2.5"
               >
                 <div className="font-semibold text-foreground flex items-center gap-1.5">
                   <Code2 className="h-4 w-4 text-primary" />
-                  Terminal Commands
+                  Terminal CLI Commands
                 </div>
-                <div className="space-y-2">
-                  <div className="p-2 rounded bg-muted/60 border font-mono">
-                    <span className="text-muted-foreground block text-[10px] uppercase font-sans font-medium mb-0.5">
-                      1. Headed Login
-                    </span>
-                    <code className="text-primary text-[11px] select-all">
-                      uv run python scripts/headed_login.py --platform x
-                    </code>
-                  </div>
-                  <div className="p-2 rounded bg-muted/60 border font-mono">
-                    <span className="text-muted-foreground block text-[10px] uppercase font-sans font-medium mb-0.5">
-                      2. Verify Session
-                    </span>
-                    <code className="text-primary text-[11px] select-all">
-                      uv run python scripts/test_session.py --platform x
-                    </code>
-                  </div>
+                <div className="p-2 rounded bg-muted/60 border font-mono space-y-1">
+                  <span className="text-muted-foreground block text-[10px] uppercase font-sans font-medium">
+                    1. Headed Login
+                  </span>
+                  <code className="text-primary text-[11px] block truncate select-all">
+                    uv run python scripts/headed_login.py --platform x
+                  </code>
+                </div>
+                <div className="p-2 rounded bg-muted/60 border font-mono space-y-1">
+                  <span className="text-muted-foreground block text-[10px] uppercase font-sans font-medium">
+                    2. Verify Session
+                  </span>
+                  <code className="text-primary text-[11px] block truncate select-all">
+                    uv run python scripts/test_session.py --platform x
+                  </code>
                 </div>
               </PopoverContent>
             </Popover>
@@ -243,10 +249,10 @@ function ConnectedAccountsPage() {
           </div>
         </div>
 
-        {/* 2 Modern Account Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {/* Vertical Stack of Account Cards */}
+        <div className="flex flex-col gap-4">
           {/* ======================= LINKEDIN ======================= */}
-          <Card className="flex flex-col border shadow-none bg-card hover:border-border/80 transition-all">
+          <Card className="border shadow-none bg-card hover:border-border/80 transition-all">
             <CardHeader className="flex flex-row items-center justify-between pb-3 space-y-0">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#0077b5]/10 text-[#0077b5]">
@@ -288,6 +294,13 @@ function ConnectedAccountsPage() {
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{" "}
                   Connected
                 </Badge>
+              ) : needsLinkedInReconnect ? (
+                <Badge
+                  variant="outline"
+                  className="bg-amber-500/10 text-amber-600 border-amber-500/20 text-xs gap-1.5 py-0.5 px-2.5"
+                >
+                  <AlertTriangle className="h-3 w-3" /> Token Expired
+                </Badge>
               ) : (
                 <Badge
                   variant="secondary"
@@ -298,17 +311,17 @@ function ConnectedAccountsPage() {
               )}
             </CardHeader>
 
-            <CardContent className="flex-1 pb-4">
+            <CardContent className="pb-3">
               {isLinkedInConnected && linkedinProfile ? (
                 <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/40 border border-border/50">
                   {linkedinProfile.profile_picture_url ? (
                     <img
                       src={linkedinProfile.profile_picture_url}
                       alt="Profile"
-                      className="h-9 w-9 rounded-full object-cover"
+                      className="h-10 w-10 rounded-full object-cover"
                     />
                   ) : (
-                    <div className="h-9 w-9 rounded-full bg-[#0077b5]/15 text-[#0077b5] flex items-center justify-center font-bold text-xs">
+                    <div className="h-10 w-10 rounded-full bg-[#0077b5]/15 text-[#0077b5] flex items-center justify-center font-bold text-sm">
                       {linkedinProfile.display_name?.[0] || "L"}
                     </div>
                   )}
@@ -317,7 +330,7 @@ function ConnectedAccountsPage() {
                       {linkedinProfile.display_name || "LinkedIn User"}
                     </p>
                     <p className="text-xs text-muted-foreground truncate">
-                      {linkedinProfile.email || "OAuth active"}
+                      {linkedinProfile.email || "OAuth token active"}
                     </p>
                   </div>
                   <Tooltip>
@@ -325,54 +338,79 @@ function ConnectedAccountsPage() {
                       <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0 cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent side="left">
-                      Valid access token active
+                      Valid access token in Redis
                     </TooltipContent>
                   </Tooltip>
                 </div>
+              ) : needsLinkedInReconnect ? (
+                <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-400 space-y-1">
+                  <div className="font-medium flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    OAuth Token Expired or Missing
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">
+                    Your previous session is linked to{" "}
+                    {linkedinProfile?.display_name || "your profile"}, but the
+                    active token in Redis has expired. Please reconnect to
+                    restore publishing capabilities.
+                  </p>
+                </div>
               ) : (
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Connect via LinkedIn Developer OAuth to publish updates and
-                  fetch analytics using official REST endpoints.
+                  Connect your LinkedIn account to publish updates, carousels,
+                  and manage scheduled posts via official REST APIs.
                 </p>
               )}
             </CardContent>
 
-            <CardFooter className="pt-0 flex items-center justify-between gap-2">
+            <CardFooter className="pt-1 flex items-center justify-end gap-2">
               {isLinkedInConnected ? (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => refetchLinkedin()}
-                    disabled={isLoadingLinkedin || isRefetchingLinkedin}
-                    className="text-xs h-8 gap-1.5"
-                  >
-                    <RefreshCw
-                      className={`h-3 w-3 ${isRefetchingLinkedin ? "animate-spin" : ""}`}
-                    />
-                    Refresh
-                  </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => disconnectLinkedInMutation.mutate()}
+                  disabled={disconnectLinkedInMutation.isPending}
+                  className="text-xs h-8 text-destructive border-destructive/20 hover:bg-destructive/10 hover:text-destructive gap-1.5"
+                >
+                  {disconnectLinkedInMutation.isPending ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Unlink className="h-3 w-3" />
+                  )}
+                  Disconnect
+                </Button>
+              ) : needsLinkedInReconnect ? (
+                <div className="flex items-center justify-between w-full">
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => disconnectLinkedInMutation.mutate()}
                     disabled={disconnectLinkedInMutation.isPending}
-                    className="text-xs h-8 text-destructive hover:bg-destructive/10 hover:text-destructive gap-1.5"
+                    className="text-xs h-8 text-muted-foreground hover:text-destructive gap-1.5"
                   >
-                    {disconnectLinkedInMutation.isPending ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <Unlink className="h-3 w-3" />
-                    )}
-                    Disconnect
+                    <Unlink className="h-3 w-3" />
+                    Remove
                   </Button>
-                </>
+                  <Button
+                    onClick={() => connectLinkedInMutation.mutate()}
+                    disabled={connectLinkedInMutation.isPending}
+                    size="sm"
+                    className="text-xs h-8 bg-[#0077b5] hover:bg-[#0077b5]/90 text-white gap-1.5 font-medium"
+                  >
+                    {connectLinkedInMutation.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    )}
+                    Reconnect LinkedIn
+                  </Button>
+                </div>
               ) : (
                 <Button
                   onClick={() => connectLinkedInMutation.mutate()}
                   disabled={connectLinkedInMutation.isPending}
                   size="sm"
-                  className="w-full h-8 text-xs bg-[#0077b5] hover:bg-[#0077b5]/90 text-white gap-1.5 font-medium"
+                  className="text-xs h-8 bg-[#0077b5] hover:bg-[#0077b5]/90 text-white gap-1.5 font-medium"
                 >
                   {connectLinkedInMutation.isPending ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -386,7 +424,7 @@ function ConnectedAccountsPage() {
           </Card>
 
           {/* ======================= X (TWITTER) ======================= */}
-          <Card className="flex flex-col border shadow-none bg-card hover:border-border/80 transition-all">
+          <Card className="border shadow-none bg-card hover:border-border/80 transition-all">
             <CardHeader className="flex flex-row items-center justify-between pb-3 space-y-0">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-foreground/10 text-foreground">
@@ -407,8 +445,8 @@ function ConnectedAccountsPage() {
                         </Badge>
                       </TooltipTrigger>
                       <TooltipContent side="top" className="max-w-xs">
-                        Stealth browser automation using Playwright. Persists
-                        cookies locally.
+                        Stealth browser automation with persistent local Chrome
+                        cookies.
                       </TooltipContent>
                     </Tooltip>
                   </div>
@@ -438,10 +476,10 @@ function ConnectedAccountsPage() {
               )}
             </CardHeader>
 
-            <CardContent className="flex-1 pb-4 space-y-3">
+            <CardContent className="pb-3 space-y-2.5">
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Uses a dedicated local Chrome profile for automation. Log in
-                once in the headed browser to persist cookies.
+                Automates posting and scraping via a dedicated local Chrome
+                profile without expensive API subscription keys.
               </p>
 
               {xStatus?.session_dir && (
@@ -473,7 +511,7 @@ function ConnectedAccountsPage() {
               )}
             </CardContent>
 
-            <CardFooter className="pt-0 flex items-center justify-between gap-2">
+            <CardFooter className="pt-1 flex items-center justify-between gap-2">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -517,7 +555,7 @@ function ConnectedAccountsPage() {
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="max-w-xs">
-                  Runs a live headless check on x.com/home to verify cookies and
+                  Runs a live headless check on x.com/home to test cookies and
                   feed detection.
                 </TooltipContent>
               </Tooltip>
