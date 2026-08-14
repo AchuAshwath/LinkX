@@ -1,7 +1,7 @@
 "use client"
 
 import { Link } from "@tanstack/react-router"
-import { Home, Link2, Package, X } from "lucide-react"
+import { Clock, Link2, Package, X } from "lucide-react"
 import * as React from "react"
 import { Logo } from "@/components/Common/Logo"
 import { CreatePostDialog } from "@/components/PostInput/CreatePostDialog"
@@ -54,8 +54,8 @@ export function Sidebar({ sidebarOpen, onClose }: SidebarProps) {
             asChild
           >
             <Link to="/home">
-              <Home className="mr-2 h-4 w-4" />
-              Home
+              <Clock className="mr-2 h-4 w-4" />
+              Timeline
             </Link>
           </Button>
           <Button
