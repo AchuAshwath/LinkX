@@ -181,6 +181,16 @@ export type ValidationError = {
 
 export type XStatusPublic = {
     status: string;
+    session_dir: string;
+    cookie_files_found: boolean;
+    login_method?: string;
+};
+
+export type XVerifyResponse = {
+    connected: boolean;
+    authenticated: boolean;
+    message: string;
+    url?: (string | null);
 };
 
 export type AdminReadSchedulerStatusResponse = (unknown);
@@ -203,6 +213,8 @@ export type AuthLinkedinCallbackData = {
 export type AuthLinkedinCallbackResponse = (unknown);
 
 export type AuthXStatusResponse = (XStatusPublic);
+
+export type AuthXVerifyResponse = (XVerifyResponse);
 
 export type AuthXConnectData = {
     force?: boolean;

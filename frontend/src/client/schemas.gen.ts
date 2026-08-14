@@ -1026,9 +1026,53 @@ export const XStatusPublicSchema = {
         status: {
             type: 'string',
             title: 'Status'
+        },
+        session_dir: {
+            type: 'string',
+            title: 'Session Dir'
+        },
+        cookie_files_found: {
+            type: 'boolean',
+            title: 'Cookie Files Found'
+        },
+        login_method: {
+            type: 'string',
+            title: 'Login Method',
+            default: 'headed_chrome_automation'
         }
     },
     type: 'object',
-    required: ['status'],
+    required: ['status', 'session_dir', 'cookie_files_found'],
     title: 'XStatusPublic'
+} as const;
+
+export const XVerifyResponseSchema = {
+    properties: {
+        connected: {
+            type: 'boolean',
+            title: 'Connected'
+        },
+        authenticated: {
+            type: 'boolean',
+            title: 'Authenticated'
+        },
+        message: {
+            type: 'string',
+            title: 'Message'
+        },
+        url: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Url'
+        }
+    },
+    type: 'object',
+    required: ['connected', 'authenticated', 'message'],
+    title: 'XVerifyResponse'
 } as const;

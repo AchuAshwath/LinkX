@@ -21,7 +21,10 @@ def test_x_status_endpoint(
             headers=headers,
         )
     assert response.status_code == 200
-    assert response.json() == {"status": "connected"}
+    data = response.json()
+    assert data["status"] == "connected"
+    assert data["cookie_files_found"] is True
+    assert "session_dir" in data
 
 
 def test_linkedin_status_endpoint(

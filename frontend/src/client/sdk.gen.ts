@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { AdminReadSchedulerStatusResponse, AuthLinkedinConfigCheckResponse, AuthLinkedinAuthorizeResponse, AuthLinkedinCallbackData, AuthLinkedinCallbackResponse, AuthXStatusResponse, AuthXConnectData, AuthXConnectResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, LinkedinLinkedinStatusResponse, LinkedinLinkedinDisconnectResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PostsReadPostsData, PostsReadPostsResponse, PostsCreateNewPostData, PostsCreateNewPostResponse, PostsReadPostData, PostsReadPostResponse, PostsUpdateExistingPostData, PostsUpdateExistingPostResponse, PostsDeleteExistingPostData, PostsDeleteExistingPostResponse, PostsPublishExistingPostData, PostsPublishExistingPostResponse, PostsRetryFailedPostData, PostsRetryFailedPostResponse, PrivateCreateUserData, PrivateCreateUserResponse, TrendingGetTrendingResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
+import type { AdminReadSchedulerStatusResponse, AuthLinkedinConfigCheckResponse, AuthLinkedinAuthorizeResponse, AuthLinkedinCallbackData, AuthLinkedinCallbackResponse, AuthXStatusResponse, AuthXVerifyResponse, AuthXConnectData, AuthXConnectResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, LinkedinLinkedinStatusResponse, LinkedinLinkedinDisconnectResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PostsReadPostsData, PostsReadPostsResponse, PostsCreateNewPostData, PostsCreateNewPostResponse, PostsReadPostData, PostsReadPostResponse, PostsUpdateExistingPostData, PostsUpdateExistingPostResponse, PostsDeleteExistingPostData, PostsDeleteExistingPostResponse, PostsPublishExistingPostData, PostsPublishExistingPostResponse, PostsRetryFailedPostData, PostsRetryFailedPostResponse, PrivateCreateUserData, PrivateCreateUserResponse, TrendingGetTrendingResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
 
 export class AdminService {
     /**
@@ -75,7 +75,7 @@ export class AuthService {
     
     /**
      * X Status
-     * Check if the X account is connected for the current user.
+     * Check if the X account cookie session is present on disk for the current user.
      * @returns XStatusPublic Successful Response
      * @throws ApiError
      */
@@ -87,8 +87,21 @@ export class AuthService {
     }
     
     /**
+     * X Verify
+     * Run live headless verification against X.com to confirm cookies are valid and feed loads.
+     * @returns XVerifyResponse Successful Response
+     * @throws ApiError
+     */
+    public static xVerify(): CancelablePromise<AuthXVerifyResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/auth/x/verify'
+        });
+    }
+    
+    /**
      * X Connect
-     * Launch the headed browser for manual X.com login for current user.
+     * Launch the headed Chrome browser on the host machine for manual X.com login.
      * @param data The data for the request.
      * @param data.force
      * @returns unknown Successful Response
