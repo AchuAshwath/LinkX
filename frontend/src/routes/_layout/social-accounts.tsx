@@ -1,14 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import {
-  AlertCircle,
-  Bot,
   Check,
-  CheckCircle2,
+  Code2,
   Copy,
   ExternalLink,
-  FolderOpen,
-  Key,
+  Folder,
   Laptop,
   Loader2,
   RefreshCw,
@@ -21,17 +18,26 @@ import { FaLinkedinIn, FaXTwitter } from "react-icons/fa6"
 import { z } from "zod"
 
 import { AuthService, LinkedinService } from "@/client"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import useCustomToast from "@/hooks/useCustomToast"
 
 const searchSchema = z.object({
@@ -48,11 +54,6 @@ function ConnectedAccountsPage() {
   const queryClient = useQueryClient()
   const search = Route.useSearch()
   const [copiedPath, setCopiedPath] = React.useState(false)
-  const [verificationResult, setVerificationResult] = React.useState<{
-    checked: boolean
-    authenticated: boolean
-    message: string
-  } | null>(null)
 
   // Handle OAuth redirect notifications
   React.useEffect(() => {
@@ -121,7 +122,7 @@ function ConnectedAccountsPage() {
       AuthService.xConnect({ force: force ?? false }),
     onSuccess: () => {
       showSuccessToast(
-        "Chrome window launched! Please complete login on X.com.",
+        "Chrome window launched! Complete login on X.com and close the window.",
       )
       setTimeout(() => {
         refetchX()
@@ -138,20 +139,15 @@ function ConnectedAccountsPage() {
   const verifyXMutation = useMutation({
     mutationFn: () => AuthService.xVerify(),
     onSuccess: (res) => {
-      setVerificationResult({
-        checked: true,
-        authenticated: res.authenticated,
-        message: res.message,
-      })
       if (res.authenticated) {
         showSuccessToast("X session verified! Home feed successfully detected.")
       } else {
-        showErrorToast(res.message || "X session could not be authenticated.")
+        showErrorToast(res.message || "X session cookies expired or invalid.")
       }
       refetchX()
     },
     onError: (err: any) => {
-      showErrorToast(err?.body?.detail || "Error running browser verification.")
+      showErrorToast(err?.body?.detail || "Error verifying browser session.")
     },
   })
 
@@ -173,70 +169,112 @@ function ConnectedAccountsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-8 p-6 md:p-10 max-w-6xl mx-auto">
-      {/* Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-6">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary/10 text-primary uppercase tracking-wider">
-              Integration Matrix
-            </span>
+    <TooltipProvider>
+      <div className="flex flex-col gap-6 p-6 md:p-8 max-w-5xl mx-auto">
+        {/* Clean Header */}
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">
+              Connected Accounts
+            </h1>
+            <p className="text-muted-foreground text-sm mt-0.5">
+              Manage API connections and browser automation profiles.
+            </p>
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight">
-            Social Accounts & Automation
-          </h1>
-          <p className="text-muted-foreground mt-1 max-w-2xl text-sm leading-relaxed">
-            LinkX demonstrates multiple social automation paradigms. Connect via
-            standard OAuth 2.0 API or stealth anti-detection browser session
-            automation.
-          </p>
+
+          <div className="flex items-center gap-2">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1.5 text-xs">
+                  <Terminal className="h-3.5 w-3.5" />
+                  CLI Shortcuts
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="end"
+                className="w-84 p-4 text-xs space-y-3"
+              >
+                <div className="font-semibold text-foreground flex items-center gap-1.5">
+                  <Code2 className="h-4 w-4 text-primary" />
+                  Terminal Commands
+                </div>
+                <div className="space-y-2">
+                  <div className="p-2 rounded bg-muted/60 border font-mono">
+                    <span className="text-muted-foreground block text-[10px] uppercase font-sans font-medium mb-0.5">
+                      1. Headed Login
+                    </span>
+                    <code className="text-primary text-[11px] select-all">
+                      uv run python scripts/headed_login.py --platform x
+                    </code>
+                  </div>
+                  <div className="p-2 rounded bg-muted/60 border font-mono">
+                    <span className="text-muted-foreground block text-[10px] uppercase font-sans font-medium mb-0.5">
+                      2. Verify Session
+                    </span>
+                    <code className="text-primary text-[11px] select-all">
+                      uv run python scripts/test_session.py --platform x
+                    </code>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    refetchLinkedin()
+                    refetchX()
+                  }}
+                  disabled={isRefetchingLinkedin || isRefetchingX}
+                >
+                  <RefreshCw
+                    className={`h-4 w-4 ${isRefetchingLinkedin || isRefetchingX ? "animate-spin" : ""}`}
+                  />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                Refresh connection states
+              </TooltipContent>
+            </Tooltip>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              refetchLinkedin()
-              refetchX()
-            }}
-            disabled={isRefetchingLinkedin || isRefetchingX}
-            className="gap-2"
-          >
-            <RefreshCw
-              className={`h-3.5 w-3.5 ${isRefetchingLinkedin || isRefetchingX ? "animate-spin" : ""}`}
-            />
-            Refresh All
-          </Button>
-        </div>
-      </div>
-
-      {/* Main 2-Column Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* ======================= 1. LINKEDIN: OFFICIAL API APPROACH ======================= */}
-        <Card className="flex flex-col border-border/70 shadow-sm relative overflow-hidden bg-card hover:border-border transition-colors">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-[#0077b5]" />
-          <CardHeader className="pb-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3.5">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#0077b5]/10 text-[#0077b5] ring-1 ring-[#0077b5]/20">
-                  <FaLinkedinIn className="h-6 w-6" />
+        {/* 2 Modern Account Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {/* ======================= LINKEDIN ======================= */}
+          <Card className="flex flex-col border shadow-none bg-card hover:border-border/80 transition-all">
+            <CardHeader className="flex flex-row items-center justify-between pb-3 space-y-0">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#0077b5]/10 text-[#0077b5]">
+                  <FaLinkedinIn className="h-5 w-5" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <CardTitle className="text-xl font-bold">
+                    <CardTitle className="text-base font-semibold">
                       LinkedIn
                     </CardTitle>
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] uppercase font-mono px-2 py-0"
-                    >
-                      REST API
-                    </Badge>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] font-mono px-1.5 py-0 cursor-help"
+                        >
+                          API
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-xs">
+                        Official OAuth 2.0 REST API integration. Tokens stored
+                        in Redis.
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
-                  <CardDescription className="text-xs mt-0.5">
-                    Official OAuth 2.0 & REST API Protocol
-                  </CardDescription>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Official OAuth 2.0
+                  </p>
                 </div>
               </div>
 
@@ -245,147 +283,138 @@ function ConnectedAccountsPage() {
               ) : isLinkedInConnected ? (
                 <Badge
                   variant="outline"
-                  className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 gap-1.5 py-1 px-3"
+                  className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs gap-1.5 py-0.5 px-2.5"
                 >
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />{" "}
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{" "}
                   Connected
                 </Badge>
               ) : (
-                <Badge variant="secondary" className="text-muted-foreground">
-                  Not Connected
+                <Badge
+                  variant="secondary"
+                  className="text-xs text-muted-foreground"
+                >
+                  Disconnected
                 </Badge>
               )}
-            </div>
-          </CardHeader>
+            </CardHeader>
 
-          <CardContent className="flex-1 space-y-5">
-            {/* Info / Explanation Callout */}
-            <div className="p-3.5 rounded-lg bg-muted/30 border border-border/40 text-xs space-y-1.5">
-              <div className="flex items-center gap-1.5 font-semibold text-foreground/90">
-                <Key className="h-3.5 w-3.5 text-primary" />
-                <span>How this works:</span>
-              </div>
-              <p className="text-muted-foreground leading-relaxed">
-                Connects through the official LinkedIn Developer OAuth 2.0
-                authorization code flow. Tokens and permissions (
-                <code className="font-mono text-primary/90">
-                  openid, profile, w_member_social
-                </code>
-                ) are securely stored in Redis and used to publish text and
-                image posts via standard REST endpoints.
-              </p>
-            </div>
-
-            {/* Connection State Details */}
-            {isLinkedInConnected && linkedinProfile ? (
-              <div className="p-4 rounded-xl bg-muted/40 border border-border/60 flex items-center gap-4">
-                {linkedinProfile.profile_picture_url ? (
-                  <img
-                    src={linkedinProfile.profile_picture_url}
-                    alt="LinkedIn Profile"
-                    className="h-12 w-12 rounded-full object-cover ring-2 ring-[#0077b5]/30"
-                  />
-                ) : (
-                  <div className="h-12 w-12 rounded-full bg-[#0077b5]/15 text-[#0077b5] flex items-center justify-center font-bold text-lg ring-2 ring-[#0077b5]/30">
-                    {linkedinProfile.display_name?.[0] || "L"}
+            <CardContent className="flex-1 pb-4">
+              {isLinkedInConnected && linkedinProfile ? (
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/40 border border-border/50">
+                  {linkedinProfile.profile_picture_url ? (
+                    <img
+                      src={linkedinProfile.profile_picture_url}
+                      alt="Profile"
+                      className="h-9 w-9 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="h-9 w-9 rounded-full bg-[#0077b5]/15 text-[#0077b5] flex items-center justify-center font-bold text-xs">
+                      {linkedinProfile.display_name?.[0] || "L"}
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm truncate text-foreground">
+                      {linkedinProfile.display_name || "LinkedIn User"}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {linkedinProfile.email || "OAuth active"}
+                    </p>
                   </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm truncate text-foreground">
-                    {linkedinProfile.display_name || "LinkedIn Member"}
-                  </p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {linkedinProfile.email || "OAuth Token Active"}
-                  </p>
-                  <div className="flex items-center gap-2 mt-1.5">
-                    <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 font-medium">
-                      <ShieldCheck className="h-3 w-3" /> Token Valid
-                    </span>
-                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0 cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent side="left">
+                      Valid access token active
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
-              </div>
-            ) : (
-              <div className="text-sm text-muted-foreground">
-                <p>
-                  Connect your LinkedIn account to enable publishing and state
-                  management through LinkedIn's official platform API.
+              ) : (
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Connect via LinkedIn Developer OAuth to publish updates and
+                  fetch analytics using official REST endpoints.
                 </p>
-              </div>
-            )}
-          </CardContent>
+              )}
+            </CardContent>
 
-          <CardFooter className="pt-3 border-t bg-muted/10 flex items-center justify-between">
-            {isLinkedInConnected ? (
-              <>
+            <CardFooter className="pt-0 flex items-center justify-between gap-2">
+              {isLinkedInConnected ? (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => refetchLinkedin()}
+                    disabled={isLoadingLinkedin || isRefetchingLinkedin}
+                    className="text-xs h-8 gap-1.5"
+                  >
+                    <RefreshCw
+                      className={`h-3 w-3 ${isRefetchingLinkedin ? "animate-spin" : ""}`}
+                    />
+                    Refresh
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => disconnectLinkedInMutation.mutate()}
+                    disabled={disconnectLinkedInMutation.isPending}
+                    className="text-xs h-8 text-destructive hover:bg-destructive/10 hover:text-destructive gap-1.5"
+                  >
+                    {disconnectLinkedInMutation.isPending ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Unlink className="h-3 w-3" />
+                    )}
+                    Disconnect
+                  </Button>
+                </>
+              ) : (
                 <Button
-                  variant="outline"
+                  onClick={() => connectLinkedInMutation.mutate()}
+                  disabled={connectLinkedInMutation.isPending}
                   size="sm"
-                  onClick={() => refetchLinkedin()}
-                  disabled={isLoadingLinkedin || isRefetchingLinkedin}
-                  className="gap-1.5"
+                  className="w-full h-8 text-xs bg-[#0077b5] hover:bg-[#0077b5]/90 text-white gap-1.5 font-medium"
                 >
-                  <RefreshCw
-                    className={`h-3.5 w-3.5 ${isRefetchingLinkedin ? "animate-spin" : ""}`}
-                  />
-                  Check Status
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => disconnectLinkedInMutation.mutate()}
-                  disabled={disconnectLinkedInMutation.isPending}
-                  className="gap-1.5"
-                >
-                  {disconnectLinkedInMutation.isPending ? (
+                  {connectLinkedInMutation.isPending ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : (
-                    <Unlink className="h-3.5 w-3.5" />
+                    <ExternalLink className="h-3.5 w-3.5" />
                   )}
-                  Disconnect
+                  Connect LinkedIn
                 </Button>
-              </>
-            ) : (
-              <Button
-                onClick={() => connectLinkedInMutation.mutate()}
-                disabled={connectLinkedInMutation.isPending}
-                size="sm"
-                className="w-full bg-[#0077b5] hover:bg-[#0077b5]/90 text-white gap-2 font-medium"
-              >
-                {connectLinkedInMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <ExternalLink className="h-4 w-4" />
-                )}
-                Connect LinkedIn with OAuth
-              </Button>
-            )}
-          </CardFooter>
-        </Card>
+              )}
+            </CardFooter>
+          </Card>
 
-        {/* ======================= 2. X (TWITTER): STEALTH BROWSER AUTOMATION ======================= */}
-        <Card className="flex flex-col border-border/70 shadow-sm relative overflow-hidden bg-card hover:border-border transition-colors">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-foreground" />
-          <CardHeader className="pb-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3.5">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-foreground/10 text-foreground ring-1 ring-foreground/20">
-                  <FaXTwitter className="h-6 w-6" />
+          {/* ======================= X (TWITTER) ======================= */}
+          <Card className="flex flex-col border shadow-none bg-card hover:border-border/80 transition-all">
+            <CardHeader className="flex flex-row items-center justify-between pb-3 space-y-0">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-foreground/10 text-foreground">
+                  <FaXTwitter className="h-5 w-5" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <CardTitle className="text-xl font-bold">
+                    <CardTitle className="text-base font-semibold">
                       X (Twitter)
                     </CardTitle>
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] uppercase font-mono px-2 py-0 bg-primary/5 text-primary border-primary/20"
-                    >
-                      Stealth Browser
-                    </Badge>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] font-mono px-1.5 py-0 cursor-help"
+                        >
+                          Browser
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-xs">
+                        Stealth browser automation using Playwright. Persists
+                        cookies locally.
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
-                  <CardDescription className="text-xs mt-0.5">
-                    No Enterprise API Key • Local Headed Session Evasion
-                  </CardDescription>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Headed Browser Session
+                  </p>
                 </div>
               </div>
 
@@ -394,196 +423,108 @@ function ConnectedAccountsPage() {
               ) : isXCookiePresent ? (
                 <Badge
                   variant="outline"
-                  className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 gap-1.5 py-1 px-3"
+                  className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs gap-1.5 py-0.5 px-2.5"
                 >
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{" "}
-                  Session Saved
+                  Session Active
                 </Badge>
               ) : (
-                <Badge variant="secondary" className="text-muted-foreground">
+                <Badge
+                  variant="secondary"
+                  className="text-xs text-muted-foreground"
+                >
                   No Session
                 </Badge>
               )}
-            </div>
-          </CardHeader>
+            </CardHeader>
 
-          <CardContent className="flex-1 space-y-5">
-            {/* Honest Technical Explanation */}
-            <div className="p-3.5 rounded-lg bg-muted/30 border border-border/40 text-xs space-y-1.5">
-              <div className="flex items-center gap-1.5 font-semibold text-foreground/90">
-                <Bot className="h-3.5 w-3.5 text-primary" />
-                <span>How this works (Honest Architecture):</span>
-              </div>
-              <p className="text-muted-foreground leading-relaxed">
-                Because X.com charges $100+/month for basic write APIs, LinkX
-                connects via <strong>Headed Chrome Automation</strong>. Clicking
-                connect launches a real Google Chrome instance on your computer
-                with a dedicated profile. Log in once, solve any CAPTCHA/2FA,
-                and your session cookies are persisted locally to automate posts
-                and scraping with <strong>rebrowser-playwright</strong>.
+            <CardContent className="flex-1 pb-4 space-y-3">
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Uses a dedicated local Chrome profile for automation. Log in
+                once in the headed browser to persist cookies.
               </p>
-            </div>
 
-            {/* Session Path Display */}
-            {xStatus?.session_dir && (
-              <div className="p-3 rounded-lg bg-muted/40 border border-border/50 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1.5">
-                    <FolderOpen className="h-3 w-3" /> Persistent Session Path:
+              {xStatus?.session_dir && (
+                <div className="flex items-center justify-between gap-2 p-2 rounded-md bg-muted/30 border border-border/40 text-[11px] font-mono text-muted-foreground">
+                  <span className="truncate flex items-center gap-1.5">
+                    <Folder className="h-3 w-3 shrink-0 text-muted-foreground/70" />
+                    <span className="truncate">{xStatus.session_dir}</span>
                   </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5 text-muted-foreground hover:text-foreground"
-                    onClick={() => copyToClipboard(xStatus.session_dir)}
-                    title="Copy Path"
-                  >
-                    {copiedPath ? (
-                      <Check className="h-3 w-3 text-emerald-500" />
-                    ) : (
-                      <Copy className="h-3 w-3" />
-                    )}
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 shrink-0 text-muted-foreground hover:text-foreground"
+                        onClick={() => copyToClipboard(xStatus.session_dir)}
+                      >
+                        {copiedPath ? (
+                          <Check className="h-3 w-3 text-emerald-500" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      Copy session path
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
-                <code className="text-[11px] block font-mono bg-background/80 p-2 rounded border border-border/40 text-muted-foreground truncate select-all">
-                  {xStatus.session_dir}
-                </code>
-              </div>
-            )}
+              )}
+            </CardContent>
 
-            {/* Live Verification Feedback */}
-            {verificationResult && (
-              <Alert
-                variant={
-                  verificationResult.authenticated ? "default" : "destructive"
-                }
-                className="py-2.5"
-              >
-                {verificationResult.authenticated ? (
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                ) : (
-                  <AlertCircle className="h-4 w-4" />
-                )}
-                <AlertTitle className="text-xs font-semibold">
-                  {verificationResult.authenticated
-                    ? "Session Authenticated"
-                    : "Verification Failed"}
-                </AlertTitle>
-                <AlertDescription className="text-xs mt-0.5">
-                  {verificationResult.message}
-                </AlertDescription>
-              </Alert>
-            )}
+            <CardFooter className="pt-0 flex items-center justify-between gap-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={() => connectXMutation.mutate(false)}
+                    disabled={connectXMutation.isPending}
+                    size="sm"
+                    variant="default"
+                    className="text-xs h-8 gap-1.5 font-medium"
+                  >
+                    {connectXMutation.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Laptop className="h-3.5 w-3.5" />
+                    )}
+                    {isXCookiePresent
+                      ? "Re-launch Chrome"
+                      : "Launch Chrome Login"}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-xs">
+                  Opens a Google Chrome window to log in and save cookies to
+                  disk.
+                </TooltipContent>
+              </Tooltip>
 
-            {/* Instructions list */}
-            <div className="text-xs space-y-2 text-muted-foreground">
-              <p className="font-semibold text-foreground/80">
-                Connecting Workflow:
-              </p>
-              <ol className="list-decimal list-inside space-y-1 pl-1">
-                <li>
-                  Click <strong>Launch Chrome Login</strong> below.
-                </li>
-                <li>
-                  Log in to your X.com account and complete 2FA in the opened
-                  Chrome window.
-                </li>
-                <li>
-                  Wait 5-10s until your home feed is visible, then close Chrome
-                  (Cmd+Q / Alt+F4).
-                </li>
-                <li>
-                  Click <strong>Run Live Verification</strong> to test the
-                  connection.
-                </li>
-              </ol>
-            </div>
-          </CardContent>
-
-          <CardFooter className="pt-3 border-t bg-muted/10 flex flex-wrap gap-2 items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Button
-                onClick={() => connectXMutation.mutate(false)}
-                disabled={connectXMutation.isPending}
-                size="sm"
-                className="gap-2 font-medium"
-              >
-                {connectXMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Laptop className="h-4 w-4" />
-                )}
-                Launch Chrome Login
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => verifyXMutation.mutate()}
-                disabled={verifyXMutation.isPending || !isXCookiePresent}
-                className="gap-1.5"
-                title="Runs live headless verification check against x.com"
-              >
-                {verifyXMutation.isPending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <ShieldCheck className="h-3.5 w-3.5 text-primary" />
-                )}
-                Run Live Verification
-              </Button>
-            </div>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => refetchX()}
-              disabled={isLoadingX || isRefetchingX}
-              className="gap-1.5 text-xs text-muted-foreground"
-            >
-              <RefreshCw
-                className={`h-3 w-3 ${isRefetchingX ? "animate-spin" : ""}`}
-              />
-              Quick Check
-            </Button>
-          </CardFooter>
-        </Card>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => verifyXMutation.mutate()}
+                    disabled={verifyXMutation.isPending || !isXCookiePresent}
+                    className="text-xs h-8 gap-1.5"
+                  >
+                    {verifyXMutation.isPending ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <ShieldCheck className="h-3 w-3 text-primary" />
+                    )}
+                    Verify Session
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-xs">
+                  Runs a live headless check on x.com/home to verify cookies and
+                  feed detection.
+                </TooltipContent>
+              </Tooltip>
+            </CardFooter>
+          </Card>
+        </div>
       </div>
-
-      {/* CLI Power-User Card */}
-      <Card className="border-border/50 bg-muted/20">
-        <CardHeader className="pb-3">
-          <div className="flex items-center gap-2.5">
-            <Terminal className="h-4 w-4 text-primary" />
-            <CardTitle className="text-base font-semibold">
-              CLI Alternative Commands
-            </CardTitle>
-          </div>
-          <CardDescription className="text-xs">
-            Prefer running scripts directly from your terminal? Use these
-            commands:
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
-            <div className="p-2.5 rounded bg-background border space-y-1">
-              <span className="text-[11px] text-muted-foreground block font-sans font-semibold">
-                1. Headed Login via CLI:
-              </span>
-              <code className="text-primary block truncate">
-                uv run python scripts/headed_login.py --platform x
-              </code>
-            </div>
-            <div className="p-2.5 rounded bg-background border space-y-1">
-              <span className="text-[11px] text-muted-foreground block font-sans font-semibold">
-                2. Test Session via CLI:
-              </span>
-              <code className="text-primary block truncate">
-                uv run python scripts/test_session.py --platform x
-              </code>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+    </TooltipProvider>
   )
 }
