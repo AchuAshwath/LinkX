@@ -9,11 +9,11 @@ from app.services.browser.manager import BrowserManager
 router = APIRouter(prefix="/auth/x", tags=["auth"])
 
 
-class XStatusResponse(BaseModel):
+class XStatusPublic(BaseModel):
     status: str  # "connected" or "disconnected"
 
 
-@router.get("/status", response_model=XStatusResponse)
+@router.get("/status", response_model=XStatusPublic)
 def x_status(
     *,
     current_user: CurrentUser,
@@ -21,7 +21,7 @@ def x_status(
     """Check if the X account is connected for the current user."""
     manager = BrowserManager(brand_id=str(current_user.id))
     is_connected = manager.session_exists("x")
-    return XStatusResponse(status="connected" if is_connected else "disconnected")
+    return XStatusPublic(status="connected" if is_connected else "disconnected")
 
 
 @router.post("/connect")

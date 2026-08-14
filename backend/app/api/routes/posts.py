@@ -85,6 +85,7 @@ def _set_post_status(*, session: Session, post: Post, status_value: str) -> Post
 
 @router.get("", response_model=PostsPublic)
 def read_posts(
+    *,
     session: SessionDep,
     current_user: CurrentUser,
     skip: int = 0,

@@ -24,6 +24,7 @@ def _redis_token_key(*, user_id: uuid.UUID) -> str:
 
 @router.get("/status")
 def linkedin_status(
+    *,
     current_user: CurrentUser,
     session: SessionDep,
 ) -> dict[str, Any]:
@@ -84,6 +85,7 @@ def linkedin_status(
 
 @router.delete("/disconnect")
 def linkedin_disconnect(
+    *,
     current_user: CurrentUser,
     session: SessionDep,
 ) -> dict[str, Any]:

@@ -102,6 +102,7 @@ def linkedin_config_check() -> dict[str, Any]:
 
 @router.get("/authorize")
 def linkedin_authorize(
+    *,
     current_user: CurrentUser,
 ) -> dict[str, str]:
     """Start LinkedIn OAuth for current user."""
@@ -144,7 +145,7 @@ def linkedin_authorize(
 
 
 def _frontend_redirect(
-    path: str = "/accounts", linkedin: str = "error"
+    *, path: str = "/accounts", linkedin: str = "error"
 ) -> RedirectResponse:
     base = settings.FRONTEND_HOST.rstrip("/")
     url = f"{base}{path}?linkedin={linkedin}"
@@ -153,6 +154,7 @@ def _frontend_redirect(
 
 @router.get("/callback")
 async def linkedin_callback(
+    *,
     session: SessionDep,
     code: str | None = None,
     state: str | None = None,

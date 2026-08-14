@@ -76,7 +76,7 @@ export class AuthService {
     /**
      * X Status
      * Check if the X account is connected for the current user.
-     * @returns XStatusResponse Successful Response
+     * @returns XStatusPublic Successful Response
      * @throws ApiError
      */
     public static xStatus(): CancelablePromise<AuthXStatusResponse> {

@@ -97,7 +97,7 @@ def _handle_publish_error(
 
 
 async def _publish_linkedin(
-    session: Session, post: Post, user_id: uuid.UUID
+    *, session: Session, post: Post, user_id: uuid.UUID
 ) -> str | PublishFailure:
     linkedin_account = _linkedin_account_for_user(
         session=session,
@@ -129,7 +129,7 @@ async def _publish_linkedin(
 
 
 async def _publish_x(
-    session: Session, post: Post, user_id: uuid.UUID
+    *, session: Session, post: Post, user_id: uuid.UUID
 ) -> str | PublishFailure:
     try:
         x_client = XPostClient()
@@ -150,7 +150,7 @@ _PLATFORM_PUBLISHERS = {
 
 
 async def _publish_to_platform(
-    session: Session, post: Post, user_id: uuid.UUID
+    *, session: Session, post: Post, user_id: uuid.UUID
 ) -> str | PublishFailure:
     publisher = _PLATFORM_PUBLISHERS.get(post.platform)
     if not publisher:
@@ -158,10 +158,10 @@ async def _publish_to_platform(
         return _handle_publish_error(
             session=session, post=post, user_id=user_id, err=err
         )
-    return await publisher(session, post, user_id)
+    return await publisher(session=session, post=post, user_id=user_id)
 
 
-def _mark_as_published(session: Session, post: Post, external_post_id: str) -> None:
+def _mark_as_published(*, session: Session, post: Post, external_post_id: str) -> None:
     validate_transition(current_status=post.status, target_status="published")
     post.status = "published"
     post.external_post_id = external_post_id
@@ -184,7 +184,9 @@ async def publish_post(
     if post.external_post_id:
         if post.status == "published":
             return None
-        _mark_as_published(session, post, post.external_post_id)
+        _mark_as_published(
+            session=session, post=post, external_post_id=post.external_post_id
+        )
         return None
 
     validate_transition(current_status=post.status, target_status="publishing")
@@ -195,11 +197,11 @@ async def publish_post(
     session.commit()
     session.refresh(post)
 
-    result = await _publish_to_platform(session, post, user_id)
+    result = await _publish_to_platform(session=session, post=post, user_id=user_id)
     if isinstance(result, PublishFailure):
         return result
 
-    _mark_as_published(session, post, result)
+    _mark_as_published(session=session, post=post, external_post_id=result)
     logger.info(
         "publish_success post_id=%s user_id=%s status=%s",
         post.id,

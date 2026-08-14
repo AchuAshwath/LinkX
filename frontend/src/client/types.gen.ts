@@ -179,7 +179,7 @@ export type ValidationError = {
     type: string;
 };
 
-export type XStatusResponse = {
+export type XStatusPublic = {
     status: string;
 };
 
@@ -202,7 +202,7 @@ export type AuthLinkedinCallbackData = {
 
 export type AuthLinkedinCallbackResponse = (unknown);
 
-export type AuthXStatusResponse = (XStatusResponse);
+export type AuthXStatusResponse = (XStatusPublic);
 
 export type AuthXConnectData = {
     force?: boolean;

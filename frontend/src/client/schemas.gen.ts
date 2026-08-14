@@ -1021,7 +1021,7 @@ export const ValidationErrorSchema = {
     title: 'ValidationError'
 } as const;
 
-export const XStatusResponseSchema = {
+export const XStatusPublicSchema = {
     properties: {
         status: {
             type: 'string',
@@ -1030,5 +1030,5 @@ export const XStatusResponseSchema = {
     },
     type: 'object',
     required: ['status'],
-    title: 'XStatusResponse'
+    title: 'XStatusPublic'
 } as const;
