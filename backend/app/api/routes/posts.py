@@ -154,6 +154,17 @@ async def create_new_post(
     return _serialize_post_with_author(session=session, post=post)
 
 
+def _get_user_post_or_404(
+    *, session: Session, post_id: uuid.UUID, user_id: uuid.UUID
+) -> Post:
+    post = get_post(session=session, post_id=post_id)
+    if not post or post.owner_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        )
+    return post
+
+
 @router.get("/{post_id}", response_model=PostPublic)
 def read_post(
     *,
@@ -162,13 +173,9 @@ def read_post(
     post_id: uuid.UUID,
 ) -> Any:
     """Read a specific post owned by current user."""
-    post = get_post(session=session, post_id=post_id)
-
-    if not post or post.owner_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
-        )
-
+    post = _get_user_post_or_404(
+        session=session, post_id=post_id, user_id=current_user.id
+    )
     return _serialize_post_with_author(session=session, post=post)
 
 
@@ -181,12 +188,9 @@ async def update_existing_post(
     post_in: PostUpdate,
 ) -> Any:
     """Update a post owned by current user."""
-    post = get_post(session=session, post_id=post_id)
-
-    if not post or post.owner_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
-        )
+    post = _get_user_post_or_404(
+        session=session, post_id=post_id, user_id=current_user.id
+    )
 
     requested_status = post_in.status
 
@@ -238,13 +242,7 @@ def delete_existing_post(
     post_id: uuid.UUID,
 ) -> Any:
     """Delete a post owned by current user."""
-    post = get_post(session=session, post_id=post_id)
-
-    if not post or post.owner_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
-        )
-
+    _get_user_post_or_404(session=session, post_id=post_id, user_id=current_user.id)
     delete_post(session=session, post_id=post_id)
     return Message(message="Post deleted successfully")
 
@@ -257,12 +255,9 @@ async def publish_existing_post(
     post_id: uuid.UUID,
 ) -> Any:
     """Publish a post immediately."""
-    post = get_post(session=session, post_id=post_id)
-    if not post or post.owner_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Post not found",
-        )
+    post = _get_user_post_or_404(
+        session=session, post_id=post_id, user_id=current_user.id
+    )
 
     try:
         failure = await publish_post(
@@ -286,12 +281,9 @@ async def retry_failed_post(
     post_id: uuid.UUID,
 ) -> Any:
     """Retry a failed post."""
-    post = get_post(session=session, post_id=post_id)
-    if not post or post.owner_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Post not found",
-        )
+    post = _get_user_post_or_404(
+        session=session, post_id=post_id, user_id=current_user.id
+    )
 
     if post.status != "failed":
         raise HTTPException(

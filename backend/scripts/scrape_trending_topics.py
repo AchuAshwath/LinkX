@@ -18,10 +18,10 @@ import os
 import random
 import re
 import sys
-import traceback
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 # Add backend to path so we can run from anywhere
 sys.path.append(str(Path(__file__).parent.parent))
@@ -300,13 +300,142 @@ async def simulate_reading(mouse: EvasionMouse) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def scrape_trending_topics() -> ScrapeResult:
-    """Scrape trending news topics from X.com.
+async def _extract_sidebar_links(
+    sidebar: Any,
+    link_selector: str,
+    heuristic: dict[str, Any],
+) -> tuple[list[tuple[str, bool]], dict[str, str]]:
+    """Extract valid sidebar news links according to heuristics."""
+    must_contain_newline = heuristic.get("must_contain_newline", True)
+    exclude_texts = heuristic.get("exclude_texts", ["Show more", "Subscribe"])
+    exclude_prefix = heuristic.get("exclude_prefix", "@")
 
-    Returns a structured ScrapeResult so a LangGraph agent can
-    branch on status without parsing log output.
-    """
-    # Force headed mode so developer can watch
+    all_links = await sidebar.locator(link_selector).all()
+    news_urls: list[tuple[str, bool]] = []
+    news_titles: dict[str, str] = {}
+
+    for link in all_links:
+        try:
+            text = await link.inner_text()
+            url = await link.get_attribute("href")
+            testid = await link.get_attribute("data-testid")
+            identifier = url if url else testid
+            is_href = bool(url)
+
+            is_valid = True
+            if must_contain_newline and "\n" not in text:
+                is_valid = False
+            if exclude_prefix and text.startswith(exclude_prefix):
+                is_valid = False
+            for ex in exclude_texts:
+                if ex in text:
+                    is_valid = False
+
+            if identifier and is_valid and identifier not in news_titles:
+                news_urls.append((identifier, is_href))
+                news_titles[identifier] = text
+        except Exception:
+            continue
+
+    return news_urls, news_titles
+
+
+async def _scrape_topic_tweets(
+    page: Any,
+    mouse: Any,
+    tweet_selector: str,
+    scrolls_per_topic: int,
+) -> list[dict]:
+    """Scrape top tweets with human reading simulation."""
+    conversations: list[dict] = []
+    author_counts: dict[str, int] = {}
+    remaining_scrolls = scrolls_per_topic
+
+    while len(conversations) < 5 and remaining_scrolls >= 0:
+        tweets = await page.locator(tweet_selector).all()
+        for t in tweets:
+            data = await extract_tweet_data(t)
+            if not data:
+                continue
+
+            if data["raw"] in [c["raw"] for c in conversations]:
+                continue
+
+            author = data["author"]
+            current_count = author_counts.get(author, 0)
+            if current_count >= MAX_TWEETS_PER_AUTHOR:
+                continue
+
+            conversations.append(data)
+            author_counts[author] = current_count + 1
+            await simulate_reading(mouse)
+
+            if len(conversations) >= 5:
+                break
+
+        if len(conversations) < 5 and remaining_scrolls > 0:
+            await mouse.human_scroll(scrolls=1)
+            await random_delay(min_sec=1.0, max_sec=3.0)
+
+        remaining_scrolls -= 1
+
+    return conversations[:5]
+
+
+def _save_topic_record(
+    db_user_id: Any,
+    topic_url: str,
+    title_data: dict,
+    summary_text: str | None,
+    conversations: list[dict],
+    scraped_at: datetime,
+) -> None:
+    """Save scraped topic and tweets to database."""
+    if not db_user_id:
+        logger.error("No default user found. Skipping DB save.")
+        return
+
+    with Session(engine) as session:
+        db_topic_data = {
+            "user_id": db_user_id,
+            "topic_url": topic_url,
+            "topic_title": title_data["topic_title"],
+            "category": title_data.get("category"),
+            "post_count": parse_post_count(title_data.get("post_count")),
+            "summary": summary_text,
+            "first_seen_at": parse_relative_time(
+                title_data.get("time_ago"), scraped_at
+            ),
+            "last_seen_at": scraped_at,
+            "scraped_at": scraped_at,
+        }
+
+        db_topic = crud.upsert_trending_topic(session=session, topic_data=db_topic_data)
+
+        db_tweets_data = []
+        for conv in conversations:
+            metrics = parse_engagement_metrics(conv["raw"])
+            db_tweets_data.append(
+                {
+                    "author_handle": conv["author"],
+                    "text": conv["text"],
+                    "replies": metrics["replies"],
+                    "retweets": metrics["retweets"],
+                    "likes": metrics["likes"],
+                    "views": metrics["views"],
+                }
+            )
+
+        crud.replace_trending_tweets(
+            session=session,
+            topic_id=db_topic.id,
+            tweets_data=db_tweets_data,
+        )
+        logger.info(f"💾 Saved topic '{db_topic.topic_title}' to DB.")
+
+
+async def scrape_trending_topics() -> ScrapeResult:
+    """Scrape trending news topics from X.com."""
     if "PLAYWRIGHT_HEADLESS" not in os.environ:
         os.environ["PLAYWRIGHT_HEADLESS"] = "0"
 
@@ -320,7 +449,6 @@ async def scrape_trending_topics() -> ScrapeResult:
         else:
             logger.warning("No default user found. DB save will be skipped.")
 
-    # Load config
     config_path = Path(__file__).parent.parent / "scrape_config.json"
     with open(config_path) as f:
         config = json.load(f)
@@ -344,11 +472,7 @@ async def scrape_trending_topics() -> ScrapeResult:
             "div[data-testid='cellInnerDiv']",
         ],
     )
-
     heuristic = config.get("link_heuristic", {})
-    must_contain_newline = heuristic.get("must_contain_newline", True)
-    exclude_texts = heuristic.get("exclude_texts", ["Show more", "Subscribe"])
-    exclude_prefix = heuristic.get("exclude_prefix", "@")
 
     result = ScrapeResult(status="error")
     brand_id = sys.argv[1] if len(sys.argv) > 1 else "default"
@@ -359,7 +483,6 @@ async def scrape_trending_topics() -> ScrapeResult:
         async with manager.get_context(
             "x", headless=(os.environ["PLAYWRIGHT_HEADLESS"] == "1")
         ) as context:
-            # Ensure we only have one tab open
             if len(context.pages) > 0:
                 page = context.pages[0]
                 for p in context.pages[1:]:
@@ -372,11 +495,8 @@ async def scrape_trending_topics() -> ScrapeResult:
 
             logger.info("Navigating to https://x.com/home")
             await page.goto("https://x.com/home", wait_until="domcontentloaded")
-
-            # Wait for feed and sidebar to load
             await random_delay(min_sec=4.0, max_sec=6.0)
 
-            # ── Check page state before proceeding ──────────────
             page_state = await detect_page_state(page)
             if page_state != "ok":
                 logger.error(f"Page state check failed: {page_state}")
@@ -387,82 +507,34 @@ async def scrape_trending_topics() -> ScrapeResult:
                 result.errors.append(f"Initial page state: {page_state}")
                 return result
 
-            # ── Extract sidebar news topics ─────────────────────
-            logger.info("Extracting trending topics from the sidebar...")
             sidebar = page.locator(sidebar_selector)
-            all_links = await sidebar.locator(sidebar_link_selector).all()
-
-            news_urls: list[tuple[str, bool]] = []
-            news_titles: dict[str, str] = {}
-            for link in all_links:
-                try:
-                    text = await link.inner_text()
-                    url = await link.get_attribute("href")
-                    testid = await link.get_attribute("data-testid")
-                    identifier = url if url else testid
-                    is_href = bool(url)
-
-                    # Apply heuristic from config
-                    is_valid = True
-                    if must_contain_newline and "\n" not in text:
-                        is_valid = False
-                    if exclude_prefix and text.startswith(exclude_prefix):
-                        is_valid = False
-                    for ex in exclude_texts:
-                        if ex in text:
-                            is_valid = False
-
-                    if identifier and is_valid and identifier not in news_titles:
-                        news_urls.append((identifier, is_href))
-                        news_titles[identifier] = text
-                except Exception:
-                    continue
+            news_urls, news_titles = await _extract_sidebar_links(
+                sidebar, sidebar_link_selector, heuristic
+            )
 
             if not news_urls:
-                logger.warning(
-                    "No news links matched the heuristic. "
-                    "(They might be out of view or not rendered yet)."
-                )
-                logger.debug("--- DIAGNOSTIC: Available Links ---")
-                for link in all_links:
-                    try:
-                        logger.debug(
-                            f"Href: {await link.get_attribute('href')} "
-                            f"| Text: {repr(await link.inner_text())}"
-                        )
-                    except Exception:
-                        pass
-                logger.debug("-----------------------------------")
+                logger.warning("No news links matched the heuristic.")
                 await mouse.stop_idle()
                 result.status = "no_topics"
-                result.errors.append(
-                    "No sidebar news links matched the configured heuristic."
-                )
+                result.errors.append("No sidebar news links matched heuristic.")
                 return result
 
             result.topics_found = len(news_urls)
-            logger.info(f"Found {len(news_urls)} news topics to scrape.")
-
-            # ── Randomize visit order to avoid fingerprinting ───
             targets = news_urls[:max_topics]
             random.shuffle(targets)
 
-            # ── Scrape each topic ───────────────────────────────
             for target_id, is_href in targets:
                 target_title = news_titles[target_id]
                 logger.info(f"Targeting topic: {target_id}")
-
-                # Pause before clicking (variable delay)
                 await random_delay(min_sec=1.0, max_sec=3.0)
 
-                if is_href:
-                    selector = f'a[href="{target_id}"]'
-                else:
-                    selector = f'[data-testid="{target_id}"]'
-
+                selector = (
+                    f'a[href="{target_id}"]'
+                    if is_href
+                    else f'[data-testid="{target_id}"]'
+                )
                 link_locator = page.locator(selector).first
 
-                # Prevent opening in a new tab
                 if is_href:
                     try:
                         await link_locator.evaluate(
@@ -471,10 +543,7 @@ async def scrape_trending_topics() -> ScrapeResult:
                     except Exception as e:
                         logger.debug(f"Could not remove target attribute: {e}")
 
-                # Click with human-like mouse movement
                 await mouse.human_click(selector=selector)
-
-                # Wait for the topic page to load
                 logger.info("Navigated to topic page. Waiting for content...")
                 try:
                     await page.wait_for_selector(
@@ -491,17 +560,12 @@ async def scrape_trending_topics() -> ScrapeResult:
                             detail="Timed out waiting for tweet selector after 15s.",
                         )
                     )
-                    # Navigate directly instead of go_back (more reliable with SPA)
                     await page.goto("https://x.com/home", wait_until="domcontentloaded")
                     await random_delay(min_sec=3.0, max_sec=5.0)
                     continue
 
-                # ── Check page state after navigation ───────────
                 topic_page_state = await detect_page_state(page)
                 if topic_page_state != "ok":
-                    logger.warning(
-                        f"Page state error on topic {target_id}: {topic_page_state}"
-                    )
                     result.topics_failed.append(
                         TopicFailure(
                             topic_id=target_id,
@@ -513,13 +577,8 @@ async def scrape_trending_topics() -> ScrapeResult:
                     await random_delay(min_sec=3.0, max_sec=5.0)
                     continue
 
-                # Simulate initial reading pause (like a human scanning the page)
                 await random_delay(min_sec=2.0, max_sec=5.0)
-
-                # ── Extract summary (structural-first JS heuristic) ─
                 summary_text = await extract_grok_summary(page)
-
-                # Fallback to config selectors if JS found nothing
                 if not summary_text:
                     for sel in summary_selectors:
                         try:
@@ -532,116 +591,32 @@ async def scrape_trending_topics() -> ScrapeResult:
                         except Exception:
                             continue
 
-                # ── Scrape conversations with reading simulation ─
-                conversations: list[dict] = []
-                author_counts: dict[str, int] = {}
-                remaining_scrolls = scrolls_per_topic  # Fresh copy per topic!
-                logger.info("Scraping top 5 tweets...")
-
-                while len(conversations) < 5 and remaining_scrolls >= 0:
-                    tweets = await page.locator(tweet_selector).all()
-                    for t in tweets:
-                        data = await extract_tweet_data(t)
-                        if not data:
-                            continue
-
-                        # Dedup by raw text
-                        if data["raw"] in [c["raw"] for c in conversations]:
-                            continue
-
-                        # Cap per-author tweets to ensure diversity
-                        author = data["author"]
-                        current_count = author_counts.get(author, 0)
-                        if current_count >= MAX_TWEETS_PER_AUTHOR:
-                            continue
-
-                        conversations.append(data)
-                        author_counts[author] = current_count + 1
-
-                        # Simulate reading between tweet extractions
-                        await simulate_reading(mouse)
-
-                        if len(conversations) >= 5:
-                            break
-
-                    if len(conversations) < 5 and remaining_scrolls > 0:
-                        await mouse.human_scroll(scrolls=1)
-                        await random_delay(min_sec=1.0, max_sec=3.0)
-
-                    remaining_scrolls -= 1
-
-                # Final safety cap
-                conversations = conversations[:5]
-
-                # ── Parse title metadata ────────────────────────
+                conversations = await _scrape_topic_tweets(
+                    page, mouse, tweet_selector, scrolls_per_topic
+                )
                 title_data = parse_title_metadata(target_title)
-
-                # ── Save to DB ──────────────────────────────────
                 scraped_at = datetime.now(timezone.utc)
-                if not db_user_id:
-                    logger.error("No default user found. Skipping DB save.")
-                else:
-                    try:
-                        with Session(engine) as session:
-                            db_topic_data = {
-                                "user_id": db_user_id,
-                                "topic_url": page.url,
-                                "topic_title": title_data["topic_title"],
-                                "category": title_data.get("category"),
-                                "post_count": parse_post_count(
-                                    title_data.get("post_count")
-                                ),
-                                "summary": summary_text,
-                                "first_seen_at": parse_relative_time(
-                                    title_data.get("time_ago"), scraped_at
-                                ),
-                                "last_seen_at": scraped_at,
-                                "scraped_at": scraped_at,
-                            }
 
-                            db_topic = crud.upsert_trending_topic(
-                                session=session, topic_data=db_topic_data
-                            )
-
-                            db_tweets_data = []
-                            for conv in conversations:
-                                metrics = parse_engagement_metrics(conv["raw"])
-                                db_tweets_data.append(
-                                    {
-                                        "author_handle": conv["author"],
-                                        "text": conv["text"],
-                                        "replies": metrics["replies"],
-                                        "retweets": metrics["retweets"],
-                                        "likes": metrics["likes"],
-                                        "views": metrics["views"],
-                                    }
-                                )
-
-                            crud.replace_trending_tweets(
-                                session=session,
-                                topic_id=db_topic.id,
-                                tweets_data=db_tweets_data,
-                            )
-                            logger.info(
-                                f"💾 Saved topic '{db_topic.topic_title}' to DB."
-                            )
-                    except Exception as e:
-                        logger.error(
-                            f"DB save failed for topic '{title_data.get('topic_title')}':\n{traceback.format_exc()}"
+                try:
+                    _save_topic_record(
+                        db_user_id,
+                        page.url,
+                        title_data,
+                        summary_text,
+                        conversations,
+                        scraped_at,
+                    )
+                except Exception as e:
+                    logger.error(f"DB save error: {e}")
+                    result.topics_failed.append(
+                        TopicFailure(
+                            topic_id=target_id,
+                            reason="db_error",
+                            detail=str(e),
                         )
-                        result.topics_failed.append(
-                            TopicFailure(
-                                topic_id=target_id,
-                                reason="db_error",
-                                detail=str(e),
-                            )
-                        )
+                    )
 
                 result.topics_scraped += 1
-                logger.info(
-                    f"✅ Saved {len(conversations)} tweets from topic '{title_data['topic_title']}'"
-                )
-
                 if len(conversations) == 0:
                     result.topics_failed.append(
                         TopicFailure(
@@ -651,24 +626,15 @@ async def scrape_trending_topics() -> ScrapeResult:
                         )
                     )
 
-                # ── Navigate back to homepage (direct, not go_back) ─
-                logger.info("Navigating back to homepage...")
                 await page.goto("https://x.com/home", wait_until="domcontentloaded")
-
-                # Variable delay between topics
                 delay = random.uniform(min_delay, max_delay)
-                logger.info(f"Idling for {delay:.1f}s before next topic...")
                 await random_delay(min_sec=delay, max_sec=delay)
-
-                # Extra random idle to break pattern (20% chance of longer pause)
                 if random.random() < 0.20:
                     extra = random.uniform(3.0, 8.0)
-                    logger.debug(f"Extra idle pause: {extra:.1f}s")
                     await random_delay(min_sec=extra, max_sec=extra)
 
             await mouse.stop_idle()
 
-            # ── Determine final status ──────────────────────────
             if result.topics_scraped == 0:
                 result.status = "error"
                 result.errors.append("No topics were successfully scraped.")

@@ -1,18 +1,7 @@
-import {
-  Check,
-  Eye,
-  Heart,
-  MessageCircle,
-  MoreHorizontal,
-  Repeat2,
-  Share,
-  X,
-} from "lucide-react"
+import { Check, Eye, MoreHorizontal, X } from "lucide-react"
 import * as React from "react"
-import {
-  type Platform,
-  PlatformSelector,
-} from "@/components/Common/PlatformSelector"
+import type { Platform } from "@/components/Common/PlatformSelector"
+import { PostActionFooter } from "@/components/Post/PostActionFooter"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -100,6 +89,28 @@ const Posted = React.memo(function Posted({
     }
   }, [isEditing])
 
+  const fullDateTime = formatFullDateTime(post.createdAt)
+  const relativeTime = formatRelativeTime(post.createdAt)
+  const initials = getInitials(post.author.name)
+
+  const handleLike = React.useCallback(() => {
+    setIsLiked((prev) => {
+      const next = !prev
+      setLikeCount((count) => (next ? count + 1 : count - 1))
+      onLike?.(post.id)
+      return next
+    })
+  }, [onLike, post.id])
+
+  const handleRepost = React.useCallback(() => {
+    setIsReposted((prev) => {
+      const next = !prev
+      setRepostCount((count) => (next ? count + 1 : count - 1))
+      onRepost?.(post.id)
+      return next
+    })
+  }, [onRepost, post.id])
+
   const handlePlatformChange = React.useCallback(
     (newPlatform: Platform) => {
       setPlatform(newPlatform)
@@ -120,22 +131,6 @@ const Posted = React.memo(function Posted({
     setPlatform(post.platform || "linkedin")
     onCancel?.()
   }, [onCancel, post.content, post.platform])
-
-  const handleLike = React.useCallback(() => {
-    setIsLiked(!isLiked)
-    setLikeCount((prev) => (isLiked ? prev - 1 : prev + 1))
-    onLike?.(post.id)
-  }, [isLiked, onLike, post.id])
-
-  const handleRepost = React.useCallback(() => {
-    setIsReposted(!isReposted)
-    setRepostCount((prev) => (isReposted ? prev - 1 : prev + 1))
-    onRepost?.(post.id)
-  }, [isReposted, onRepost, post.id])
-
-  const fullDateTime = formatFullDateTime(post.createdAt)
-  const relativeTime = formatRelativeTime(post.createdAt)
-  const initials = getInitials(post.author.name)
 
   return (
     <article
@@ -181,8 +176,8 @@ const Posted = React.memo(function Posted({
                         ? post.createdAt
                         : post.createdAt.toISOString()
                     }
-                    className="shrink-0 text-xs sm:text-sm"
                     title={fullDateTime}
+                    className="shrink-0 text-xs sm:text-sm"
                   >
                     {post.relativeDate || relativeTime}
                   </time>
@@ -249,7 +244,7 @@ const Posted = React.memo(function Posted({
               </div>
             )}
 
-            {post.imageUrl && !isEditing ? (
+            {post.imageUrl && !isEditing && (
               <div className="overflow-hidden rounded-2xl">
                 <img
                   src={post.imageUrl}
@@ -258,80 +253,22 @@ const Posted = React.memo(function Posted({
                   loading="lazy"
                 />
               </div>
-            ) : null}
-
-            {isEditing ? (
-              <div className="flex items-center justify-end pt-2">
-                <PlatformSelector
-                  value={platform}
-                  onChange={handlePlatformChange}
-                  size="sm"
-                />
-              </div>
-            ) : (
-              <div className="flex items-center justify-between gap-1 sm:gap-4">
-                <div className="flex items-center gap-1 sm:gap-4">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="group/btn h-9 flex-1 justify-start gap-2 text-muted-foreground transition-colors hover:bg-blue-500/10 hover:text-blue-500 active:scale-95 sm:h-8 sm:flex-initial"
-                    onClick={handleLike}
-                    aria-label={`${isLiked ? "Unlike" : "Like"} post`}
-                    aria-pressed={isLiked}
-                  >
-                    <Heart
-                      className={`h-4 w-4 transition-colors sm:h-3.5 sm:w-3.5 ${
-                        isLiked ? "fill-red-500 text-red-500" : ""
-                      }`}
-                    />
-                    <span className="text-base">{likeCount}</span>
-                  </Button>
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="group/btn h-9 flex-1 justify-start gap-2 text-muted-foreground transition-colors hover:bg-green-500/10 hover:text-green-500 active:scale-95 sm:h-8 sm:flex-initial"
-                    onClick={handleRepost}
-                    aria-label={`${isReposted ? "Undo repost" : "Repost"}`}
-                    aria-pressed={isReposted}
-                  >
-                    <Repeat2
-                      className={`h-4 w-4 transition-colors sm:h-3.5 sm:w-3.5 ${
-                        isReposted ? "text-green-500" : ""
-                      }`}
-                    />
-                    <span className="text-base">{repostCount}</span>
-                  </Button>
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="group/btn h-9 flex-1 justify-start gap-2 text-muted-foreground transition-colors hover:bg-blue-500/10 hover:text-blue-500 active:scale-95 sm:h-8 sm:flex-initial"
-                    onClick={() => onComment?.(post.id)}
-                    aria-label="Comment on post"
-                  >
-                    <MessageCircle className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
-                    <span className="text-base">{post.comments}</span>
-                  </Button>
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="group/btn h-9 w-9 shrink-0 text-muted-foreground transition-colors hover:bg-blue-500/10 hover:text-blue-500 active:scale-95 sm:h-8 sm:w-8"
-                    onClick={() => onShare?.(post.id)}
-                    aria-label="Share post"
-                  >
-                    <Share className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
-                  </Button>
-                </div>
-
-                <PlatformSelector
-                  value={platform}
-                  onChange={handlePlatformChange}
-                  size="sm"
-                />
-              </div>
             )}
+
+            <PostActionFooter
+              isEditing={isEditing}
+              platform={platform}
+              onPlatformChange={handlePlatformChange}
+              isLiked={isLiked}
+              likeCount={likeCount}
+              onLike={handleLike}
+              isReposted={isReposted}
+              repostCount={repostCount}
+              onRepost={handleRepost}
+              commentsCount={post.comments}
+              onComment={() => onComment?.(post.id)}
+              onShare={() => onShare?.(post.id)}
+            />
           </div>
         </div>
       </div>

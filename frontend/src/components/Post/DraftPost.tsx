@@ -1,18 +1,7 @@
-import {
-  Check,
-  Eye,
-  Heart,
-  MessageCircle,
-  MoreHorizontal,
-  Repeat2,
-  Share,
-  X,
-} from "lucide-react"
+import { Check, Eye, MoreHorizontal, X } from "lucide-react"
 import * as React from "react"
-import {
-  type Platform,
-  PlatformSelector,
-} from "@/components/Common/PlatformSelector"
+import type { Platform } from "@/components/Common/PlatformSelector"
+import { PostActionFooter } from "@/components/Post/PostActionFooter"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -34,7 +23,7 @@ export interface DraftPostData {
   content: string
   imageUrl?: string
   createdAt: Date | string
-  relativeDate?: string // e.g., "1 day ago"
+  relativeDate?: string
   platform: Platform
 }
 
@@ -73,17 +62,14 @@ export function DraftPost({
   const [editedContent, setEditedContent] = React.useState(post.content)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
 
-  // Reset edited content when post changes or edit mode is toggled
   React.useEffect(() => {
     setEditedContent(post.content)
     setPlatform(post.platform || "linkx")
   }, [post.content, post.platform])
 
-  // Focus textarea when entering edit mode
   React.useEffect(() => {
     if (isEditing && textareaRef.current) {
       textareaRef.current.focus()
-      // Move cursor to end
       textareaRef.current.setSelectionRange(
         textareaRef.current.value.length,
         textareaRef.current.value.length,
@@ -131,7 +117,6 @@ export function DraftPost({
     >
       <div className="p-3 sm:p-4">
         <div className="flex gap-2 sm:gap-3">
-          {/* Avatar - Left side */}
           <div className="flex-shrink-0">
             <Avatar className="h-10 w-10 cursor-pointer transition-transform hover:scale-105 sm:h-10 sm:w-10">
               {post.author.avatarUrl ? (
@@ -146,9 +131,7 @@ export function DraftPost({
             </Avatar>
           </div>
 
-          {/* Content - Right side */}
           <div className="min-w-0 flex-1 space-y-3 sm:space-y-4">
-            {/* Header: Username + More Menu / Save/Cancel */}
             <div className="flex items-start justify-between gap-2 sm:gap-3">
               <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-1.5">
                 <button
@@ -219,7 +202,6 @@ export function DraftPost({
               )}
             </div>
 
-            {/* Post Content - Editable in edit mode */}
             {isEditing ? (
               <Textarea
                 ref={textareaRef}
@@ -237,7 +219,6 @@ export function DraftPost({
               </div>
             )}
 
-            {/* Image */}
             {post.imageUrl && !isEditing && (
               <div className="overflow-hidden rounded-2xl">
                 <img
@@ -249,77 +230,18 @@ export function DraftPost({
               </div>
             )}
 
-            {/* Action Bar (with 0 engagement stats) & Platform Selector */}
-            {isEditing ? (
-              <div className="flex items-center justify-end pt-2">
-                <PlatformSelector
-                  value={platform}
-                  onChange={handlePlatformChange}
-                  size="sm"
-                />
-              </div>
-            ) : (
-              <div className="flex items-center justify-between gap-1 sm:gap-4">
-                <div className="flex items-center gap-1 sm:gap-4">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="group/btn h-9 flex-1 justify-start gap-2 text-muted-foreground transition-colors hover:bg-blue-500/10 hover:text-blue-500 active:scale-95 sm:h-8 sm:flex-initial"
-                    onClick={handleLike}
-                    aria-label={`${isLiked ? "Unlike" : "Like"} post`}
-                    aria-pressed={isLiked}
-                  >
-                    <Heart
-                      className={`h-4 w-4 transition-colors sm:h-3.5 sm:w-3.5 ${
-                        isLiked ? "fill-red-500 text-red-500" : ""
-                      }`}
-                    />
-                    <span className="text-base">{likeCount}</span>
-                  </Button>
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="group/btn h-9 flex-1 justify-start gap-2 text-muted-foreground transition-colors hover:bg-green-500/10 hover:text-green-500 active:scale-95 sm:h-8 sm:flex-initial"
-                    onClick={handleRepost}
-                    aria-label={`${isReposted ? "Undo repost" : "Repost"}`}
-                    aria-pressed={isReposted}
-                  >
-                    <Repeat2
-                      className={`h-4 w-4 transition-colors sm:h-3.5 sm:w-3.5 ${
-                        isReposted ? "text-green-500" : ""
-                      }`}
-                    />
-                    <span className="text-base">{repostCount}</span>
-                  </Button>
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="group/btn h-9 flex-1 justify-start gap-2 text-muted-foreground transition-colors hover:bg-blue-500/10 hover:text-blue-500 active:scale-95 sm:h-8 sm:flex-initial"
-                    aria-label="Comments"
-                  >
-                    <MessageCircle className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
-                    <span className="text-base">0</span>
-                  </Button>
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="group/btn h-9 w-9 shrink-0 text-muted-foreground transition-colors hover:bg-blue-500/10 hover:text-blue-500 active:scale-95 sm:h-8 sm:w-8"
-                    aria-label="Share post"
-                  >
-                    <Share className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
-                  </Button>
-                </div>
-
-                <PlatformSelector
-                  value={platform}
-                  onChange={handlePlatformChange}
-                  size="sm"
-                />
-              </div>
-            )}
+            <PostActionFooter
+              isEditing={isEditing}
+              platform={platform}
+              onPlatformChange={handlePlatformChange}
+              isLiked={isLiked}
+              likeCount={likeCount}
+              onLike={handleLike}
+              isReposted={isReposted}
+              repostCount={repostCount}
+              onRepost={handleRepost}
+              commentsCount={0}
+            />
           </div>
         </div>
       </div>
