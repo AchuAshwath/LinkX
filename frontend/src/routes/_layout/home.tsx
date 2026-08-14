@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { Home as HomeIcon, Loader2 } from "lucide-react"
 import * as React from "react"
-import { PostsService } from "@/client"
+import { PostsService, TrendingService } from "@/client"
 import type { Platform } from "@/components/Common/PlatformSelector"
 import type { PostedData } from "@/components/Post/Posted"
 import { Posted } from "@/components/Post/Posted"
@@ -212,16 +212,24 @@ function TimelinePage() {
     }
   }
 
-  // Sample trending topics
-  const trendingTopics: TrendingTopic[] = React.useMemo(
-    () => [
-      { id: "1", hashtag: "#TechInnovation", postCount: 5200 },
-      { id: "2", hashtag: "#ArtificialIntelligence", postCount: 12000 },
-      { id: "3", hashtag: "#ClimateAction", postCount: 8700 },
-      { id: "4", hashtag: "#SpaceExploration", postCount: 3900 },
-    ],
-    [],
-  )
+  // Live trending topics from DB
+  const { data: trendingData } = useQuery({
+    queryKey: ["trending"],
+    queryFn: async () => {
+      return await TrendingService.getTrending()
+    },
+  })
+
+  const trendingTopics: TrendingTopic[] = React.useMemo(() => {
+    if (!trendingData?.data || trendingData.data.length === 0) {
+      return []
+    }
+    return trendingData.data.map((t) => ({
+      id: t.id,
+      hashtag: t.topic_title,
+      postCount: t.post_count ?? 0,
+    }))
+  }, [trendingData])
 
   const handlePostAction = (action: string, postId: string) => {
     if (action === "delete") {
