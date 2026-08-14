@@ -12,7 +12,7 @@ import {
   X,
 } from "lucide-react"
 import * as React from "react"
-import { OpenAPI, PostsService } from "@/client"
+import { PostsService } from "@/client"
 import type { Platform } from "@/components/Common/PlatformSelector"
 import type { DraftPostData } from "@/components/Post/DraftPost"
 import { DraftPost } from "@/components/Post/DraftPost"
@@ -46,7 +46,6 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import useCustomToast from "@/hooks/useCustomToast"
-import { usePersona } from "@/hooks/usePersona"
 import {
   handleError,
   transformToDraftPost,
@@ -67,7 +66,6 @@ export const Route = createFileRoute("/_layout/posts")({
 
 function PostsPage() {
   const queryClient = useQueryClient()
-  const { selectedPersonaId } = usePersona()
   const [activeTab, setActiveTab] = React.useState<
     "drafts" | "scheduled" | "posted"
   >("drafts")
@@ -90,44 +88,9 @@ function PostsPage() {
   )
   const [previewPostPlatform, setPreviewPostPlatform] =
     React.useState<Platform>("linkedin")
-  const [personaRole, setPersonaRole] = React.useState<
-    "owner" | "admin" | "member" | null
-  >(null)
 
   const { showSuccessToast, showErrorToast } = useCustomToast()
-
-  React.useEffect(() => {
-    const loadPersonaRole = async () => {
-      if (!selectedPersonaId) {
-        setPersonaRole(null)
-        return
-      }
-      try {
-        const res = await fetch(
-          `${OpenAPI.BASE}/api/v1/personas/${selectedPersonaId}/role`,
-          {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem("access_token") || ""}`,
-            },
-          },
-        )
-        if (!res.ok) {
-          setPersonaRole(null)
-          return
-        }
-        const data = (await res.json()) as {
-          role: "owner" | "admin" | "member"
-        }
-        setPersonaRole(data.role)
-      } catch {
-        setPersonaRole(null)
-      }
-    }
-    loadPersonaRole()
-  }, [selectedPersonaId])
-
-  const canRetry = personaRole === "owner" || personaRole === "admin"
+  const canRetry = true
 
   // Map activeTab to API status filter
   const statusFilter = React.useMemo(() => {
@@ -374,7 +337,6 @@ function PostsPage() {
     updateMutation.mutate({
       postId,
       data: {
-        persona_id: selectedPersonaId || undefined,
         content: data.content,
         platform: platformForApi,
       },
@@ -392,7 +354,6 @@ function PostsPage() {
     updateMutation.mutate({
       postId,
       data: {
-        persona_id: selectedPersonaId || undefined,
         content: data.content,
         platform: platformForApi,
         scheduled_at: data.scheduledAt.toISOString(),
@@ -411,7 +372,6 @@ function PostsPage() {
     updateMutation.mutate({
       postId,
       data: {
-        persona_id: selectedPersonaId || undefined,
         content: data.content,
         platform: platformForApi,
       },
@@ -519,14 +479,10 @@ function PostsPage() {
           className="w-full flex flex-col"
         >
           {/* Tabs Header - Sticky */}
-          <div className="sticky top-0 z-10 shrink-0 border-b bg-background/80 backdrop-blur-sm">
-            <TabsList className="w-full h-auto p-0 bg-transparent rounded-none border-0 border-b border-border grid grid-cols-3 relative">
-              <TabsTrigger
-                value="drafts"
-                className="relative flex-1 h-14 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-base transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <FileText className="h-4 w-4" />
+          <div className="sticky top-0 z-10 shrink-0 border-b bg-background/80 backdrop-blur-sm p-4">
+            <TabsList className="grid w-full grid-cols-3 max-w-md">
+              <TabsTrigger value="drafts" className="text-sm">
+                <div className="flex items-center gap-2">
                   <span>Drafts</span>
                   {draftPosts.length > 0 && (
                     <Badge
@@ -538,12 +494,8 @@ function PostsPage() {
                   )}
                 </div>
               </TabsTrigger>
-              <TabsTrigger
-                value="scheduled"
-                className="relative flex-1 h-14 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-base transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <Calendar className="h-4 w-4" />
+              <TabsTrigger value="scheduled" className="text-sm">
+                <div className="flex items-center gap-2">
                   <span>Scheduled</span>
                   {scheduledPosts.length > 0 && (
                     <Badge
@@ -555,12 +507,8 @@ function PostsPage() {
                   )}
                 </div>
               </TabsTrigger>
-              <TabsTrigger
-                value="posted"
-                className="relative flex-1 h-14 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-base transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <CheckCircle2 className="h-4 w-4" />
+              <TabsTrigger value="posted" className="text-sm">
+                <div className="flex items-center gap-2">
                   <span>Posted</span>
                   {postedPosts.length > 0 && (
                     <Badge
@@ -579,20 +527,7 @@ function PostsPage() {
           <div className="w-full">
             {/* Drafts Tab */}
             <TabsContent value="drafts" className="mt-0">
-              {!selectedPersonaId ? (
-                <div className="flex flex-col items-center justify-center text-center py-16 px-4">
-                  <div className="rounded-full bg-muted/50 p-6 mb-4">
-                    <FileText className="h-10 w-10 text-muted-foreground" />
-                  </div>
-                  <h3 className="text-xl font-semibold mb-1">
-                    Select a persona
-                  </h3>
-                  <p className="text-muted-foreground text-sm max-w-sm">
-                    Choose a persona in Social Accounts to manage drafts,
-                    scheduled, and published posts.
-                  </p>
-                </div>
-              ) : isLoadingPosts ? (
+              {isLoadingPosts ? (
                 <div className="flex flex-col items-center justify-center py-16">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   <p className="mt-4 text-sm text-muted-foreground">
