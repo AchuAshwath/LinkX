@@ -3,8 +3,6 @@ import { createFileRoute } from "@tanstack/react-router"
 import {
   AlertTriangle,
   Check,
-  ChevronDown,
-  ChevronUp,
   Copy,
   ExternalLink,
   Folder,
@@ -14,7 +12,6 @@ import {
   RefreshCw,
   RotateCcw,
   ShieldCheck,
-  Terminal,
 } from "lucide-react"
 import * as React from "react"
 import { FaLinkedinIn, FaXTwitter } from "react-icons/fa6"
@@ -213,7 +210,7 @@ function ConnectedAccountsPage() {
                   <span className="font-semibold text-sm">LinkedIn</span>
                   <Badge
                     variant="outline"
-                    className="text-[10px] font-mono py-0 px-1.5 text-muted-foreground"
+                    className="text-[11px] py-0 px-2 font-normal text-muted-foreground"
                   >
                     OAuth 2.0 API
                   </Badge>
@@ -227,7 +224,7 @@ function ConnectedAccountsPage() {
                       <AlertTriangle className="h-3 w-3" /> Token Expired
                     </span>
                   ) : (
-                    <span className="text-[11px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                    <span className="text-[11px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full font-medium">
                       Disconnected
                     </span>
                   )}
@@ -303,7 +300,7 @@ function ConnectedAccountsPage() {
                     <span className="font-semibold text-sm">X (Twitter)</span>
                     <Badge
                       variant="outline"
-                      className="text-[10px] font-mono py-0 px-1.5 text-muted-foreground"
+                      className="text-[11px] py-0 px-2 font-normal text-muted-foreground"
                     >
                       Browser Profile
                     </Badge>
@@ -313,35 +310,19 @@ function ConnectedAccountsPage() {
                         Session Active
                       </span>
                     ) : (
-                      <span className="text-[11px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                      <span className="text-[11px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full font-medium">
                         No Session
                       </span>
                     )}
-
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="text-muted-foreground group-hover:text-foreground inline-flex items-center gap-0.5 text-[11px] font-sans ml-1 transition-colors">
-                          <Terminal className="h-3 w-3 opacity-60" />
-                          {isCliExpanded ? (
-                            <ChevronUp className="h-3 w-3 opacity-60" />
-                          ) : (
-                            <ChevronDown className="h-3 w-3 opacity-60" />
-                          )}
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">
-                        Click to view CLI commands
-                      </TooltipContent>
-                    </Tooltip>
                   </div>
 
                   {/* Session Path with embedded copy button */}
                   <div className="flex items-center gap-1.5 mt-1">
-                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-muted/60 border border-border/50 font-mono text-[11px] text-foreground/80 group/path">
+                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-muted/60 border border-border/50 text-xs text-foreground/80 group/path">
                       <Folder className="h-3 w-3 text-muted-foreground/70 shrink-0" />
-                      <span className="truncate max-w-[180px] sm:max-w-[260px] select-all">
+                      <code className="text-[11px] font-mono truncate max-w-[180px] sm:max-w-[260px] select-all">
                         {sessionPath}
-                      </span>
+                      </code>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <button
@@ -410,11 +391,11 @@ function ConnectedAccountsPage() {
               <div className="p-4 sm:px-6 sm:pb-5 pt-2 bg-muted/15 border-t border-border/40 space-y-3 animate-in slide-in-from-top-1 duration-150">
                 {/* Command 1: Headed Login */}
                 <div className="space-y-1">
-                  <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground font-semibold pl-0.5">
+                  <span className="text-[11px] text-muted-foreground font-medium pl-0.5">
                     1. Headed Login
                   </span>
-                  <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-background border border-border/60 font-mono text-xs text-foreground/90 shadow-2xs group">
-                    <span className="truncate select-all flex items-center gap-2 text-[11px]">
+                  <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-background border border-border/60 text-xs text-foreground/90 shadow-2xs group">
+                    <span className="truncate select-all flex items-center gap-2 text-xs font-mono">
                       <span className="text-muted-foreground/60 select-none">
                         $
                       </span>
@@ -450,11 +431,11 @@ function ConnectedAccountsPage() {
 
                 {/* Command 2: Verify Session */}
                 <div className="space-y-1">
-                  <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground font-semibold pl-0.5">
+                  <span className="text-[11px] text-muted-foreground font-medium pl-0.5">
                     2. Verify Session
                   </span>
-                  <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-background border border-border/60 font-mono text-xs text-foreground/90 shadow-2xs group">
-                    <span className="truncate select-all flex items-center gap-2 text-[11px]">
+                  <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-background border border-border/60 text-xs text-foreground/90 shadow-2xs group">
+                    <span className="truncate select-all flex items-center gap-2 text-xs font-mono">
                       <span className="text-muted-foreground/60 select-none">
                         $
                       </span>
