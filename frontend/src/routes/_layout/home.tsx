@@ -231,29 +231,6 @@ function TimelinePage() {
     }))
   }, [trendingData])
 
-  const handlePostAction = (action: string, postId: string) => {
-    if (action === "delete") {
-      handleDelete(postId, "posted")
-    } else if (action === "preview") {
-      handlePreview(postId)
-    } else {
-      // Handle post actions (like, repost, comment, share)
-      console.log(`${action} post ${postId}`)
-    }
-  }
-
-  const handleScheduledAction = (action: string, postId: string) => {
-    if (action === "edit") {
-      setEditingPostId(postId)
-    } else if (action === "cancel" || action === "delete") {
-      handleDelete(postId, "scheduled")
-    } else if (action === "preview") {
-      handlePreview(postId)
-    } else {
-      console.log(`${action} scheduled post ${postId}`)
-    }
-  }
-
   const handlePostEdit = (postId: string) => {
     setEditingPostId(postId)
   }
@@ -369,12 +346,12 @@ function TimelinePage() {
             key={post.id}
             post={post}
             isEditing={isEditing}
-            onEdit={(id) => handleScheduledAction("edit", id)}
-            onDelete={(id) => handleScheduledAction("delete", id)}
+            onEdit={(id) => handlePostEdit(id)}
+            onDelete={(id) => handleDelete(id, "scheduled")}
             onSave={handleSaveScheduled}
             onCancel={handleCancel}
             onPlatformChange={handlePlatformChange}
-            onPreview={(id) => handleScheduledAction("preview", id)}
+            onPreview={(id) => handlePreview(id)}
           />
         )
       case "posted":
@@ -383,15 +360,11 @@ function TimelinePage() {
             key={post.id}
             post={post}
             isEditing={isEditing}
-            onLike={(id) => handlePostAction("like", id)}
-            onRepost={(id) => handlePostAction("repost", id)}
-            onComment={(id) => handlePostAction("comment", id)}
-            onShare={(id) => handlePostAction("share", id)}
             onEdit={(id) => handlePostEdit(id)}
             onSave={handleSavePosted}
             onCancel={handleCancel}
-            onPreview={(id) => handlePostAction("preview", id)}
-            onDelete={(id) => handlePostAction("delete", id)}
+            onPreview={(id) => handlePreview(id)}
+            onDelete={(id) => handleDelete(id, "posted")}
             onPlatformChange={handlePlatformChange}
           />
         )
