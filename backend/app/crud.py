@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.dialects.postgresql import insert
@@ -146,10 +146,10 @@ def update_post(*, session: Session, db_post: Post, post_in: PostUpdate) -> Post
         elif new_status == "published":
             # Set published_at if not already set
             if db_post.published_at is None:
-                update_data["published_at"] = datetime.utcnow()
+                update_data["published_at"] = datetime.now(timezone.utc)
 
     db_post.sqlmodel_update(update_data)
-    db_post.updated_at = datetime.utcnow()
+    db_post.updated_at = datetime.now(timezone.utc)
     session.add(db_post)
     session.commit()
     session.refresh(db_post)

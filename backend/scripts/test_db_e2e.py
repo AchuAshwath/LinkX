@@ -46,7 +46,7 @@ async def main():
 
         try:
             # Run the publishing state machine
-            await publish_post(session=session, post=post, user_id=user.id)
+            await publish_post(session=session, post=post)
 
             # Refresh to show updated status
             session.refresh(post)

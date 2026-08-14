@@ -66,6 +66,12 @@ def _post_to_public(*, post: Post, author: PostAuthor | None = None) -> PostPubl
     )
 
 
+def _serialize_post_with_author(*, session: Session, post: Post) -> PostPublic:
+    user = _get_user_details(session=session, user_id=post.owner_id)
+    author = _build_post_author(user=user) if user else None
+    return _post_to_public(post=post, author=author)
+
+
 def _raise_publish_failure(*, failure: PublishFailure) -> None:
     raise HTTPException(
         status_code=failure.status_code,
@@ -141,15 +147,11 @@ async def create_new_post(
         failure = await publish_post(
             session=session,
             post=post,
-            user_id=current_user.id,
         )
         if failure:
             _raise_publish_failure(failure=failure)
 
-    user = _get_user_details(session=session, user_id=current_user.id)
-    author = _build_post_author(user=user) if user else None
-
-    return _post_to_public(post=post, author=author)
+    return _serialize_post_with_author(session=session, post=post)
 
 
 @router.get("/{post_id}", response_model=PostPublic)
@@ -167,10 +169,7 @@ def read_post(
             status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
         )
 
-    user = _get_user_details(session=session, user_id=post.owner_id)
-    author = _build_post_author(user=user) if user else None
-
-    return _post_to_public(post=post, author=author)
+    return _serialize_post_with_author(session=session, post=post)
 
 
 @router.patch("/{post_id}", response_model=PostPublic)
@@ -215,7 +214,6 @@ async def update_existing_post(
             failure = await publish_post(
                 session=session,
                 post=post,
-                user_id=current_user.id,
             )
             if failure:
                 _raise_publish_failure(failure=failure)
@@ -229,10 +227,7 @@ async def update_existing_post(
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc))
 
-    user = _get_user_details(session=session, user_id=post.owner_id)
-    author = _build_post_author(user=user) if user else None
-
-    return _post_to_public(post=post, author=author)
+    return _serialize_post_with_author(session=session, post=post)
 
 
 @router.delete("/{post_id}", response_model=Message)
@@ -273,7 +268,6 @@ async def publish_existing_post(
         failure = await publish_post(
             session=session,
             post=post,
-            user_id=current_user.id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -281,9 +275,7 @@ async def publish_existing_post(
     if failure:
         _raise_publish_failure(failure=failure)
 
-    user = _get_user_details(session=session, user_id=post.owner_id)
-    author = _build_post_author(user=user) if user else None
-    return _post_to_public(post=post, author=author)
+    return _serialize_post_with_author(session=session, post=post)
 
 
 @router.post("/{post_id}/retry", response_model=PostPublic)
@@ -326,11 +318,8 @@ async def retry_failed_post(
     failure = await publish_post(
         session=session,
         post=post,
-        user_id=current_user.id,
     )
     if failure:
         _raise_publish_failure(failure=failure)
 
-    user = _get_user_details(session=session, user_id=post.owner_id)
-    author = _build_post_author(user=user) if user else None
-    return _post_to_public(post=post, author=author)
+    return _serialize_post_with_author(session=session, post=post)

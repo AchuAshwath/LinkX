@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 import time
-import uuid
 from typing import Any
 
 from fastapi import APIRouter
@@ -12,14 +11,11 @@ from sqlmodel import select
 from app.api.deps import CurrentUser, SessionDep
 from app.core.redis import get_redis
 from app.models import SocialAccount
+from app.services.linkedin_posts import linkedin_token_redis_key
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/linkedin", tags=["linkedin"])
-
-
-def _redis_token_key(*, user_id: uuid.UUID) -> str:
-    return f"linkedin:token:{user_id}"
 
 
 @router.get("/status")
@@ -41,7 +37,7 @@ def linkedin_status(
     token_payload: dict[str, Any] | None = None
     try:
         r = get_redis()
-        raw = r.get(_redis_token_key(user_id=current_user.id))
+        raw = r.get(linkedin_token_redis_key(user_id=current_user.id))
         if raw:
             token_payload = json.loads(raw)  # type: ignore[arg-type]
     except Exception:
@@ -96,7 +92,7 @@ def linkedin_disconnect(
     """
     try:
         r = get_redis()
-        r.delete(_redis_token_key(user_id=current_user.id))
+        r.delete(linkedin_token_redis_key(user_id=current_user.id))
     except Exception:
         logger.warning(
             "LinkedIn disconnect: Redis delete failed (best-effort); continuing",

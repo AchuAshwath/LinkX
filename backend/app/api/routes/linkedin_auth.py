@@ -19,6 +19,11 @@ from app.api.deps import CurrentUser, SessionDep
 from app.core.config import settings
 from app.core.redis import get_redis
 from app.models import SocialAccount
+from app.services.linkedin_posts import (
+    linkedin_profile_redis_key,
+    linkedin_state_redis_key,
+    linkedin_token_redis_key,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,18 +72,6 @@ def _cleanup_token_store(now: float) -> None:
         _profile_store.pop(k, None)
 
 
-def _redis_state_key(state: str) -> str:
-    return f"linkedin:oauth_state:{state}"
-
-
-def _redis_token_key(user_id: str) -> str:
-    return f"linkedin:token:{user_id}"
-
-
-def _redis_profile_key(user_id: str) -> str:
-    return f"linkedin:profile:{user_id}"
-
-
 def _mask_redirect_uri(uri: str) -> str:
     if not uri or len(uri) < 20:
         return "(not set or too short)"
@@ -119,7 +112,7 @@ def linkedin_authorize(
     try:
         r = get_redis()
         r.setex(
-            _redis_state_key(state),
+            linkedin_state_redis_key(state=state),
             _STATE_TTL_SECONDS,
             json.dumps({"user_id": user_id}),
         )
@@ -180,7 +173,7 @@ async def linkedin_callback(
     user_id: str | None = None
     try:
         r = get_redis()
-        raw_state = r.get(_redis_state_key(state))
+        raw_state = r.get(linkedin_state_redis_key(state=state))
         raw_value: str | None = None
         if isinstance(raw_state, bytes):
             raw_value = raw_state.decode("utf-8")
@@ -189,7 +182,7 @@ async def linkedin_callback(
         if raw_value:
             payload = json.loads(raw_value)
             user_id = str(payload.get("user_id")) if payload.get("user_id") else None
-            r.delete(_redis_state_key(state))
+            r.delete(linkedin_state_redis_key(state=state))
     except Exception as e:
         logger.warning("LinkedIn OAuth callback: Redis state read failed: %s", e)
         user_id = None
@@ -254,7 +247,7 @@ async def linkedin_callback(
         try:
             r = get_redis()
             r.setex(
-                _redis_token_key(user_id),
+                linkedin_token_redis_key(user_id=user_id),
                 max(token.expires_in, 60),
                 json.dumps(
                     {
@@ -283,7 +276,7 @@ async def linkedin_callback(
             try:
                 r = get_redis()
                 r.setex(
-                    _redis_profile_key(user_id),
+                    linkedin_profile_redis_key(user_id=user_id),
                     max(token.expires_in, 60),
                     json.dumps(profile),
                 )

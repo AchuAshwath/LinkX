@@ -143,44 +143,38 @@ function PostsPage() {
     isLoading: isLoadingPosts,
     error: postsError,
   } = useQuery({
-    queryKey: ["posts", selectedPersonaId, statusFilter],
+    queryKey: ["posts", statusFilter],
     queryFn: async () => {
       return await PostsService.readPosts({
-        personaId: selectedPersonaId,
         status: statusFilter,
         skip: 0,
         limit: 100,
       })
     },
-    enabled: Boolean(selectedPersonaId),
     staleTime: 30000, // Consider data fresh for 30 seconds
   })
 
   const { data: publishingData } = useQuery({
-    queryKey: ["posts", selectedPersonaId, "publishing"],
+    queryKey: ["posts", "publishing"],
     queryFn: async () => {
       return await PostsService.readPosts({
-        personaId: selectedPersonaId,
         status: "publishing",
         skip: 0,
         limit: 20,
       })
     },
-    enabled: Boolean(selectedPersonaId),
     staleTime: 15000,
   })
 
   const { data: failedData } = useQuery({
-    queryKey: ["posts", selectedPersonaId, "failed"],
+    queryKey: ["posts", "failed"],
     queryFn: async () => {
       return await PostsService.readPosts({
-        personaId: selectedPersonaId,
         status: "failed",
         skip: 0,
         limit: 20,
       })
     },
-    enabled: Boolean(selectedPersonaId),
     staleTime: 15000,
   })
 

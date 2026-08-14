@@ -40,8 +40,16 @@ _LINKEDIN_VERSION = "202511"
 _RESTLI_PROTOCOL_VERSION = "2.0.0"
 
 
-def _token_redis_key(user_id: str) -> str:
+def linkedin_token_redis_key(*, user_id: str | uuid.UUID) -> str:
     return f"linkedin:token:{user_id}"
+
+
+def linkedin_profile_redis_key(*, user_id: str | uuid.UUID) -> str:
+    return f"linkedin:profile:{user_id}"
+
+
+def linkedin_state_redis_key(*, state: str) -> str:
+    return f"linkedin:oauth_state:{state}"
 
 
 class LinkedInPostClient:
@@ -61,7 +69,7 @@ class LinkedInPostClient:
         """Load and validate a LinkedIn access token for the given user."""
         try:
             r = get_redis()
-            raw = r.get(_token_redis_key(user_id))
+            raw = r.get(linkedin_token_redis_key(user_id=user_id))
         except Exception:
             raw = None
 

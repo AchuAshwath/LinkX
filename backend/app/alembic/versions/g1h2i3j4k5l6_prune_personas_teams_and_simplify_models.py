@@ -1,12 +1,11 @@
 """Prune persona, team, and simplify post and social account models.
 
 Revision ID: g1h2i3j4k5l6
-Revises: f1a2b3c4d5e6
+Revises: 6897d7db30a5
 Create Date: 2026-08-14
 """
 
 from alembic import op
-import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
@@ -17,15 +16,18 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # 1. Drop persona_access table
+    # 1. Drop persona_access table & indices
+    op.execute("DROP INDEX IF EXISTS ix_persona_access_persona_team")
     op.execute("DROP TABLE IF EXISTS persona_access CASCADE")
 
-    # 2. Drop team_membership and team tables
+    # 2. Drop team_membership and team tables & indices
+    op.execute("DROP INDEX IF EXISTS ix_team_membership_team_user")
     op.execute("DROP TABLE IF EXISTS team_membership CASCADE")
     op.execute("DROP TABLE IF EXISTS team CASCADE")
 
     # 3. Clean up post table
-    # Drop foreign key and column persona_id if they exist
+    # Drop legacy persona index, foreign key, and column if they exist
+    op.execute("DROP INDEX IF EXISTS ix_post_persona_status_scheduled_at")
     op.execute("ALTER TABLE post DROP CONSTRAINT IF EXISTS post_persona_id_fkey")
     op.execute("ALTER TABLE post DROP COLUMN IF EXISTS persona_id")
     # Add method column if not exists

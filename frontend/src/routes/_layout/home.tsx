@@ -116,29 +116,25 @@ function TimelinePage() {
 
   // Fetch scheduled and published posts for timeline
   const { data: scheduledData, isLoading: isLoadingScheduled } = useQuery({
-    queryKey: ["posts", selectedPersonaId, "scheduled"],
+    queryKey: ["posts", "scheduled"],
     queryFn: async () => {
       return await PostsService.readPosts({
-        personaId: selectedPersonaId,
         status: "scheduled",
         skip: 0,
         limit: 100,
       })
     },
-    enabled: Boolean(selectedPersonaId),
   })
 
   const { data: publishedData, isLoading: isLoadingPublished } = useQuery({
-    queryKey: ["posts", selectedPersonaId, "published"],
+    queryKey: ["posts", "published"],
     queryFn: async () => {
       return await PostsService.readPosts({
-        personaId: selectedPersonaId,
         status: "published",
         skip: 0,
         limit: 100,
       })
     },
-    enabled: Boolean(selectedPersonaId),
   })
 
   // Transform API data to timeline posts

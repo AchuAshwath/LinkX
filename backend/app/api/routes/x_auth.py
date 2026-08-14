@@ -19,7 +19,7 @@ def x_status(
     current_user: CurrentUser,
 ) -> Any:
     """Check if the X account is connected for the current user."""
-    manager = BrowserManager(brand_id=str(current_user.id))
+    manager = BrowserManager(user_id=str(current_user.id))
     is_connected = manager.session_exists("x")
     return XStatusPublic(status="connected" if is_connected else "disconnected")
 
@@ -31,7 +31,7 @@ def x_connect(
     force: bool = Query(False),
 ) -> Any:
     """Launch the headed browser for manual X.com login for current user."""
-    manager = BrowserManager(brand_id=str(current_user.id))
+    manager = BrowserManager(user_id=str(current_user.id))
     try:
         manager.start_login_subprocess(platform_name="x", force=force)
     except Exception as e:

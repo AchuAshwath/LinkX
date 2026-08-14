@@ -54,7 +54,7 @@ class XPostClient:
     async def create_text_post(self, *, user_id: str, content: str) -> str:
         """Create a text-only post on X.com using Playwright."""
         self._validate_content(content)
-        manager = self._get_manager(user_id)
+        manager = self._get_manager(user_id=user_id)
         return await self._execute_post_flow(manager, content)
 
     def _validate_content(self, content: str) -> None:
@@ -68,8 +68,8 @@ class XPostClient:
                 details={"platform": "x", "length": len(content)},
             )
 
-    def _get_manager(self, user_id: str) -> BrowserManager:
-        manager = BrowserManager(brand_id=user_id)
+    def _get_manager(self, *, user_id: str) -> BrowserManager:
+        manager = BrowserManager(user_id=user_id)
         if not manager.session_exists("x"):
             raise XPostError(
                 status_code=status.HTTP_400_BAD_REQUEST,

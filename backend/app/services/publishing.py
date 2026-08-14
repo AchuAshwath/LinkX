@@ -33,18 +33,18 @@ def _next_retry_time(*, retry_count: int) -> datetime:
     return _now_utc() + timedelta(seconds=delay_seconds)
 
 
-def _linkedin_account_for_user(
-    *, session: Session, user_id: uuid.UUID
+def _social_account_for_user(
+    *, session: Session, user_id: uuid.UUID, platform: str
 ) -> SocialAccount | None:
     statement = select(SocialAccount).where(
         SocialAccount.user_id == user_id,
-        SocialAccount.platform == "linkedin",
+        SocialAccount.platform == platform,
     )
     return session.exec(statement).first()
 
 
 def _handle_publish_error(
-    *, session: Session, post: Post, user_id: uuid.UUID, err: Exception
+    *, session: Session, post: Post, err: Exception
 ) -> PublishFailure:
     validate_transition(current_status=post.status, target_status="failed")
     post.status = "failed"
@@ -77,7 +77,7 @@ def _handle_publish_error(
     logger.warning(
         "publish_failed post_id=%s user_id=%s status=%s trace_id=%s code=%s retryable=%s",
         post.id,
-        user_id,
+        post.owner_id,
         post.status,
         trace_id,
         code,
@@ -96,12 +96,11 @@ def _handle_publish_error(
     )
 
 
-async def _publish_linkedin(
-    *, session: Session, post: Post, user_id: uuid.UUID
-) -> str | PublishFailure:
-    linkedin_account = _linkedin_account_for_user(
+async def _publish_linkedin(*, session: Session, post: Post) -> str | PublishFailure:
+    linkedin_account = _social_account_for_user(
         session=session,
         user_id=post.owner_id,
+        platform="linkedin",
     )
     if not linkedin_account or not linkedin_account.external_user_id:
         err = LinkedInPostError(
@@ -111,9 +110,7 @@ async def _publish_linkedin(
             retryable=False,
             details={"platform": "linkedin"},
         )
-        return _handle_publish_error(
-            session=session, post=post, user_id=user_id, err=err
-        )
+        return _handle_publish_error(session=session, post=post, err=err)
 
     try:
         client = LinkedInPostClient()
@@ -123,14 +120,10 @@ async def _publish_linkedin(
             content=post.content,
         )
     except Exception as err:
-        return _handle_publish_error(
-            session=session, post=post, user_id=user_id, err=err
-        )
+        return _handle_publish_error(session=session, post=post, err=err)
 
 
-async def _publish_x(
-    *, session: Session, post: Post, user_id: uuid.UUID
-) -> str | PublishFailure:
+async def _publish_x(*, session: Session, post: Post) -> str | PublishFailure:
     try:
         x_client = XPostClient()
         return await x_client.create_text_post(
@@ -138,9 +131,7 @@ async def _publish_x(
             content=post.content,
         )
     except Exception as err:
-        return _handle_publish_error(
-            session=session, post=post, user_id=user_id, err=err
-        )
+        return _handle_publish_error(session=session, post=post, err=err)
 
 
 _PLATFORM_PUBLISHERS = {
@@ -149,16 +140,12 @@ _PLATFORM_PUBLISHERS = {
 }
 
 
-async def _publish_to_platform(
-    *, session: Session, post: Post, user_id: uuid.UUID
-) -> str | PublishFailure:
+async def _publish_to_platform(*, session: Session, post: Post) -> str | PublishFailure:
     publisher = _PLATFORM_PUBLISHERS.get(post.platform)
     if not publisher:
         err = ValueError(f"Unsupported platform: {post.platform}")
-        return _handle_publish_error(
-            session=session, post=post, user_id=user_id, err=err
-        )
-    return await publisher(session=session, post=post, user_id=user_id)
+        return _handle_publish_error(session=session, post=post, err=err)
+    return await publisher(session=session, post=post)
 
 
 def _mark_as_published(*, session: Session, post: Post, external_post_id: str) -> None:
@@ -179,8 +166,8 @@ async def publish_post(
     *,
     session: Session,
     post: Post,
-    user_id: uuid.UUID,
 ) -> PublishFailure | None:
+    """Publish a post to its target platform using post.owner_id."""
     if post.external_post_id:
         if post.status == "published":
             return None
@@ -197,15 +184,15 @@ async def publish_post(
     session.commit()
     session.refresh(post)
 
-    result = await _publish_to_platform(session=session, post=post, user_id=user_id)
+    result = await _publish_to_platform(session=session, post=post)
     if isinstance(result, PublishFailure):
         return result
 
     _mark_as_published(session=session, post=post, external_post_id=result)
     logger.info(
-        "publish_success post_id=%s user_id=%s status=%s",
+        "publish_success post_id=%s owner_id=%s status=%s",
         post.id,
-        user_id,
+        post.owner_id,
         post.status,
     )
     return None

@@ -24,8 +24,15 @@ logger = logging.getLogger(__name__)
 class BrowserManager:
     """Manages browser sessions and Playwright contexts for automation."""
 
-    def __init__(self, brand_id: str = "default"):
-        self.brand_id = brand_id
+    def __init__(
+        self,
+        brand_id: str | None = None,
+        *,
+        user_id: str | None = None,
+    ) -> None:
+        resolved_id = user_id or brand_id or "default"
+        self.user_id = resolved_id
+        self.brand_id = resolved_id
 
     def session_exists(self, platform_name: str) -> bool:
         """Check if a persistent session directory exists and contains cookies."""
