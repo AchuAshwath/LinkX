@@ -287,7 +287,7 @@ function ConnectedAccountsPage() {
             </div>
           </div>
 
-          {/* --- 2. X (TWITTER) ROW (CLICK TO EXPAND CLI DRAWER) --- */}
+          {/* --- 2. X (TWITTER) ROW & EXPANDABLE COMMAND BLOCKS --- */}
           <div className="flex flex-col">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:px-6 hover:bg-muted/10 transition-colors">
               <button
@@ -330,7 +330,7 @@ function ConnectedAccountsPage() {
                         </span>
                       </TooltipTrigger>
                       <TooltipContent side="top">
-                        Click to toggle terminal automation scripts
+                        Click to view CLI commands
                       </TooltipContent>
                     </Tooltip>
                   </div>
@@ -402,79 +402,87 @@ function ConnectedAccountsPage() {
               </div>
             </div>
 
-            {/* --- EXPANDABLE INLINE CLI SUB-ROWS (Ultra-Minimal Seamless Flow) --- */}
+            {/* --- EXPANDABLE INLINE CLI COMMAND SNIPPET BLOCKS --- */}
             {isCliExpanded && (
-              <div className="divide-y divide-border/40 border-t border-border/40 bg-muted/10 animate-in slide-in-from-top-1 duration-150">
+              <div className="p-4 sm:px-6 sm:pb-5 pt-2 bg-muted/15 border-t border-border/40 space-y-3 animate-in slide-in-from-top-1 duration-150">
                 {/* Command 1: Headed Login */}
-                <div className="flex items-center justify-between gap-4 py-2.5 px-4 sm:px-6 sm:pl-17 hover:bg-muted/15 transition-colors">
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground shrink-0 font-medium">
-                      Login CLI
+                <div className="space-y-1">
+                  <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground font-semibold pl-0.5">
+                    1. Headed Login
+                  </span>
+                  <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-background border border-border/60 font-mono text-xs text-foreground/90 shadow-2xs group">
+                    <span className="truncate select-all flex items-center gap-2 text-[11px]">
+                      <span className="text-muted-foreground/60 select-none">
+                        $
+                      </span>
+                      <span className="text-primary font-medium">
+                        {headedLoginCmd}
+                      </span>
                     </span>
-                    <code className="text-[11px] font-mono text-foreground/85 truncate select-all">
-                      {headedLoginCmd}
-                    </code>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0"
+                          onClick={() =>
+                            copyText(
+                              headedLoginCmd,
+                              "cli-login",
+                              "Login command",
+                            )
+                          }
+                        >
+                          {copiedKey === "cli-login" ? (
+                            <Check className="h-3.5 w-3.5 text-emerald-500" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">Copy command</TooltipContent>
+                    </Tooltip>
                   </div>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-foreground shrink-0"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          copyText(headedLoginCmd, "cli-login", "Login command")
-                        }}
-                      >
-                        {copiedKey === "cli-login" ? (
-                          <Check className="h-3.5 w-3.5 text-emerald-500" />
-                        ) : (
-                          <Copy className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top">
-                      Copy login script command
-                    </TooltipContent>
-                  </Tooltip>
                 </div>
 
                 {/* Command 2: Verify Session */}
-                <div className="flex items-center justify-between gap-4 py-2.5 px-4 sm:px-6 sm:pl-17 hover:bg-muted/15 transition-colors">
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground shrink-0 font-medium">
-                      Verify CLI
+                <div className="space-y-1">
+                  <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground font-semibold pl-0.5">
+                    2. Verify Session
+                  </span>
+                  <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-background border border-border/60 font-mono text-xs text-foreground/90 shadow-2xs group">
+                    <span className="truncate select-all flex items-center gap-2 text-[11px]">
+                      <span className="text-muted-foreground/60 select-none">
+                        $
+                      </span>
+                      <span className="text-primary font-medium">
+                        {testSessionCmd}
+                      </span>
                     </span>
-                    <code className="text-[11px] font-mono text-foreground/85 truncate select-all">
-                      {testSessionCmd}
-                    </code>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0"
+                          onClick={() =>
+                            copyText(
+                              testSessionCmd,
+                              "cli-verify",
+                              "Verify command",
+                            )
+                          }
+                        >
+                          {copiedKey === "cli-verify" ? (
+                            <Check className="h-3.5 w-3.5 text-emerald-500" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">Copy command</TooltipContent>
+                    </Tooltip>
                   </div>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-foreground shrink-0"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          copyText(
-                            testSessionCmd,
-                            "cli-verify",
-                            "Verify command",
-                          )
-                        }}
-                      >
-                        {copiedKey === "cli-verify" ? (
-                          <Check className="h-3.5 w-3.5 text-emerald-500" />
-                        ) : (
-                          <Copy className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top">
-                      Copy test session script command
-                    </TooltipContent>
-                  </Tooltip>
                 </div>
               </div>
             )}
