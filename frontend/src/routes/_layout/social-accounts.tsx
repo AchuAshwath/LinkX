@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
-  CardFooter,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
@@ -93,7 +93,7 @@ function ConnectedAccountsPage() {
     staleTime: 10000,
   })
 
-  // LinkedIn Connect / Reconnect (Authorize)
+  // LinkedIn Connect / Reconnect
   const connectLinkedInMutation = useMutation({
     mutationFn: () => AuthService.linkedinAuthorize(),
     onSuccess: (data) => {
@@ -173,16 +173,16 @@ function ConnectedAccountsPage() {
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col gap-6 p-6 md:p-10 max-w-2xl mx-auto">
-        {/* Clean Header */}
-        <div className="flex items-center justify-between gap-4 border-b pb-4">
+      <div className="container max-w-4xl mx-auto px-4 py-8 space-y-6">
+        {/* Page Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-5">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">
               Connected Accounts
             </h1>
-            <p className="text-muted-foreground text-xs md:text-sm mt-0.5">
-              Connect your social profiles for API publishing and browser
-              automation.
+            <p className="text-muted-foreground text-sm mt-1">
+              Connect and manage social accounts for API distribution and
+              browser automation.
             </p>
           </div>
 
@@ -195,16 +195,16 @@ function ConnectedAccountsPage() {
                   className="gap-1.5 text-xs h-8"
                 >
                   <Terminal className="h-3.5 w-3.5" />
-                  CLI
+                  CLI Shortcuts
                 </Button>
               </PopoverTrigger>
               <PopoverContent
                 align="end"
-                className="w-80 p-3 text-xs space-y-2.5"
+                className="w-84 p-3 text-xs space-y-2.5"
               >
                 <div className="font-semibold text-foreground flex items-center gap-1.5">
                   <Code2 className="h-4 w-4 text-primary" />
-                  Terminal CLI Commands
+                  Terminal CLI Scripts
                 </div>
                 <div className="p-2 rounded bg-muted/60 border font-mono space-y-1">
                   <span className="text-muted-foreground block text-[10px] uppercase font-sans font-medium">
@@ -249,27 +249,36 @@ function ConnectedAccountsPage() {
           </div>
         </div>
 
-        {/* Vertical Stack of Account Cards */}
-        <div className="flex flex-col gap-4">
-          {/* ======================= LINKEDIN ======================= */}
-          <Card className="border shadow-none bg-card hover:border-border/80 transition-all">
-            <CardHeader className="flex flex-row items-center justify-between pb-3 space-y-0">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#0077b5]/10 text-[#0077b5]">
+        {/* Integration Rows Container Card */}
+        <Card className="border shadow-sm overflow-hidden">
+          <CardHeader className="py-4 px-6 border-b bg-muted/20">
+            <CardTitle className="text-base font-semibold">
+              Platforms & Automation Engines
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Directly linked social channels and browser profiles configured
+              for this account.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="p-0 divide-y divide-border/60">
+            {/* ======================= LINKEDIN ROW ======================= */}
+            <div className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-muted/10 transition-colors">
+              <div className="flex items-start gap-4 min-w-0">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0077b5]/10 text-[#0077b5] mt-0.5 sm:mt-0">
                   <FaLinkedinIn className="h-5 w-5" />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <CardTitle className="text-base font-semibold">
-                      LinkedIn
-                    </CardTitle>
+
+                <div className="space-y-1.5 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-base">LinkedIn</span>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Badge
                           variant="outline"
                           className="text-[10px] font-mono px-1.5 py-0 cursor-help"
                         >
-                          API
+                          OAuth API
                         </Badge>
                       </TooltipTrigger>
                       <TooltipContent side="top" className="max-w-xs">
@@ -277,120 +286,126 @@ function ConnectedAccountsPage() {
                         in Redis.
                       </TooltipContent>
                     </Tooltip>
+
+                    {isLoadingLinkedin ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                    ) : isLinkedInConnected ? (
+                      <Badge
+                        variant="outline"
+                        className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs gap-1.5 py-0 px-2"
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{" "}
+                        Connected
+                      </Badge>
+                    ) : needsLinkedInReconnect ? (
+                      <Badge
+                        variant="outline"
+                        className="bg-amber-500/10 text-amber-600 border-amber-500/20 text-xs gap-1 py-0 px-2"
+                      >
+                        <AlertTriangle className="h-3 w-3" /> Token Expired
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="secondary"
+                        className="text-xs text-muted-foreground py-0 px-2"
+                      >
+                        Disconnected
+                      </Badge>
+                    )}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Official OAuth 2.0
-                  </p>
+
+                  {/* Profile or Description */}
+                  {isLinkedInConnected && linkedinProfile ? (
+                    <div className="flex items-center gap-2.5 text-xs text-muted-foreground pt-0.5">
+                      {linkedinProfile.profile_picture_url ? (
+                        <img
+                          src={linkedinProfile.profile_picture_url}
+                          alt="Profile"
+                          className="h-6 w-6 rounded-full object-cover ring-1 ring-border"
+                        />
+                      ) : (
+                        <div className="h-6 w-6 rounded-full bg-[#0077b5]/15 text-[#0077b5] flex items-center justify-center font-bold text-[10px]">
+                          {linkedinProfile.display_name?.[0] || "L"}
+                        </div>
+                      )}
+                      <span className="font-medium text-foreground truncate">
+                        {linkedinProfile.display_name}
+                      </span>
+                      {linkedinProfile.email && (
+                        <>
+                          <span>•</span>
+                          <span className="truncate">
+                            {linkedinProfile.email}
+                          </span>
+                        </>
+                      )}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 shrink-0 cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          OAuth token active in Redis
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                  ) : needsLinkedInReconnect ? (
+                    <p className="text-xs text-amber-600/90 dark:text-amber-400">
+                      Token expired for{" "}
+                      {linkedinProfile?.display_name || "linked profile"}.
+                      Please reconnect.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Connect via official OAuth 2.0 to publish posts and
+                      carousels.
+                    </p>
+                  )}
                 </div>
               </div>
 
-              {isLoadingLinkedin ? (
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              ) : isLinkedInConnected ? (
-                <Badge
-                  variant="outline"
-                  className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs gap-1.5 py-0.5 px-2.5"
-                >
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{" "}
-                  Connected
-                </Badge>
-              ) : needsLinkedInReconnect ? (
-                <Badge
-                  variant="outline"
-                  className="bg-amber-500/10 text-amber-600 border-amber-500/20 text-xs gap-1.5 py-0.5 px-2.5"
-                >
-                  <AlertTriangle className="h-3 w-3" /> Token Expired
-                </Badge>
-              ) : (
-                <Badge
-                  variant="secondary"
-                  className="text-xs text-muted-foreground"
-                >
-                  Disconnected
-                </Badge>
-              )}
-            </CardHeader>
-
-            <CardContent className="pb-3">
-              {isLinkedInConnected && linkedinProfile ? (
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/40 border border-border/50">
-                  {linkedinProfile.profile_picture_url ? (
-                    <img
-                      src={linkedinProfile.profile_picture_url}
-                      alt="Profile"
-                      className="h-10 w-10 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="h-10 w-10 rounded-full bg-[#0077b5]/15 text-[#0077b5] flex items-center justify-center font-bold text-sm">
-                      {linkedinProfile.display_name?.[0] || "L"}
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate text-foreground">
-                      {linkedinProfile.display_name || "LinkedIn User"}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {linkedinProfile.email || "OAuth token active"}
-                    </p>
-                  </div>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0 cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent side="left">
-                      Valid access token in Redis
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-              ) : needsLinkedInReconnect ? (
-                <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-400 space-y-1">
-                  <div className="font-medium flex items-center gap-1.5">
-                    <AlertTriangle className="h-3.5 w-3.5" />
-                    OAuth Token Expired or Missing
-                  </div>
-                  <p className="text-[11px] leading-relaxed text-muted-foreground">
-                    Your previous session is linked to{" "}
-                    {linkedinProfile?.display_name || "your profile"}, but the
-                    active token in Redis has expired. Please reconnect to
-                    restore publishing capabilities.
-                  </p>
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Connect your LinkedIn account to publish updates, carousels,
-                  and manage scheduled posts via official REST APIs.
-                </p>
-              )}
-            </CardContent>
-
-            <CardFooter className="pt-1 flex items-center justify-end gap-2">
-              {isLinkedInConnected ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => disconnectLinkedInMutation.mutate()}
-                  disabled={disconnectLinkedInMutation.isPending}
-                  className="text-xs h-8 text-destructive border-destructive/20 hover:bg-destructive/10 hover:text-destructive gap-1.5"
-                >
-                  {disconnectLinkedInMutation.isPending ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Unlink className="h-3 w-3" />
-                  )}
-                  Disconnect
-                </Button>
-              ) : needsLinkedInReconnect ? (
-                <div className="flex items-center justify-between w-full">
+              {/* Actions */}
+              <div className="flex items-center gap-2 shrink-0 sm:self-center pl-15 sm:pl-0">
+                {isLinkedInConnected ? (
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     onClick={() => disconnectLinkedInMutation.mutate()}
                     disabled={disconnectLinkedInMutation.isPending}
-                    className="text-xs h-8 text-muted-foreground hover:text-destructive gap-1.5"
+                    className="text-xs h-8 text-destructive hover:bg-destructive/10 hover:text-destructive gap-1.5"
                   >
-                    <Unlink className="h-3 w-3" />
-                    Remove
+                    {disconnectLinkedInMutation.isPending ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Unlink className="h-3 w-3" />
+                    )}
+                    Disconnect
                   </Button>
+                ) : needsLinkedInReconnect ? (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => disconnectLinkedInMutation.mutate()}
+                      disabled={disconnectLinkedInMutation.isPending}
+                      className="text-xs h-8 text-muted-foreground hover:text-destructive"
+                    >
+                      Remove
+                    </Button>
+                    <Button
+                      onClick={() => connectLinkedInMutation.mutate()}
+                      disabled={connectLinkedInMutation.isPending}
+                      size="sm"
+                      className="text-xs h-8 bg-[#0077b5] hover:bg-[#0077b5]/90 text-white gap-1.5 font-medium"
+                    >
+                      {connectLinkedInMutation.isPending ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <RotateCcw className="h-3.5 w-3.5" />
+                      )}
+                      Reconnect
+                    </Button>
+                  </>
+                ) : (
                   <Button
                     onClick={() => connectLinkedInMutation.mutate()}
                     disabled={connectLinkedInMutation.isPending}
@@ -400,168 +415,148 @@ function ConnectedAccountsPage() {
                     {connectLinkedInMutation.isPending ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     ) : (
-                      <RotateCcw className="h-3.5 w-3.5" />
+                      <ExternalLink className="h-3.5 w-3.5" />
                     )}
-                    Reconnect LinkedIn
+                    Connect LinkedIn
                   </Button>
-                </div>
-              ) : (
-                <Button
-                  onClick={() => connectLinkedInMutation.mutate()}
-                  disabled={connectLinkedInMutation.isPending}
-                  size="sm"
-                  className="text-xs h-8 bg-[#0077b5] hover:bg-[#0077b5]/90 text-white gap-1.5 font-medium"
-                >
-                  {connectLinkedInMutation.isPending ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  )}
-                  Connect LinkedIn
-                </Button>
-              )}
-            </CardFooter>
-          </Card>
+                )}
+              </div>
+            </div>
 
-          {/* ======================= X (TWITTER) ======================= */}
-          <Card className="border shadow-none bg-card hover:border-border/80 transition-all">
-            <CardHeader className="flex flex-row items-center justify-between pb-3 space-y-0">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-foreground/10 text-foreground">
+            {/* ======================= X (TWITTER) ROW ======================= */}
+            <div className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-muted/10 transition-colors">
+              <div className="flex items-start gap-4 min-w-0">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-foreground/10 text-foreground mt-0.5 sm:mt-0">
                   <FaXTwitter className="h-5 w-5" />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <CardTitle className="text-base font-semibold">
-                      X (Twitter)
-                    </CardTitle>
+
+                <div className="space-y-1.5 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-base">X (Twitter)</span>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Badge
                           variant="outline"
                           className="text-[10px] font-mono px-1.5 py-0 cursor-help"
                         >
-                          Browser
+                          Stealth Browser
                         </Badge>
                       </TooltipTrigger>
                       <TooltipContent side="top" className="max-w-xs">
-                        Stealth browser automation with persistent local Chrome
-                        cookies.
+                        Stealth browser automation using Playwright. Persists
+                        cookies locally.
                       </TooltipContent>
                     </Tooltip>
+
+                    {isLoadingX ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                    ) : isXCookiePresent ? (
+                      <Badge
+                        variant="outline"
+                        className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs gap-1.5 py-0 px-2"
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{" "}
+                        Session Active
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="secondary"
+                        className="text-xs text-muted-foreground py-0 px-2"
+                      >
+                        No Session
+                      </Badge>
+                    )}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Headed Browser Session
-                  </p>
+
+                  {/* Session Path or Description */}
+                  {xStatus?.session_dir ? (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground pt-0.5 max-w-md truncate">
+                      <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+                      <code className="text-[11px] font-mono truncate text-muted-foreground">
+                        {xStatus.session_dir}
+                      </code>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5 shrink-0 text-muted-foreground hover:text-foreground"
+                            onClick={() => copyToClipboard(xStatus.session_dir)}
+                          >
+                            {copiedPath ? (
+                              <Check className="h-3 w-3 text-emerald-500" />
+                            ) : (
+                              <Copy className="h-3 w-3" />
+                            )}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          Copy local session directory path
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Automated via dedicated Chrome browser profile to evade
+                      bot detection.
+                    </p>
+                  )}
                 </div>
               </div>
 
-              {isLoadingX ? (
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              ) : isXCookiePresent ? (
-                <Badge
-                  variant="outline"
-                  className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs gap-1.5 py-0.5 px-2.5"
-                >
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{" "}
-                  Session Active
-                </Badge>
-              ) : (
-                <Badge
-                  variant="secondary"
-                  className="text-xs text-muted-foreground"
-                >
-                  No Session
-                </Badge>
-              )}
-            </CardHeader>
+              {/* Actions */}
+              <div className="flex items-center gap-2 shrink-0 sm:self-center pl-15 sm:pl-0">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={() => connectXMutation.mutate(false)}
+                      disabled={connectXMutation.isPending}
+                      size="sm"
+                      variant="default"
+                      className="text-xs h-8 gap-1.5 font-medium"
+                    >
+                      {connectXMutation.isPending ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Laptop className="h-3.5 w-3.5" />
+                      )}
+                      {isXCookiePresent
+                        ? "Re-launch Chrome"
+                        : "Launch Chrome Login"}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs">
+                    Opens a Google Chrome window to log in and save cookies to
+                    disk.
+                  </TooltipContent>
+                </Tooltip>
 
-            <CardContent className="pb-3 space-y-2.5">
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Automates posting and scraping via a dedicated local Chrome
-                profile without expensive API subscription keys.
-              </p>
-
-              {xStatus?.session_dir && (
-                <div className="flex items-center justify-between gap-2 p-2 rounded-md bg-muted/30 border border-border/40 text-[11px] font-mono text-muted-foreground">
-                  <span className="truncate flex items-center gap-1.5">
-                    <Folder className="h-3 w-3 shrink-0 text-muted-foreground/70" />
-                    <span className="truncate">{xStatus.session_dir}</span>
-                  </span>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5 shrink-0 text-muted-foreground hover:text-foreground"
-                        onClick={() => copyToClipboard(xStatus.session_dir)}
-                      >
-                        {copiedPath ? (
-                          <Check className="h-3 w-3 text-emerald-500" />
-                        ) : (
-                          <Copy className="h-3 w-3" />
-                        )}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top">
-                      Copy session path
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-              )}
-            </CardContent>
-
-            <CardFooter className="pt-1 flex items-center justify-between gap-2">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    onClick={() => connectXMutation.mutate(false)}
-                    disabled={connectXMutation.isPending}
-                    size="sm"
-                    variant="default"
-                    className="text-xs h-8 gap-1.5 font-medium"
-                  >
-                    {connectXMutation.isPending ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Laptop className="h-3.5 w-3.5" />
-                    )}
-                    {isXCookiePresent
-                      ? "Re-launch Chrome"
-                      : "Launch Chrome Login"}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top" className="max-w-xs">
-                  Opens a Google Chrome window to log in and save cookies to
-                  disk.
-                </TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => verifyXMutation.mutate()}
-                    disabled={verifyXMutation.isPending || !isXCookiePresent}
-                    className="text-xs h-8 gap-1.5"
-                  >
-                    {verifyXMutation.isPending ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <ShieldCheck className="h-3 w-3 text-primary" />
-                    )}
-                    Verify Session
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top" className="max-w-xs">
-                  Runs a live headless check on x.com/home to test cookies and
-                  feed detection.
-                </TooltipContent>
-              </Tooltip>
-            </CardFooter>
-          </Card>
-        </div>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => verifyXMutation.mutate()}
+                      disabled={verifyXMutation.isPending || !isXCookiePresent}
+                      className="text-xs h-8 gap-1.5"
+                    >
+                      {verifyXMutation.isPending ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <ShieldCheck className="h-3 w-3 text-primary" />
+                      )}
+                      Verify
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs">
+                    Runs a live headless check on x.com/home to test cookies and
+                    feed detection.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </TooltipProvider>
   )
