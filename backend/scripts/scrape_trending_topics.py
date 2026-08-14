@@ -329,16 +329,16 @@ async def _extract_sidebar_links(
             text = await link.inner_text()
             url = await link.get_attribute("href")
             testid = await link.get_attribute("data-testid")
-            identifier = url if url else testid
-            is_href = bool(url)
+            identifier = url or testid
+            if not identifier:
+                continue
+            if identifier in news_titles:
+                continue
+            if not _is_valid_topic_text(text, heuristic):
+                continue
 
-            if (
-                identifier
-                and _is_valid_topic_text(text, heuristic)
-                and identifier not in news_titles
-            ):
-                news_urls.append((identifier, is_href))
-                news_titles[identifier] = text
+            news_urls.append((identifier, bool(url)))
+            news_titles[identifier] = text
         except Exception:
             continue
 
