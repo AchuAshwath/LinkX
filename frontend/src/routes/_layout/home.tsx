@@ -115,7 +115,7 @@ function TimelinePage() {
           image_url: p.image_url ?? null,
           created_at: p.created_at ?? new Date().toISOString(),
           scheduled_at: p.scheduled_at ?? null,
-          platform: p.platform ?? "linkedin",
+          platform: p.platform ?? "linkx",
         }),
         type: "scheduled" as const,
       }))
@@ -136,7 +136,7 @@ function TimelinePage() {
           likes: p.likes ?? 0,
           reposts: p.reposts ?? 0,
           comments: p.comments ?? 0,
-          platform: p.platform ?? "linkedin",
+          platform: p.platform ?? "linkx",
         }),
         type: "posted" as const,
       }))

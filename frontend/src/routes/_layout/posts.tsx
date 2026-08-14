@@ -158,7 +158,7 @@ function PostsPage() {
           content: p.content,
           image_url: p.image_url ?? null,
           created_at: p.created_at ?? new Date().toISOString(),
-          platform: p.platform ?? "linkedin",
+          platform: p.platform ?? "linkx",
         })
       })
   }, [postsData, activeTab])
@@ -180,7 +180,7 @@ function PostsPage() {
           image_url: p.image_url ?? null,
           created_at: p.created_at ?? new Date().toISOString(),
           scheduled_at: p.scheduled_at ?? null,
-          platform: p.platform ?? "linkedin",
+          platform: p.platform ?? "linkx",
         })
       })
   }, [postsData, activeTab])
@@ -204,7 +204,7 @@ function PostsPage() {
           likes: p.likes ?? 0,
           reposts: p.reposts ?? 0,
           comments: p.comments ?? 0,
-          platform: p.platform ?? "linkedin",
+          platform: p.platform ?? "linkx",
         })
       })
   }, [postsData, activeTab])
