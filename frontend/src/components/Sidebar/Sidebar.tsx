@@ -47,41 +47,41 @@ export function Sidebar({ sidebarOpen, onClose }: SidebarProps) {
             <X className="h-5 w-5" />
           </Button>
         </div>
-        <nav className="space-y-1">
+        <nav className="space-y-1.5">
           <Button
             variant="ghost"
-            className="w-full justify-start text-sm font-medium h-9"
+            className="w-full justify-start text-lg font-semibold tracking-tight h-11 px-3.5 rounded-full hover:bg-accent/80 transition-colors"
             asChild
           >
             <Link to="/home">
-              <Clock className="mr-2 h-4 w-4" />
+              <Clock className="mr-3 h-5 w-5" />
               Timeline
             </Link>
           </Button>
           <Button
             variant="ghost"
-            className="w-full justify-start text-sm font-medium h-9"
+            className="w-full justify-start text-lg font-semibold tracking-tight h-11 px-3.5 rounded-full hover:bg-accent/80 transition-colors"
             asChild
           >
             <Link to="/posts">
-              <Package className="mr-2 h-4 w-4" />
+              <Package className="mr-3 h-5 w-5" />
               Posts
             </Link>
           </Button>
           <Button
             variant="ghost"
-            className="w-full justify-start text-sm font-medium h-9"
+            className="w-full justify-start text-lg font-semibold tracking-tight h-11 px-3.5 rounded-full hover:bg-accent/80 transition-colors"
             asChild
           >
             <Link to="/social-accounts">
-              <Link2 className="mr-2 h-4 w-4" />
+              <Link2 className="mr-3 h-5 w-5" />
               Social Accounts
             </Link>
           </Button>
         </nav>
 
         <Button
-          className="mt-6 w-full text-sm font-medium h-9"
+          className="mt-6 w-full text-base font-semibold h-11 rounded-full shadow-sm"
           onClick={() => setCreatePostDialogOpen(true)}
         >
           Create Post

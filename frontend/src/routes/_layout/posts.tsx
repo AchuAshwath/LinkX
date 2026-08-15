@@ -322,10 +322,6 @@ function PostsPage() {
     }
   }
 
-  const handlePostEdit = (postId: string) => {
-    setEditingPostId(postId)
-  }
-
   const handleSaveDraft = (
     postId: string,
     data: { content: string; platform: Platform; scheduledAt?: Date | null },
@@ -351,19 +347,6 @@ function PostsPage() {
         scheduled_at: data.scheduledAt
           ? data.scheduledAt.toISOString()
           : undefined,
-      },
-    })
-  }
-
-  const handleSavePosted = (
-    postId: string,
-    data: { content: string; platform: Platform; scheduledAt?: Date | null },
-  ) => {
-    updateMutation.mutate({
-      postId,
-      data: {
-        content: data.content,
-        platform: data.platform,
       },
     })
   }
@@ -644,14 +627,10 @@ function PostsPage() {
                     <Posted
                       key={post.id}
                       post={post}
-                      isEditing={editingPostId === post.id}
                       onLike={(id) => handlePostAction("like", id)}
                       onRepost={(id) => handlePostAction("repost", id)}
                       onComment={(id) => handlePostAction("comment", id)}
                       onShare={(id) => handlePostAction("share", id)}
-                      onEdit={(id) => handlePostEdit(id)}
-                      onSave={handleSavePosted}
-                      onCancel={handleCancel}
                       onPreview={(id) => handlePostAction("preview", id)}
                       onDelete={(id) => handlePostAction("delete", id)}
                       onPlatformChange={handlePlatformChange}
@@ -927,8 +906,7 @@ function PostsPage() {
           <DialogHeader>
             <DialogTitle>Delete Post</DialogTitle>
             <DialogDescription>
-              This post will be permanently deleted. Are you sure? You will not
-              be able to undo this action.
+              This will remove the post record from your LinkX database.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-4">

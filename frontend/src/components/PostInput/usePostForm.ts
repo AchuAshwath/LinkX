@@ -50,11 +50,10 @@ export function usePostForm() {
     (action: "draft" | "schedule" | "post") => {
       if (content.trim().length === 0) return
 
-      // Validate schedule action
-      if (action === "schedule" && !scheduledAt) {
-        showErrorToast("Please select a date and time to schedule the post")
-        return
-      }
+      const finalScheduledAt =
+        action === "schedule"
+          ? scheduledAt || new Date(Date.now() + 4 * 3600 * 1000)
+          : undefined
 
       const postData: {
         content: string
@@ -72,13 +71,13 @@ export function usePostForm() {
               : "published",
       }
 
-      if (action === "schedule" && scheduledAt) {
-        postData.scheduled_at = scheduledAt.toISOString()
+      if (action === "schedule" && finalScheduledAt) {
+        postData.scheduled_at = finalScheduledAt.toISOString()
       }
 
       createPostMutation.mutate(postData)
     },
-    [channel, content, createPostMutation, scheduledAt, showErrorToast],
+    [channel, content, createPostMutation, scheduledAt],
   )
 
   const handleContentChange = useCallback(

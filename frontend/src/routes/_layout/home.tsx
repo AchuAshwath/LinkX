@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
-import { Home as HomeIcon, Loader2 } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import * as React from "react"
 import { PostsService, TrendingService } from "@/client"
 import type { Platform } from "@/components/Common/PlatformSelector"
@@ -48,7 +48,6 @@ export const Route = createFileRoute("/_layout/home")({
 function TimelinePage() {
   const queryClient = useQueryClient()
   const { user } = useAuth()
-  const canPublishOrSchedule = true
 
   // Topic draft state for pre-filling composer
   const [draftContent, setDraftContent] = React.useState<string>("")
@@ -149,8 +148,6 @@ function TimelinePage() {
     return [...scheduled, ...posted]
   }, [scheduledData, publishedData])
 
-  const isLoadingPosts = isLoadingScheduled || isLoadingPublished
-
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (postId: string) => {
@@ -240,10 +237,6 @@ function TimelinePage() {
     }
   }
 
-  const handlePostEdit = (postId: string) => {
-    setEditingPostId(postId)
-  }
-
   const handleSaveScheduled = (
     postId: string,
     data: { content: string; platform: Platform; scheduledAt?: Date | null },
@@ -256,19 +249,6 @@ function TimelinePage() {
         scheduled_at: data.scheduledAt
           ? data.scheduledAt.toISOString()
           : undefined,
-      },
-    })
-  }
-
-  const handleSavePosted = (
-    postId: string,
-    data: { content: string; platform: Platform; scheduledAt?: Date | null },
-  ) => {
-    updateMutation.mutate({
-      postId,
-      data: {
-        content: data.content,
-        platform: data.platform,
       },
     })
   }
@@ -370,14 +350,10 @@ function TimelinePage() {
           <Posted
             key={post.id}
             post={post}
-            isEditing={isEditing}
             onLike={(id) => handlePostAction("like", id)}
             onRepost={(id) => handlePostAction("repost", id)}
             onComment={(id) => handlePostAction("comment", id)}
             onShare={(id) => handlePostAction("share", id)}
-            onEdit={(id) => handlePostEdit(id)}
-            onSave={handleSavePosted}
-            onCancel={handleCancel}
             onPreview={(id) => handlePostAction("preview", id)}
             onDelete={(id) => handlePostAction("delete", id)}
             onPlatformChange={handlePlatformChange}
@@ -394,49 +370,42 @@ function TimelinePage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl min-h-[calc(100vh-3.5rem)]">
-      {/* Main Timeline */}
-      <div className="border-border min-w-0 flex-1 border-r md:max-w-2xl flex flex-col">
-        {/* PostInputBox - Sticky at top */}
-        <div className="sticky top-0 z-10 shrink-0 border-b bg-background p-4">
+    <div className="flex w-full">
+      {/* Feed Column - Center */}
+      <div className="flex-1 min-w-0 max-w-2xl border-r">
+        {/* Sticky top composer */}
+        <div className="border-b p-4">
           <PostInputBox
             username={user?.full_name || user?.email || "User"}
             avatarUrl={undefined}
             initialContent={draftContent}
             onSubmit={handlePostCreated}
-            canPublishOrSchedule={canPublishOrSchedule}
           />
         </div>
 
-        {/* Timeline Posts - Scrollable */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="w-full pb-20">
-            {isLoadingPosts ? (
-              <div className="flex flex-col items-center justify-center py-16">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                <p className="mt-4 text-sm text-muted-foreground">
-                  Loading posts...
-                </p>
-              </div>
-            ) : sortedPosts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center text-center py-16 px-4">
-                <div className="rounded-full bg-muted/50 p-6 mb-4">
-                  <HomeIcon className="h-10 w-10 text-muted-foreground" />
-                </div>
-                <h3 className="text-xl font-semibold mb-1">No posts yet</h3>
-                <p className="text-muted-foreground text-sm max-w-sm">
-                  Your scheduled and published posts will appear here. Create a
-                  post above to get started.
-                </p>
-              </div>
-            ) : (
-              sortedPosts.map(renderPost)
-            )}
+        {/* Feed Posts */}
+        {isLoadingScheduled || isLoadingPublished ? (
+          <div className="flex flex-col items-center justify-center py-16">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <p className="mt-4 text-sm text-muted-foreground">
+              Loading timeline...
+            </p>
           </div>
-        </div>
+        ) : sortedPosts.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+            <p className="text-sm text-muted-foreground">
+              No posts in your timeline yet. Create a draft or schedule your
+              first post!
+            </p>
+          </div>
+        ) : (
+          <div className="w-full pb-20">
+            {sortedPosts.map((post) => renderPost(post))}
+          </div>
+        )}
       </div>
 
-      {/* Right Sidebar */}
+      {/* Right Column - Unified Trending Topics Card */}
       <div className="hidden w-80 md:block">
         <div className="sticky top-0 self-start p-4">
           <TrendingTopics
@@ -453,8 +422,7 @@ function TimelinePage() {
           <DialogHeader>
             <DialogTitle>Delete Post</DialogTitle>
             <DialogDescription>
-              This post will be permanently deleted. Are you sure? You will not
-              be able to undo this action.
+              This will remove the post record from your LinkX database.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-4">
