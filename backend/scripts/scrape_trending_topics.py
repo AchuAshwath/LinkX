@@ -83,6 +83,20 @@ class TopicProcessContext:
     config: dict[str, Any]
 
 
+@dataclass
+class CandidateScrapeContext:
+    """Execution context for iterating candidate topics."""
+
+    page: Any
+    mouse: EvasionMouse
+    news_urls: list[tuple[str, bool]]
+    news_titles: dict[str, str]
+    db_user_id: Any
+    config: dict[str, Any]
+    max_topics: int
+    result: ScrapeResult
+
+
 async def _expand_tweet(locator) -> None:
     """Click the 'Show more' link inside a tweet article if present."""
     try:
@@ -491,37 +505,27 @@ async def _process_single_topic(
     return True, None
 
 
-async def _scrape_candidate_topics(
-    *,
-    page: Any,
-    mouse: EvasionMouse,
-    news_urls: list[tuple[str, bool]],
-    news_titles: dict[str, str],
-    db_user_id: uuid.UUID | None,
-    config: dict[str, Any],
-    max_topics: int,
-    result: ScrapeResult,
-) -> None:
+async def _scrape_candidate_topics(ctx: CandidateScrapeContext) -> None:
     """Iterate through candidate topic URLs until max_topics are successfully scraped."""
-    for target_id, is_href in news_urls:
-        if result.topics_scraped >= max_topics:
+    for target_id, is_href in ctx.news_urls:
+        if ctx.result.topics_scraped >= ctx.max_topics:
             break
 
         scraped, failure = await _process_single_topic(
             TopicProcessContext(
-                page=page,
-                mouse=mouse,
+                page=ctx.page,
+                mouse=ctx.mouse,
                 target_id=target_id,
-                target_title=news_titles[target_id],
+                target_title=ctx.news_titles[target_id],
                 is_href=is_href,
-                db_user_id=db_user_id,
-                config=config,
+                db_user_id=ctx.db_user_id,
+                config=ctx.config,
             )
         )
         if scraped:
-            result.topics_scraped += 1
+            ctx.result.topics_scraped += 1
         if failure:
-            result.topics_failed.append(failure)
+            ctx.result.topics_failed.append(failure)
 
 
 async def scrape_trending_topics(
@@ -583,14 +587,16 @@ async def scrape_trending_topics(
 
             result.topics_found = len(news_urls)
             await _scrape_candidate_topics(
-                page=page,
-                mouse=mouse,
-                news_urls=news_urls,
-                news_titles=news_titles,
-                db_user_id=db_user_id,
-                config=config,
-                max_topics=max_t,
-                result=result,
+                CandidateScrapeContext(
+                    page=page,
+                    mouse=mouse,
+                    news_urls=news_urls,
+                    news_titles=news_titles,
+                    db_user_id=db_user_id,
+                    config=config,
+                    max_topics=max_t,
+                    result=result,
+                )
             )
 
             await mouse.stop_idle()
