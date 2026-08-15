@@ -66,6 +66,14 @@ export const Route = createFileRoute("/_layout/posts")({
 
 type PostCategory = "drafts" | "scheduled" | "posted" | "failed"
 
+const DATE_LIMITS: Record<string, number> = {
+  today: 1,
+  week: 7,
+  month: 30,
+  quarter: 90,
+  year: 365,
+}
+
 function isWithinDateRange(
   dateStrOrObj: Date | string,
   range: string,
@@ -74,15 +82,7 @@ function isWithinDateRange(
   const date =
     typeof dateStrOrObj === "string" ? new Date(dateStrOrObj) : dateStrOrObj
   const diffDays = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24)
-
-  const limits: Record<string, number> = {
-    today: 1,
-    week: 7,
-    month: 30,
-    quarter: 90,
-    year: 365,
-  }
-  return diffDays <= (limits[range] || 365)
+  return diffDays <= (DATE_LIMITS[range] || 365)
 }
 
 function matchesPlatform(
@@ -90,7 +90,8 @@ function matchesPlatform(
   filterPlatform?: string,
 ): boolean {
   if (!filterPlatform || filterPlatform === "all") return true
-  return (postPlatform === "all" ? "linkx" : postPlatform) === filterPlatform
+  const resolved = postPlatform === "all" ? "linkx" : postPlatform
+  return resolved === filterPlatform
 }
 
 function filterPosts(
@@ -111,33 +112,46 @@ function filterPosts(
   })
 }
 
+function compareByOldest(a: any, b: any) {
+  return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+}
+
+function compareByScheduled(a: any, b: any) {
+  const aTime = a.scheduledAt ? new Date(a.scheduledAt).getTime() : 0
+  const bTime = b.scheduledAt ? new Date(b.scheduledAt).getTime() : 0
+  return aTime - bTime
+}
+
+function compareByEngagement(a: any, b: any) {
+  const aScore = (a.likes || 0) + (a.reposts || 0) * 2 + (a.comments || 0) * 3
+  const bScore = (b.likes || 0) + (b.reposts || 0) * 2 + (b.comments || 0) * 3
+  return bScore - aScore
+}
+
+function compareByNewest(a: any, b: any, isScheduled: boolean) {
+  const aTime =
+    isScheduled && a.scheduledAt
+      ? new Date(a.scheduledAt).getTime()
+      : new Date(a.createdAt).getTime()
+  const bTime =
+    isScheduled && b.scheduledAt
+      ? new Date(b.scheduledAt).getTime()
+      : new Date(b.createdAt).getTime()
+  return bTime - aTime
+}
+
 function sortPosts(posts: any[], activeCategory: PostCategory, sortBy: string) {
-  return [...posts].sort((a, b) => {
-    if (sortBy === "oldest") {
-      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    }
-    if (sortBy === "scheduled" && a.scheduledAt && b.scheduledAt) {
-      return (
-        new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
-      )
-    }
-    if (sortBy === "engagement") {
-      const aScore =
-        (a.likes || 0) + (a.reposts || 0) * 2 + (a.comments || 0) * 3
-      const bScore =
-        (b.likes || 0) + (b.reposts || 0) * 2 + (b.comments || 0) * 3
-      return bScore - aScore
-    }
-    const aTime =
-      a.scheduledAt && activeCategory === "scheduled"
-        ? new Date(a.scheduledAt).getTime()
-        : new Date(a.createdAt).getTime()
-    const bTime =
-      b.scheduledAt && activeCategory === "scheduled"
-        ? new Date(b.scheduledAt).getTime()
-        : new Date(b.createdAt).getTime()
-    return bTime - aTime
-  })
+  if (sortBy === "oldest") {
+    return [...posts].sort(compareByOldest)
+  }
+  if (sortBy === "scheduled") {
+    return [...posts].sort(compareByScheduled)
+  }
+  if (sortBy === "engagement") {
+    return [...posts].sort(compareByEngagement)
+  }
+  const isScheduled = activeCategory === "scheduled"
+  return [...posts].sort((a, b) => compareByNewest(a, b, isScheduled))
 }
 
 interface MobilePillsProps {

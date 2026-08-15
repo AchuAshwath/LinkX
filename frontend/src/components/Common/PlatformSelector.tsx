@@ -77,6 +77,21 @@ const INDICATOR_MAP: Record<Platform, string> = {
   x: "bg-foreground/15 ring-1 ring-foreground/20 shadow-xs",
 }
 
+const SIZE_CONFIGS = {
+  sm: {
+    buttonSize: 22,
+    buttonClass: "h-[22px] w-[22px]",
+    iconSize: "h-2.5 w-2.5",
+    imageSize: "h-3 w-3",
+  },
+  md: {
+    buttonSize: 24,
+    buttonClass: "h-6 w-6",
+    iconSize: "h-3 w-3",
+    imageSize: "h-3.5 w-3.5",
+  },
+}
+
 const PLATFORM_CONFIGS: {
   id: Platform
   label: string
@@ -147,16 +162,12 @@ export function PlatformSelector({
   className = "",
 }: PlatformSelectorProps) {
   const { resolvedTheme } = useTheme()
-  const linkxIconSrc =
-    resolvedTheme === "dark"
-      ? "/assets/images/LinkX-icon-light.svg"
-      : "/assets/images/LinkX-icon.svg"
+  const isDark = resolvedTheme === "dark"
+  const linkxIconSrc = isDark
+    ? "/assets/images/LinkX-icon-light.svg"
+    : "/assets/images/LinkX-icon.svg"
 
-  const isSm = size === "sm"
-  const buttonSize = isSm ? 22 : 24
-  const buttonClass = isSm ? "h-[22px] w-[22px]" : "h-6 w-6"
-  const iconSize = isSm ? "h-2.5 w-2.5" : "h-3 w-3"
-  const imageSize = isSm ? "h-3 w-3" : "h-3.5 w-3.5"
+  const sizeCfg = SIZE_CONFIGS[size]
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -165,7 +176,10 @@ export function PlatformSelector({
           disabled ? "cursor-default" : ""
         } ${className}`}
       >
-        <PlatformSliderIndicator value={value} buttonSize={buttonSize} />
+        <PlatformSliderIndicator
+          value={value}
+          buttonSize={sizeCfg.buttonSize}
+        />
 
         {PLATFORM_CONFIGS.map((cfg) => {
           const isSelected = value === cfg.id
@@ -176,13 +190,18 @@ export function PlatformSelector({
               isSelected={isSelected}
               disabled={disabled}
               onClick={() => !disabled && onChange?.(cfg.id)}
-              buttonClass={buttonClass}
+              buttonClass={sizeCfg.buttonClass}
               tooltipText={
                 disabled ? `Published to ${cfg.label}` : `Post to ${cfg.label}`
               }
               className={isSelected ? cfg.activeClass : cfg.inactiveClass}
             >
-              {renderPlatformIcon(cfg.id, iconSize, imageSize, linkxIconSrc)}
+              {renderPlatformIcon(
+                cfg.id,
+                sizeCfg.iconSize,
+                sizeCfg.imageSize,
+                linkxIconSrc,
+              )}
             </PlatformOptionButton>
           )
         })}

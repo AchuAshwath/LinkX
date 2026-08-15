@@ -424,42 +424,24 @@ function usePostCardEngagement(
   }
 }
 
-export const PostCard = React.memo(function PostCard({
+interface PostCardLayoutProps extends PostCardProps {
+  editor: ReturnType<typeof usePostCardEditor>
+  engagement: ReturnType<typeof usePostCardEngagement>
+}
+
+function PostCardLayout({
   post,
   isEditing = false,
-  onLike,
-  onRepost,
   onComment,
   onShare,
   onEdit,
-  onSave,
-  onCancel,
   onPreview,
   onDelete,
-  onPlatformChange,
   onRetry,
   isRetrying = false,
-}: PostCardProps) {
-  const {
-    platform,
-    editedContent,
-    setEditedContent,
-    editedScheduledAt,
-    setEditedScheduledAt,
-    handleSave,
-    handleCancel,
-    handlePlatformChange,
-  } = usePostCardEditor(post, onSave, onCancel, onPlatformChange)
-
-  const {
-    isLiked,
-    likeCount,
-    isReposted,
-    repostCount,
-    handleLike,
-    handleRepost,
-  } = usePostCardEngagement(post, onLike, onRepost)
-
+  editor,
+  engagement,
+}: PostCardLayoutProps) {
   const scheduledDateTime = React.useMemo(() => {
     return post.scheduledAt ? formatFullDateTime(post.scheduledAt) : ""
   }, [post.scheduledAt])
@@ -493,9 +475,9 @@ export const PostCard = React.memo(function PostCard({
               isScheduled={isScheduled}
               scheduledDateTime={scheduledDateTime}
               isEditing={isEditing}
-              canSave={editedContent.trim().length > 0}
-              onCancel={handleCancel}
-              onSave={handleSave}
+              canSave={editor.editedContent.trim().length > 0}
+              onCancel={editor.handleCancel}
+              onSave={editor.handleSave}
               onPreview={onPreview ? () => onPreview(post.id) : undefined}
               onEdit={onEdit ? () => onEdit(post.id) : undefined}
               onDelete={onDelete ? () => onDelete(post.id) : undefined}
@@ -507,8 +489,10 @@ export const PostCard = React.memo(function PostCard({
                   Schedule:
                 </span>
                 <PostSchedulePicker
-                  initialValue={editedScheduledAt || undefined}
-                  onChangeDateTime={(d) => setEditedScheduledAt(d || null)}
+                  initialValue={editor.editedScheduledAt || undefined}
+                  onChangeDateTime={(d) =>
+                    editor.setEditedScheduledAt(d || null)
+                  }
                 />
               </div>
             )}
@@ -516,8 +500,8 @@ export const PostCard = React.memo(function PostCard({
             <PostCardBodyContent
               isEditing={isEditing}
               content={post.content}
-              editedContent={editedContent}
-              onContentChange={setEditedContent}
+              editedContent={editor.editedContent}
+              onContentChange={editor.setEditedContent}
               imageUrl={post.imageUrl}
             />
 
@@ -532,14 +516,16 @@ export const PostCard = React.memo(function PostCard({
             <div className="mt-2">
               <PostActionFooter
                 isEditing={isEditing}
-                platform={platform}
-                onPlatformChange={isPosted ? undefined : handlePlatformChange}
-                isLiked={isLiked}
-                likeCount={likeCount}
-                onLike={handleLike}
-                isReposted={isReposted}
-                repostCount={repostCount}
-                onRepost={handleRepost}
+                platform={editor.platform}
+                onPlatformChange={
+                  isPosted ? undefined : editor.handlePlatformChange
+                }
+                isLiked={engagement.isLiked}
+                likeCount={engagement.likeCount}
+                onLike={engagement.handleLike}
+                isReposted={engagement.isReposted}
+                repostCount={engagement.repostCount}
+                onRepost={engagement.handleRepost}
                 commentsCount={post.comments ?? 0}
                 onComment={() => onComment?.(post.id)}
                 onShare={() => onShare?.(post.id)}
@@ -551,6 +537,14 @@ export const PostCard = React.memo(function PostCard({
       </div>
     </article>
   )
+}
+
+export const PostCard = React.memo(function PostCard(props: PostCardProps) {
+  const { post, onSave, onCancel, onPlatformChange, onLike, onRepost } = props
+  const editor = usePostCardEditor(post, onSave, onCancel, onPlatformChange)
+  const engagement = usePostCardEngagement(post, onLike, onRepost)
+
+  return <PostCardLayout {...props} editor={editor} engagement={engagement} />
 })
 
 // Backwards-compatible aliases
