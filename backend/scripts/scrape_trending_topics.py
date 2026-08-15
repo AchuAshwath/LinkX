@@ -491,6 +491,39 @@ async def _process_single_topic(
     return True, None
 
 
+async def _scrape_candidate_topics(
+    *,
+    page: Any,
+    mouse: EvasionMouse,
+    news_urls: list[tuple[str, bool]],
+    news_titles: dict[str, str],
+    db_user_id: uuid.UUID | None,
+    config: dict[str, Any],
+    max_topics: int,
+    result: ScrapeResult,
+) -> None:
+    """Iterate through candidate topic URLs until max_topics are successfully scraped."""
+    for target_id, is_href in news_urls:
+        if result.topics_scraped >= max_topics:
+            break
+
+        scraped, failure = await _process_single_topic(
+            TopicProcessContext(
+                page=page,
+                mouse=mouse,
+                target_id=target_id,
+                target_title=news_titles[target_id],
+                is_href=is_href,
+                db_user_id=db_user_id,
+                config=config,
+            )
+        )
+        if scraped:
+            result.topics_scraped += 1
+        if failure:
+            result.topics_failed.append(failure)
+
+
 async def scrape_trending_topics(
     *,
     user_id: str | None = None,
@@ -549,25 +582,16 @@ async def scrape_trending_topics(
                 return result
 
             result.topics_found = len(news_urls)
-            targets = news_urls[:max_t]
-            random.shuffle(targets)
-
-            for target_id, is_href in targets:
-                scraped, failure = await _process_single_topic(
-                    TopicProcessContext(
-                        page=page,
-                        mouse=mouse,
-                        target_id=target_id,
-                        target_title=news_titles[target_id],
-                        is_href=is_href,
-                        db_user_id=db_user_id,
-                        config=config,
-                    )
-                )
-                if scraped:
-                    result.topics_scraped += 1
-                if failure:
-                    result.topics_failed.append(failure)
+            await _scrape_candidate_topics(
+                page=page,
+                mouse=mouse,
+                news_urls=news_urls,
+                news_titles=news_titles,
+                db_user_id=db_user_id,
+                config=config,
+                max_topics=max_t,
+                result=result,
+            )
 
             await mouse.stop_idle()
             result.status = (
