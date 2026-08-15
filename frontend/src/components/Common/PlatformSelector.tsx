@@ -77,6 +77,32 @@ const INDICATOR_MAP: Record<Platform, string> = {
   x: "bg-foreground/15 ring-1 ring-foreground/20 shadow-xs",
 }
 
+const PLATFORM_CONFIGS: {
+  id: Platform
+  label: string
+  activeClass: string
+  inactiveClass: string
+}[] = [
+  {
+    id: "linkedin",
+    label: "LinkedIn",
+    activeClass: "text-[#0077b5] font-semibold",
+    inactiveClass: "text-muted-foreground hover:text-[#0077b5]",
+  },
+  {
+    id: "linkx",
+    label: "LinkX",
+    activeClass: "opacity-100",
+    inactiveClass: "opacity-50 hover:opacity-100",
+  },
+  {
+    id: "x",
+    label: "X (Twitter)",
+    activeClass: "text-foreground font-semibold",
+    inactiveClass: "text-muted-foreground hover:text-foreground",
+  },
+]
+
 export function PlatformSelector({
   value,
   onChange,
@@ -85,10 +111,10 @@ export function PlatformSelector({
   className = "",
 }: PlatformSelectorProps) {
   const { resolvedTheme } = useTheme()
-  const linkxIconSrc =
-    resolvedTheme === "dark"
-      ? "/assets/images/LinkX-icon-light.svg"
-      : "/assets/images/LinkX-icon.svg"
+  const isDark = resolvedTheme === "dark"
+  const linkxIconSrc = isDark
+    ? "/assets/images/LinkX-icon-light.svg"
+    : "/assets/images/LinkX-icon.svg"
 
   const isSm = size === "sm"
   const buttonSize = isSm ? 22 : 24
@@ -114,57 +140,31 @@ export function PlatformSelector({
           }}
         />
 
-        <PlatformOptionButton
-          platform="linkedin"
-          isSelected={value === "linkedin"}
-          disabled={disabled}
-          onClick={() => !disabled && onChange?.("linkedin")}
-          buttonClass={buttonClass}
-          tooltipText={disabled ? "Published to LinkedIn" : "Post to LinkedIn"}
-          className={
-            value === "linkedin"
-              ? "text-[#0077b5] font-semibold"
-              : "text-muted-foreground hover:text-[#0077b5]"
-          }
-        >
-          <FaLinkedinIn className={iconSize} />
-        </PlatformOptionButton>
-
-        <PlatformOptionButton
-          platform="linkx"
-          isSelected={value === "linkx"}
-          disabled={disabled}
-          onClick={() => !disabled && onChange?.("linkx")}
-          buttonClass={buttonClass}
-          tooltipText={
-            disabled
-              ? "Published to LinkX (LinkedIn & X)"
-              : "Cross-post to both (LinkX)"
-          }
-          className={
-            value === "linkx" ? "opacity-100" : "opacity-50 hover:opacity-100"
-          }
-        >
-          <img src={linkxIconSrc} alt="LinkX" className={imageSize} />
-        </PlatformOptionButton>
-
-        <PlatformOptionButton
-          platform="x"
-          isSelected={value === "x"}
-          disabled={disabled}
-          onClick={() => !disabled && onChange?.("x")}
-          buttonClass={buttonClass}
-          tooltipText={
-            disabled ? "Published to X (Twitter)" : "Post to X (Twitter)"
-          }
-          className={
-            value === "x"
-              ? "text-foreground font-semibold"
-              : "text-muted-foreground hover:text-foreground"
-          }
-        >
-          <FaXTwitter className={iconSize} />
-        </PlatformOptionButton>
+        {PLATFORM_CONFIGS.map((cfg) => {
+          const isSelected = value === cfg.id
+          return (
+            <PlatformOptionButton
+              key={cfg.id}
+              platform={cfg.id}
+              isSelected={isSelected}
+              disabled={disabled}
+              onClick={() => !disabled && onChange?.(cfg.id)}
+              buttonClass={buttonClass}
+              tooltipText={
+                disabled ? `Published to ${cfg.label}` : `Post to ${cfg.label}`
+              }
+              className={isSelected ? cfg.activeClass : cfg.inactiveClass}
+            >
+              {cfg.id === "linkedin" ? (
+                <FaLinkedinIn className={iconSize} />
+              ) : cfg.id === "linkx" ? (
+                <img src={linkxIconSrc} alt="LinkX" className={imageSize} />
+              ) : (
+                <FaXTwitter className={iconSize} />
+              )}
+            </PlatformOptionButton>
+          )
+        })}
       </div>
     </TooltipProvider>
   )

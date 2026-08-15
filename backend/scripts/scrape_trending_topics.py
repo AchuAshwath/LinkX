@@ -43,7 +43,7 @@ class TopicFailure:
     """Records why a single topic failed to scrape."""
 
     topic_id: str
-    reason: str  # "timeout" | "page_state_error" | "no_tweets" | "exception"
+    reason: str
     detail: str = ""
 
 
@@ -233,6 +233,20 @@ def _is_valid_topic_text(text: str, heuristic: dict[str, Any]) -> bool:
     return not any(ex in text for ex in exclude_texts)
 
 
+def _should_skip_link(
+    identifier: str | None,
+    text: str,
+    seen_titles: dict[str, str],
+    heuristic: dict[str, Any],
+) -> bool:
+    """Check if a sidebar link should be skipped."""
+    if not identifier:
+        return True
+    if identifier in seen_titles:
+        return True
+    return not _is_valid_topic_text(text, heuristic)
+
+
 async def _extract_sidebar_links(
     sidebar: Any,
     link_selector: str,
@@ -249,15 +263,13 @@ async def _extract_sidebar_links(
             url = await link.get_attribute("href")
             testid = await link.get_attribute("data-testid")
             identifier = url or testid
-            if (
-                not identifier
-                or identifier in news_titles
-                or not _is_valid_topic_text(text, heuristic)
-            ):
+
+            if _should_skip_link(identifier, text, news_titles, heuristic):
                 continue
 
-            news_urls.append((identifier, bool(url)))
-            news_titles[identifier] = text
+            if identifier:
+                news_urls.append((identifier, bool(url)))
+                news_titles[identifier] = text
         except Exception:
             continue
 
@@ -265,18 +277,16 @@ async def _extract_sidebar_links(
 
 
 async def _scrape_topic_tweets(
-    page: Any,
-    mouse: Any,
+    ctx: TopicProcessContext,
     tweet_selector: str,
-    scrolls_per_topic: int,
 ) -> list[dict]:
     """Scrape top tweets with human reading simulation."""
     conversations: list[dict] = []
     author_counts: dict[str, int] = {}
-    remaining_scrolls = scrolls_per_topic
+    remaining_scrolls = ctx.config.get("scrolls_per_topic", 2)
 
     while len(conversations) < 5 and remaining_scrolls >= 0:
-        tweets = await page.locator(tweet_selector).all()
+        tweets = await ctx.page.locator(tweet_selector).all()
         for t in tweets:
             data = await extract_tweet_data(t)
             if not data or data["raw"] in [c["raw"] for c in conversations]:
@@ -288,13 +298,13 @@ async def _scrape_topic_tweets(
 
             conversations.append(data)
             author_counts[author] = author_counts.get(author, 0) + 1
-            await simulate_reading(mouse)
+            await simulate_reading(ctx.mouse)
 
             if len(conversations) >= 5:
                 break
 
         if len(conversations) < 5 and remaining_scrolls > 0:
-            await mouse.human_scroll(scrolls=1)
+            await ctx.mouse.human_scroll(scrolls=1)
             await random_delay(min_sec=1.0, max_sec=3.0)
 
         remaining_scrolls -= 1
@@ -390,37 +400,38 @@ async def _extract_candidate_summary(
 
 
 async def _navigate_and_verify_topic(
-    page: Any,
-    mouse: EvasionMouse,
-    target_id: str,
-    is_href: bool,
+    ctx: TopicProcessContext,
     tweet_selector: str,
 ) -> tuple[bool, TopicFailure | None]:
     """Click a topic link and verify the resulting page state."""
-    selector = f'a[href="{target_id}"]' if is_href else f'[data-testid="{target_id}"]'
-    link_locator = page.locator(selector).first
+    selector = (
+        f'a[href="{ctx.target_id}"]'
+        if ctx.is_href
+        else f'[data-testid="{ctx.target_id}"]'
+    )
+    link_locator = ctx.page.locator(selector).first
 
-    if is_href:
+    if ctx.is_href:
         try:
             await link_locator.evaluate("node => node.removeAttribute('target')")
         except Exception:
             pass
 
-    await mouse.human_click(selector=selector)
+    await ctx.mouse.human_click(selector=selector)
 
     try:
-        await page.wait_for_selector(tweet_selector, state="visible", timeout=15000)
+        await ctx.page.wait_for_selector(tweet_selector, state="visible", timeout=15000)
     except PlaywrightError:
         return False, TopicFailure(
-            topic_id=target_id,
+            topic_id=ctx.target_id,
             reason="timeout",
             detail="Timed out waiting for tweets.",
         )
 
-    topic_page_state = await detect_page_state(page)
+    topic_page_state = await detect_page_state(ctx.page)
     if topic_page_state != "ok":
         return False, TopicFailure(
-            topic_id=target_id,
+            topic_id=ctx.target_id,
             reason="page_state_error",
             detail=f"Page state: {topic_page_state}",
         )
@@ -438,11 +449,8 @@ async def _process_single_topic(
     selectors = ctx.config.get("selectors", {})
     tweet_selector = selectors.get("tweet_container", "[data-testid='tweet']")
     summary_selectors = selectors.get("summary_selectors", [])
-    scrolls = ctx.config.get("scrolls_per_topic", 2)
 
-    ok, failure = await _navigate_and_verify_topic(
-        ctx.page, ctx.mouse, ctx.target_id, ctx.is_href, tweet_selector
-    )
+    ok, failure = await _navigate_and_verify_topic(ctx, tweet_selector)
     if not ok:
         await ctx.page.goto("https://x.com/home", wait_until="domcontentloaded")
         await random_delay(min_sec=3.0, max_sec=5.0)
@@ -450,9 +458,7 @@ async def _process_single_topic(
 
     await random_delay(min_sec=2.0, max_sec=5.0)
     summary_text = await _extract_candidate_summary(ctx.page, summary_selectors)
-    conversations = await _scrape_topic_tweets(
-        ctx.page, ctx.mouse, tweet_selector, scrolls
-    )
+    conversations = await _scrape_topic_tweets(ctx, tweet_selector)
     title_data = parse_title_metadata(ctx.target_title)
 
     try:
