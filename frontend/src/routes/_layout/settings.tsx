@@ -122,33 +122,6 @@ function SettingsInput({
   )
 }
 
-function ProfileSaveButton({
-  disabled,
-  isUpdating,
-}: {
-  disabled: boolean
-  isUpdating: boolean
-}) {
-  return (
-    <div className="flex justify-end pt-1">
-      <Button
-        type="submit"
-        disabled={disabled}
-        size="sm"
-        className="h-8 px-4 text-xs font-bold rounded-full bg-primary text-primary-foreground hover:bg-primary/90 shadow-none cursor-pointer transition-all disabled:opacity-50"
-      >
-        {isUpdating ? (
-          <span className="flex items-center gap-1.5">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…
-          </span>
-        ) : (
-          "Save Changes"
-        )}
-      </Button>
-    </div>
-  )
-}
-
 interface ProfileCardProps {
   currentUser: any
   onUpdateProfile: (data: ProfileFormData) => void
@@ -185,22 +158,40 @@ function ProfileCard({
   }, [defaultFullName, defaultEmail, reset])
 
   return (
-    <div className="w-full rounded-2xl border border-border/80 bg-background p-4 sm:p-6 space-y-4">
-      <div className="flex items-center gap-3.5">
-        <Avatar className="h-10 w-10 shrink-0">
-          <AvatarFallback className="bg-primary/10 text-primary font-bold text-sm">
-            {initials}
-          </AvatarFallback>
-        </Avatar>
-        <div className="min-w-0">
-          <h2 className="font-semibold text-sm">Profile Details</h2>
-          <p className="text-xs text-muted-foreground truncate">
-            {defaultEmail || "Your account details"}
-          </p>
+    <div className="w-full rounded-2xl border border-border/80 bg-background p-4 sm:p-6 space-y-5">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <Avatar className="h-10 w-10 shrink-0">
+            <AvatarFallback className="bg-primary/10 text-primary font-bold text-sm">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <h2 className="font-semibold text-sm">Profile Details</h2>
+            <p className="text-xs text-muted-foreground mt-0.5 truncate">
+              Manage your display name and contact email.
+            </p>
+          </div>
         </div>
+
+        <Button
+          type="submit"
+          form="profile-form"
+          disabled={!isDirty || isUpdating}
+          size="sm"
+          className="h-8 px-4 text-xs font-bold rounded-full bg-primary text-primary-foreground hover:bg-primary/90 shadow-none cursor-pointer transition-all disabled:opacity-50 shrink-0"
+        >
+          {isUpdating ? (
+            <span className="flex items-center gap-1.5">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…
+            </span>
+          ) : (
+            "Save Changes"
+          )}
+        </Button>
       </div>
 
-      <form onSubmit={handleSubmit(onUpdateProfile)} className="space-y-4 pt-1">
+      <form id="profile-form" onSubmit={handleSubmit(onUpdateProfile)}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <SettingsInput
             id="full_name"
@@ -220,11 +211,6 @@ function ProfileCard({
             error={errors.email?.message}
           />
         </div>
-
-        <ProfileSaveButton
-          disabled={!isDirty || isUpdating}
-          isUpdating={isUpdating}
-        />
       </form>
     </div>
   )
