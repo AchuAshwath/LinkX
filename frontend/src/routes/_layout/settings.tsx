@@ -178,17 +178,17 @@ function ProfileSaveButton({
   )
 }
 
-interface ProfileRowProps {
+interface ProfileCardProps {
   currentUser: any
   onUpdateProfile: (data: ProfileFormData) => void
   isUpdating: boolean
 }
 
-function ProfileRow({
+function ProfileCard({
   currentUser,
   onUpdateProfile,
   isUpdating,
-}: ProfileRowProps) {
+}: ProfileCardProps) {
   const defaultFullName = currentUser?.full_name ?? ""
   const defaultEmail = currentUser?.email ?? ""
 
@@ -213,7 +213,7 @@ function ProfileRow({
   }, [defaultFullName, defaultEmail, reset])
 
   return (
-    <div className="p-4 sm:p-6 space-y-4 hover:bg-muted/5 transition-colors">
+    <div className="w-full rounded-2xl border border-border/80 bg-background overflow-hidden shadow-none p-4 sm:p-6 space-y-4">
       <ProfileHeaderRow fullName={defaultFullName} />
 
       <form onSubmit={handleSubmit(onUpdateProfile)} className="space-y-4 pt-1">
@@ -247,9 +247,9 @@ function ProfileRow({
 }
 
 const THEME_OPTIONS: { id: Theme; label: string; icon: typeof Sun }[] = [
-  { id: "light", label: "Light", icon: Sun },
-  { id: "dark", label: "Dark", icon: Moon },
-  { id: "system", label: "System", icon: Monitor },
+  { id: "light", label: "Light theme", icon: Sun },
+  { id: "dark", label: "Dark theme", icon: Moon },
+  { id: "system", label: "System theme", icon: Monitor },
 ]
 
 function AppearanceRow() {
@@ -289,15 +289,16 @@ function AppearanceRow() {
             <button
               key={opt.id}
               type="button"
+              title={opt.label}
+              aria-label={opt.label}
               onClick={() => setTheme(opt.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+              className={`flex items-center justify-center h-7 w-7 rounded-full transition-all cursor-pointer ${
                 isSelected
                   ? "bg-background text-foreground shadow-xs"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
               <Icon className="h-3.5 w-3.5" />
-              {opt.label}
             </button>
           )
         })}
@@ -586,13 +587,13 @@ export function SettingsPage() {
     <div className="container max-w-3xl mx-auto px-4 py-8 space-y-6">
       <SettingsHeader />
 
-      <div className="w-full rounded-2xl border border-border/80 bg-background overflow-hidden shadow-none divide-y divide-border/40">
-        <ProfileRow
-          currentUser={user}
-          onUpdateProfile={handleUpdateProfile}
-          isUpdating={updateProfileMutation.isPending}
-        />
+      <ProfileCard
+        currentUser={user}
+        onUpdateProfile={handleUpdateProfile}
+        isUpdating={updateProfileMutation.isPending}
+      />
 
+      <div className="w-full rounded-2xl border border-border/80 bg-background overflow-hidden shadow-none divide-y divide-border/40">
         <AppearanceRow />
 
         <SettingsActionRow
