@@ -160,9 +160,9 @@ function PlatformIconContent({
   }
 
   const logoSrc =
-    resolvedTheme === "light"
-      ? "/assets/images/logo_light.svg"
-      : "/assets/images/logo_dark.svg"
+    resolvedTheme === "dark"
+      ? "/assets/images/LinkX-icon-light.svg"
+      : "/assets/images/LinkX-icon.svg"
 
   return (
     <img
