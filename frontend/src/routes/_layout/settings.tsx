@@ -14,6 +14,7 @@ import {
   User,
 } from "lucide-react"
 import * as React from "react"
+import type { UseFormRegister } from "react-hook-form"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 
@@ -343,6 +344,39 @@ function DangerZoneRow({ onDeleteClick }: { onDeleteClick: () => void }) {
   )
 }
 
+interface PasswordFieldProps {
+  id: "current_password" | "new_password" | "confirm_password"
+  label: string
+  register: UseFormRegister<PasswordFormData>
+  error?: string
+}
+
+function PasswordInputField({
+  id,
+  label,
+  register,
+  error,
+}: PasswordFieldProps) {
+  return (
+    <div className="space-y-1.5">
+      <Label
+        htmlFor={id}
+        className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"
+      >
+        <Lock className="h-3.5 w-3.5" /> {label}
+      </Label>
+      <Input
+        id={id}
+        type="password"
+        placeholder="••••••••"
+        {...register(id)}
+        className="h-9 rounded-xl bg-muted/20 border-border/60 text-xs sm:text-sm focus:ring-1 focus:ring-primary px-3.5"
+      />
+      {error && <p className="text-[11px] text-destructive pl-1">{error}</p>}
+    </div>
+  )
+}
+
 function ChangePasswordDialog({
   open,
   onOpenChange,
@@ -379,68 +413,24 @@ function ChangePasswordDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-3.5 mt-2">
-          <div className="space-y-1.5">
-            <Label
-              htmlFor="current_password"
-              className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"
-            >
-              <Lock className="h-3.5 w-3.5" /> Current Password
-            </Label>
-            <Input
-              id="current_password"
-              type="password"
-              placeholder="••••••••"
-              {...register("current_password")}
-              className="h-9 rounded-xl bg-muted/20 border-border/60 text-xs sm:text-sm focus:ring-1 focus:ring-primary px-3.5"
-            />
-            {errors.current_password && (
-              <p className="text-[11px] text-destructive pl-1">
-                {errors.current_password.message}
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label
-              htmlFor="new_password"
-              className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"
-            >
-              <Lock className="h-3.5 w-3.5" /> New Password
-            </Label>
-            <Input
-              id="new_password"
-              type="password"
-              placeholder="••••••••"
-              {...register("new_password")}
-              className="h-9 rounded-xl bg-muted/20 border-border/60 text-xs sm:text-sm focus:ring-1 focus:ring-primary px-3.5"
-            />
-            {errors.new_password && (
-              <p className="text-[11px] text-destructive pl-1">
-                {errors.new_password.message}
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label
-              htmlFor="confirm_password"
-              className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"
-            >
-              <Lock className="h-3.5 w-3.5" /> Confirm Password
-            </Label>
-            <Input
-              id="confirm_password"
-              type="password"
-              placeholder="••••••••"
-              {...register("confirm_password")}
-              className="h-9 rounded-xl bg-muted/20 border-border/60 text-xs sm:text-sm focus:ring-1 focus:ring-primary px-3.5"
-            />
-            {errors.confirm_password && (
-              <p className="text-[11px] text-destructive pl-1">
-                {errors.confirm_password.message}
-              </p>
-            )}
-          </div>
+          <PasswordInputField
+            id="current_password"
+            label="Current Password"
+            register={register}
+            error={errors.current_password?.message}
+          />
+          <PasswordInputField
+            id="new_password"
+            label="New Password"
+            register={register}
+            error={errors.new_password?.message}
+          />
+          <PasswordInputField
+            id="confirm_password"
+            label="Confirm Password"
+            register={register}
+            error={errors.confirm_password?.message}
+          />
 
           <DialogFooter className="mt-5">
             <DialogClose asChild>
