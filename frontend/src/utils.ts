@@ -258,6 +258,40 @@ export function transformToPostedPost(post: {
   }
 }
 
+/**
+ * Transform API PostPublic response to FailedPostData
+ */
+export function transformToFailedPost(post: {
+  id: string
+  author: { name: string; username: string; avatarUrl?: string | null } | null
+  content: string
+  image_url: string | null
+  created_at: string
+  platform: string
+  error_reason?: string | null
+}) {
+  const author = post.author || { name: "", username: "" }
+  const platform = (
+    post.platform === "all" ? "linkx" : post.platform
+  ) as Platform
+  return {
+    id: post.id,
+    author: {
+      name: author.name,
+      username: author.username,
+      avatarUrl: author.avatarUrl ?? undefined,
+    },
+    content: post.content,
+    imageUrl: post.image_url || undefined,
+    createdAt: post.created_at,
+    relativeDate: formatRelativeTime(post.created_at),
+    platform,
+    status: "failed" as const,
+    type: "draft" as const,
+    errorReason: post.error_reason,
+  }
+}
+
 export const passwordRules = (isRequired = true) => {
   const rules: any = {
     minLength: {

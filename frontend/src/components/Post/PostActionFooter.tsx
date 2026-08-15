@@ -36,8 +36,6 @@ export function PostActionFooter({
   onShare,
   isPosted = false,
 }: PostActionFooterProps) {
-  const isPlatformChangeDisabled = Boolean(isPosted || !onPlatformChange)
-
   if (isEditing) {
     return (
       <div className="flex items-center justify-end pt-2">
@@ -51,7 +49,7 @@ export function PostActionFooter({
   }
 
   return (
-    <div className="flex items-center justify-between gap-1 sm:gap-4">
+    <div className="flex items-center justify-between gap-1 sm:gap-4 pt-1">
       <div className="flex items-center gap-1 sm:gap-4">
         <Button
           variant="ghost"
@@ -107,10 +105,11 @@ export function PostActionFooter({
         </Button>
       </div>
 
+      {/* Platform Selector */}
       <PlatformSelector
         value={platform}
         onChange={onPlatformChange}
-        disabled={isPlatformChangeDisabled}
+        disabled={isPosted || !onPlatformChange}
         size="sm"
       />
     </div>
