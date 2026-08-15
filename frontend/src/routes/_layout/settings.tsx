@@ -112,6 +112,72 @@ function ProfileHeaderRow({ fullName }: { fullName?: string }) {
   )
 }
 
+interface ProfileFieldProps {
+  id: "full_name" | "email"
+  label: string
+  type?: string
+  placeholder: string
+  icon: typeof User
+  register: UseFormRegister<ProfileFormData>
+  error?: string
+}
+
+function ProfileField({
+  id,
+  label,
+  type = "text",
+  placeholder,
+  icon: Icon,
+  register,
+  error,
+}: ProfileFieldProps) {
+  return (
+    <div className="space-y-1.5">
+      <Label
+        htmlFor={id}
+        className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 pl-0.5"
+      >
+        <Icon className="h-3.5 w-3.5" /> {label}
+      </Label>
+      <Input
+        id={id}
+        type={type}
+        {...register(id)}
+        placeholder={placeholder}
+        className="h-9 rounded-xl bg-muted/20 border-border/60 text-xs sm:text-sm focus:ring-1 focus:ring-primary px-3.5"
+      />
+      {error && <p className="text-[11px] text-destructive pl-1">{error}</p>}
+    </div>
+  )
+}
+
+function ProfileSaveButton({
+  disabled,
+  isUpdating,
+}: {
+  disabled: boolean
+  isUpdating: boolean
+}) {
+  return (
+    <div className="flex justify-end pt-1">
+      <Button
+        type="submit"
+        disabled={disabled}
+        size="sm"
+        className="h-8 px-4 text-xs font-bold rounded-full bg-primary text-primary-foreground hover:bg-primary/90 shadow-none cursor-pointer transition-all disabled:opacity-50"
+      >
+        {isUpdating ? (
+          <span className="flex items-center gap-1.5">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…
+          </span>
+        ) : (
+          "Save Changes"
+        )}
+      </Button>
+    </div>
+  )
+}
+
 interface ProfileRowProps {
   currentUser: any
   onUpdateProfile: (data: ProfileFormData) => void
@@ -123,6 +189,9 @@ function ProfileRow({
   onUpdateProfile,
   isUpdating,
 }: ProfileRowProps) {
+  const defaultFullName = currentUser?.full_name ?? ""
+  const defaultEmail = currentUser?.email ?? ""
+
   const {
     register,
     handleSubmit,
@@ -131,82 +200,47 @@ function ProfileRow({
   } = useForm<ProfileFormData>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
-      full_name: currentUser?.full_name ?? "",
-      email: currentUser?.email ?? "",
+      full_name: defaultFullName,
+      email: defaultEmail,
     },
   })
 
   React.useEffect(() => {
     reset({
-      full_name: currentUser?.full_name ?? "",
-      email: currentUser?.email ?? "",
+      full_name: defaultFullName,
+      email: defaultEmail,
     })
-  }, [currentUser?.full_name, currentUser?.email, reset])
+  }, [defaultFullName, defaultEmail, reset])
 
   return (
     <div className="p-4 sm:p-6 space-y-4 hover:bg-muted/5 transition-colors">
-      <ProfileHeaderRow fullName={currentUser?.full_name} />
+      <ProfileHeaderRow fullName={defaultFullName} />
 
       <form onSubmit={handleSubmit(onUpdateProfile)} className="space-y-4 pt-1">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label
-              htmlFor="full_name"
-              className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 pl-0.5"
-            >
-              <User className="h-3.5 w-3.5" /> Full Name
-            </Label>
-            <Input
-              id="full_name"
-              {...register("full_name")}
-              placeholder="e.g. Ashwath N"
-              className="h-9 rounded-xl bg-muted/20 border-border/60 text-xs sm:text-sm focus:ring-1 focus:ring-primary px-3.5"
-            />
-            {errors.full_name && (
-              <p className="text-[11px] text-destructive pl-1">
-                {errors.full_name.message}
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label
-              htmlFor="email"
-              className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 pl-0.5"
-            >
-              <Mail className="h-3.5 w-3.5" /> Email Address
-            </Label>
-            <Input
-              id="email"
-              type="email"
-              {...register("email")}
-              placeholder="you@example.com"
-              className="h-9 rounded-xl bg-muted/20 border-border/60 text-xs sm:text-sm focus:ring-1 focus:ring-primary px-3.5"
-            />
-            {errors.email && (
-              <p className="text-[11px] text-destructive pl-1">
-                {errors.email.message}
-              </p>
-            )}
-          </div>
+          <ProfileField
+            id="full_name"
+            label="Full Name"
+            placeholder="e.g. Ashwath N"
+            icon={User}
+            register={register}
+            error={errors.full_name?.message}
+          />
+          <ProfileField
+            id="email"
+            label="Email Address"
+            type="email"
+            placeholder="you@example.com"
+            icon={Mail}
+            register={register}
+            error={errors.email?.message}
+          />
         </div>
 
-        <div className="flex justify-end pt-1">
-          <Button
-            type="submit"
-            disabled={!isDirty || isUpdating}
-            size="sm"
-            className="h-8 px-4 text-xs font-bold rounded-full bg-primary text-primary-foreground hover:bg-primary/90 shadow-none cursor-pointer transition-all disabled:opacity-50"
-          >
-            {isUpdating ? (
-              <span className="flex items-center gap-1.5">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…
-              </span>
-            ) : (
-              "Save Changes"
-            )}
-          </Button>
-        </div>
+        <ProfileSaveButton
+          disabled={!isDirty || isUpdating}
+          isUpdating={isUpdating}
+        />
       </form>
     </div>
   )
