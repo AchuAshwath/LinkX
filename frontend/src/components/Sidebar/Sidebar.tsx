@@ -1,7 +1,7 @@
 "use client"
 
 import { Link } from "@tanstack/react-router"
-import { Clock, Link2, Package, X } from "lucide-react"
+import { Clock, Link2, Package, Settings, X } from "lucide-react"
 import * as React from "react"
 import { Logo } from "@/components/Common/Logo"
 import { CreatePostDialog } from "@/components/PostInput/CreatePostDialog"
@@ -25,7 +25,6 @@ export function Sidebar({ sidebarOpen, onClose }: SidebarProps) {
   }
 
   const handlePostCreated = () => {
-    // Posts will be refetched automatically via query invalidation
     setCreatePostDialogOpen(false)
   }
 
@@ -53,7 +52,7 @@ export function Sidebar({ sidebarOpen, onClose }: SidebarProps) {
             className="w-full justify-start text-lg font-semibold tracking-tight h-11 px-3.5 rounded-full hover:bg-accent/80 transition-colors"
             asChild
           >
-            <Link to="/home">
+            <Link to="/home" onClick={handleMenuClick}>
               <Clock className="mr-3 h-5 w-5" />
               Timeline
             </Link>
@@ -63,7 +62,7 @@ export function Sidebar({ sidebarOpen, onClose }: SidebarProps) {
             className="w-full justify-start text-lg font-semibold tracking-tight h-11 px-3.5 rounded-full hover:bg-accent/80 transition-colors"
             asChild
           >
-            <Link to="/posts">
+            <Link to="/posts" onClick={handleMenuClick}>
               <Package className="mr-3 h-5 w-5" />
               Posts
             </Link>
@@ -73,15 +72,25 @@ export function Sidebar({ sidebarOpen, onClose }: SidebarProps) {
             className="w-full justify-start text-lg font-semibold tracking-tight h-11 px-3.5 rounded-full hover:bg-accent/80 transition-colors"
             asChild
           >
-            <Link to="/social-accounts">
+            <Link to="/social-accounts" onClick={handleMenuClick}>
               <Link2 className="mr-3 h-5 w-5" />
               Social Accounts
+            </Link>
+          </Button>
+          <Button
+            variant="ghost"
+            className="w-full justify-start text-lg font-semibold tracking-tight h-11 px-3.5 rounded-full hover:bg-accent/80 transition-colors"
+            asChild
+          >
+            <Link to="/settings" onClick={handleMenuClick}>
+              <Settings className="mr-3 h-5 w-5" />
+              Settings
             </Link>
           </Button>
         </nav>
 
         <Button
-          className="mt-6 w-full text-base font-semibold h-11 rounded-full shadow-sm"
+          className="mt-6 w-full text-base font-semibold h-11 rounded-full shadow-sm cursor-pointer"
           onClick={() => setCreatePostDialogOpen(true)}
         >
           Create Post

@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router"
-import { ChevronsUpDown, Layers, LogOut, Settings, Shield } from "lucide-react"
+import { ChevronsUpDown, Layers, LogOut, Settings } from "lucide-react"
 import { UserInfo } from "@/components/Common/UserInfo"
 import { Button } from "@/components/ui/button"
 import {
@@ -10,7 +10,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import useAuth from "@/hooks/useAuth"
 
 interface SidebarProfileProps {
   fullName?: string
@@ -25,61 +24,51 @@ export function SidebarProfile({
   onMenuClick,
   onLogout,
 }: SidebarProfileProps) {
-  const { user: currentUser } = useAuth()
   const handleLogout = () => {
     if (onLogout) {
       onLogout()
-    } else {
-      console.log("Logout clicked")
     }
   }
 
   return (
     <div className="p-4">
-      {/* Profile Dropdown */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            className="w-full justify-start text-sm h-auto py-2 px-3 data-[state=open]:bg-accent data-[state=open]:text-accent-foreground"
+            className="w-full justify-start text-sm h-auto py-2 px-3 rounded-2xl border border-transparent hover:border-border/60 hover:bg-muted/40 transition-all select-none cursor-pointer focus:outline-none focus-visible:ring-0 focus-visible:outline-none data-[state=open]:bg-muted/60 data-[state=open]:border-border/80"
           >
             <UserInfo fullName={fullName} email={email} />
             <ChevronsUpDown className="ml-auto size-4 text-muted-foreground shrink-0" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
-          className="w-[--radix-dropdown-menu-trigger-width] min-w-56 max-w-64 rounded-lg"
+          className="w-[--radix-dropdown-menu-trigger-width] min-w-56 max-w-64 rounded-xl shadow-lg border border-border/80"
           side="top"
           align="end"
-          sideOffset={4}
+          sideOffset={8}
         >
-          <DropdownMenuLabel className="p-0 font-normal">
+          <DropdownMenuLabel className="p-2 font-normal">
             <UserInfo fullName={fullName} email={email} />
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <Link to="/settings" onClick={onMenuClick}>
-            <DropdownMenuItem>
+            <DropdownMenuItem className="rounded-lg cursor-pointer">
               <Settings className="mr-2 h-4 w-4" />
-              User Settings
+              Settings
             </DropdownMenuItem>
           </Link>
-          {currentUser?.is_superuser ? (
-            <Link to="/admin" onClick={onMenuClick}>
-              <DropdownMenuItem>
-                <Shield className="mr-2 h-4 w-4" />
-                Admin
-              </DropdownMenuItem>
-            </Link>
-          ) : null}
-          <DropdownMenuSeparator />
           <Link to="/about" onClick={onMenuClick}>
-            <DropdownMenuItem>
+            <DropdownMenuItem className="rounded-lg cursor-pointer">
               <Layers className="mr-2 h-4 w-4" />
               Brand Kit
             </DropdownMenuItem>
           </Link>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={handleLogout}>
+          <DropdownMenuItem
+            onClick={handleLogout}
+            className="rounded-lg cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
+          >
             <LogOut className="mr-2 h-4 w-4" />
             Log Out
           </DropdownMenuItem>
