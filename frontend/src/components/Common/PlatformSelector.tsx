@@ -103,6 +103,42 @@ const PLATFORM_CONFIGS: {
   },
 ]
 
+function PlatformSliderIndicator({
+  value,
+  buttonSize,
+}: {
+  value: Platform
+  buttonSize: number
+}) {
+  return (
+    <div
+      className={`absolute rounded-full transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] top-0.5 left-0.5 ${
+        INDICATOR_MAP[value]
+      }`}
+      style={{
+        width: `${buttonSize}px`,
+        height: `${buttonSize}px`,
+        transform: `translateX(${INDEX_MAP[value] * buttonSize}px)`,
+      }}
+    />
+  )
+}
+
+function renderPlatformIcon(
+  id: Platform,
+  iconSize: string,
+  imageSize: string,
+  linkxIconSrc: string,
+) {
+  if (id === "linkedin") {
+    return <FaLinkedinIn className={iconSize} />
+  }
+  if (id === "linkx") {
+    return <img src={linkxIconSrc} alt="LinkX" className={imageSize} />
+  }
+  return <FaXTwitter className={iconSize} />
+}
+
 export function PlatformSelector({
   value,
   onChange,
@@ -111,10 +147,10 @@ export function PlatformSelector({
   className = "",
 }: PlatformSelectorProps) {
   const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === "dark"
-  const linkxIconSrc = isDark
-    ? "/assets/images/LinkX-icon-light.svg"
-    : "/assets/images/LinkX-icon.svg"
+  const linkxIconSrc =
+    resolvedTheme === "dark"
+      ? "/assets/images/LinkX-icon-light.svg"
+      : "/assets/images/LinkX-icon.svg"
 
   const isSm = size === "sm"
   const buttonSize = isSm ? 22 : 24
@@ -129,16 +165,7 @@ export function PlatformSelector({
           disabled ? "cursor-default" : ""
         } ${className}`}
       >
-        <div
-          className={`absolute rounded-full transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] top-0.5 left-0.5 ${
-            INDICATOR_MAP[value]
-          }`}
-          style={{
-            width: `${buttonSize}px`,
-            height: `${buttonSize}px`,
-            transform: `translateX(${INDEX_MAP[value] * buttonSize}px)`,
-          }}
-        />
+        <PlatformSliderIndicator value={value} buttonSize={buttonSize} />
 
         {PLATFORM_CONFIGS.map((cfg) => {
           const isSelected = value === cfg.id
@@ -155,13 +182,7 @@ export function PlatformSelector({
               }
               className={isSelected ? cfg.activeClass : cfg.inactiveClass}
             >
-              {cfg.id === "linkedin" ? (
-                <FaLinkedinIn className={iconSize} />
-              ) : cfg.id === "linkx" ? (
-                <img src={linkxIconSrc} alt="LinkX" className={imageSize} />
-              ) : (
-                <FaXTwitter className={iconSize} />
-              )}
+              {renderPlatformIcon(cfg.id, iconSize, imageSize, linkxIconSrc)}
             </PlatformOptionButton>
           )
         })}

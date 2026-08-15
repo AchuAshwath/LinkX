@@ -302,6 +302,22 @@ function PostCardBodyContent({
   )
 }
 
+function PostCardAvatar({ author }: { author: PostAuthorData }) {
+  const initials = getInitials(author.name)
+  return (
+    <div className="flex-shrink-0">
+      <Avatar className="h-10 w-10 cursor-pointer transition-transform hover:scale-105">
+        {author.avatarUrl ? (
+          <AvatarImage src={author.avatarUrl} alt={author.name} />
+        ) : null}
+        <AvatarFallback className="text-xs font-semibold">
+          {initials}
+        </AvatarFallback>
+      </Avatar>
+    </div>
+  )
+}
+
 function usePostCardEditor(
   post: PostCardData,
   onSave?: (
@@ -376,6 +392,38 @@ function usePostCardEditor(
   }
 }
 
+function usePostCardEngagement(
+  post: PostCardData,
+  onLike?: (id: string) => void,
+  onRepost?: (id: string) => void,
+) {
+  const [isLiked, setIsLiked] = React.useState(post.isLiked ?? false)
+  const [likeCount, setLikeCount] = React.useState(post.likes ?? 0)
+  const [isReposted, setIsReposted] = React.useState(post.isReposted ?? false)
+  const [repostCount, setRepostCount] = React.useState(post.reposts ?? 0)
+
+  const handleLike = React.useCallback(() => {
+    setIsLiked((prev) => !prev)
+    setLikeCount((prev) => (isLiked ? prev - 1 : prev + 1))
+    onLike?.(post.id)
+  }, [isLiked, onLike, post.id])
+
+  const handleRepost = React.useCallback(() => {
+    setIsReposted((prev) => !prev)
+    setRepostCount((prev) => (isReposted ? prev - 1 : prev + 1))
+    onRepost?.(post.id)
+  }, [isReposted, onRepost, post.id])
+
+  return {
+    isLiked,
+    likeCount,
+    isReposted,
+    repostCount,
+    handleLike,
+    handleRepost,
+  }
+}
+
 export const PostCard = React.memo(function PostCard({
   post,
   isEditing = false,
@@ -392,11 +440,6 @@ export const PostCard = React.memo(function PostCard({
   onRetry,
   isRetrying = false,
 }: PostCardProps) {
-  const [isLiked, setIsLiked] = React.useState(post.isLiked ?? false)
-  const [likeCount, setLikeCount] = React.useState(post.likes ?? 0)
-  const [isReposted, setIsReposted] = React.useState(post.isReposted ?? false)
-  const [repostCount, setRepostCount] = React.useState(post.reposts ?? 0)
-
   const {
     platform,
     editedContent,
@@ -408,7 +451,15 @@ export const PostCard = React.memo(function PostCard({
     handlePlatformChange,
   } = usePostCardEditor(post, onSave, onCancel, onPlatformChange)
 
-  const initials = getInitials(post.author.name)
+  const {
+    isLiked,
+    likeCount,
+    isReposted,
+    repostCount,
+    handleLike,
+    handleRepost,
+  } = usePostCardEngagement(post, onLike, onRepost)
+
   const scheduledDateTime = React.useMemo(() => {
     return post.scheduledAt ? formatFullDateTime(post.scheduledAt) : ""
   }, [post.scheduledAt])
@@ -432,19 +483,7 @@ export const PostCard = React.memo(function PostCard({
     >
       <div className="p-3 sm:p-4">
         <div className="flex gap-2.5 sm:gap-3">
-          <div className="flex-shrink-0">
-            <Avatar className="h-10 w-10 cursor-pointer transition-transform hover:scale-105">
-              {post.author.avatarUrl ? (
-                <AvatarImage
-                  src={post.author.avatarUrl}
-                  alt={post.author.name}
-                />
-              ) : null}
-              <AvatarFallback className="text-xs font-semibold">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
-          </div>
+          <PostCardAvatar author={post.author} />
 
           <div className="min-w-0 flex-1">
             <PostCardHeader
@@ -497,18 +536,10 @@ export const PostCard = React.memo(function PostCard({
                 onPlatformChange={isPosted ? undefined : handlePlatformChange}
                 isLiked={isLiked}
                 likeCount={likeCount}
-                onLike={() => {
-                  setIsLiked((prev) => !prev)
-                  setLikeCount((prev) => (isLiked ? prev - 1 : prev + 1))
-                  onLike?.(post.id)
-                }}
+                onLike={handleLike}
                 isReposted={isReposted}
                 repostCount={repostCount}
-                onRepost={() => {
-                  setIsReposted((prev) => !prev)
-                  setRepostCount((prev) => (isReposted ? prev - 1 : prev + 1))
-                  onRepost?.(post.id)
-                }}
+                onRepost={handleRepost}
                 commentsCount={post.comments ?? 0}
                 onComment={() => onComment?.(post.id)}
                 onShare={() => onShare?.(post.id)}

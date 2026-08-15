@@ -490,6 +490,196 @@ function PostsRightSidebar({
   )
 }
 
+function PostsFeedList({
+  activeCategory,
+  activePosts,
+  editingPostId,
+  onEdit,
+  onDelete,
+  onSave,
+  onCancel,
+  onPlatformChange,
+  onPreview,
+  onRetry,
+  isRetrying,
+}: {
+  activeCategory: PostCategory
+  activePosts: any[]
+  editingPostId: string | null
+  onEdit: (id: string) => void
+  onDelete: (id: string, category: PostCategory) => void
+  onSave: (
+    id: string,
+    data: { content: string; platform: Platform; scheduledAt?: Date | null },
+  ) => void
+  onCancel: () => void
+  onPlatformChange: (id: string, platform: Platform) => void
+  onPreview: (id: string) => void
+  onRetry: (id: string) => void
+  isRetrying: (id: string) => boolean
+}) {
+  return (
+    <div className="w-full pb-20">
+      {activePosts.map((post) => {
+        const isEditing = editingPostId === post.id
+
+        if (activeCategory === "drafts") {
+          return (
+            <DraftPost
+              key={post.id}
+              post={post}
+              isEditing={isEditing}
+              onEdit={onEdit}
+              onDelete={(id) => onDelete(id, "drafts")}
+              onSave={onSave}
+              onCancel={onCancel}
+              onPlatformChange={onPlatformChange}
+              onPreview={onPreview}
+            />
+          )
+        }
+
+        if (activeCategory === "scheduled") {
+          return (
+            <ScheduledPost
+              key={post.id}
+              post={post}
+              isEditing={isEditing}
+              onEdit={onEdit}
+              onDelete={(id) => onDelete(id, "scheduled")}
+              onSave={onSave}
+              onCancel={onCancel}
+              onPlatformChange={onPlatformChange}
+              onPreview={onPreview}
+            />
+          )
+        }
+
+        if (activeCategory === "posted") {
+          return (
+            <Posted
+              key={post.id}
+              post={post}
+              onPreview={onPreview}
+              onDelete={(id) => onDelete(id, "posted")}
+            />
+          )
+        }
+
+        return (
+          <FailedPost
+            key={post.id}
+            post={post}
+            isEditing={isEditing}
+            onEdit={onEdit}
+            onDelete={(id) => onDelete(id, "failed")}
+            onSave={onSave}
+            onCancel={onCancel}
+            onPlatformChange={onPlatformChange}
+            onPreview={onPreview}
+            onRetry={onRetry}
+            isRetrying={isRetrying(post.id)}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+function useTransformedPosts(postsData: any) {
+  const rawDrafts = React.useMemo(
+    () => postsData?.data?.filter((p: any) => p.status === "draft") ?? [],
+    [postsData],
+  )
+  const rawScheduled = React.useMemo(
+    () =>
+      postsData?.data?.filter(
+        (p: any) => p.status === "scheduled" && p.scheduled_at,
+      ) ?? [],
+    [postsData],
+  )
+  const rawPosted = React.useMemo(
+    () => postsData?.data?.filter((p: any) => p.status === "published") ?? [],
+    [postsData],
+  )
+  const rawFailed = React.useMemo(
+    () => postsData?.data?.filter((p: any) => p.status === "failed") ?? [],
+    [postsData],
+  )
+
+  const allDraftPosts = React.useMemo(
+    () =>
+      rawDrafts.map((p: any) =>
+        transformToDraftPost({
+          id: p.id,
+          author: p.author as any,
+          content: p.content,
+          image_url: p.image_url ?? null,
+          created_at: p.created_at ?? new Date().toISOString(),
+          platform: p.platform ?? "linkx",
+        }),
+      ),
+    [rawDrafts],
+  )
+
+  const allScheduledPosts = React.useMemo(
+    () =>
+      rawScheduled.map((p: any) =>
+        transformToScheduledPost({
+          id: p.id,
+          author: p.author as any,
+          content: p.content,
+          image_url: p.image_url ?? null,
+          created_at: p.created_at ?? new Date().toISOString(),
+          scheduled_at: p.scheduled_at ?? null,
+          platform: p.platform ?? "linkx",
+        }),
+      ),
+    [rawScheduled],
+  )
+
+  const allPostedPosts = React.useMemo(
+    () =>
+      rawPosted.map((p: any) =>
+        transformToPostedPost({
+          id: p.id,
+          author: p.author as any,
+          content: p.content,
+          image_url: p.image_url ?? null,
+          created_at: p.created_at ?? new Date().toISOString(),
+          likes: p.likes ?? 0,
+          reposts: p.reposts ?? 0,
+          comments: p.comments ?? 0,
+          platform: p.platform ?? "linkx",
+        }),
+      ),
+    [rawPosted],
+  )
+
+  const allFailedPosts = React.useMemo(
+    () =>
+      rawFailed.map((p: any) =>
+        transformToFailedPost({
+          id: p.id,
+          author: p.author as any,
+          content: p.content,
+          image_url: p.image_url ?? null,
+          created_at: p.created_at ?? new Date().toISOString(),
+          platform: p.platform ?? "linkx",
+          error_reason: p.error_message ?? null,
+        }),
+      ),
+    [rawFailed],
+  )
+
+  return {
+    allDraftPosts,
+    allScheduledPosts,
+    allPostedPosts,
+    allFailedPosts,
+  }
+}
+
 export function PostsPage() {
   const queryClient = useQueryClient()
   const [activeCategory, setActiveCategory] =
@@ -524,90 +714,8 @@ export function PostsPage() {
     staleTime: 15000,
   })
 
-  const rawDrafts = React.useMemo(
-    () => postsData?.data?.filter((p) => p.status === "draft") ?? [],
-    [postsData],
-  )
-  const rawScheduled = React.useMemo(
-    () =>
-      postsData?.data?.filter(
-        (p) => p.status === "scheduled" && p.scheduled_at,
-      ) ?? [],
-    [postsData],
-  )
-  const rawPosted = React.useMemo(
-    () => postsData?.data?.filter((p) => p.status === "published") ?? [],
-    [postsData],
-  )
-  const rawFailed = React.useMemo(
-    () => postsData?.data?.filter((p) => p.status === "failed") ?? [],
-    [postsData],
-  )
-
-  const allDraftPosts = React.useMemo(
-    () =>
-      rawDrafts.map((p) =>
-        transformToDraftPost({
-          id: p.id,
-          author: p.author as any,
-          content: p.content,
-          image_url: p.image_url ?? null,
-          created_at: p.created_at ?? new Date().toISOString(),
-          platform: p.platform ?? "linkx",
-        }),
-      ),
-    [rawDrafts],
-  )
-
-  const allScheduledPosts = React.useMemo(
-    () =>
-      rawScheduled.map((p) =>
-        transformToScheduledPost({
-          id: p.id,
-          author: p.author as any,
-          content: p.content,
-          image_url: p.image_url ?? null,
-          created_at: p.created_at ?? new Date().toISOString(),
-          scheduled_at: p.scheduled_at ?? null,
-          platform: p.platform ?? "linkx",
-        }),
-      ),
-    [rawScheduled],
-  )
-
-  const allPostedPosts = React.useMemo(
-    () =>
-      rawPosted.map((p) =>
-        transformToPostedPost({
-          id: p.id,
-          author: p.author as any,
-          content: p.content,
-          image_url: p.image_url ?? null,
-          created_at: p.created_at ?? new Date().toISOString(),
-          likes: p.likes ?? 0,
-          reposts: p.reposts ?? 0,
-          comments: p.comments ?? 0,
-          platform: p.platform ?? "linkx",
-        }),
-      ),
-    [rawPosted],
-  )
-
-  const allFailedPosts = React.useMemo(
-    () =>
-      rawFailed.map((p) =>
-        transformToFailedPost({
-          id: p.id,
-          author: p.author as any,
-          content: p.content,
-          image_url: p.image_url ?? null,
-          created_at: p.created_at ?? new Date().toISOString(),
-          platform: p.platform ?? "linkx",
-          error_reason: p.error_message ?? null,
-        }),
-      ),
-    [rawFailed],
-  )
+  const { allDraftPosts, allScheduledPosts, allPostedPosts, allFailedPosts } =
+    useTransformedPosts(postsData)
 
   const activePosts = React.useMemo(() => {
     let sourceList: any[] = []
@@ -767,85 +875,24 @@ export function PostsPage() {
               onClearFilters={handleClearFilters}
             />
           ) : (
-            <div className="w-full pb-20">
-              {activePosts.map((post) => {
-                const isEditing = editingPostId === post.id
-
-                if (activeCategory === "drafts") {
-                  return (
-                    <DraftPost
-                      key={post.id}
-                      post={post}
-                      isEditing={isEditing}
-                      onEdit={(id) => setEditingPostId(id)}
-                      onDelete={(id) => {
-                        setPostToDelete({ id, category: "drafts" })
-                        setDeleteDialogOpen(true)
-                      }}
-                      onSave={handleSavePost}
-                      onCancel={() => setEditingPostId(null)}
-                      onPlatformChange={handlePlatformChange}
-                      onPreview={handlePreview}
-                    />
-                  )
-                }
-
-                if (activeCategory === "scheduled") {
-                  return (
-                    <ScheduledPost
-                      key={post.id}
-                      post={post}
-                      isEditing={isEditing}
-                      onEdit={(id) => setEditingPostId(id)}
-                      onDelete={(id) => {
-                        setPostToDelete({ id, category: "scheduled" })
-                        setDeleteDialogOpen(true)
-                      }}
-                      onSave={handleSavePost}
-                      onCancel={() => setEditingPostId(null)}
-                      onPlatformChange={handlePlatformChange}
-                      onPreview={handlePreview}
-                    />
-                  )
-                }
-
-                if (activeCategory === "posted") {
-                  return (
-                    <Posted
-                      key={post.id}
-                      post={post}
-                      onPreview={handlePreview}
-                      onDelete={(id) => {
-                        setPostToDelete({ id, category: "posted" })
-                        setDeleteDialogOpen(true)
-                      }}
-                    />
-                  )
-                }
-
-                return (
-                  <FailedPost
-                    key={post.id}
-                    post={post}
-                    isEditing={isEditing}
-                    onEdit={(id) => setEditingPostId(id)}
-                    onDelete={(id) => {
-                      setPostToDelete({ id, category: "failed" })
-                      setDeleteDialogOpen(true)
-                    }}
-                    onSave={handleSavePost}
-                    onCancel={() => setEditingPostId(null)}
-                    onPlatformChange={handlePlatformChange}
-                    onPreview={handlePreview}
-                    onRetry={(id) => retryMutation.mutate(id)}
-                    isRetrying={
-                      retryMutation.isPending &&
-                      retryMutation.variables === post.id
-                    }
-                  />
-                )
-              })}
-            </div>
+            <PostsFeedList
+              activeCategory={activeCategory}
+              activePosts={activePosts}
+              editingPostId={editingPostId}
+              onEdit={(id) => setEditingPostId(id)}
+              onDelete={(id, cat) => {
+                setPostToDelete({ id, category: cat })
+                setDeleteDialogOpen(true)
+              }}
+              onSave={handleSavePost}
+              onCancel={() => setEditingPostId(null)}
+              onPlatformChange={handlePlatformChange}
+              onPreview={handlePreview}
+              onRetry={(id) => retryMutation.mutate(id)}
+              isRetrying={(id) =>
+                retryMutation.isPending && retryMutation.variables === id
+              }
+            />
           )}
         </div>
       </div>
