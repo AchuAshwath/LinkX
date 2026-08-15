@@ -112,17 +112,17 @@ function ProfileHeaderRow({ fullName }: { fullName?: string }) {
   )
 }
 
-interface ProfileFieldProps {
-  id: "full_name" | "email"
+interface SettingsInputProps {
+  id: string
   label: string
   type?: string
   placeholder: string
   icon: typeof User
-  register: UseFormRegister<ProfileFormData>
+  register: UseFormRegister<any>
   error?: string
 }
 
-function ProfileField({
+function SettingsInput({
   id,
   label,
   type = "text",
@@ -130,7 +130,7 @@ function ProfileField({
   icon: Icon,
   register,
   error,
-}: ProfileFieldProps) {
+}: SettingsInputProps) {
   return (
     <div className="space-y-1.5">
       <Label
@@ -218,7 +218,7 @@ function ProfileRow({
 
       <form onSubmit={handleSubmit(onUpdateProfile)} className="space-y-4 pt-1">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <ProfileField
+          <SettingsInput
             id="full_name"
             label="Full Name"
             placeholder="e.g. Ashwath N"
@@ -226,7 +226,7 @@ function ProfileRow({
             register={register}
             error={errors.full_name?.message}
           />
-          <ProfileField
+          <SettingsInput
             id="email"
             label="Email Address"
             type="email"
@@ -306,67 +306,66 @@ function AppearanceRow() {
   )
 }
 
-function SecurityRow({
-  onOpenPasswordDialog,
-}: {
-  onOpenPasswordDialog: () => void
-}) {
-  return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-6 hover:bg-muted/5 transition-colors">
-      <div className="flex items-center gap-3.5 min-w-0">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted/50 text-foreground">
-          <KeyRound className="h-5 w-5" />
-        </div>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-sm">Security</span>
-            <Badge
-              variant="outline"
-              className="text-[11px] py-0 px-2 font-normal text-muted-foreground rounded-full"
-            >
-              Authentication
-            </Badge>
-          </div>
-          <p className="text-xs text-muted-foreground mt-0.5 truncate">
-            Update your account password.
-          </p>
-        </div>
-      </div>
-
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={onOpenPasswordDialog}
-        className="h-8 px-4 text-xs font-bold rounded-full border-border/80 hover:bg-muted/40 shadow-none cursor-pointer shrink-0 self-start sm:self-center"
-      >
-        Change Password
-      </Button>
-    </div>
-  )
+interface SettingsActionRowProps {
+  title: string
+  badgeText: string
+  description: string
+  icon: typeof KeyRound
+  buttonText: string
+  onAction: () => void
+  isDestructive?: boolean
 }
 
-function DangerZoneRow({ onDeleteClick }: { onDeleteClick: () => void }) {
+function SettingsActionRow({
+  title,
+  badgeText,
+  description,
+  icon: Icon,
+  buttonText,
+  onAction,
+  isDestructive = false,
+}: SettingsActionRowProps) {
+  const containerClass = isDestructive
+    ? "bg-destructive/5 hover:bg-destructive/10"
+    : "hover:bg-muted/5"
+  const iconClass = isDestructive
+    ? "bg-destructive/15 text-destructive"
+    : "bg-muted/50 text-foreground"
+  const titleClass = isDestructive ? "text-destructive" : ""
+  const badgeClass = isDestructive
+    ? "text-destructive border-destructive/30"
+    : "text-muted-foreground"
+  const descClass = isDestructive
+    ? "text-destructive/80"
+    : "text-muted-foreground"
+  const buttonClass = isDestructive
+    ? "border-destructive/40 text-destructive bg-destructive/10 hover:bg-destructive hover:text-white"
+    : "border-border/80 hover:bg-muted/40"
+
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-6 bg-destructive/5 hover:bg-destructive/10 transition-colors">
+    <div
+      className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-6 transition-colors ${containerClass}`}
+    >
       <div className="flex items-center gap-3.5 min-w-0">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-destructive/15 text-destructive">
-          <Trash2 className="h-5 w-5" />
+        <div
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${iconClass}`}
+        >
+          <Icon className="h-5 w-5" />
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-sm text-destructive">
-              Danger Zone
+            <span className={`font-semibold text-sm ${titleClass}`}>
+              {title}
             </span>
             <Badge
               variant="outline"
-              className="text-[11px] py-0 px-2 font-normal text-destructive border-destructive/30 rounded-full"
+              className={`text-[11px] py-0 px-2 font-normal rounded-full ${badgeClass}`}
             >
-              Irreversible
+              {badgeText}
             </Badge>
           </div>
-          <p className="text-xs text-destructive/80 mt-0.5 truncate">
-            Permanently delete your account and all associated post records.
+          <p className={`text-xs mt-0.5 truncate ${descClass}`}>
+            {description}
           </p>
         </div>
       </div>
@@ -375,44 +374,11 @@ function DangerZoneRow({ onDeleteClick }: { onDeleteClick: () => void }) {
         type="button"
         variant="outline"
         size="sm"
-        onClick={onDeleteClick}
-        className="h-8 px-4 text-xs font-bold rounded-full border-destructive/40 text-destructive bg-destructive/10 hover:bg-destructive hover:text-white shadow-none cursor-pointer shrink-0 self-start sm:self-center transition-colors"
+        onClick={onAction}
+        className={`h-8 px-4 text-xs font-bold rounded-full shadow-none cursor-pointer shrink-0 self-start sm:self-center transition-colors ${buttonClass}`}
       >
-        Delete Account
+        {buttonText}
       </Button>
-    </div>
-  )
-}
-
-interface PasswordFieldProps {
-  id: "current_password" | "new_password" | "confirm_password"
-  label: string
-  register: UseFormRegister<PasswordFormData>
-  error?: string
-}
-
-function PasswordInputField({
-  id,
-  label,
-  register,
-  error,
-}: PasswordFieldProps) {
-  return (
-    <div className="space-y-1.5">
-      <Label
-        htmlFor={id}
-        className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"
-      >
-        <Lock className="h-3.5 w-3.5" /> {label}
-      </Label>
-      <Input
-        id={id}
-        type="password"
-        placeholder="••••••••"
-        {...register(id)}
-        className="h-9 rounded-xl bg-muted/20 border-border/60 text-xs sm:text-sm focus:ring-1 focus:ring-primary px-3.5"
-      />
-      {error && <p className="text-[11px] text-destructive pl-1">{error}</p>}
     </div>
   )
 }
@@ -453,21 +419,30 @@ function ChangePasswordDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-3.5 mt-2">
-          <PasswordInputField
+          <SettingsInput
             id="current_password"
             label="Current Password"
+            type="password"
+            placeholder="••••••••"
+            icon={Lock}
             register={register}
             error={errors.current_password?.message}
           />
-          <PasswordInputField
+          <SettingsInput
             id="new_password"
             label="New Password"
+            type="password"
+            placeholder="••••••••"
+            icon={Lock}
             register={register}
             error={errors.new_password?.message}
           />
-          <PasswordInputField
+          <SettingsInput
             id="confirm_password"
             label="Confirm Password"
+            type="password"
+            placeholder="••••••••"
+            icon={Lock}
             register={register}
             error={errors.confirm_password?.message}
           />
@@ -620,9 +595,24 @@ export function SettingsPage() {
 
         <AppearanceRow />
 
-        <SecurityRow onOpenPasswordDialog={() => setPasswordDialogOpen(true)} />
+        <SettingsActionRow
+          title="Security"
+          badgeText="Authentication"
+          description="Update your account password."
+          icon={KeyRound}
+          buttonText="Change Password"
+          onAction={() => setPasswordDialogOpen(true)}
+        />
 
-        <DangerZoneRow onDeleteClick={() => setDeleteDialogOpen(true)} />
+        <SettingsActionRow
+          title="Danger Zone"
+          badgeText="Irreversible"
+          description="Permanently delete your account and all associated post records."
+          icon={Trash2}
+          buttonText="Delete Account"
+          onAction={() => setDeleteDialogOpen(true)}
+          isDestructive
+        />
       </div>
 
       <ChangePasswordDialog
