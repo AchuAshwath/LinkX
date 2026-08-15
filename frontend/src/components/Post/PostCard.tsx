@@ -544,71 +544,133 @@ interface PostCardLayoutProps extends PostCardProps {
   engagement: ReturnType<typeof usePostCardEngagement>
 }
 
-function PostCardMainColumn({
-  post,
-  isEditing = false,
-  onComment,
-  onShare,
-  onEdit,
-  onPreview,
-  onDelete,
+function PostCardScheduleEditor({
+  isEditing,
+  isScheduled,
+  scheduledAt,
+  onChangeDateTime,
+}: {
+  isEditing: boolean
+  isScheduled: boolean
+  scheduledAt: Date | null
+  onChangeDateTime: (d: Date | null) => void
+}) {
+  if (!isEditing || !isScheduled) return null
+  return (
+    <PostCardScheduleRow
+      scheduledAt={scheduledAt}
+      onChangeDateTime={(d) => onChangeDateTime(d || null)}
+    />
+  )
+}
+
+function PostCardFailureNotice({
+  isFailed,
+  errorReason,
   onRetry,
-  isRetrying = false,
+  isRetrying,
+}: {
+  isFailed: boolean
+  errorReason?: string | null
+  onRetry?: () => void
+  isRetrying: boolean
+}) {
+  if (!isFailed) return null
+  return (
+    <FailureNotice
+      errorReason={errorReason}
+      onRetry={onRetry}
+      isRetrying={isRetrying}
+    />
+  )
+}
+
+function PostCardHeaderWrapper({
+  post,
+  flags,
+  isEditing,
   editor,
-  engagement,
-}: PostCardLayoutProps) {
-  const { isScheduled, isFailed, isPosted, scheduledDateTime } =
-    getPostCardFlags(post)
+  onPreview,
+  onEdit,
+  onDelete,
+}: {
+  post: PostCardData
+  flags: ReturnType<typeof getPostCardFlags>
+  isEditing: boolean
+  editor: ReturnType<typeof usePostCardEditor>
+  onPreview?: (id: string) => void
+  onEdit?: (id: string) => void
+  onDelete?: (id: string) => void
+}) {
+  return (
+    <PostCardHeader
+      author={post.author}
+      createdAt={post.createdAt}
+      scheduledAt={post.scheduledAt}
+      isScheduled={flags.isScheduled}
+      scheduledDateTime={flags.scheduledDateTime}
+      isEditing={isEditing}
+      canSave={editor.editedContent.trim().length > 0}
+      onCancel={editor.handleCancel}
+      onSave={editor.handleSave}
+      onPreview={onPreview ? () => onPreview(post.id) : undefined}
+      onEdit={onEdit ? () => onEdit(post.id) : undefined}
+      onDelete={onDelete ? () => onDelete(post.id) : undefined}
+    />
+  )
+}
+
+function PostCardMainColumn(props: PostCardLayoutProps) {
+  const flags = getPostCardFlags(props.post)
+  const isEditing = Boolean(props.isEditing)
 
   return (
     <div className="min-w-0 flex-1">
-      <PostCardHeader
-        author={post.author}
-        createdAt={post.createdAt}
-        scheduledAt={post.scheduledAt}
-        isScheduled={isScheduled}
-        scheduledDateTime={scheduledDateTime}
+      <PostCardHeaderWrapper
+        post={props.post}
+        flags={flags}
         isEditing={isEditing}
-        canSave={editor.editedContent.trim().length > 0}
-        onCancel={editor.handleCancel}
-        onSave={editor.handleSave}
-        onPreview={onPreview ? () => onPreview(post.id) : undefined}
-        onEdit={onEdit ? () => onEdit(post.id) : undefined}
-        onDelete={onDelete ? () => onDelete(post.id) : undefined}
+        editor={props.editor}
+        onPreview={props.onPreview}
+        onEdit={props.onEdit}
+        onDelete={props.onDelete}
       />
 
-      {isEditing && isScheduled && (
-        <PostCardScheduleRow
-          scheduledAt={editor.editedScheduledAt}
-          onChangeDateTime={(d) => editor.setEditedScheduledAt(d || null)}
-        />
-      )}
+      <PostCardScheduleEditor
+        isEditing={isEditing}
+        isScheduled={flags.isScheduled}
+        scheduledAt={props.editor.editedScheduledAt}
+        onChangeDateTime={props.editor.setEditedScheduledAt}
+      />
 
       <PostCardBodyContent
         isEditing={isEditing}
-        content={post.content}
-        editedContent={editor.editedContent}
-        onContentChange={editor.setEditedContent}
-        imageUrl={post.imageUrl}
+        content={props.post.content}
+        editedContent={props.editor.editedContent}
+        onContentChange={props.editor.setEditedContent}
+        imageUrl={props.post.imageUrl}
       />
 
-      {isFailed && (
-        <FailureNotice
-          errorReason={post.errorReason}
-          onRetry={onRetry ? () => onRetry(post.id) : undefined}
-          isRetrying={isRetrying}
-        />
-      )}
+      <PostCardFailureNotice
+        isFailed={flags.isFailed}
+        errorReason={props.post.errorReason}
+        onRetry={
+          props.onRetry ? () => props.onRetry!(props.post.id) : undefined
+        }
+        isRetrying={Boolean(props.isRetrying)}
+      />
 
       <PostCardActionsRow
         isEditing={isEditing}
-        platform={editor.platform}
-        onPlatformChange={isPosted ? undefined : editor.handlePlatformChange}
-        engagement={engagement}
-        commentsCount={post.comments ?? 0}
-        onComment={() => onComment?.(post.id)}
-        onShare={() => onShare?.(post.id)}
-        isPosted={isPosted}
+        platform={props.editor.platform}
+        onPlatformChange={
+          flags.isPosted ? undefined : props.editor.handlePlatformChange
+        }
+        engagement={props.engagement}
+        commentsCount={props.post.comments ?? 0}
+        onComment={() => props.onComment?.(props.post.id)}
+        onShare={() => props.onShare?.(props.post.id)}
+        isPosted={flags.isPosted}
       />
     </div>
   )
