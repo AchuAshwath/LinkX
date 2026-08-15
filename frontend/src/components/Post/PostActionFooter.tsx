@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 export interface PostActionFooterProps {
   isEditing?: boolean
   platform: Platform
-  onPlatformChange: (platform: Platform) => void
+  onPlatformChange?: (platform: Platform) => void
   isLiked?: boolean
   likeCount?: number
   onLike?: () => void
@@ -18,6 +18,7 @@ export interface PostActionFooterProps {
   commentsCount?: number
   onComment?: () => void
   onShare?: () => void
+  isPosted?: boolean
 }
 
 export function PostActionFooter({
@@ -33,13 +34,14 @@ export function PostActionFooter({
   commentsCount = 0,
   onComment,
   onShare,
+  isPosted = false,
 }: PostActionFooterProps) {
   if (isEditing) {
     return (
       <div className="flex items-center justify-end pt-2">
         <PlatformSelector
           value={platform}
-          onChange={onPlatformChange}
+          onChange={onPlatformChange || (() => {})}
           size="sm"
         />
       </div>
@@ -47,55 +49,55 @@ export function PostActionFooter({
   }
 
   return (
-    <div className="flex items-center justify-between gap-1 sm:gap-4">
+    <div className="flex items-center justify-between gap-1 sm:gap-4 pt-1">
       <div className="flex items-center gap-1 sm:gap-4">
         <Button
           variant="ghost"
           size="sm"
-          className="group/btn h-9 flex-1 justify-start gap-2 text-muted-foreground transition-colors hover:bg-blue-500/10 hover:text-blue-500 active:scale-95 sm:h-8 sm:flex-initial"
+          className="group/btn h-8 flex-1 justify-start gap-1.5 px-2 text-muted-foreground transition-colors hover:bg-rose-500/10 hover:text-rose-500 active:scale-95 sm:flex-initial"
           onClick={onLike}
           aria-label={`${isLiked ? "Unlike" : "Like"} post`}
           aria-pressed={isLiked}
         >
           <Heart
             className={`h-4 w-4 transition-colors sm:h-3.5 sm:w-3.5 ${
-              isLiked ? "fill-red-500 text-red-500" : ""
+              isLiked ? "fill-rose-500 text-rose-500" : ""
             }`}
           />
-          <span className="text-base">{likeCount}</span>
+          <span className="text-xs font-normal">{likeCount}</span>
         </Button>
 
         <Button
           variant="ghost"
           size="sm"
-          className="group/btn h-9 flex-1 justify-start gap-2 text-muted-foreground transition-colors hover:bg-green-500/10 hover:text-green-500 active:scale-95 sm:h-8 sm:flex-initial"
+          className="group/btn h-8 flex-1 justify-start gap-1.5 px-2 text-muted-foreground transition-colors hover:bg-emerald-500/10 hover:text-emerald-500 active:scale-95 sm:flex-initial"
           onClick={onRepost}
           aria-label={`${isReposted ? "Undo repost" : "Repost"}`}
           aria-pressed={isReposted}
         >
           <Repeat2
             className={`h-4 w-4 transition-colors sm:h-3.5 sm:w-3.5 ${
-              isReposted ? "text-green-500" : ""
+              isReposted ? "text-emerald-500" : ""
             }`}
           />
-          <span className="text-base">{repostCount}</span>
+          <span className="text-xs font-normal">{repostCount}</span>
         </Button>
 
         <Button
           variant="ghost"
           size="sm"
-          className="group/btn h-9 flex-1 justify-start gap-2 text-muted-foreground transition-colors hover:bg-blue-500/10 hover:text-blue-500 active:scale-95 sm:h-8 sm:flex-initial"
+          className="group/btn h-8 flex-1 justify-start gap-1.5 px-2 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary active:scale-95 sm:flex-initial"
           onClick={onComment}
           aria-label="Comments"
         >
           <MessageCircle className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
-          <span className="text-base">{commentsCount}</span>
+          <span className="text-xs font-normal">{commentsCount}</span>
         </Button>
 
         <Button
           variant="ghost"
           size="sm"
-          className="group/btn h-9 w-9 shrink-0 text-muted-foreground transition-colors hover:bg-blue-500/10 hover:text-blue-500 active:scale-95 sm:h-8 sm:w-8"
+          className="group/btn h-8 w-8 shrink-0 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary active:scale-95"
           onClick={onShare}
           aria-label="Share post"
         >
@@ -103,9 +105,11 @@ export function PostActionFooter({
         </Button>
       </div>
 
+      {/* Platform Selector */}
       <PlatformSelector
         value={platform}
         onChange={onPlatformChange}
+        disabled={isPosted || !onPlatformChange}
         size="sm"
       />
     </div>

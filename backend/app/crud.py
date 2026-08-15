@@ -1,9 +1,9 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy.dialects.postgresql import insert
-from sqlmodel import Session, delete, func, select
+from sqlmodel import Session, col, delete, func, select
 
 from app.core.security import get_password_hash, verify_password
 from app.models import (
@@ -211,7 +211,7 @@ def replace_trending_tweets(
 
 
 def get_latest_trending_topics(
-    *, session: Session, user_id: uuid.UUID
+    *, session: Session, user_id: uuid.UUID, limit: int = 10
 ) -> list[TrendingTopic]:
     """Get the most recent batch of trending topics for a user."""
     # 1. Find MAX(scraped_at) for this user
@@ -224,13 +224,19 @@ def get_latest_trending_topics(
     if not max_scraped_at:
         return []
 
-    # 2. Return topics from that batch
+    # 2. Return topics from that batch (within 15 minutes of latest scrape)
+    window_start = max_scraped_at - timedelta(minutes=15)
     stmt = (
         select(TrendingTopic)
         .where(
-            TrendingTopic.user_id == user_id, TrendingTopic.scraped_at == max_scraped_at
+            TrendingTopic.user_id == user_id,
+            TrendingTopic.scraped_at >= window_start,
         )
-        .order_by(TrendingTopic.post_count.desc().nulls_last())  # type: ignore
+        .order_by(
+            col(TrendingTopic.post_count).desc().nulls_last(),
+            col(TrendingTopic.scraped_at).desc(),
+        )
+        .limit(limit)
     )
 
     return list(session.exec(stmt).all())

@@ -1,6 +1,7 @@
 "use client"
 
-import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { X } from "lucide-react"
+import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog"
 import useAuth from "@/hooks/useAuth"
 import { PostInputBox } from "./PostInputBox"
 
@@ -26,15 +27,21 @@ export function CreatePostDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
-        <div className="py-4">
-          <PostInputBox
-            username={username}
-            avatarUrl={avatarUrl}
-            onSubmit={handlePostCreated}
-            onCancel={() => onOpenChange(false)}
-          />
-        </div>
+      <DialogContent
+        showCloseButton={false}
+        className="sm:max-w-2xl p-5 sm:p-6 overflow-visible border border-border/80 shadow-xl"
+      >
+        <DialogClose className="absolute -top-3 -right-3 sm:-top-3.5 sm:-right-3.5 h-7 w-7 rounded-full bg-background border border-border/80 shadow-xs hover:shadow-sm flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-all cursor-pointer z-50 focus:outline-none focus:ring-1 focus:ring-ring">
+          <X className="h-3.5 w-3.5" />
+          <span className="sr-only">Close</span>
+        </DialogClose>
+        <PostInputBox
+          username={username}
+          avatarUrl={avatarUrl}
+          onSubmit={handlePostCreated}
+          onCancel={() => onOpenChange(false)}
+          autoFocus
+        />
       </DialogContent>
     </Dialog>
   )

@@ -21,7 +21,6 @@ import { Route as LayoutItemsRouteImport } from './routes/_layout/items'
 import { Route as LayoutHomeRouteImport } from './routes/_layout/home'
 import { Route as LayoutCanvasRouteImport } from './routes/_layout/canvas'
 import { Route as LayoutAiRouteImport } from './routes/_layout/ai'
-import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
 import { Route as LayoutAccountsRouteImport } from './routes/_layout/accounts'
 import { Route as LayoutAboutRouteImport } from './routes/_layout/about'
 
@@ -84,11 +83,6 @@ const LayoutAiRoute = LayoutAiRouteImport.update({
   path: '/ai',
   getParentRoute: () => LayoutRoute,
 } as any)
-const LayoutAdminRoute = LayoutAdminRouteImport.update({
-  id: '/admin',
-  path: '/admin',
-  getParentRoute: () => LayoutRoute,
-} as any)
 const LayoutAccountsRoute = LayoutAccountsRouteImport.update({
   id: '/accounts',
   path: '/accounts',
@@ -107,7 +101,6 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/about': typeof LayoutAboutRoute
   '/accounts': typeof LayoutAccountsRoute
-  '/admin': typeof LayoutAdminRoute
   '/ai': typeof LayoutAiRoute
   '/canvas': typeof LayoutCanvasRoute
   '/home': typeof LayoutHomeRoute
@@ -123,7 +116,6 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/about': typeof LayoutAboutRoute
   '/accounts': typeof LayoutAccountsRoute
-  '/admin': typeof LayoutAdminRoute
   '/ai': typeof LayoutAiRoute
   '/canvas': typeof LayoutCanvasRoute
   '/home': typeof LayoutHomeRoute
@@ -141,7 +133,6 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/_layout/about': typeof LayoutAboutRoute
   '/_layout/accounts': typeof LayoutAccountsRoute
-  '/_layout/admin': typeof LayoutAdminRoute
   '/_layout/ai': typeof LayoutAiRoute
   '/_layout/canvas': typeof LayoutCanvasRoute
   '/_layout/home': typeof LayoutHomeRoute
@@ -159,7 +150,6 @@ export interface FileRouteTypes {
     | '/signup'
     | '/about'
     | '/accounts'
-    | '/admin'
     | '/ai'
     | '/canvas'
     | '/home'
@@ -175,7 +165,6 @@ export interface FileRouteTypes {
     | '/signup'
     | '/about'
     | '/accounts'
-    | '/admin'
     | '/ai'
     | '/canvas'
     | '/home'
@@ -192,7 +181,6 @@ export interface FileRouteTypes {
     | '/signup'
     | '/_layout/about'
     | '/_layout/accounts'
-    | '/_layout/admin'
     | '/_layout/ai'
     | '/_layout/canvas'
     | '/_layout/home'
@@ -296,13 +284,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutAiRouteImport
       parentRoute: typeof LayoutRoute
     }
-    '/_layout/admin': {
-      id: '/_layout/admin'
-      path: '/admin'
-      fullPath: '/admin'
-      preLoaderRoute: typeof LayoutAdminRouteImport
-      parentRoute: typeof LayoutRoute
-    }
     '/_layout/accounts': {
       id: '/_layout/accounts'
       path: '/accounts'
@@ -323,7 +304,6 @@ declare module '@tanstack/react-router' {
 interface LayoutRouteChildren {
   LayoutAboutRoute: typeof LayoutAboutRoute
   LayoutAccountsRoute: typeof LayoutAccountsRoute
-  LayoutAdminRoute: typeof LayoutAdminRoute
   LayoutAiRoute: typeof LayoutAiRoute
   LayoutCanvasRoute: typeof LayoutCanvasRoute
   LayoutHomeRoute: typeof LayoutHomeRoute
@@ -336,7 +316,6 @@ interface LayoutRouteChildren {
 const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutAboutRoute: LayoutAboutRoute,
   LayoutAccountsRoute: LayoutAccountsRoute,
-  LayoutAdminRoute: LayoutAdminRoute,
   LayoutAiRoute: LayoutAiRoute,
   LayoutCanvasRoute: LayoutCanvasRoute,
   LayoutHomeRoute: LayoutHomeRoute,

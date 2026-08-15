@@ -11,7 +11,7 @@ export function usePostForm() {
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const [content, setContent] = useState("")
   const [scheduledAt, setScheduledAt] = useState<Date | undefined>()
-  const [channel, setChannel] = useState<Platform>("linkedin")
+  const [channel, setChannel] = useState<Platform>("linkx")
   const [actionType, setActionType] = useState<"draft" | "schedule" | "post">(
     "post",
   )
@@ -38,7 +38,7 @@ export function usePostForm() {
       // Reset form
       setContent("")
       setScheduledAt(undefined)
-      setChannel("linkedin")
+      setChannel("linkx")
       setActionType("post")
       // Invalidate queries to refetch posts
       queryClient.invalidateQueries({ queryKey: ["posts"] })
@@ -50,11 +50,10 @@ export function usePostForm() {
     (action: "draft" | "schedule" | "post") => {
       if (content.trim().length === 0) return
 
-      // Validate schedule action
-      if (action === "schedule" && !scheduledAt) {
-        showErrorToast("Please select a date and time to schedule the post")
-        return
-      }
+      const finalScheduledAt =
+        action === "schedule"
+          ? scheduledAt || new Date(Date.now() + 4 * 3600 * 1000)
+          : undefined
 
       const postData: {
         content: string
@@ -72,13 +71,13 @@ export function usePostForm() {
               : "published",
       }
 
-      if (action === "schedule" && scheduledAt) {
-        postData.scheduled_at = scheduledAt.toISOString()
+      if (action === "schedule" && finalScheduledAt) {
+        postData.scheduled_at = finalScheduledAt.toISOString()
       }
 
       createPostMutation.mutate(postData)
     },
-    [channel, content, createPostMutation, scheduledAt, showErrorToast],
+    [channel, content, createPostMutation, scheduledAt],
   )
 
   const handleContentChange = useCallback(

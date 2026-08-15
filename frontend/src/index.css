@@ -115,6 +115,7 @@
     @apply border-border outline-ring/50;
   }
   html {
+    font-size: 17px;
     scroll-behavior: smooth;
     scrollbar-width: thin;
     scrollbar-color: var(--border) transparent;

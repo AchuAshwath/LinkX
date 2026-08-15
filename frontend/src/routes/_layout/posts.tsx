@@ -1,32 +1,31 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import {
-  BarChart3,
+  AlertCircle,
   Calendar,
   CheckCircle2,
   Clock,
   FileText,
-  Filter,
+  Globe,
   Loader2,
   TrendingUp,
   X,
 } from "lucide-react"
 import * as React from "react"
-import { PostsService } from "@/client"
+import { PostsService, type PostUpdate } from "@/client"
 import type { Platform } from "@/components/Common/PlatformSelector"
-import type { DraftPostData } from "@/components/Post/DraftPost"
-import { DraftPost } from "@/components/Post/DraftPost"
-import type { PostedData } from "@/components/Post/Posted"
-import { Posted } from "@/components/Post/Posted"
+import {
+  DraftPost,
+  FailedPost,
+  Posted,
+  ScheduledPost,
+} from "@/components/Post/PostCard"
 import {
   PostPreviewDialog,
   type PreviewPostData,
 } from "@/components/Post/Previews"
-import type { ScheduledPostData } from "@/components/Post/ScheduledPost"
-import { ScheduledPost } from "@/components/Post/ScheduledPost"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Dialog,
   DialogClose,
@@ -44,11 +43,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import useCustomToast from "@/hooks/useCustomToast"
 import {
   handleError,
   transformToDraftPost,
+  transformToFailedPost,
   transformToPostedPost,
   transformToScheduledPost,
 } from "@/utils"
@@ -64,24 +63,804 @@ export const Route = createFileRoute("/_layout/posts")({
   }),
 })
 
-function PostsPage() {
+type PostCategory = "drafts" | "scheduled" | "posted" | "failed"
+
+const DATE_LIMITS: Record<string, number> = {
+  today: 1,
+  week: 7,
+  month: 30,
+  quarter: 90,
+  year: 365,
+}
+
+const EMPTY_STATE_CONFIGS: Record<
+  PostCategory,
+  {
+    icon: typeof FileText
+    title: string
+    desc: string
+    iconClass: string
+  }
+> = {
+  drafts: {
+    icon: FileText,
+    title: "No drafts",
+    desc: "Your draft posts will appear here. Start writing to save ideas for later.",
+    iconClass: "text-muted-foreground",
+  },
+  scheduled: {
+    icon: Calendar,
+    title: "No scheduled posts",
+    desc: "Posts you schedule for future publication will appear here.",
+    iconClass: "text-muted-foreground",
+  },
+  posted: {
+    icon: CheckCircle2,
+    title: "No published content",
+    desc: "Your successfully published posts across LinkedIn and X will appear here.",
+    iconClass: "text-muted-foreground",
+  },
+  failed: {
+    icon: AlertCircle,
+    title: "No failed posts",
+    desc: "Great job! All your scheduled and published posts completed with zero errors.",
+    iconClass: "text-destructive/80",
+  },
+}
+
+function isWithinDateRange(
+  dateStrOrObj: Date | string,
+  range: string,
+): boolean {
+  if (range === "all") return true
+  const date =
+    typeof dateStrOrObj === "string" ? new Date(dateStrOrObj) : dateStrOrObj
+  const diffDays = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24)
+  return diffDays <= (DATE_LIMITS[range] || 365)
+}
+
+function matchesPlatform(
+  postPlatform?: string,
+  filterPlatform?: string,
+): boolean {
+  if (!filterPlatform || filterPlatform === "all") return true
+  const resolved = postPlatform === "all" ? "linkx" : postPlatform
+  return resolved === filterPlatform
+}
+
+function filterPosts(
+  sourceList: any[],
+  activeCategory: PostCategory,
+  dateFilter: string,
+  platformFilter: string,
+) {
+  return sourceList.filter((item) => {
+    const dateVal =
+      activeCategory === "scheduled" && item.scheduledAt
+        ? item.scheduledAt
+        : item.createdAt
+    return (
+      isWithinDateRange(dateVal, dateFilter) &&
+      matchesPlatform(item.platform, platformFilter)
+    )
+  })
+}
+
+function compareByOldest(a: any, b: any) {
+  return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+}
+
+function compareByScheduled(a: any, b: any) {
+  const aTime = a.scheduledAt ? new Date(a.scheduledAt).getTime() : 0
+  const bTime = b.scheduledAt ? new Date(b.scheduledAt).getTime() : 0
+  return aTime - bTime
+}
+
+function compareByEngagement(a: any, b: any) {
+  const aScore = (a.likes || 0) + (a.reposts || 0) * 2 + (a.comments || 0) * 3
+  const bScore = (b.likes || 0) + (b.reposts || 0) * 2 + (b.comments || 0) * 3
+  return bScore - aScore
+}
+
+function compareByNewest(a: any, b: any, isScheduled: boolean) {
+  const aTime =
+    isScheduled && a.scheduledAt
+      ? new Date(a.scheduledAt).getTime()
+      : new Date(a.createdAt).getTime()
+  const bTime =
+    isScheduled && b.scheduledAt
+      ? new Date(b.scheduledAt).getTime()
+      : new Date(b.createdAt).getTime()
+  return bTime - aTime
+}
+
+function sortPosts(posts: any[], activeCategory: PostCategory, sortBy: string) {
+  if (sortBy === "oldest") {
+    return [...posts].sort(compareByOldest)
+  }
+  if (sortBy === "scheduled") {
+    return [...posts].sort(compareByScheduled)
+  }
+  if (sortBy === "engagement") {
+    return [...posts].sort(compareByEngagement)
+  }
+  const isScheduled = activeCategory === "scheduled"
+  return [...posts].sort((a, b) => compareByNewest(a, b, isScheduled))
+}
+
+interface MobilePillsProps {
+  activeCategory: PostCategory
+  onSelectCategory: (cat: PostCategory) => void
+  draftsCount: number
+  scheduledCount: number
+  postedCount: number
+  failedCount: number
+}
+
+function MobileCategoryPills({
+  activeCategory,
+  onSelectCategory,
+  draftsCount,
+  scheduledCount,
+  postedCount,
+  failedCount,
+}: MobilePillsProps) {
+  return (
+    <div className="flex items-center gap-1.5 p-2.5 border-b overflow-x-auto scrollbar-none md:hidden bg-background/90 backdrop-blur-xs sticky top-0 z-10">
+      <Button
+        variant={activeCategory === "drafts" ? "default" : "secondary"}
+        size="sm"
+        onClick={() => onSelectCategory("drafts")}
+        className="h-7 px-3 text-xs rounded-full shrink-0 font-medium cursor-pointer"
+      >
+        <FileText className="h-3 w-3 mr-1" />
+        Drafts ({draftsCount})
+      </Button>
+      <Button
+        variant={activeCategory === "scheduled" ? "default" : "secondary"}
+        size="sm"
+        onClick={() => onSelectCategory("scheduled")}
+        className="h-7 px-3 text-xs rounded-full shrink-0 font-medium cursor-pointer"
+      >
+        <Calendar className="h-3 w-3 mr-1" />
+        Scheduled ({scheduledCount})
+      </Button>
+      <Button
+        variant={activeCategory === "posted" ? "default" : "secondary"}
+        size="sm"
+        onClick={() => onSelectCategory("posted")}
+        className="h-7 px-3 text-xs rounded-full shrink-0 font-medium cursor-pointer"
+      >
+        <CheckCircle2 className="h-3 w-3 mr-1" />
+        Posted ({postedCount})
+      </Button>
+      <Button
+        variant={activeCategory === "failed" ? "destructive" : "secondary"}
+        size="sm"
+        onClick={() => onSelectCategory("failed")}
+        className={`h-7 px-3 text-xs rounded-full shrink-0 font-medium cursor-pointer ${
+          failedCount > 0 && activeCategory !== "failed"
+            ? "text-destructive"
+            : ""
+        }`}
+      >
+        <AlertCircle className="h-3 w-3 mr-1" />
+        Failed ({failedCount})
+      </Button>
+    </div>
+  )
+}
+
+interface EmptyStateProps {
+  activeCategory: PostCategory
+  hasActiveFilters: boolean
+  onClearFilters: () => void
+}
+
+function PostsEmptyState({
+  activeCategory,
+  hasActiveFilters,
+  onClearFilters,
+}: EmptyStateProps) {
+  const config = EMPTY_STATE_CONFIGS[activeCategory]
+  const IconComponent = config.icon
+  const title = hasActiveFilters ? "No matching posts found" : config.title
+  const desc = hasActiveFilters
+    ? "Try clearing or relaxing your date and platform filters."
+    : config.desc
+
+  return (
+    <div className="flex flex-col items-center justify-center text-center py-20 px-4">
+      <div className="rounded-full bg-muted/50 p-6 mb-4">
+        <IconComponent className={`h-10 w-10 ${config.iconClass}`} />
+      </div>
+      <h3 className="text-xl font-semibold mb-1">{title}</h3>
+      <p className="text-muted-foreground text-sm max-w-sm">{desc}</p>
+      {hasActiveFilters && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onClearFilters}
+          className="mt-4 rounded-full cursor-pointer"
+        >
+          Clear Filters
+        </Button>
+      )}
+    </div>
+  )
+}
+
+interface StatusItemProps {
+  category: PostCategory
+  activeCategory: PostCategory
+  onSelectCategory: (cat: PostCategory) => void
+  count: number
+  label: string
+  icon: typeof FileText
+}
+
+function PostStatusItem({
+  category,
+  activeCategory,
+  onSelectCategory,
+  count,
+  label,
+  icon: Icon,
+}: StatusItemProps) {
+  const isActive = activeCategory === category
+  const isFailedCategory = category === "failed"
+
+  let activeClass = "text-foreground hover:bg-muted/10"
+  if (isActive) {
+    activeClass = isFailedCategory
+      ? "bg-destructive/10 text-destructive font-semibold"
+      : "bg-primary/10 text-primary font-semibold"
+  } else if (isFailedCategory && count > 0) {
+    activeClass = "text-destructive hover:bg-destructive/10"
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelectCategory(category)}
+      className={`w-full flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors cursor-pointer text-left ${activeClass}`}
+    >
+      <span className="flex items-center gap-2.5">
+        <Icon
+          className={`h-4 w-4 ${
+            isActive
+              ? isFailedCategory
+                ? "text-destructive"
+                : "text-primary"
+              : "text-muted-foreground"
+          }`}
+        />
+        {label}
+      </span>
+      <Badge
+        variant={
+          isActive
+            ? isFailedCategory
+              ? "destructive"
+              : "default"
+            : isFailedCategory && count > 0
+              ? "destructive"
+              : "secondary"
+        }
+        className="font-semibold text-xs px-2.5 py-0.5 rounded-full"
+      >
+        {count}
+      </Badge>
+    </button>
+  )
+}
+
+interface StatusCardProps {
+  activeCategory: PostCategory
+  onSelectCategory: (cat: PostCategory) => void
+  draftsCount: number
+  scheduledCount: number
+  postedCount: number
+  failedCount: number
+}
+
+function PostStatusCard({
+  activeCategory,
+  onSelectCategory,
+  draftsCount,
+  scheduledCount,
+  postedCount,
+  failedCount,
+}: StatusCardProps) {
+  return (
+    <div className="w-full rounded-2xl border border-border/80 bg-background overflow-hidden shadow-none">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
+        <h2 className="text-lg font-bold tracking-tight text-foreground">
+          Post Status
+        </h2>
+      </div>
+      <div className="w-full divide-y divide-border/30">
+        <PostStatusItem
+          category="drafts"
+          activeCategory={activeCategory}
+          onSelectCategory={onSelectCategory}
+          count={draftsCount}
+          label="Drafts"
+          icon={FileText}
+        />
+        <PostStatusItem
+          category="scheduled"
+          activeCategory={activeCategory}
+          onSelectCategory={onSelectCategory}
+          count={scheduledCount}
+          label="Scheduled"
+          icon={Calendar}
+        />
+        <PostStatusItem
+          category="posted"
+          activeCategory={activeCategory}
+          onSelectCategory={onSelectCategory}
+          count={postedCount}
+          label="Posted"
+          icon={CheckCircle2}
+        />
+        <PostStatusItem
+          category="failed"
+          activeCategory={activeCategory}
+          onSelectCategory={onSelectCategory}
+          count={failedCount}
+          label="Failed"
+          icon={AlertCircle}
+        />
+      </div>
+    </div>
+  )
+}
+
+function PostFiltersHeader({
+  hasActiveFilters,
+  onClearFilters,
+}: {
+  hasActiveFilters: boolean
+  onClearFilters: () => void
+}) {
+  return (
+    <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
+      <h2 className="text-lg font-bold tracking-tight text-foreground">
+        Filters
+      </h2>
+      {hasActiveFilters && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onClearFilters}
+          className="h-7 px-2.5 text-xs text-muted-foreground hover:text-primary rounded-full cursor-pointer flex items-center gap-1 font-medium"
+        >
+          <X className="h-3 w-3" />
+          Clear
+        </Button>
+      )}
+    </div>
+  )
+}
+
+function PostDateFilterSelect({
+  dateFilter,
+  onDateFilterChange,
+}: {
+  dateFilter: string
+  onDateFilterChange: (val: string) => void
+}) {
+  return (
+    <div className="space-y-1.5">
+      <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 pl-0.5">
+        <Clock className="h-3.5 w-3.5" />
+        Date Range
+      </span>
+      <Select value={dateFilter} onValueChange={onDateFilterChange}>
+        <SelectTrigger className="w-full h-9 text-xs rounded-full bg-muted/20 border-border/60 hover:bg-muted/40 transition-colors px-3.5 focus:ring-1 focus:ring-primary">
+          <SelectValue placeholder="Select date range" />
+        </SelectTrigger>
+        <SelectContent className="rounded-xl">
+          <SelectItem value="today" className="rounded-lg">
+            Today
+          </SelectItem>
+          <SelectItem value="week" className="rounded-lg">
+            This Week
+          </SelectItem>
+          <SelectItem value="month" className="rounded-lg">
+            This Month
+          </SelectItem>
+          <SelectItem value="quarter" className="rounded-lg">
+            This Quarter
+          </SelectItem>
+          <SelectItem value="year" className="rounded-lg">
+            This Year
+          </SelectItem>
+          <SelectItem value="all" className="rounded-lg">
+            All Time
+          </SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+function PostPlatformFilterSelect({
+  platformFilter,
+  onPlatformFilterChange,
+}: {
+  platformFilter: string
+  onPlatformFilterChange: (val: string) => void
+}) {
+  return (
+    <div className="space-y-1.5">
+      <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 pl-0.5">
+        <Globe className="h-3.5 w-3.5" />
+        Platform
+      </span>
+      <Select value={platformFilter} onValueChange={onPlatformFilterChange}>
+        <SelectTrigger className="w-full h-9 text-xs rounded-full bg-muted/20 border-border/60 hover:bg-muted/40 transition-colors px-3.5 focus:ring-1 focus:ring-primary">
+          <SelectValue placeholder="Select platform" />
+        </SelectTrigger>
+        <SelectContent className="rounded-xl">
+          <SelectItem value="all" className="rounded-lg">
+            All Platforms
+          </SelectItem>
+          <SelectItem value="linkx" className="rounded-lg">
+            LinkX (Both)
+          </SelectItem>
+          <SelectItem value="linkedin" className="rounded-lg">
+            LinkedIn
+          </SelectItem>
+          <SelectItem value="x" className="rounded-lg">
+            X (Twitter)
+          </SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+function PostSortFilterSelect({
+  sortBy,
+  onSortByChange,
+  activeCategory,
+}: {
+  sortBy: string
+  onSortByChange: (val: string) => void
+  activeCategory: PostCategory
+}) {
+  return (
+    <div className="space-y-1.5">
+      <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 pl-0.5">
+        <TrendingUp className="h-3.5 w-3.5" />
+        Sort By
+      </span>
+      <Select value={sortBy} onValueChange={onSortByChange}>
+        <SelectTrigger className="w-full h-9 text-xs rounded-full bg-muted/20 border-border/60 hover:bg-muted/40 transition-colors px-3.5 focus:ring-1 focus:ring-primary">
+          <SelectValue placeholder="Sort by" />
+        </SelectTrigger>
+        <SelectContent className="rounded-xl">
+          <SelectItem value="newest" className="rounded-lg">
+            Newest First
+          </SelectItem>
+          <SelectItem value="oldest" className="rounded-lg">
+            Oldest First
+          </SelectItem>
+          {activeCategory === "scheduled" && (
+            <SelectItem value="scheduled" className="rounded-lg">
+              Scheduled Date
+            </SelectItem>
+          )}
+          {activeCategory === "posted" && (
+            <SelectItem value="engagement" className="rounded-lg">
+              Engagement
+            </SelectItem>
+          )}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+interface FiltersCardProps {
+  dateFilter: string
+  onDateFilterChange: (val: string) => void
+  platformFilter: string
+  onPlatformFilterChange: (val: string) => void
+  sortBy: string
+  onSortByChange: (val: string) => void
+  activeCategory: PostCategory
+  hasActiveFilters: boolean
+  onClearFilters: () => void
+}
+
+function PostFiltersCard({
+  dateFilter,
+  onDateFilterChange,
+  platformFilter,
+  onPlatformFilterChange,
+  sortBy,
+  onSortByChange,
+  activeCategory,
+  hasActiveFilters,
+  onClearFilters,
+}: FiltersCardProps) {
+  return (
+    <div className="w-full rounded-2xl border border-border/80 bg-background overflow-hidden shadow-none">
+      <PostFiltersHeader
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={onClearFilters}
+      />
+      <div className="p-4 space-y-4">
+        <PostDateFilterSelect
+          dateFilter={dateFilter}
+          onDateFilterChange={onDateFilterChange}
+        />
+        <PostPlatformFilterSelect
+          platformFilter={platformFilter}
+          onPlatformFilterChange={onPlatformFilterChange}
+        />
+        <PostSortFilterSelect
+          sortBy={sortBy}
+          onSortByChange={onSortByChange}
+          activeCategory={activeCategory}
+        />
+      </div>
+    </div>
+  )
+}
+
+interface SidebarProps {
+  activeCategory: PostCategory
+  onSelectCategory: (cat: PostCategory) => void
+  draftsCount: number
+  scheduledCount: number
+  postedCount: number
+  failedCount: number
+  dateFilter: string
+  onDateFilterChange: (val: string) => void
+  platformFilter: string
+  onPlatformFilterChange: (val: string) => void
+  sortBy: string
+  onSortByChange: (val: string) => void
+  hasActiveFilters: boolean
+  onClearFilters: () => void
+}
+
+function PostsRightSidebar(props: SidebarProps) {
+  return (
+    <div className="sticky top-0 self-start p-4 space-y-4">
+      <PostStatusCard
+        activeCategory={props.activeCategory}
+        onSelectCategory={props.onSelectCategory}
+        draftsCount={props.draftsCount}
+        scheduledCount={props.scheduledCount}
+        postedCount={props.postedCount}
+        failedCount={props.failedCount}
+      />
+      <PostFiltersCard
+        dateFilter={props.dateFilter}
+        onDateFilterChange={props.onDateFilterChange}
+        platformFilter={props.platformFilter}
+        onPlatformFilterChange={props.onPlatformFilterChange}
+        sortBy={props.sortBy}
+        onSortByChange={props.onSortByChange}
+        activeCategory={props.activeCategory}
+        hasActiveFilters={props.hasActiveFilters}
+        onClearFilters={props.onClearFilters}
+      />
+    </div>
+  )
+}
+
+function PostsFeedList({
+  activeCategory,
+  activePosts,
+  editingPostId,
+  onEdit,
+  onDelete,
+  onSave,
+  onCancel,
+  onPlatformChange,
+  onPreview,
+  onRetry,
+  isRetrying,
+}: {
+  activeCategory: PostCategory
+  activePosts: any[]
+  editingPostId: string | null
+  onEdit: (id: string) => void
+  onDelete: (id: string, category: PostCategory) => void
+  onSave: (
+    id: string,
+    data: { content: string; platform: Platform; scheduledAt?: Date | null },
+  ) => void
+  onCancel: () => void
+  onPlatformChange: (id: string, platform: Platform) => void
+  onPreview: (id: string) => void
+  onRetry: (id: string) => void
+  isRetrying: (id: string) => boolean
+}) {
+  return (
+    <div className="w-full pb-20">
+      {activePosts.map((post) => {
+        const isEditing = editingPostId === post.id
+
+        if (activeCategory === "drafts") {
+          return (
+            <DraftPost
+              key={post.id}
+              post={post}
+              isEditing={isEditing}
+              onEdit={onEdit}
+              onDelete={(id) => onDelete(id, "drafts")}
+              onSave={onSave}
+              onCancel={onCancel}
+              onPlatformChange={onPlatformChange}
+              onPreview={onPreview}
+            />
+          )
+        }
+
+        if (activeCategory === "scheduled") {
+          return (
+            <ScheduledPost
+              key={post.id}
+              post={post}
+              isEditing={isEditing}
+              onEdit={onEdit}
+              onDelete={(id) => onDelete(id, "scheduled")}
+              onSave={onSave}
+              onCancel={onCancel}
+              onPlatformChange={onPlatformChange}
+              onPreview={onPreview}
+            />
+          )
+        }
+
+        if (activeCategory === "posted") {
+          return (
+            <Posted
+              key={post.id}
+              post={post}
+              onPreview={onPreview}
+              onDelete={(id) => onDelete(id, "posted")}
+            />
+          )
+        }
+
+        return (
+          <FailedPost
+            key={post.id}
+            post={post}
+            isEditing={isEditing}
+            onEdit={onEdit}
+            onDelete={(id) => onDelete(id, "failed")}
+            onSave={onSave}
+            onCancel={onCancel}
+            onPlatformChange={onPlatformChange}
+            onPreview={onPreview}
+            onRetry={onRetry}
+            isRetrying={isRetrying(post.id)}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+function useTransformedPosts(postsData: any) {
+  const rawDrafts = React.useMemo(
+    () => postsData?.data?.filter((p: any) => p.status === "draft") ?? [],
+    [postsData],
+  )
+  const rawScheduled = React.useMemo(
+    () =>
+      postsData?.data?.filter(
+        (p: any) => p.status === "scheduled" && p.scheduled_at,
+      ) ?? [],
+    [postsData],
+  )
+  const rawPosted = React.useMemo(
+    () => postsData?.data?.filter((p: any) => p.status === "published") ?? [],
+    [postsData],
+  )
+  const rawFailed = React.useMemo(
+    () => postsData?.data?.filter((p: any) => p.status === "failed") ?? [],
+    [postsData],
+  )
+
+  const allDraftPosts = React.useMemo(
+    () =>
+      rawDrafts.map((p: any) =>
+        transformToDraftPost({
+          id: p.id,
+          author: p.author as any,
+          content: p.content,
+          image_url: p.image_url ?? null,
+          created_at: p.created_at ?? new Date().toISOString(),
+          platform: p.platform ?? "linkx",
+        }),
+      ),
+    [rawDrafts],
+  )
+
+  const allScheduledPosts = React.useMemo(
+    () =>
+      rawScheduled.map((p: any) =>
+        transformToScheduledPost({
+          id: p.id,
+          author: p.author as any,
+          content: p.content,
+          image_url: p.image_url ?? null,
+          created_at: p.created_at ?? new Date().toISOString(),
+          scheduled_at: p.scheduled_at ?? null,
+          platform: p.platform ?? "linkx",
+        }),
+      ),
+    [rawScheduled],
+  )
+
+  const allPostedPosts = React.useMemo(
+    () =>
+      rawPosted.map((p: any) =>
+        transformToPostedPost({
+          id: p.id,
+          author: p.author as any,
+          content: p.content,
+          image_url: p.image_url ?? null,
+          created_at: p.created_at ?? new Date().toISOString(),
+          likes: p.likes ?? 0,
+          reposts: p.reposts ?? 0,
+          comments: p.comments ?? 0,
+          platform: p.platform ?? "linkx",
+        }),
+      ),
+    [rawPosted],
+  )
+
+  const allFailedPosts = React.useMemo(
+    () =>
+      rawFailed.map((p: any) =>
+        transformToFailedPost({
+          id: p.id,
+          author: p.author as any,
+          content: p.content,
+          image_url: p.image_url ?? null,
+          created_at: p.created_at ?? new Date().toISOString(),
+          platform: p.platform ?? "linkx",
+          error_reason: p.error_message ?? null,
+        }),
+      ),
+    [rawFailed],
+  )
+
+  return {
+    allDraftPosts,
+    allScheduledPosts,
+    allPostedPosts,
+    allFailedPosts,
+  }
+}
+
+export function PostsPage() {
   const queryClient = useQueryClient()
-  const [activeTab, setActiveTab] = React.useState<
-    "drafts" | "scheduled" | "posted"
-  >("drafts")
+  const [activeCategory, setActiveCategory] =
+    React.useState<PostCategory>("drafts")
   const [dateFilter, setDateFilter] = React.useState<string>("all")
+  const [platformFilter, setPlatformFilter] = React.useState<string>("all")
   const [sortBy, setSortBy] = React.useState<string>("newest")
-  const [hasFilters, setHasFilters] = React.useState(false)
   const [editingPostId, setEditingPostId] = React.useState<string | null>(null)
 
-  // Delete confirmation dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
   const [postToDelete, setPostToDelete] = React.useState<{
     id: string
-    type: "draft" | "scheduled" | "posted"
+    category: PostCategory
   } | null>(null)
 
-  // Preview dialog state
   const [previewDialogOpen, setPreviewDialogOpen] = React.useState(false)
   const [previewPost, setPreviewPost] = React.useState<PreviewPostData | null>(
     null,
@@ -90,171 +869,80 @@ function PostsPage() {
     React.useState<Platform>("linkedin")
 
   const { showSuccessToast, showErrorToast } = useCustomToast()
-  const canRetry = true
 
-  // Map activeTab to API status filter
-  const statusFilter = React.useMemo(() => {
-    if (activeTab === "drafts") return "draft"
-    if (activeTab === "scheduled") return "scheduled"
-    if (activeTab === "posted") return "published"
-    return undefined
-  }, [activeTab])
-
-  // Fetch posts from API - refetch when tab changes
   const {
     data: postsData,
     isLoading: isLoadingPosts,
     error: postsError,
   } = useQuery({
-    queryKey: ["posts", statusFilter],
-    queryFn: async () => {
-      return await PostsService.readPosts({
-        status: statusFilter,
-        skip: 0,
-        limit: 100,
-      })
-    },
-    staleTime: 30000, // Consider data fresh for 30 seconds
-  })
-
-  const { data: publishingData } = useQuery({
-    queryKey: ["posts", "publishing"],
-    queryFn: async () => {
-      return await PostsService.readPosts({
-        status: "publishing",
-        skip: 0,
-        limit: 20,
-      })
-    },
+    queryKey: ["posts"],
+    queryFn: async () => PostsService.readPosts({ skip: 0, limit: 200 }),
     staleTime: 15000,
   })
 
-  const { data: failedData } = useQuery({
-    queryKey: ["posts", "failed"],
-    queryFn: async () => {
-      return await PostsService.readPosts({
-        status: "failed",
-        skip: 0,
-        limit: 20,
-      })
-    },
-    staleTime: 15000,
-  })
+  const { allDraftPosts, allScheduledPosts, allPostedPosts, allFailedPosts } =
+    useTransformedPosts(postsData)
 
-  // Transform API data to component types
-  const draftPosts = React.useMemo(() => {
-    if (!postsData || activeTab !== "drafts") return []
-    return postsData.data
-      .filter((p) => p.status === "draft")
-      .map((p) => {
-        const author = p.author as {
-          name: string
-          username: string
-          avatarUrl?: string | null
-        } | null
-        return transformToDraftPost({
-          id: p.id,
-          author,
-          content: p.content,
-          image_url: p.image_url ?? null,
-          created_at: p.created_at ?? new Date().toISOString(),
-          platform: p.platform ?? "linkx",
-        })
-      })
-  }, [postsData, activeTab])
+  const activePosts = React.useMemo(() => {
+    let sourceList: any[] = []
+    if (activeCategory === "drafts") sourceList = allDraftPosts
+    else if (activeCategory === "scheduled") sourceList = allScheduledPosts
+    else if (activeCategory === "posted") sourceList = allPostedPosts
+    else if (activeCategory === "failed") sourceList = allFailedPosts
 
-  const scheduledPosts = React.useMemo(() => {
-    if (!postsData || activeTab !== "scheduled") return []
-    return postsData.data
-      .filter((p) => p.status === "scheduled" && p.scheduled_at)
-      .map((p) => {
-        const author = p.author as {
-          name: string
-          username: string
-          avatarUrl?: string | null
-        } | null
-        return transformToScheduledPost({
-          id: p.id,
-          author,
-          content: p.content,
-          image_url: p.image_url ?? null,
-          created_at: p.created_at ?? new Date().toISOString(),
-          scheduled_at: p.scheduled_at ?? null,
-          platform: p.platform ?? "linkx",
-        })
-      })
-  }, [postsData, activeTab])
+    const filtered = filterPosts(
+      sourceList,
+      activeCategory,
+      dateFilter,
+      platformFilter,
+    )
+    return sortPosts(filtered, activeCategory, sortBy)
+  }, [
+    activeCategory,
+    allDraftPosts,
+    allScheduledPosts,
+    allPostedPosts,
+    allFailedPosts,
+    dateFilter,
+    platformFilter,
+    sortBy,
+  ])
 
-  const postedPosts = React.useMemo(() => {
-    if (!postsData || activeTab !== "posted") return []
-    return postsData.data
-      .filter((p) => p.status === "published")
-      .map((p) => {
-        const author = p.author as {
-          name: string
-          username: string
-          avatarUrl?: string | null
-        } | null
-        return transformToPostedPost({
-          id: p.id,
-          author,
-          content: p.content,
-          image_url: p.image_url ?? null,
-          created_at: p.created_at ?? new Date().toISOString(),
-          likes: p.likes ?? 0,
-          reposts: p.reposts ?? 0,
-          comments: p.comments ?? 0,
-          platform: p.platform ?? "linkx",
-        })
-      })
-  }, [postsData, activeTab])
+  const hasActiveFilters =
+    dateFilter !== "all" || platformFilter !== "all" || sortBy !== "newest"
 
-  const publishingPosts = React.useMemo(() => {
-    return publishingData?.data?.filter((p) => p.status === "publishing") ?? []
-  }, [publishingData])
+  const handleClearFilters = () => {
+    setDateFilter("all")
+    setPlatformFilter("all")
+    setSortBy("newest")
+  }
 
-  const failedPosts = React.useMemo(() => {
-    return failedData?.data?.filter((p) => p.status === "failed") ?? []
-  }, [failedData])
-
-  // Delete mutation
   const deleteMutation = useMutation({
-    mutationFn: async (postId: string) => {
-      await PostsService.deleteExistingPost({ postId })
-    },
+    mutationFn: async (postId: string) =>
+      PostsService.deleteExistingPost({ postId }),
     onSuccess: () => {
       if (postToDelete) {
         showSuccessToast("Post deleted successfully")
         setDeleteDialogOpen(false)
         setPostToDelete(null)
-        // Invalidate and refetch posts
         queryClient.invalidateQueries({ queryKey: ["posts"] })
       }
     },
     onError: handleError.bind(showErrorToast),
   })
 
-  // Update mutation
   const updateMutation = useMutation({
     mutationFn: async ({
       postId,
       data,
     }: {
       postId: string
-      data: {
-        persona_id?: string
-        content?: string
-        image_url?: string
-        platform?: string
-        scheduled_at?: string
-        status?: string
-      }
-    }) => {
-      return await PostsService.updateExistingPost({
+      data: PostUpdate
+    }) =>
+      PostsService.updateExistingPost({
         postId,
         requestBody: data,
-      })
-    },
+      }),
     onSuccess: () => {
       showSuccessToast("Post updated successfully")
       setEditingPostId(null)
@@ -264,110 +952,29 @@ function PostsPage() {
   })
 
   const retryMutation = useMutation({
-    mutationFn: async (postId: string) => {
-      return await PostsService.retryFailedPost({ postId })
-    },
+    mutationFn: async (postId: string) =>
+      PostsService.retryFailedPost({ postId }),
     onSuccess: () => {
-      showSuccessToast("Retry started")
+      showSuccessToast("Post retry scheduled")
       queryClient.invalidateQueries({ queryKey: ["posts"] })
     },
     onError: handleError.bind(showErrorToast),
   })
 
-  const handleDelete = (
+  const handleSavePost = (
     postId: string,
-    type: "draft" | "scheduled" | "posted",
-  ) => {
-    setPostToDelete({ id: postId, type })
-    setDeleteDialogOpen(true)
-  }
-
-  const confirmDelete = () => {
-    if (postToDelete) {
-      deleteMutation.mutate(postToDelete.id)
-    }
-  }
-
-  const handlePostAction = (action: string, postId: string) => {
-    if (action === "delete") {
-      handleDelete(postId, "posted")
-    } else if (action === "preview") {
-      handlePreview(postId)
-    } else {
-      console.log(`${action} post ${postId}`)
-    }
-  }
-
-  const handleDraftAction = (action: string, postId: string) => {
-    if (action === "edit") {
-      setEditingPostId(postId)
-    } else if (action === "delete") {
-      handleDelete(postId, "draft")
-    } else if (action === "preview") {
-      handlePreview(postId)
-    } else {
-      console.log(`${action} draft ${postId}`)
-    }
-  }
-
-  const handleScheduledAction = (action: string, postId: string) => {
-    if (action === "edit") {
-      setEditingPostId(postId)
-    } else if (action === "cancel" || action === "delete") {
-      handleDelete(postId, "scheduled")
-    } else if (action === "preview") {
-      handlePreview(postId)
-    } else {
-      console.log(`${action} scheduled post ${postId}`)
-    }
-  }
-
-  const handlePostEdit = (postId: string) => {
-    setEditingPostId(postId)
-  }
-
-  const handleSaveDraft = (
-    postId: string,
-    data: { content: string; platform: Platform },
+    data: { content: string; platform: Platform; scheduledAt?: Date | null },
   ) => {
     updateMutation.mutate({
       postId,
       data: {
         content: data.content,
         platform: data.platform,
+        scheduled_at: data.scheduledAt
+          ? data.scheduledAt.toISOString()
+          : undefined,
       },
     })
-  }
-
-  const handleSaveScheduled = (
-    postId: string,
-    data: { content: string; platform: Platform; scheduledAt: Date },
-  ) => {
-    updateMutation.mutate({
-      postId,
-      data: {
-        content: data.content,
-        platform: data.platform,
-        scheduled_at: data.scheduledAt.toISOString(),
-      },
-    })
-  }
-
-  const handleSavePosted = (
-    postId: string,
-    data: { content: string; platform: Platform },
-  ) => {
-    updateMutation.mutate({
-      postId,
-      data: {
-        content: data.content,
-        platform: data.platform,
-      },
-    })
-  }
-
-  const handleCancel = () => {
-    setEditingPostId(null)
   }
 
   const handlePlatformChange = (postId: string, platform: Platform) => {
@@ -377,534 +984,103 @@ function PostsPage() {
     })
   }
 
-  const convertToPreviewData = (
-    post: DraftPostData | ScheduledPostData | PostedData,
-  ): PreviewPostData => {
-    if ("likes" in post && "reposts" in post && "comments" in post) {
-      // PostedData
-      return {
+  const handlePreview = (postId: string) => {
+    const post = activePosts.find((p) => p.id === postId)
+    if (post) {
+      setPreviewPost({
         id: post.id,
-        author: post.author,
+        author: {
+          name: post.author.name,
+          username: post.author.username,
+          avatarUrl: post.author.avatarUrl ?? undefined,
+        },
         content: post.content,
-        imageUrl: post.imageUrl,
+        imageUrl: post.imageUrl ?? undefined,
         createdAt: post.createdAt,
+        scheduledAt: post.scheduledAt ?? undefined,
         likes: post.likes,
         reposts: post.reposts,
         comments: post.comments,
-      }
-    }
-    if ("scheduledAt" in post) {
-      // ScheduledPostData
-      return {
-        id: post.id,
-        author: post.author,
-        content: post.content,
-        imageUrl: post.imageUrl,
-        createdAt: post.createdAt,
-        scheduledAt: post.scheduledAt,
-      }
-    }
-    // DraftPostData
-    return {
-      id: post.id,
-      author: post.author,
-      content: post.content,
-      imageUrl: post.imageUrl,
-      createdAt: post.createdAt,
-    }
-  }
-
-  const handlePreview = (postId: string) => {
-    let post: DraftPostData | ScheduledPostData | PostedData | undefined
-    let platform: Platform = "linkedin"
-
-    if (activeTab === "drafts") {
-      post = draftPosts.find((p) => p.id === postId)
-      platform = post?.platform || "linkedin"
-    } else if (activeTab === "scheduled") {
-      post = scheduledPosts.find((p) => p.id === postId)
-      platform = post?.platform || "linkedin"
-    } else if (activeTab === "posted") {
-      post = postedPosts.find((p) => p.id === postId)
-      platform = post?.platform || "linkedin"
-    }
-
-    if (post) {
-      setPreviewPost(convertToPreviewData(post))
-      setPreviewPostPlatform(platform)
+      })
+      setPreviewPostPlatform(post.platform || "linkx")
       setPreviewDialogOpen(true)
     }
   }
 
-  // Handle query errors
   React.useEffect(() => {
     if (postsError) {
       handleError.bind(showErrorToast)(postsError as any)
     }
   }, [postsError, showErrorToast])
 
-  const handleClearFilters = () => {
-    setDateFilter("all")
-    setSortBy("newest")
-    setHasFilters(false)
-  }
-
-  React.useEffect(() => {
-    setHasFilters(dateFilter !== "all" || sortBy !== "newest")
-  }, [dateFilter, sortBy])
-
   return (
     <div className="mx-auto flex w-full max-w-7xl min-h-[calc(100vh-3.5rem)]">
-      <div className="border-border min-w-0 flex-1 border-r md:max-w-2xl flex flex-col">
-        <Tabs
-          value={activeTab}
-          onValueChange={(value) =>
-            setActiveTab(value as "drafts" | "scheduled" | "posted")
-          }
-          className="w-full flex flex-col"
-        >
-          {/* Tabs Header - Sticky */}
-          <div className="sticky top-0 z-10 shrink-0 border-b bg-background/80 backdrop-blur-sm">
-            <TabsList className="w-full h-auto p-0 bg-transparent rounded-none border-0 border-b border-border grid grid-cols-3 relative">
-              <TabsTrigger
-                value="drafts"
-                className="relative flex-1 h-14 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-base transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <FileText className="h-4 w-4" />
-                  <span>Drafts</span>
-                  {draftPosts.length > 0 && (
-                    <Badge
-                      variant="secondary"
-                      className="ml-1 h-5 min-w-5 px-1.5 text-xs font-normal"
-                    >
-                      {draftPosts.length}
-                    </Badge>
-                  )}
-                </div>
-              </TabsTrigger>
-              <TabsTrigger
-                value="scheduled"
-                className="relative flex-1 h-14 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-base transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <Calendar className="h-4 w-4" />
-                  <span>Scheduled</span>
-                  {scheduledPosts.length > 0 && (
-                    <Badge
-                      variant="secondary"
-                      className="ml-1 h-5 min-w-5 px-1.5 text-xs font-normal"
-                    >
-                      {scheduledPosts.length}
-                    </Badge>
-                  )}
-                </div>
-              </TabsTrigger>
-              <TabsTrigger
-                value="posted"
-                className="relative flex-1 h-14 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-base transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <CheckCircle2 className="h-4 w-4" />
-                  <span>Posted</span>
-                  {postedPosts.length > 0 && (
-                    <Badge
-                      variant="secondary"
-                      className="ml-1 h-5 min-w-5 px-1.5 text-xs font-normal"
-                    >
-                      {postedPosts.length}
-                    </Badge>
-                  )}
-                </div>
-              </TabsTrigger>
-            </TabsList>
-          </div>
+      {/* Middle Column - Posts Feed */}
+      <div className="border-border min-w-0 flex-1 border-r-0 md:border-r md:max-w-2xl flex flex-col">
+        <MobileCategoryPills
+          activeCategory={activeCategory}
+          onSelectCategory={setActiveCategory}
+          draftsCount={allDraftPosts.length}
+          scheduledCount={allScheduledPosts.length}
+          postedCount={allPostedPosts.length}
+          failedCount={allFailedPosts.length}
+        />
 
-          {/* Content Area - page scrolls */}
-          <div className="w-full">
-            {/* Drafts Tab */}
-            <TabsContent value="drafts" className="mt-0">
-              {isLoadingPosts ? (
-                <div className="flex flex-col items-center justify-center py-16">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  <p className="mt-4 text-sm text-muted-foreground">
-                    Loading posts...
-                  </p>
-                </div>
-              ) : draftPosts.length === 0 ? (
-                <div className="flex flex-col items-center justify-center text-center py-16 px-4">
-                  <div className="rounded-full bg-muted/50 p-6 mb-4">
-                    <FileText className="h-10 w-10 text-muted-foreground" />
-                  </div>
-                  <h3 className="text-xl font-semibold mb-1">No drafts</h3>
-                  <p className="text-muted-foreground text-sm max-w-sm">
-                    Your draft posts will appear here. Start writing to save
-                    your ideas for later.
-                  </p>
-                </div>
-              ) : (
-                <div className="w-full pb-20">
-                  {draftPosts.map((post) => (
-                    <DraftPost
-                      key={post.id}
-                      post={post}
-                      isEditing={editingPostId === post.id}
-                      onEdit={(id) => handleDraftAction("edit", id)}
-                      onDelete={(id) => handleDraftAction("delete", id)}
-                      onSave={handleSaveDraft}
-                      onCancel={handleCancel}
-                      onPlatformChange={handlePlatformChange}
-                      onPreview={(id) => handleDraftAction("preview", id)}
-                    />
-                  ))}
-                </div>
-              )}
-            </TabsContent>
-
-            {/* Scheduled Tab */}
-            <TabsContent value="scheduled" className="mt-0">
-              {isLoadingPosts ? (
-                <div className="flex flex-col items-center justify-center py-16">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  <p className="mt-4 text-sm text-muted-foreground">
-                    Loading posts...
-                  </p>
-                </div>
-              ) : scheduledPosts.length === 0 ? (
-                <div className="flex flex-col items-center justify-center text-center py-16 px-4">
-                  <div className="rounded-full bg-muted/50 p-6 mb-4">
-                    <Calendar className="h-10 w-10 text-muted-foreground" />
-                  </div>
-                  <h3 className="text-xl font-semibold mb-1">
-                    No scheduled posts
-                  </h3>
-                  <p className="text-muted-foreground text-sm max-w-sm">
-                    Posts you schedule for later will appear here. Start
-                    scheduling to keep your content calendar organized.
-                  </p>
-                </div>
-              ) : (
-                <div className="w-full pb-20">
-                  {scheduledPosts.map((post) => (
-                    <ScheduledPost
-                      key={post.id}
-                      post={post}
-                      isEditing={editingPostId === post.id}
-                      onEdit={(id) => handleScheduledAction("edit", id)}
-                      onDelete={(id) => handleScheduledAction("cancel", id)}
-                      onSave={handleSaveScheduled}
-                      onCancel={handleCancel}
-                      onPlatformChange={handlePlatformChange}
-                      onPreview={(id) => handleScheduledAction("preview", id)}
-                    />
-                  ))}
-                </div>
-              )}
-            </TabsContent>
-
-            {/* Posted Tab */}
-            <TabsContent value="posted" className="mt-0">
-              {isLoadingPosts ? (
-                <div className="flex flex-col items-center justify-center py-16">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  <p className="mt-4 text-sm text-muted-foreground">
-                    Loading posts...
-                  </p>
-                </div>
-              ) : postedPosts.length === 0 ? (
-                <div className="flex flex-col items-center justify-center text-center py-16 px-4">
-                  <div className="rounded-full bg-muted/50 p-6 mb-4">
-                    <CheckCircle2 className="h-10 w-10 text-muted-foreground" />
-                  </div>
-                  <h3 className="text-xl font-semibold mb-1">
-                    No posted content
-                  </h3>
-                  <p className="text-muted-foreground text-sm max-w-sm">
-                    Your published posts will appear here. Share your thoughts
-                    and engage with your audience.
-                  </p>
-                </div>
-              ) : (
-                <div className="w-full pb-20">
-                  {postedPosts.map((post) => (
-                    <Posted
-                      key={post.id}
-                      post={post}
-                      isEditing={editingPostId === post.id}
-                      onLike={(id) => handlePostAction("like", id)}
-                      onRepost={(id) => handlePostAction("repost", id)}
-                      onComment={(id) => handlePostAction("comment", id)}
-                      onShare={(id) => handlePostAction("share", id)}
-                      onEdit={(id) => handlePostEdit(id)}
-                      onSave={handleSavePosted}
-                      onCancel={handleCancel}
-                      onPreview={(id) => handlePostAction("preview", id)}
-                      onDelete={(id) => handlePostAction("delete", id)}
-                      onPlatformChange={handlePlatformChange}
-                    />
-                  ))}
-                </div>
-              )}
-            </TabsContent>
-          </div>
-        </Tabs>
+        <div className="w-full">
+          {isLoadingPosts ? (
+            <div className="flex flex-col items-center justify-center py-20">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <p className="mt-4 text-sm text-muted-foreground">
+                Loading posts...
+              </p>
+            </div>
+          ) : activePosts.length === 0 ? (
+            <PostsEmptyState
+              activeCategory={activeCategory}
+              hasActiveFilters={hasActiveFilters}
+              onClearFilters={handleClearFilters}
+            />
+          ) : (
+            <PostsFeedList
+              activeCategory={activeCategory}
+              activePosts={activePosts}
+              editingPostId={editingPostId}
+              onEdit={(id) => setEditingPostId(id)}
+              onDelete={(id, cat) => {
+                setPostToDelete({ id, category: cat })
+                setDeleteDialogOpen(true)
+              }}
+              onSave={handleSavePost}
+              onCancel={() => setEditingPostId(null)}
+              onPlatformChange={handlePlatformChange}
+              onPreview={handlePreview}
+              onRetry={(id) => retryMutation.mutate(id)}
+              isRetrying={(id) =>
+                retryMutation.isPending && retryMutation.variables === id
+              }
+            />
+          )}
+        </div>
       </div>
 
-      {/* Right Sidebar - Filters */}
+      {/* Right Sidebar */}
       <div className="hidden w-80 md:block">
-        <div className="sticky top-0 self-start p-4 space-y-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <Filter className="h-4 w-4" />
-                  Filters
-                </CardTitle>
-                {hasFilters && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleClearFilters}
-                    className="h-7 px-2 text-xs"
-                  >
-                    <X className="h-3 w-3 mr-1" />
-                    Clear
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Date Range Filter */}
-              <div className="space-y-2">
-                <span className="text-sm font-medium flex items-center gap-2">
-                  <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                  Date Range
-                </span>
-                <Select value={dateFilter} onValueChange={setDateFilter}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select date range" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="today">Today</SelectItem>
-                    <SelectItem value="week">This Week</SelectItem>
-                    <SelectItem value="month">This Month</SelectItem>
-                    <SelectItem value="quarter">This Quarter</SelectItem>
-                    <SelectItem value="year">This Year</SelectItem>
-                    <SelectItem value="all">All Time</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Sort By Filter */}
-              <div className="space-y-2">
-                <span className="text-sm font-medium flex items-center gap-2">
-                  <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
-                  Sort By
-                </span>
-                <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Sort by" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="newest">Newest First</SelectItem>
-                    <SelectItem value="oldest">Oldest First</SelectItem>
-                    {activeTab === "scheduled" && (
-                      <SelectItem value="scheduled">Scheduled Date</SelectItem>
-                    )}
-                    {activeTab === "posted" && (
-                      <SelectItem value="engagement">Engagement</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Status Filter (for scheduled posts) */}
-              {activeTab === "scheduled" && (
-                <div className="space-y-2">
-                  <span className="text-sm font-medium flex items-center gap-2">
-                    <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
-                    Status
-                  </span>
-                  <Select defaultValue="all">
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Filter by status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Status</SelectItem>
-                      <SelectItem value="scheduled">Scheduled</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {/* Engagement Filter (for posted posts) */}
-              {activeTab === "posted" && (
-                <div className="space-y-2">
-                  <span className="text-sm font-medium flex items-center gap-2">
-                    <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
-                    Engagement
-                  </span>
-                  <Select defaultValue="all">
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Filter by engagement" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Posts</SelectItem>
-                      <SelectItem value="high">High Engagement</SelectItem>
-                      <SelectItem value="medium">Medium Engagement</SelectItem>
-                      <SelectItem value="low">Low Engagement</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Quick Stats Card */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold">
-                Quick Stats
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Drafts</span>
-                <Badge variant="secondary" className="font-semibold">
-                  {draftPosts.length}
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Scheduled</span>
-                <Badge variant="secondary" className="font-semibold">
-                  {scheduledPosts.length}
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Posted</span>
-                <Badge variant="secondary" className="font-semibold">
-                  {postedPosts.length}
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">
-                  Publishing
-                </span>
-                <Badge variant="secondary" className="font-semibold">
-                  {publishingPosts.length}
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Failed</span>
-                <Badge variant="secondary" className="font-semibold">
-                  {failedPosts.length}
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between pt-2 border-t">
-                <span className="text-sm font-medium">Total</span>
-                <span className="text-sm font-semibold">
-                  {draftPosts.length +
-                    scheduledPosts.length +
-                    publishingPosts.length +
-                    failedPosts.length +
-                    postedPosts.length}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4" />
-                  Publishing
-                </span>
-                <Badge variant="secondary" className="font-semibold">
-                  {publishingPosts.length}
-                </Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {publishingPosts.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No posts publishing.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {publishingPosts.slice(0, 3).map((post) => (
-                    <div key={post.id} className="rounded-md border px-3 py-2">
-                      <div className="text-sm font-medium truncate">
-                        {post.content}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        In progress…
-                      </div>
-                    </div>
-                  ))}
-                  {publishingPosts.length > 3 ? (
-                    <p className="text-xs text-muted-foreground">
-                      Showing first 3.
-                    </p>
-                  ) : null}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <X className="h-4 w-4" />
-                  Failed
-                </span>
-                <Badge variant="secondary" className="font-semibold">
-                  {failedPosts.length}
-                </Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {failedPosts.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No failed posts.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {failedPosts.slice(0, 3).map((post) => (
-                    <div
-                      key={post.id}
-                      className="rounded-md border px-3 py-2 space-y-2"
-                    >
-                      <div className="text-sm font-medium truncate">
-                        {post.content}
-                      </div>
-                      <div className="text-xs text-muted-foreground line-clamp-2">
-                        {post.error_message || "Publish failed"}
-                      </div>
-                      {canRetry ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => retryMutation.mutate(post.id)}
-                          disabled={retryMutation.isPending}
-                          className="w-full"
-                        >
-                          Retry
-                        </Button>
-                      ) : null}
-                    </div>
-                  ))}
-                  {failedPosts.length > 3 ? (
-                    <p className="text-xs text-muted-foreground">
-                      Showing first 3.
-                    </p>
-                  ) : null}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        <PostsRightSidebar
+          activeCategory={activeCategory}
+          onSelectCategory={setActiveCategory}
+          draftsCount={allDraftPosts.length}
+          scheduledCount={allScheduledPosts.length}
+          postedCount={allPostedPosts.length}
+          failedCount={allFailedPosts.length}
+          dateFilter={dateFilter}
+          onDateFilterChange={setDateFilter}
+          platformFilter={platformFilter}
+          onPlatformFilterChange={setPlatformFilter}
+          sortBy={sortBy}
+          onSortByChange={setSortBy}
+          hasActiveFilters={hasActiveFilters}
+          onClearFilters={handleClearFilters}
+        />
       </div>
 
       {/* Delete Confirmation Dialog */}
@@ -913,20 +1089,28 @@ function PostsPage() {
           <DialogHeader>
             <DialogTitle>Delete Post</DialogTitle>
             <DialogDescription>
-              This post will be permanently deleted. Are you sure? You will not
-              be able to undo this action.
+              This will remove the post record from your LinkX database.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-4">
             <DialogClose asChild>
-              <Button variant="outline" disabled={deleteMutation.isPending}>
+              <Button
+                variant="outline"
+                disabled={deleteMutation.isPending}
+                className="rounded-full cursor-pointer"
+              >
                 Cancel
               </Button>
             </DialogClose>
             <LoadingButton
               variant="destructive"
-              onClick={confirmDelete}
+              onClick={() => {
+                if (postToDelete) {
+                  deleteMutation.mutate(postToDelete.id)
+                }
+              }}
               loading={deleteMutation.isPending}
+              className="rounded-full cursor-pointer"
             >
               Delete
             </LoadingButton>

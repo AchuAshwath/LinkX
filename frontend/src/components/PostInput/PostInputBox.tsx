@@ -1,31 +1,89 @@
-"use client"
-
+import { Calendar } from "lucide-react"
 import * as React from "react"
 
-import { PlatformSelector } from "@/components/Common/PlatformSelector"
+import {
+  type Platform,
+  PlatformSelector,
+} from "@/components/Common/PlatformSelector"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Textarea } from "@/components/ui/textarea"
 import { PostActionBar } from "./PostActionBar"
-import { formatDateTime, PostSchedulePicker } from "./PostSchedulePicker"
+import { formatDateTime } from "./PostSchedulePicker"
 import { usePostForm } from "./usePostForm"
 
 interface PostInputBoxProps {
   username: string
   avatarUrl?: string
+  initialContent?: string
   onSubmit?: () => void
   onCancel?: () => void
   canPublishOrSchedule?: boolean
+  autoFocus?: boolean
+}
+
+function PostInputAvatar({
+  username,
+  avatarUrl,
+}: {
+  username: string
+  avatarUrl?: string
+}) {
+  const initials =
+    username
+      ?.split(" ")
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2) || "U"
+
+  return (
+    <div className="shrink-0 pt-0.5">
+      <Avatar className="h-10 w-10 transition-transform hover:scale-105 select-none">
+        {avatarUrl ? <AvatarImage src={avatarUrl} alt={username} /> : null}
+        <AvatarFallback className="text-xs font-semibold">
+          {initials}
+        </AvatarFallback>
+      </Avatar>
+    </div>
+  )
+}
+
+function PostInputScheduledNotice({
+  scheduledAt,
+}: {
+  scheduledAt: Date | null | undefined
+}) {
+  if (!scheduledAt) return null
+
+  return (
+    <div
+      className="animate-in fade-in-0 slide-in-from-top-1 duration-200 flex items-center gap-1.5 text-xs text-muted-foreground pt-2"
+      aria-live="polite"
+      aria-atomic="true"
+      data-testid="schedule-info"
+    >
+      <Calendar className="h-3.5 w-3.5 text-primary shrink-0" />
+      <span>
+        Will be published on{" "}
+        <span className="font-medium text-foreground">
+          {formatDateTime(scheduledAt)}
+        </span>
+      </span>
+    </div>
+  )
 }
 
 export function PostInputBox({
   username,
   avatarUrl,
+  initialContent,
   onSubmit,
   onCancel,
   canPublishOrSchedule = true,
+  autoFocus = false,
 }: PostInputBoxProps) {
   const {
     content,
+    setContent,
     scheduledAt,
     setScheduledAt,
     channel,
@@ -37,99 +95,81 @@ export function PostInputBox({
     createPostMutation,
   } = usePostForm()
 
-  // Call onSubmit callback if provided
+  const [isScheduleOpen, setIsScheduleOpen] = React.useState(false)
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null)
+
+  React.useEffect(() => {
+    if (initialContent !== undefined && initialContent !== "") {
+      setContent(initialContent)
+    }
+  }, [initialContent, setContent])
+
   React.useEffect(() => {
     if (createPostMutation.isSuccess) {
       onSubmit?.()
+      setIsScheduleOpen(false)
     }
   }, [createPostMutation.isSuccess, onSubmit])
 
-  const initials =
-    username
-      .split(" ")
-      .map((part) => part[0])
-      .join("")
-      .toUpperCase() || "U"
+  React.useEffect(() => {
+    if (autoFocus) {
+      const timer = setTimeout(() => {
+        textareaRef.current?.focus()
+      }, 50)
+      return () => clearTimeout(timer)
+    }
+  }, [autoFocus])
 
   return (
-    <div className="w-full space-y-4">
-      {/* Header: Avatar + Username + Channel Selector */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <Avatar className="h-10 w-10 shrink-0 sm:h-11 sm:w-11">
-            {avatarUrl ? <AvatarImage src={avatarUrl} alt={username} /> : null}
-            <AvatarFallback className="text-sm font-semibold sm:text-base">
-              {initials}
-            </AvatarFallback>
-          </Avatar>
-          <span className="truncate text-base font-semibold sm:text-lg">
+    <div className="flex gap-3 w-full">
+      <PostInputAvatar username={username} avatarUrl={avatarUrl} />
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+          <span className="truncate text-sm font-semibold text-foreground">
             {username}
           </span>
+          <PlatformSelector
+            value={channel}
+            onChange={(val: Platform) => setChannel(val)}
+            size="sm"
+            className="shrink-0"
+          />
         </div>
 
-        {/* Channel Selector */}
-        <PlatformSelector
-          value={channel}
-          onChange={setChannel}
-          size="md"
-          className="shrink-0"
+        <textarea
+          ref={textareaRef}
+          value={content}
+          onChange={handleContentChange}
+          placeholder="What's happening?"
+          aria-label="Post content"
+          rows={2}
+          className="w-full bg-transparent border-0 outline-none resize-none text-[15px] sm:text-[16px] leading-relaxed placeholder:text-muted-foreground/60 focus:outline-none focus:ring-0 p-0 text-foreground min-h-[64px]"
+          data-testid="post-content-textarea"
         />
-      </div>
 
-      {/* Textarea - Mobile optimized */}
-      <Textarea
-        value={content}
-        onChange={handleContentChange}
-        placeholder="What's happening?"
-        aria-label="Post content"
-        className="min-h-24 resize-none border border-input rounded-lg bg-background py-3 px-4 text-base leading-relaxed placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 sm:min-h-20"
-        data-testid="post-content-textarea"
-      />
-
-      {/* Controls: Date Picker + Action Bar - Responsive */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
-        {/* Date/Time Picker - Full width on mobile, flex-1 on desktop */}
-        <div className="w-full sm:w-auto">
-          <PostSchedulePicker onChangeDateTime={setScheduledAt} />
-        </div>
-
-        {/* Action Bar - Below on mobile, right-aligned on desktop */}
-        <div className="flex items-center gap-3 w-full sm:w-auto sm:ml-auto shrink-0">
+        <div className="pt-2.5 border-t border-border/40 mt-2">
           <PostActionBar
             isSubmitting={createPostMutation.isPending}
             isContentEmpty={content.trim().length === 0}
             actionType={actionType}
             canPublishOrSchedule={canPublishOrSchedule}
             onActionTypeChange={setActionType}
-            onImageClick={() => {
-              // TODO: Implement image upload functionality
-            }}
-            onEmojiClick={() => {
-              // TODO: Implement emoji picker functionality
-            }}
+            onImageClick={() => {}}
             onDraftClick={() => handleSubmit("draft")}
             onScheduleClick={() => handleSubmit("schedule")}
             onPostClick={() => handleSubmit("post")}
             onCancelClick={onCancel}
             showCancel={!!onCancel}
+            scheduledAt={scheduledAt}
+            onScheduleChange={setScheduledAt}
+            isScheduleOpen={isScheduleOpen}
+            onToggleSchedule={setIsScheduleOpen}
           />
         </div>
-      </div>
 
-      {/* Schedule Info - Below controls */}
-      {scheduledAt && (
-        <p
-          className="text-sm leading-relaxed text-muted-foreground"
-          aria-live="polite"
-          aria-atomic="true"
-          data-testid="schedule-info"
-        >
-          Post will be published on{" "}
-          <span className="font-semibold text-foreground">
-            {formatDateTime(scheduledAt)}
-          </span>
-        </p>
-      )}
+        <PostInputScheduledNotice scheduledAt={scheduledAt} />
+      </div>
     </div>
   )
 }

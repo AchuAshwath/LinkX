@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
-import { Home as HomeIcon, Loader2 } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import * as React from "react"
-import { PostsService } from "@/client"
+import { PostsService, TrendingService } from "@/client"
 import type { Platform } from "@/components/Common/PlatformSelector"
 import type { PostedData } from "@/components/Post/Posted"
 import { Posted } from "@/components/Post/Posted"
@@ -13,11 +13,7 @@ import {
 import type { ScheduledPostData } from "@/components/Post/ScheduledPost"
 import { ScheduledPost } from "@/components/Post/ScheduledPost"
 import { PostInputBox } from "@/components/PostInput/PostInputBox"
-import {
-  TimelineFilters,
-  type TrendingTopic,
-  TrendingTopics,
-} from "@/components/Timeline"
+import { TrendingTopics } from "@/components/Timeline"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -33,7 +29,6 @@ import useAuth from "@/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
 import { transformToPostedPost, transformToScheduledPost } from "@/utils"
 
-// Union type for timeline posts
 type TimelinePost =
   | (PostedData & { type: "posted" })
   | (ScheduledPostData & { type: "scheduled" })
@@ -49,26 +44,50 @@ export const Route = createFileRoute("/_layout/home")({
   }),
 })
 
+function convertToPreviewData(post: TimelinePost): PreviewPostData {
+  if (post.type === "posted") {
+    return {
+      id: post.id,
+      author: {
+        name: post.author.name,
+        username: post.author.username,
+        avatarUrl: post.author.avatarUrl ?? undefined,
+      },
+      content: post.content,
+      imageUrl: post.imageUrl ?? undefined,
+      createdAt: post.createdAt,
+      likes: post.likes,
+      reposts: post.reposts,
+      comments: post.comments,
+    }
+  }
+  return {
+    id: post.id,
+    author: {
+      name: post.author.name,
+      username: post.author.username,
+      avatarUrl: post.author.avatarUrl ?? undefined,
+    },
+    content: post.content,
+    imageUrl: post.imageUrl ?? undefined,
+    createdAt: post.createdAt,
+    scheduledAt: post.scheduledAt ?? undefined,
+  }
+}
+
 function TimelinePage() {
   const queryClient = useQueryClient()
   const { user } = useAuth()
-  const canPublishOrSchedule = true
 
-  // Filter state
-  const [dateFilter, setDateFilter] = React.useState<string>("all")
-  const [sortBy, setSortBy] = React.useState<string>("newest")
-
-  // Edit state management
+  const [draftContent, setDraftContent] = React.useState<string>("")
   const [editingPostId, setEditingPostId] = React.useState<string | null>(null)
 
-  // Delete confirmation dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
   const [postToDelete, setPostToDelete] = React.useState<{
     id: string
     type: "draft" | "scheduled" | "posted"
   } | null>(null)
 
-  // Preview dialog state
   const [previewDialogOpen, setPreviewDialogOpen] = React.useState(false)
   const [previewPost, setPreviewPost] = React.useState<PreviewPostData | null>(
     null,
@@ -76,30 +95,33 @@ function TimelinePage() {
 
   const { showSuccessToast, showErrorToast } = useCustomToast()
 
-  // Fetch scheduled and published posts for timeline
   const { data: scheduledData, isLoading: isLoadingScheduled } = useQuery({
     queryKey: ["posts", "scheduled"],
-    queryFn: async () => {
-      return await PostsService.readPosts({
+    queryFn: async () =>
+      PostsService.readPosts({
         status: "scheduled",
         skip: 0,
         limit: 100,
-      })
-    },
+      }),
   })
 
   const { data: publishedData, isLoading: isLoadingPublished } = useQuery({
     queryKey: ["posts", "published"],
-    queryFn: async () => {
-      return await PostsService.readPosts({
+    queryFn: async () =>
+      PostsService.readPosts({
         status: "published",
         skip: 0,
         limit: 100,
-      })
-    },
+      }),
   })
 
-  // Transform API data to timeline posts
+  const { data: trendingData } = useQuery({
+    queryKey: ["trending"],
+    queryFn: async () => TrendingService.getTrending(),
+  })
+  const trendingTopics = trendingData?.data ?? []
+  const latestScrapedAt = trendingTopics[0]?.scraped_at ?? null
+
   const posts: TimelinePost[] = React.useMemo(() => {
     const scheduled: TimelinePost[] = (scheduledData?.data || [])
       .filter((p) => p.status === "scheduled" && p.scheduled_at)
@@ -144,19 +166,14 @@ function TimelinePage() {
     return [...scheduled, ...posted]
   }, [scheduledData, publishedData])
 
-  const isLoadingPosts = isLoadingScheduled || isLoadingPublished
-
-  // Delete mutation
   const deleteMutation = useMutation({
-    mutationFn: async (postId: string) => {
-      await PostsService.deleteExistingPost({ postId })
-    },
+    mutationFn: async (postId: string) =>
+      PostsService.deleteExistingPost({ postId }),
     onSuccess: () => {
       if (postToDelete) {
         showSuccessToast("Post deleted successfully")
         setDeleteDialogOpen(false)
         setPostToDelete(null)
-        // Invalidate and refetch posts
         queryClient.invalidateQueries({ queryKey: ["posts"] })
       }
     },
@@ -166,7 +183,6 @@ function TimelinePage() {
     },
   })
 
-  // Update mutation
   const updateMutation = useMutation({
     mutationFn: async ({
       postId,
@@ -181,12 +197,11 @@ function TimelinePage() {
         scheduled_at?: string
         status?: string
       }
-    }) => {
-      return await PostsService.updateExistingPost({
+    }) =>
+      PostsService.updateExistingPost({
         postId,
         requestBody: data,
-      })
-    },
+      }),
     onSuccess: () => {
       showSuccessToast("Post updated successfully")
       setEditingPostId(null)
@@ -212,73 +227,20 @@ function TimelinePage() {
     }
   }
 
-  // Sample trending topics
-  const trendingTopics: TrendingTopic[] = React.useMemo(
-    () => [
-      { id: "1", hashtag: "#TechInnovation", postCount: 5200 },
-      { id: "2", hashtag: "#ArtificialIntelligence", postCount: 12000 },
-      { id: "3", hashtag: "#ClimateAction", postCount: 8700 },
-      { id: "4", hashtag: "#SpaceExploration", postCount: 3900 },
-    ],
-    [],
-  )
-
-  const handlePostAction = (action: string, postId: string) => {
-    if (action === "delete") {
-      handleDelete(postId, "posted")
-    } else if (action === "preview") {
-      handlePreview(postId)
-    } else {
-      // Handle post actions (like, repost, comment, share)
-      console.log(`${action} post ${postId}`)
-    }
-  }
-
-  const handleScheduledAction = (action: string, postId: string) => {
-    if (action === "edit") {
-      setEditingPostId(postId)
-    } else if (action === "cancel" || action === "delete") {
-      handleDelete(postId, "scheduled")
-    } else if (action === "preview") {
-      handlePreview(postId)
-    } else {
-      console.log(`${action} scheduled post ${postId}`)
-    }
-  }
-
-  const handlePostEdit = (postId: string) => {
-    setEditingPostId(postId)
-  }
-
   const handleSaveScheduled = (
     postId: string,
-    data: { content: string; platform: Platform; scheduledAt: Date },
+    data: { content: string; platform: Platform; scheduledAt?: Date | null },
   ) => {
     updateMutation.mutate({
       postId,
       data: {
         content: data.content,
         platform: data.platform,
-        scheduled_at: data.scheduledAt.toISOString(),
+        scheduled_at: data.scheduledAt
+          ? data.scheduledAt.toISOString()
+          : undefined,
       },
     })
-  }
-
-  const handleSavePosted = (
-    postId: string,
-    data: { content: string; platform: Platform },
-  ) => {
-    updateMutation.mutate({
-      postId,
-      data: {
-        content: data.content,
-        platform: data.platform,
-      },
-    })
-  }
-
-  const handleCancel = () => {
-    setEditingPostId(null)
   }
 
   const handlePlatformChange = (postId: string, platform: Platform) => {
@@ -286,30 +248,6 @@ function TimelinePage() {
       postId,
       data: { platform },
     })
-  }
-
-  const convertToPreviewData = (post: TimelinePost): PreviewPostData => {
-    if (post.type === "posted") {
-      return {
-        id: post.id,
-        author: post.author,
-        content: post.content,
-        imageUrl: post.imageUrl,
-        createdAt: post.createdAt,
-        likes: post.likes,
-        reposts: post.reposts,
-        comments: post.comments,
-      }
-    }
-    // scheduled
-    return {
-      id: post.id,
-      author: post.author,
-      content: post.content,
-      imageUrl: post.imageUrl,
-      createdAt: post.createdAt,
-      scheduledAt: post.scheduledAt,
-    }
   }
 
   const handlePreview = (postId: string) => {
@@ -320,136 +258,99 @@ function TimelinePage() {
     }
   }
 
-  const handleTopicClick = (_topicId: string, hashtag: string) => {
-    console.log(`View topic ${hashtag}`)
-  }
-
-  const handleClearFilters = () => {
-    setDateFilter("all")
-    setSortBy("newest")
+  const handleTopicDraft = (topicTitle: string) => {
+    setDraftContent(topicTitle)
+    window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
   const sortedPosts = React.useMemo(() => {
     const toTime = (d: Date | string) =>
       (typeof d === "string" ? new Date(d) : d).getTime()
 
-    // Sort by relevant date: scheduledAt for scheduled posts, createdAt for posted posts
-    const sorted = [...posts].sort((a, b) => {
+    return [...posts].sort((a, b) => {
       const aTime =
-        a.type === "scheduled" ? toTime(a.scheduledAt) : toTime(a.createdAt)
+        a.type === "scheduled" && a.scheduledAt
+          ? toTime(a.scheduledAt)
+          : toTime(a.createdAt)
       const bTime =
-        b.type === "scheduled" ? toTime(b.scheduledAt) : toTime(b.createdAt)
-
-      // Apply sort order based on sortBy filter
-      if (sortBy === "oldest") {
-        return aTime - bTime // Ascending: oldest first
-      }
-      return bTime - aTime // Descending: newest/future first
+        b.type === "scheduled" && b.scheduledAt
+          ? toTime(b.scheduledAt)
+          : toTime(b.createdAt)
+      return bTime - aTime
     })
-
-    // TODO: Apply dateFilter filtering logic here
-    return sorted
-  }, [posts, sortBy])
-
-  const renderPost = (post: TimelinePost) => {
-    const isEditing = editingPostId === post.id
-
-    switch (post.type) {
-      case "scheduled":
-        return (
-          <ScheduledPost
-            key={post.id}
-            post={post}
-            isEditing={isEditing}
-            onEdit={(id) => handleScheduledAction("edit", id)}
-            onDelete={(id) => handleScheduledAction("delete", id)}
-            onSave={handleSaveScheduled}
-            onCancel={handleCancel}
-            onPlatformChange={handlePlatformChange}
-            onPreview={(id) => handleScheduledAction("preview", id)}
-          />
-        )
-      case "posted":
-        return (
-          <Posted
-            key={post.id}
-            post={post}
-            isEditing={isEditing}
-            onLike={(id) => handlePostAction("like", id)}
-            onRepost={(id) => handlePostAction("repost", id)}
-            onComment={(id) => handlePostAction("comment", id)}
-            onShare={(id) => handlePostAction("share", id)}
-            onEdit={(id) => handlePostEdit(id)}
-            onSave={handleSavePosted}
-            onCancel={handleCancel}
-            onPreview={(id) => handlePostAction("preview", id)}
-            onDelete={(id) => handlePostAction("delete", id)}
-            onPlatformChange={handlePlatformChange}
-          />
-        )
-    }
-  }
-
-  const handlePostCreated = () => {
-    // Posts will be refetched automatically via query invalidation
-    queryClient.invalidateQueries({ queryKey: ["posts"] })
-  }
+  }, [posts])
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl min-h-[calc(100vh-3.5rem)]">
-      {/* Main Timeline */}
-      <div className="border-border min-w-0 flex-1 border-r md:max-w-2xl flex flex-col">
-        {/* PostInputBox - Sticky at top */}
-        <div className="sticky top-0 z-10 shrink-0 border-b bg-background p-4">
+    <div className="flex w-full">
+      {/* Feed Column - Center */}
+      <div className="flex-1 min-w-0 max-w-2xl border-r-0 md:border-r border-border">
+        {/* Sticky top composer */}
+        <div className="border-b p-3.5 sm:p-4">
           <PostInputBox
             username={user?.full_name || user?.email || "User"}
             avatarUrl={undefined}
-            onSubmit={handlePostCreated}
-            canPublishOrSchedule={canPublishOrSchedule}
+            initialContent={draftContent}
+            onSubmit={() => {
+              setDraftContent("")
+              queryClient.invalidateQueries({ queryKey: ["posts"] })
+            }}
           />
         </div>
 
-        {/* Timeline Posts - Scrollable */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="w-full pb-20">
-            {isLoadingPosts ? (
-              <div className="flex flex-col items-center justify-center py-16">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                <p className="mt-4 text-sm text-muted-foreground">
-                  Loading posts...
-                </p>
-              </div>
-            ) : sortedPosts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center text-center py-16 px-4">
-                <div className="rounded-full bg-muted/50 p-6 mb-4">
-                  <HomeIcon className="h-10 w-10 text-muted-foreground" />
-                </div>
-                <h3 className="text-xl font-semibold mb-1">No posts yet</h3>
-                <p className="text-muted-foreground text-sm max-w-sm">
-                  Your scheduled and published posts will appear here. Create a
-                  post above to get started.
-                </p>
-              </div>
-            ) : (
-              sortedPosts.map(renderPost)
-            )}
+        {/* Feed Posts */}
+        {isLoadingScheduled || isLoadingPublished ? (
+          <div className="flex flex-col items-center justify-center py-16">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <p className="mt-4 text-sm text-muted-foreground">
+              Loading timeline...
+            </p>
           </div>
-        </div>
+        ) : sortedPosts.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+            <p className="text-sm text-muted-foreground">
+              No posts in your timeline yet. Create a draft or schedule your
+              first post!
+            </p>
+          </div>
+        ) : (
+          <div className="w-full pb-20">
+            {sortedPosts.map((post) => {
+              if (post.type === "scheduled") {
+                return (
+                  <ScheduledPost
+                    key={post.id}
+                    post={post}
+                    isEditing={editingPostId === post.id}
+                    onEdit={(id) => setEditingPostId(id)}
+                    onDelete={(id) => handleDelete(id, "scheduled")}
+                    onSave={handleSaveScheduled}
+                    onCancel={() => setEditingPostId(null)}
+                    onPlatformChange={handlePlatformChange}
+                    onPreview={(id) => handlePreview(id)}
+                  />
+                )
+              }
+
+              return (
+                <Posted
+                  key={post.id}
+                  post={post}
+                  onPreview={(id) => handlePreview(id)}
+                  onDelete={(id) => handleDelete(id, "posted")}
+                />
+              )
+            })}
+          </div>
+        )}
       </div>
 
-      {/* Right Sidebar */}
+      {/* Right Column - Unified Trending Topics Card */}
       <div className="hidden w-80 md:block">
-        <div className="sticky top-0 self-start p-4 space-y-6">
-          <TimelineFilters
-            dateFilter={dateFilter}
-            sortBy={sortBy}
-            onDateFilterChange={setDateFilter}
-            onSortByChange={setSortBy}
-            onClearFilters={handleClearFilters}
-          />
+        <div className="sticky top-0 self-start p-4">
           <TrendingTopics
             topics={trendingTopics}
-            onTopicClick={handleTopicClick}
+            lastScrapedAt={latestScrapedAt}
+            onTopicDraft={handleTopicDraft}
           />
         </div>
       </div>
@@ -460,8 +361,7 @@ function TimelinePage() {
           <DialogHeader>
             <DialogTitle>Delete Post</DialogTitle>
             <DialogDescription>
-              This post will be permanently deleted. Are you sure? You will not
-              be able to undo this action.
+              This will remove the post record from your LinkX database.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-4">

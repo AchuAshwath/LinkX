@@ -1,3 +1,4 @@
+import type * as React from "react"
 import { FaLinkedinIn } from "react-icons/fa"
 import { FaXTwitter } from "react-icons/fa6"
 import { useTheme } from "@/components/theme-provider"
@@ -11,110 +12,213 @@ import {
 export type Platform = "linkedin" | "x" | "linkx"
 
 interface PlatformSelectorProps {
-  /** Selected platform - single value only */
   value: Platform
-  /** Callback when platform selection changes */
-  onChange: (platform: Platform) => void
-  /** Size variant - 'sm' for smaller (used in Draft/Scheduled posts), 'md' for medium (used in PostInputBox) */
+  onChange?: (platform: Platform) => void
   size?: "sm" | "md"
-  /** Additional className for the container */
+  disabled?: boolean
   className?: string
+}
+
+interface OptionButtonProps {
+  platform: Platform
+  isSelected: boolean
+  disabled: boolean
+  onClick: () => void
+  buttonClass: string
+  tooltipText: string
+  children: React.ReactNode
+  className?: string
+}
+
+function PlatformOptionButton({
+  platform,
+  isSelected,
+  disabled,
+  onClick,
+  buttonClass,
+  tooltipText,
+  children,
+  className = "",
+}: OptionButtonProps) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          tabIndex={-1}
+          disabled={disabled}
+          onClick={onClick}
+          className={`relative z-10 flex ${buttonClass} items-center justify-center rounded-full transition-colors ${
+            disabled
+              ? "cursor-default pointer-events-none"
+              : "active:scale-95 cursor-pointer"
+          } ${className}`}
+          aria-label={`Select ${platform}`}
+          aria-pressed={isSelected}
+        >
+          {children}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="text-xs">
+        {tooltipText}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+const INDEX_MAP: Record<Platform, number> = {
+  linkedin: 0,
+  linkx: 1,
+  x: 2,
+}
+
+const INDICATOR_MAP: Record<Platform, string> = {
+  linkedin: "bg-[#0077b5]/15 ring-1 ring-[#0077b5]/30 shadow-xs",
+  linkx: "bg-primary/20 ring-1 ring-primary/40 shadow-xs",
+  x: "bg-foreground/15 ring-1 ring-foreground/20 shadow-xs",
+}
+
+const SIZE_CONFIGS = {
+  sm: {
+    buttonSize: 22,
+    buttonClass: "h-[22px] w-[22px]",
+    iconSize: "h-2.5 w-2.5",
+    imageSize: "h-3 w-3",
+  },
+  md: {
+    buttonSize: 24,
+    buttonClass: "h-6 w-6",
+    iconSize: "h-3 w-3",
+    imageSize: "h-3.5 w-3.5",
+  },
+}
+
+const PLATFORM_CONFIGS: {
+  id: Platform
+  label: string
+  activeClass: string
+  inactiveClass: string
+}[] = [
+  {
+    id: "linkedin",
+    label: "LinkedIn",
+    activeClass: "text-[#0077b5] font-semibold",
+    inactiveClass: "text-muted-foreground hover:text-[#0077b5]",
+  },
+  {
+    id: "linkx",
+    label: "LinkX",
+    activeClass: "opacity-100",
+    inactiveClass: "opacity-50 hover:opacity-100",
+  },
+  {
+    id: "x",
+    label: "X (Twitter)",
+    activeClass: "text-foreground font-semibold",
+    inactiveClass: "text-muted-foreground hover:text-foreground",
+  },
+]
+
+function PlatformSliderIndicator({
+  value,
+  buttonSize,
+}: {
+  value: Platform
+  buttonSize: number
+}) {
+  return (
+    <div
+      className={`absolute rounded-full transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] top-0.5 left-0.5 ${
+        INDICATOR_MAP[value]
+      }`}
+      style={{
+        width: `${buttonSize}px`,
+        height: `${buttonSize}px`,
+        transform: `translateX(${INDEX_MAP[value] * buttonSize}px)`,
+      }}
+    />
+  )
+}
+
+function PlatformIconContent({
+  id,
+  resolvedTheme,
+  iconSize,
+  imageSize,
+}: {
+  id: Platform
+  resolvedTheme: string | undefined
+  iconSize: string
+  imageSize: string
+}) {
+  if (id === "linkedin") {
+    return <FaLinkedinIn className={iconSize} />
+  }
+
+  if (id === "x") {
+    return <FaXTwitter className={iconSize} />
+  }
+
+  const logoSrc =
+    resolvedTheme === "dark"
+      ? "/assets/images/LinkX-icon-light.svg"
+      : "/assets/images/LinkX-icon.svg"
+
+  return (
+    <img
+      src={logoSrc}
+      alt="LinkX"
+      className={`${imageSize} object-contain transition-all`}
+    />
+  )
 }
 
 export function PlatformSelector({
   value,
   onChange,
   size = "md",
+  disabled = false,
   className = "",
 }: PlatformSelectorProps) {
   const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === "dark"
-  const linkxIconSrc = isDark
-    ? "/assets/images/LinkX-icon-light.svg"
-    : "/assets/images/LinkX-icon.svg"
-
-  const isLinkedIn = value === "linkedin"
-  const isLinkX = value === "linkx"
-  const isX = value === "x"
-
-  // Size classes
-  const containerClasses =
-    size === "sm"
-      ? "gap-0.5 px-0.5 py-0.5"
-      : "gap-0.5 px-0.5 py-0.5 sm:gap-1 sm:px-1 sm:py-0.5"
-  const buttonClasses = size === "sm" ? "h-6 w-6" : "h-8 w-8 sm:h-6 sm:w-6"
-  const iconClasses = size === "sm" ? "h-3 w-3" : "h-4 w-4 sm:h-3.5 sm:w-3.5"
-  const imageClasses =
-    size === "sm" ? "h-3.5 w-3.5" : "h-4.5 w-4.5 sm:h-4 sm:w-4"
+  const currentConfig = SIZE_CONFIGS[size]
 
   return (
-    <TooltipProvider>
-      <div
-        className={`flex items-center rounded-full border bg-card shadow-2xs ${containerClasses} ${className}`}
+    <TooltipProvider delayDuration={300}>
+      <fieldset
+        className={`relative inline-flex items-center rounded-full bg-muted/40 p-0.5 border border-border/40 select-none ${className}`}
+        aria-label="Target Platform Selector"
       >
-        {/* LinkedIn Button */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={() => onChange("linkedin")}
-              className={`flex ${buttonClasses} items-center justify-center rounded-full transition-all active:scale-95 cursor-pointer ${
-                isLinkedIn
-                  ? "bg-[#0077b5]/15 text-[#0077b5] font-semibold shadow-xs"
-                  : "text-muted-foreground hover:text-[#0077b5] hover:bg-[#0077b5]/10"
-              }`}
-              aria-label="Post to LinkedIn"
-            >
-              <FaLinkedinIn className={iconClasses} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="text-xs">
-            Post to LinkedIn
-          </TooltipContent>
-        </Tooltip>
+        <PlatformSliderIndicator
+          value={value}
+          buttonSize={currentConfig.buttonSize}
+        />
 
-        {/* LinkX (Cross-post to both LinkedIn & X) */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={() => onChange("linkx")}
-              className={`flex ${buttonClasses} items-center justify-center rounded-full transition-all active:scale-95 cursor-pointer ${
-                isLinkX
-                  ? "bg-primary/20 ring-1 ring-primary/40 shadow-xs"
-                  : "opacity-60 hover:opacity-100 hover:bg-muted/80"
-              }`}
-              aria-label="Cross-post to both LinkedIn and X (LinkX)"
-            >
-              <img src={linkxIconSrc} alt="LinkX" className={imageClasses} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="text-xs">
-            Cross-post to both (LinkX)
-          </TooltipContent>
-        </Tooltip>
+        {PLATFORM_CONFIGS.map((cfg) => {
+          const isSelected = value === cfg.id
+          const colorClass = isSelected ? cfg.activeClass : cfg.inactiveClass
 
-        {/* X (Twitter) Button */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={() => onChange("x")}
-              className={`flex ${buttonClasses} items-center justify-center rounded-full transition-all active:scale-95 cursor-pointer ${
-                isX
-                  ? "bg-foreground/15 text-foreground font-semibold shadow-xs"
-                  : "text-muted-foreground hover:text-foreground hover:bg-foreground/10"
-              }`}
-              aria-label="Post to X (Twitter)"
+          return (
+            <PlatformOptionButton
+              key={cfg.id}
+              platform={cfg.id}
+              isSelected={isSelected}
+              disabled={disabled}
+              onClick={() => onChange?.(cfg.id)}
+              buttonClass={currentConfig.buttonClass}
+              tooltipText={`Post to ${cfg.label}`}
+              className={colorClass}
             >
-              <FaXTwitter className={iconClasses} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="text-xs">
-            Post to X (Twitter)
-          </TooltipContent>
-        </Tooltip>
-      </div>
+              <PlatformIconContent
+                id={cfg.id}
+                resolvedTheme={resolvedTheme}
+                iconSize={currentConfig.iconSize}
+                imageSize={currentConfig.imageSize}
+              />
+            </PlatformOptionButton>
+          )
+        })}
+      </fieldset>
     </TooltipProvider>
   )
 }

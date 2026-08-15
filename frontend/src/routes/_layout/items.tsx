@@ -59,7 +59,9 @@ function Items() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Items</h1>
-          <p className="text-muted-foreground">Create and manage your items</p>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Create and manage your items.
+          </p>
         </div>
         <AddItem />
       </div>

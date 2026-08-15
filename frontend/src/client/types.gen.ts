@@ -341,6 +341,12 @@ export type PrivateCreateUserResponse = (UserPublic);
 
 export type TrendingGetTrendingResponse = (TrendingTopicsPublic);
 
+export type TrendingExtractTrendingTopicsData = {
+    maxTopics?: number;
+};
+
+export type TrendingExtractTrendingTopicsResponse = (TrendingTopicsPublic);
+
 export type UsersReadUsersData = {
     limit?: number;
     skip?: number;
