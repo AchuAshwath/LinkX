@@ -73,25 +73,16 @@ function isWithinDateRange(
   if (range === "all") return true
   const date =
     typeof dateStrOrObj === "string" ? new Date(dateStrOrObj) : dateStrOrObj
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffHours = diffMs / (1000 * 60 * 60)
-  const diffDays = diffHours / 24
+  const diffDays = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24)
 
-  switch (range) {
-    case "today":
-      return diffHours <= 24 && date.getDate() === now.getDate()
-    case "week":
-      return diffDays <= 7
-    case "month":
-      return diffDays <= 30
-    case "quarter":
-      return diffDays <= 90
-    case "year":
-      return diffDays <= 365
-    default:
-      return true
+  const limits: Record<string, number> = {
+    today: 1,
+    week: 7,
+    month: 30,
+    quarter: 90,
+    year: 365,
   }
+  return diffDays <= (limits[range] || 365)
 }
 
 function matchesPlatform(
@@ -99,36 +90,29 @@ function matchesPlatform(
   filterPlatform?: string,
 ): boolean {
   if (!filterPlatform || filterPlatform === "all") return true
-  const p = postPlatform === "all" ? "linkx" : postPlatform
-  return p === filterPlatform
+  return (postPlatform === "all" ? "linkx" : postPlatform) === filterPlatform
 }
 
-function filterAndSortPosts({
-  sourceList,
-  activeCategory,
-  dateFilter,
-  platformFilter,
-  sortBy,
-}: {
-  sourceList: any[]
-  activeCategory: PostCategory
-  dateFilter: string
-  platformFilter: string
-  sortBy: string
-}) {
-  const filteredByDate = sourceList.filter((item) => {
+function filterPosts(
+  sourceList: any[],
+  activeCategory: PostCategory,
+  dateFilter: string,
+  platformFilter: string,
+) {
+  return sourceList.filter((item) => {
     const dateVal =
       activeCategory === "scheduled" && item.scheduledAt
         ? item.scheduledAt
         : item.createdAt
-    return isWithinDateRange(dateVal, dateFilter)
+    return (
+      isWithinDateRange(dateVal, dateFilter) &&
+      matchesPlatform(item.platform, platformFilter)
+    )
   })
+}
 
-  const filteredByPlatform = filteredByDate.filter((item) =>
-    matchesPlatform(item.platform, platformFilter),
-  )
-
-  return [...filteredByPlatform].sort((a, b) => {
+function sortPosts(posts: any[], activeCategory: PostCategory, sortBy: string) {
+  return [...posts].sort((a, b) => {
     if (sortBy === "oldest") {
       return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     }
@@ -506,7 +490,7 @@ function PostsRightSidebar({
   )
 }
 
-function PostsPage() {
+export function PostsPage() {
   const queryClient = useQueryClient()
   const [activeCategory, setActiveCategory] =
     React.useState<PostCategory>("drafts")
@@ -632,13 +616,13 @@ function PostsPage() {
     else if (activeCategory === "posted") sourceList = allPostedPosts
     else if (activeCategory === "failed") sourceList = allFailedPosts
 
-    return filterAndSortPosts({
+    const filtered = filterPosts(
       sourceList,
       activeCategory,
       dateFilter,
       platformFilter,
-      sortBy,
-    })
+    )
+    return sortPosts(filtered, activeCategory, sortBy)
   }, [
     activeCategory,
     allDraftPosts,

@@ -65,14 +65,16 @@ function PlatformOptionButton({
   )
 }
 
-function getIndicatorStyle(value: Platform) {
-  if (value === "linkedin") {
-    return "bg-[#0077b5]/15 ring-1 ring-[#0077b5]/30 shadow-xs"
-  }
-  if (value === "linkx") {
-    return "bg-primary/20 ring-1 ring-primary/40 shadow-xs"
-  }
-  return "bg-foreground/15 ring-1 ring-foreground/20 shadow-xs"
+const INDEX_MAP: Record<Platform, number> = {
+  linkedin: 0,
+  linkx: 1,
+  x: 2,
+}
+
+const INDICATOR_MAP: Record<Platform, string> = {
+  linkedin: "bg-[#0077b5]/15 ring-1 ring-[#0077b5]/30 shadow-xs",
+  linkx: "bg-primary/20 ring-1 ring-primary/40 shadow-xs",
+  x: "bg-foreground/15 ring-1 ring-foreground/20 shadow-xs",
 }
 
 export function PlatformSelector({
@@ -83,16 +85,11 @@ export function PlatformSelector({
   className = "",
 }: PlatformSelectorProps) {
   const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === "dark"
-  const linkxIconSrc = isDark
-    ? "/assets/images/LinkX-icon-light.svg"
-    : "/assets/images/LinkX-icon.svg"
+  const linkxIconSrc =
+    resolvedTheme === "dark"
+      ? "/assets/images/LinkX-icon-light.svg"
+      : "/assets/images/LinkX-icon.svg"
 
-  const isLinkedIn = value === "linkedin"
-  const isLinkX = value === "linkx"
-  const isX = value === "x"
-
-  const activeIndex = isLinkedIn ? 0 : isLinkX ? 1 : 2
   const isSm = size === "sm"
   const buttonSize = isSm ? 22 : 24
   const buttonClass = isSm ? "h-[22px] w-[22px]" : "h-6 w-6"
@@ -107,25 +104,25 @@ export function PlatformSelector({
         } ${className}`}
       >
         <div
-          className={`absolute rounded-full transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] top-0.5 left-0.5 ${getIndicatorStyle(
-            value,
-          )}`}
+          className={`absolute rounded-full transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] top-0.5 left-0.5 ${
+            INDICATOR_MAP[value]
+          }`}
           style={{
             width: `${buttonSize}px`,
             height: `${buttonSize}px`,
-            transform: `translateX(${activeIndex * buttonSize}px)`,
+            transform: `translateX(${INDEX_MAP[value] * buttonSize}px)`,
           }}
         />
 
         <PlatformOptionButton
           platform="linkedin"
-          isSelected={isLinkedIn}
+          isSelected={value === "linkedin"}
           disabled={disabled}
           onClick={() => !disabled && onChange?.("linkedin")}
           buttonClass={buttonClass}
           tooltipText={disabled ? "Published to LinkedIn" : "Post to LinkedIn"}
           className={
-            isLinkedIn
+            value === "linkedin"
               ? "text-[#0077b5] font-semibold"
               : "text-muted-foreground hover:text-[#0077b5]"
           }
@@ -135,7 +132,7 @@ export function PlatformSelector({
 
         <PlatformOptionButton
           platform="linkx"
-          isSelected={isLinkX}
+          isSelected={value === "linkx"}
           disabled={disabled}
           onClick={() => !disabled && onChange?.("linkx")}
           buttonClass={buttonClass}
@@ -144,14 +141,16 @@ export function PlatformSelector({
               ? "Published to LinkX (LinkedIn & X)"
               : "Cross-post to both (LinkX)"
           }
-          className={isLinkX ? "opacity-100" : "opacity-50 hover:opacity-100"}
+          className={
+            value === "linkx" ? "opacity-100" : "opacity-50 hover:opacity-100"
+          }
         >
           <img src={linkxIconSrc} alt="LinkX" className={imageSize} />
         </PlatformOptionButton>
 
         <PlatformOptionButton
           platform="x"
-          isSelected={isX}
+          isSelected={value === "x"}
           disabled={disabled}
           onClick={() => !disabled && onChange?.("x")}
           buttonClass={buttonClass}
@@ -159,7 +158,7 @@ export function PlatformSelector({
             disabled ? "Published to X (Twitter)" : "Post to X (Twitter)"
           }
           className={
-            isX
+            value === "x"
               ? "text-foreground font-semibold"
               : "text-muted-foreground hover:text-foreground"
           }

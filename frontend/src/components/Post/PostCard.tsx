@@ -209,17 +209,15 @@ function PostCardHeader({
   )
 }
 
-interface FailureNoticeProps {
-  errorReason?: string | null
-  onRetry?: () => void
-  isRetrying: boolean
-}
-
 function FailureNotice({
   errorReason,
   onRetry,
   isRetrying,
-}: FailureNoticeProps) {
+}: {
+  errorReason?: string | null
+  onRetry?: () => void
+  isRetrying: boolean
+}) {
   return (
     <div className="mt-2 flex items-center justify-between gap-2 text-xs text-destructive">
       <div className="flex items-center gap-1.5 min-w-0 flex-1">
@@ -255,26 +253,64 @@ function FailureNotice({
   )
 }
 
-export const PostCard = React.memo(function PostCard({
-  post,
-  isEditing = false,
-  onLike,
-  onRepost,
-  onComment,
-  onShare,
-  onEdit,
-  onSave,
-  onCancel,
-  onPreview,
-  onDelete,
-  onPlatformChange,
-  onRetry,
-  isRetrying = false,
-}: PostCardProps) {
-  const [isLiked, setIsLiked] = React.useState(post.isLiked ?? false)
-  const [likeCount, setLikeCount] = React.useState(post.likes ?? 0)
-  const [isReposted, setIsReposted] = React.useState(post.isReposted ?? false)
-  const [repostCount, setRepostCount] = React.useState(post.reposts ?? 0)
+function PostCardBodyContent({
+  isEditing,
+  content,
+  editedContent,
+  onContentChange,
+  imageUrl,
+}: {
+  isEditing: boolean
+  content: string
+  editedContent: string
+  onContentChange: (val: string) => void
+  imageUrl?: string | null
+}) {
+  if (isEditing) {
+    return (
+      <div className="mt-1.5">
+        <Textarea
+          value={editedContent}
+          onChange={(e) => onContentChange(e.target.value)}
+          placeholder="What's happening?"
+          className="min-h-24 resize-none border py-2.5 px-3 text-sm leading-relaxed focus-visible:ring-1 focus-visible:ring-primary"
+          rows={4}
+        />
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div className="mt-1">
+        <p className="break-words text-sm leading-normal whitespace-pre-wrap text-foreground">
+          {content}
+        </p>
+      </div>
+
+      {imageUrl && (
+        <div className="mt-2.5 overflow-hidden rounded-2xl">
+          <img
+            src={imageUrl}
+            alt=""
+            className="w-full object-cover"
+            loading="lazy"
+          />
+        </div>
+      )}
+    </>
+  )
+}
+
+function usePostCardEditor(
+  post: PostCardData,
+  onSave?: (
+    id: string,
+    data: { content: string; platform: Platform; scheduledAt?: Date | null },
+  ) => void,
+  onCancel?: () => void,
+  onPlatformChange?: (id: string, platform: Platform) => void,
+) {
   const [platform, setPlatform] = React.useState<Platform>(
     post.platform || "linkx",
   )
@@ -286,7 +322,6 @@ export const PostCard = React.memo(function PostCard({
         : post.scheduledAt
       : null,
   )
-  const textareaRef = React.useRef<HTMLTextAreaElement>(null)
 
   React.useEffect(() => {
     setEditedContent(post.content)
@@ -299,13 +334,6 @@ export const PostCard = React.memo(function PostCard({
       )
     }
   }, [post.content, post.platform, post.scheduledAt])
-
-  const initials = getInitials(post.author.name)
-
-  const scheduledDateTime = React.useMemo(() => {
-    if (!post.scheduledAt) return ""
-    return formatFullDateTime(post.scheduledAt)
-  }, [post.scheduledAt])
 
   const handleSave = React.useCallback(() => {
     onSave?.(post.id, {
@@ -328,18 +356,6 @@ export const PostCard = React.memo(function PostCard({
     onCancel?.()
   }, [onCancel, post.content, post.platform, post.scheduledAt])
 
-  const handleLike = React.useCallback(() => {
-    setIsLiked((prev) => !prev)
-    setLikeCount((prev) => (isLiked ? prev - 1 : prev + 1))
-    onLike?.(post.id)
-  }, [isLiked, onLike, post.id])
-
-  const handleRepost = React.useCallback(() => {
-    setIsReposted((prev) => !prev)
-    setRepostCount((prev) => (isReposted ? prev - 1 : prev + 1))
-    onRepost?.(post.id)
-  }, [isReposted, onRepost, post.id])
-
   const handlePlatformChange = React.useCallback(
     (newPlatform: Platform) => {
       setPlatform(newPlatform)
@@ -347,6 +363,55 @@ export const PostCard = React.memo(function PostCard({
     },
     [onPlatformChange, post.id],
   )
+
+  return {
+    platform,
+    editedContent,
+    setEditedContent,
+    editedScheduledAt,
+    setEditedScheduledAt,
+    handleSave,
+    handleCancel,
+    handlePlatformChange,
+  }
+}
+
+export const PostCard = React.memo(function PostCard({
+  post,
+  isEditing = false,
+  onLike,
+  onRepost,
+  onComment,
+  onShare,
+  onEdit,
+  onSave,
+  onCancel,
+  onPreview,
+  onDelete,
+  onPlatformChange,
+  onRetry,
+  isRetrying = false,
+}: PostCardProps) {
+  const [isLiked, setIsLiked] = React.useState(post.isLiked ?? false)
+  const [likeCount, setLikeCount] = React.useState(post.likes ?? 0)
+  const [isReposted, setIsReposted] = React.useState(post.isReposted ?? false)
+  const [repostCount, setRepostCount] = React.useState(post.reposts ?? 0)
+
+  const {
+    platform,
+    editedContent,
+    setEditedContent,
+    editedScheduledAt,
+    setEditedScheduledAt,
+    handleSave,
+    handleCancel,
+    handlePlatformChange,
+  } = usePostCardEditor(post, onSave, onCancel, onPlatformChange)
+
+  const initials = getInitials(post.author.name)
+  const scheduledDateTime = React.useMemo(() => {
+    return post.scheduledAt ? formatFullDateTime(post.scheduledAt) : ""
+  }, [post.scheduledAt])
 
   const isScheduled = Boolean(
     post.scheduledAt ||
@@ -409,35 +474,13 @@ export const PostCard = React.memo(function PostCard({
               </div>
             )}
 
-            {isEditing ? (
-              <div className="mt-1.5">
-                <Textarea
-                  ref={textareaRef}
-                  value={editedContent}
-                  onChange={(e) => setEditedContent(e.target.value)}
-                  placeholder="What's happening?"
-                  className="min-h-24 resize-none border py-2.5 px-3 text-sm leading-relaxed focus-visible:ring-1 focus-visible:ring-primary"
-                  rows={4}
-                />
-              </div>
-            ) : (
-              <div className="mt-1">
-                <p className="break-words text-sm leading-normal whitespace-pre-wrap text-foreground">
-                  {post.content}
-                </p>
-              </div>
-            )}
-
-            {post.imageUrl && !isEditing && (
-              <div className="mt-2.5 overflow-hidden rounded-2xl">
-                <img
-                  src={post.imageUrl}
-                  alt=""
-                  className="w-full object-cover"
-                  loading="lazy"
-                />
-              </div>
-            )}
+            <PostCardBodyContent
+              isEditing={isEditing}
+              content={post.content}
+              editedContent={editedContent}
+              onContentChange={setEditedContent}
+              imageUrl={post.imageUrl}
+            />
 
             {isFailed && (
               <FailureNotice
@@ -454,10 +497,18 @@ export const PostCard = React.memo(function PostCard({
                 onPlatformChange={isPosted ? undefined : handlePlatformChange}
                 isLiked={isLiked}
                 likeCount={likeCount}
-                onLike={handleLike}
+                onLike={() => {
+                  setIsLiked((prev) => !prev)
+                  setLikeCount((prev) => (isLiked ? prev - 1 : prev + 1))
+                  onLike?.(post.id)
+                }}
                 isReposted={isReposted}
                 repostCount={repostCount}
-                onRepost={handleRepost}
+                onRepost={() => {
+                  setIsReposted((prev) => !prev)
+                  setRepostCount((prev) => (isReposted ? prev - 1 : prev + 1))
+                  onRepost?.(post.id)
+                }}
                 commentsCount={post.comments ?? 0}
                 onComment={() => onComment?.(post.id)}
                 onShare={() => onShare?.(post.id)}
