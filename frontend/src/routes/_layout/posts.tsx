@@ -291,6 +291,233 @@ function PostsEmptyState({
   )
 }
 
+interface StatusCardProps {
+  activeCategory: PostCategory
+  onSelectCategory: (cat: PostCategory) => void
+  draftsCount: number
+  scheduledCount: number
+  postedCount: number
+  failedCount: number
+}
+
+function PostStatusCard({
+  activeCategory,
+  onSelectCategory,
+  draftsCount,
+  scheduledCount,
+  postedCount,
+  failedCount,
+}: StatusCardProps) {
+  return (
+    <div className="w-full rounded-2xl border border-border/80 bg-background overflow-hidden shadow-none">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
+        <h2 className="text-lg font-bold tracking-tight text-foreground">
+          Post Status
+        </h2>
+      </div>
+      <div className="w-full divide-y divide-border/30">
+        <button
+          type="button"
+          onClick={() => onSelectCategory("drafts")}
+          className={`w-full flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors cursor-pointer text-left ${
+            activeCategory === "drafts"
+              ? "bg-primary/10 text-primary font-semibold"
+              : "text-foreground hover:bg-muted/30"
+          }`}
+        >
+          <span className="flex items-center gap-2.5">
+            <FileText className="h-4 w-4" />
+            Drafts
+          </span>
+          <Badge
+            variant={activeCategory === "drafts" ? "default" : "secondary"}
+            className="font-semibold text-xs px-2 rounded-full"
+          >
+            {draftsCount}
+          </Badge>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onSelectCategory("scheduled")}
+          className={`w-full flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors cursor-pointer text-left ${
+            activeCategory === "scheduled"
+              ? "bg-primary/10 text-primary font-semibold"
+              : "text-foreground hover:bg-muted/30"
+          }`}
+        >
+          <span className="flex items-center gap-2.5">
+            <Calendar className="h-4 w-4" />
+            Scheduled
+          </span>
+          <Badge
+            variant={activeCategory === "scheduled" ? "default" : "secondary"}
+            className="font-semibold text-xs px-2 rounded-full"
+          >
+            {scheduledCount}
+          </Badge>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onSelectCategory("posted")}
+          className={`w-full flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors cursor-pointer text-left ${
+            activeCategory === "posted"
+              ? "bg-primary/10 text-primary font-semibold"
+              : "text-foreground hover:bg-muted/30"
+          }`}
+        >
+          <span className="flex items-center gap-2.5">
+            <CheckCircle2 className="h-4 w-4" />
+            Posted
+          </span>
+          <Badge
+            variant={activeCategory === "posted" ? "default" : "secondary"}
+            className="font-semibold text-xs px-2 rounded-full"
+          >
+            {postedCount}
+          </Badge>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onSelectCategory("failed")}
+          className={`w-full flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors cursor-pointer text-left ${
+            activeCategory === "failed"
+              ? "bg-destructive/15 text-destructive font-semibold"
+              : failedCount > 0
+                ? "text-destructive hover:bg-destructive/10"
+                : "text-foreground hover:bg-muted/30"
+          }`}
+        >
+          <span className="flex items-center gap-2.5">
+            <AlertCircle className="h-4 w-4" />
+            Failed
+          </span>
+          <Badge
+            variant={
+              activeCategory === "failed"
+                ? "destructive"
+                : failedCount > 0
+                  ? "destructive"
+                  : "secondary"
+            }
+            className="font-semibold text-xs px-2 rounded-full"
+          >
+            {failedCount}
+          </Badge>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+interface FiltersCardProps {
+  dateFilter: string
+  onDateFilterChange: (val: string) => void
+  platformFilter: string
+  onPlatformFilterChange: (val: string) => void
+  sortBy: string
+  onSortByChange: (val: string) => void
+  activeCategory: PostCategory
+  hasActiveFilters: boolean
+  onClearFilters: () => void
+}
+
+function PostFiltersCard({
+  dateFilter,
+  onDateFilterChange,
+  platformFilter,
+  onPlatformFilterChange,
+  sortBy,
+  onSortByChange,
+  activeCategory,
+  hasActiveFilters,
+  onClearFilters,
+}: FiltersCardProps) {
+  return (
+    <div className="w-full rounded-2xl border border-border/80 bg-background overflow-hidden shadow-none">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
+        <h2 className="text-lg font-bold tracking-tight text-foreground flex items-center gap-2">
+          <Filter className="h-4 w-4" />
+          Filters
+        </h2>
+        {hasActiveFilters && (
+          <button
+            type="button"
+            onClick={onClearFilters}
+            className="text-xs font-semibold text-primary hover:underline cursor-pointer flex items-center gap-1"
+          >
+            <X className="h-3 w-3" />
+            Clear
+          </button>
+        )}
+      </div>
+      <div className="p-4 space-y-4">
+        <div className="space-y-1.5">
+          <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+            <Clock className="h-3.5 w-3.5" />
+            Date Range
+          </span>
+          <Select value={dateFilter} onValueChange={onDateFilterChange}>
+            <SelectTrigger className="w-full h-9 text-xs rounded-xl bg-muted/20 border-border/70 focus:ring-1 focus:ring-primary">
+              <SelectValue placeholder="Select date range" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="today">Today</SelectItem>
+              <SelectItem value="week">This Week</SelectItem>
+              <SelectItem value="month">This Month</SelectItem>
+              <SelectItem value="quarter">This Quarter</SelectItem>
+              <SelectItem value="year">This Year</SelectItem>
+              <SelectItem value="all">All Time</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1.5">
+          <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+            <Globe className="h-3.5 w-3.5" />
+            Platform
+          </span>
+          <Select value={platformFilter} onValueChange={onPlatformFilterChange}>
+            <SelectTrigger className="w-full h-9 text-xs rounded-xl bg-muted/20 border-border/70 focus:ring-1 focus:ring-primary">
+              <SelectValue placeholder="Select platform" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Platforms</SelectItem>
+              <SelectItem value="linkx">LinkX (Both)</SelectItem>
+              <SelectItem value="linkedin">LinkedIn</SelectItem>
+              <SelectItem value="x">X (Twitter)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1.5">
+          <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+            <TrendingUp className="h-3.5 w-3.5" />
+            Sort By
+          </span>
+          <Select value={sortBy} onValueChange={onSortByChange}>
+            <SelectTrigger className="w-full h-9 text-xs rounded-xl bg-muted/20 border-border/70 focus:ring-1 focus:ring-primary">
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="newest">Newest First</SelectItem>
+              <SelectItem value="oldest">Oldest First</SelectItem>
+              {activeCategory === "scheduled" && (
+                <SelectItem value="scheduled">Scheduled Date</SelectItem>
+              )}
+              {activeCategory === "posted" && (
+                <SelectItem value="engagement">Engagement</SelectItem>
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 interface SidebarProps {
   activeCategory: PostCategory
   onSelectCategory: (cat: PostCategory) => void
@@ -308,209 +535,28 @@ interface SidebarProps {
   onClearFilters: () => void
 }
 
-function PostsRightSidebar({
-  activeCategory,
-  onSelectCategory,
-  draftsCount,
-  scheduledCount,
-  postedCount,
-  failedCount,
-  dateFilter,
-  onDateFilterChange,
-  platformFilter,
-  onPlatformFilterChange,
-  sortBy,
-  onSortByChange,
-  hasActiveFilters,
-  onClearFilters,
-}: SidebarProps) {
+function PostsRightSidebar(props: SidebarProps) {
   return (
     <div className="sticky top-0 self-start p-4 space-y-4">
-      {/* Post Status Card */}
-      <div className="w-full rounded-2xl border border-border/80 bg-background overflow-hidden shadow-none">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
-          <h2 className="text-lg font-bold tracking-tight text-foreground">
-            Post Status
-          </h2>
-        </div>
-        <div className="w-full divide-y divide-border/30">
-          <button
-            type="button"
-            onClick={() => onSelectCategory("drafts")}
-            className={`w-full flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors cursor-pointer text-left ${
-              activeCategory === "drafts"
-                ? "bg-primary/10 text-primary font-semibold"
-                : "text-foreground hover:bg-muted/30"
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <FileText className="h-4 w-4" />
-              Drafts
-            </span>
-            <Badge
-              variant={activeCategory === "drafts" ? "default" : "secondary"}
-              className="font-semibold text-xs px-2 rounded-full"
-            >
-              {draftsCount}
-            </Badge>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onSelectCategory("scheduled")}
-            className={`w-full flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors cursor-pointer text-left ${
-              activeCategory === "scheduled"
-                ? "bg-primary/10 text-primary font-semibold"
-                : "text-foreground hover:bg-muted/30"
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <Calendar className="h-4 w-4" />
-              Scheduled
-            </span>
-            <Badge
-              variant={activeCategory === "scheduled" ? "default" : "secondary"}
-              className="font-semibold text-xs px-2 rounded-full"
-            >
-              {scheduledCount}
-            </Badge>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onSelectCategory("posted")}
-            className={`w-full flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors cursor-pointer text-left ${
-              activeCategory === "posted"
-                ? "bg-primary/10 text-primary font-semibold"
-                : "text-foreground hover:bg-muted/30"
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <CheckCircle2 className="h-4 w-4" />
-              Posted
-            </span>
-            <Badge
-              variant={activeCategory === "posted" ? "default" : "secondary"}
-              className="font-semibold text-xs px-2 rounded-full"
-            >
-              {postedCount}
-            </Badge>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onSelectCategory("failed")}
-            className={`w-full flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors cursor-pointer text-left ${
-              activeCategory === "failed"
-                ? "bg-destructive/15 text-destructive font-semibold"
-                : failedCount > 0
-                  ? "text-destructive hover:bg-destructive/10"
-                  : "text-foreground hover:bg-muted/30"
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <AlertCircle className="h-4 w-4" />
-              Failed
-            </span>
-            <Badge
-              variant={
-                activeCategory === "failed"
-                  ? "destructive"
-                  : failedCount > 0
-                    ? "destructive"
-                    : "secondary"
-              }
-              className="font-semibold text-xs px-2 rounded-full"
-            >
-              {failedCount}
-            </Badge>
-          </button>
-        </div>
-      </div>
-
-      {/* Filters Card */}
-      <div className="w-full rounded-2xl border border-border/80 bg-background overflow-hidden shadow-none">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
-          <h2 className="text-lg font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Filter className="h-4 w-4" />
-            Filters
-          </h2>
-          {hasActiveFilters && (
-            <button
-              type="button"
-              onClick={onClearFilters}
-              className="text-xs font-semibold text-primary hover:underline cursor-pointer flex items-center gap-1"
-            >
-              <X className="h-3 w-3" />
-              Clear
-            </button>
-          )}
-        </div>
-        <div className="p-4 space-y-4">
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-              <Clock className="h-3.5 w-3.5" />
-              Date Range
-            </span>
-            <Select value={dateFilter} onValueChange={onDateFilterChange}>
-              <SelectTrigger className="w-full h-9 text-xs rounded-xl bg-muted/20 border-border/70 focus:ring-1 focus:ring-primary">
-                <SelectValue placeholder="Select date range" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="today">Today</SelectItem>
-                <SelectItem value="week">This Week</SelectItem>
-                <SelectItem value="month">This Month</SelectItem>
-                <SelectItem value="quarter">This Quarter</SelectItem>
-                <SelectItem value="year">This Year</SelectItem>
-                <SelectItem value="all">All Time</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-              <Globe className="h-3.5 w-3.5" />
-              Platform
-            </span>
-            <Select
-              value={platformFilter}
-              onValueChange={onPlatformFilterChange}
-            >
-              <SelectTrigger className="w-full h-9 text-xs rounded-xl bg-muted/20 border-border/70 focus:ring-1 focus:ring-primary">
-                <SelectValue placeholder="Select platform" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Platforms</SelectItem>
-                <SelectItem value="linkx">LinkX (Both)</SelectItem>
-                <SelectItem value="linkedin">LinkedIn</SelectItem>
-                <SelectItem value="x">X (Twitter)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-              <TrendingUp className="h-3.5 w-3.5" />
-              Sort By
-            </span>
-            <Select value={sortBy} onValueChange={onSortByChange}>
-              <SelectTrigger className="w-full h-9 text-xs rounded-xl bg-muted/20 border-border/70 focus:ring-1 focus:ring-primary">
-                <SelectValue placeholder="Sort by" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="newest">Newest First</SelectItem>
-                <SelectItem value="oldest">Oldest First</SelectItem>
-                {activeCategory === "scheduled" && (
-                  <SelectItem value="scheduled">Scheduled Date</SelectItem>
-                )}
-                {activeCategory === "posted" && (
-                  <SelectItem value="engagement">Engagement</SelectItem>
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </div>
+      <PostStatusCard
+        activeCategory={props.activeCategory}
+        onSelectCategory={props.onSelectCategory}
+        draftsCount={props.draftsCount}
+        scheduledCount={props.scheduledCount}
+        postedCount={props.postedCount}
+        failedCount={props.failedCount}
+      />
+      <PostFiltersCard
+        dateFilter={props.dateFilter}
+        onDateFilterChange={props.onDateFilterChange}
+        platformFilter={props.platformFilter}
+        onPlatformFilterChange={props.onPlatformFilterChange}
+        sortBy={props.sortBy}
+        onSortByChange={props.onSortByChange}
+        activeCategory={props.activeCategory}
+        hasActiveFilters={props.hasActiveFilters}
+        onClearFilters={props.onClearFilters}
+      />
     </div>
   )
 }
