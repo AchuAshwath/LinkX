@@ -45,6 +45,7 @@ function PlatformOptionButton({
       <TooltipTrigger asChild>
         <button
           type="button"
+          tabIndex={-1}
           disabled={disabled}
           onClick={onClick}
           className={`relative z-10 flex ${buttonClass} items-center justify-center rounded-full transition-colors ${
@@ -139,73 +140,85 @@ function PlatformSliderIndicator({
   )
 }
 
-function renderPlatformIcon(
-  id: Platform,
-  iconSize: string,
-  imageSize: string,
-  linkxIconSrc: string,
-) {
+function PlatformIconContent({
+  id,
+  resolvedTheme,
+  iconSize,
+  imageSize,
+}: {
+  id: Platform
+  resolvedTheme: string | undefined
+  iconSize: string
+  imageSize: string
+}) {
   if (id === "linkedin") {
     return <FaLinkedinIn className={iconSize} />
   }
-  if (id === "linkx") {
-    return <img src={linkxIconSrc} alt="LinkX" className={imageSize} />
+
+  if (id === "x") {
+    return <FaXTwitter className={iconSize} />
   }
-  return <FaXTwitter className={iconSize} />
+
+  const logoSrc =
+    resolvedTheme === "light"
+      ? "/assets/images/logo_light.svg"
+      : "/assets/images/logo_dark.svg"
+
+  return (
+    <img
+      src={logoSrc}
+      alt="LinkX"
+      className={`${imageSize} object-contain transition-all`}
+    />
+  )
 }
 
 export function PlatformSelector({
   value,
   onChange,
-  size = "sm",
+  size = "md",
   disabled = false,
   className = "",
 }: PlatformSelectorProps) {
   const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === "dark"
-  const linkxIconSrc = isDark
-    ? "/assets/images/LinkX-icon-light.svg"
-    : "/assets/images/LinkX-icon.svg"
-
-  const sizeCfg = SIZE_CONFIGS[size]
+  const currentConfig = SIZE_CONFIGS[size]
 
   return (
-    <TooltipProvider delayDuration={150}>
-      <div
-        className={`relative inline-flex items-center rounded-full border border-border/80 bg-card/60 backdrop-blur-xs select-none p-0.5 ${
-          disabled ? "cursor-default" : ""
-        } ${className}`}
+    <TooltipProvider delayDuration={300}>
+      <fieldset
+        className={`relative inline-flex items-center rounded-full bg-muted/40 p-0.5 border border-border/40 select-none ${className}`}
+        aria-label="Target Platform Selector"
       >
         <PlatformSliderIndicator
           value={value}
-          buttonSize={sizeCfg.buttonSize}
+          buttonSize={currentConfig.buttonSize}
         />
 
         {PLATFORM_CONFIGS.map((cfg) => {
           const isSelected = value === cfg.id
+          const colorClass = isSelected ? cfg.activeClass : cfg.inactiveClass
+
           return (
             <PlatformOptionButton
               key={cfg.id}
               platform={cfg.id}
               isSelected={isSelected}
               disabled={disabled}
-              onClick={() => !disabled && onChange?.(cfg.id)}
-              buttonClass={sizeCfg.buttonClass}
-              tooltipText={
-                disabled ? `Published to ${cfg.label}` : `Post to ${cfg.label}`
-              }
-              className={isSelected ? cfg.activeClass : cfg.inactiveClass}
+              onClick={() => onChange?.(cfg.id)}
+              buttonClass={currentConfig.buttonClass}
+              tooltipText={`Post to ${cfg.label}`}
+              className={colorClass}
             >
-              {renderPlatformIcon(
-                cfg.id,
-                sizeCfg.iconSize,
-                sizeCfg.imageSize,
-                linkxIconSrc,
-              )}
+              <PlatformIconContent
+                id={cfg.id}
+                resolvedTheme={resolvedTheme}
+                iconSize={currentConfig.iconSize}
+                imageSize={currentConfig.imageSize}
+              />
             </PlatformOptionButton>
           )
         })}
-      </div>
+      </fieldset>
     </TooltipProvider>
   )
 }

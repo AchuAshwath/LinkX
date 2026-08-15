@@ -17,6 +17,7 @@ interface PostInputBoxProps {
   onSubmit?: () => void
   onCancel?: () => void
   canPublishOrSchedule?: boolean
+  autoFocus?: boolean
 }
 
 function PostInputAvatar({
@@ -28,14 +29,15 @@ function PostInputAvatar({
 }) {
   const initials =
     username
-      .split(" ")
+      ?.split(" ")
       .map((part) => part[0])
       .join("")
-      .toUpperCase() || "U"
+      .toUpperCase()
+      .slice(0, 2) || "U"
 
   return (
     <div className="shrink-0 pt-0.5">
-      <Avatar className="h-10 w-10 transition-transform hover:scale-105 cursor-pointer">
+      <Avatar className="h-10 w-10 transition-transform hover:scale-105 select-none">
         {avatarUrl ? <AvatarImage src={avatarUrl} alt={username} /> : null}
         <AvatarFallback className="text-xs font-semibold">
           {initials}
@@ -77,6 +79,7 @@ export function PostInputBox({
   onSubmit,
   onCancel,
   canPublishOrSchedule = true,
+  autoFocus = false,
 }: PostInputBoxProps) {
   const {
     content,
@@ -107,6 +110,15 @@ export function PostInputBox({
       setIsScheduleOpen(false)
     }
   }, [createPostMutation.isSuccess, onSubmit])
+
+  React.useEffect(() => {
+    if (autoFocus) {
+      const timer = setTimeout(() => {
+        textareaRef.current?.focus()
+      }, 50)
+      return () => clearTimeout(timer)
+    }
+  }, [autoFocus])
 
   return (
     <div className="flex gap-3 w-full">
