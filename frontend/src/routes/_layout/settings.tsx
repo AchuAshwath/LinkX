@@ -21,7 +21,6 @@ import { z } from "zod"
 import { type UpdatePassword, UsersService, type UserUpdateMe } from "@/client"
 import { type Theme, useTheme } from "@/components/theme-provider"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -80,34 +79,6 @@ function SettingsHeader() {
       <p className="text-muted-foreground text-sm mt-0.5">
         Manage your profile details, interface theme, and account security.
       </p>
-    </div>
-  )
-}
-
-function ProfileHeaderRow({ fullName }: { fullName?: string }) {
-  const initials = getInitials(fullName || "User")
-
-  return (
-    <div className="flex items-center gap-3.5">
-      <Avatar className="h-10 w-10 shrink-0">
-        <AvatarFallback className="bg-primary/10 text-primary font-bold text-sm">
-          {initials}
-        </AvatarFallback>
-      </Avatar>
-      <div className="min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-semibold text-sm">Profile Details</span>
-          <Badge
-            variant="outline"
-            className="text-[11px] py-0 px-2 font-normal text-muted-foreground rounded-full"
-          >
-            Personal Info
-          </Badge>
-        </div>
-        <p className="text-xs text-muted-foreground mt-0.5 truncate">
-          Your display name and primary contact email.
-        </p>
-      </div>
     </div>
   )
 }
@@ -191,6 +162,7 @@ function ProfileCard({
 }: ProfileCardProps) {
   const defaultFullName = currentUser?.full_name ?? ""
   const defaultEmail = currentUser?.email ?? ""
+  const initials = getInitials(defaultFullName || "User")
 
   const {
     register,
@@ -213,15 +185,27 @@ function ProfileCard({
   }, [defaultFullName, defaultEmail, reset])
 
   return (
-    <div className="w-full rounded-2xl border border-border/80 bg-background overflow-hidden shadow-none p-4 sm:p-6 space-y-4">
-      <ProfileHeaderRow fullName={defaultFullName} />
+    <div className="w-full rounded-2xl border border-border/80 bg-background p-4 sm:p-6 space-y-4">
+      <div className="flex items-center gap-3.5">
+        <Avatar className="h-10 w-10 shrink-0">
+          <AvatarFallback className="bg-primary/10 text-primary font-bold text-sm">
+            {initials}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0">
+          <h2 className="font-semibold text-sm">Profile Details</h2>
+          <p className="text-xs text-muted-foreground truncate">
+            {defaultEmail || "Your account details"}
+          </p>
+        </div>
+      </div>
 
       <form onSubmit={handleSubmit(onUpdateProfile)} className="space-y-4 pt-1">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <SettingsInput
             id="full_name"
             label="Full Name"
-            placeholder="e.g. Ashwath N"
+            placeholder="Your full name"
             icon={User}
             register={register}
             error={errors.full_name?.message}
@@ -256,21 +240,13 @@ function AppearanceRow() {
   const { theme, setTheme } = useTheme()
 
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-6 hover:bg-muted/5 transition-colors">
+    <div className="flex items-center justify-between gap-4 p-4 sm:p-6 hover:bg-muted/5 transition-colors">
       <div className="flex items-center gap-3.5 min-w-0">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted/50 text-foreground">
           <Palette className="h-5 w-5" />
         </div>
         <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-sm">Appearance</span>
-            <Badge
-              variant="outline"
-              className="text-[11px] py-0 px-2 font-normal text-muted-foreground rounded-full"
-            >
-              Theme
-            </Badge>
-          </div>
+          <span className="font-semibold text-sm">Appearance</span>
           <p className="text-xs text-muted-foreground mt-0.5 truncate">
             Customize the color theme across all LinkX pages.
           </p>
@@ -278,7 +254,7 @@ function AppearanceRow() {
       </div>
 
       <fieldset
-        className="relative inline-flex items-center rounded-full bg-muted/40 p-0.5 border border-border/60 select-none shrink-0 self-start sm:self-center"
+        className="relative inline-flex items-center rounded-full bg-muted/40 p-0.5 border border-border/60 select-none shrink-0"
         aria-label="Theme Selection"
       >
         {THEME_OPTIONS.map((opt) => {
@@ -309,7 +285,6 @@ function AppearanceRow() {
 
 interface SettingsActionRowProps {
   title: string
-  badgeText: string
   description: string
   icon: typeof KeyRound
   buttonText: string
@@ -319,7 +294,6 @@ interface SettingsActionRowProps {
 
 function SettingsActionRow({
   title,
-  badgeText,
   description,
   icon: Icon,
   buttonText,
@@ -333,9 +307,6 @@ function SettingsActionRow({
     ? "bg-destructive/15 text-destructive"
     : "bg-muted/50 text-foreground"
   const titleClass = isDestructive ? "text-destructive" : ""
-  const badgeClass = isDestructive
-    ? "text-destructive border-destructive/30"
-    : "text-muted-foreground"
   const descClass = isDestructive
     ? "text-destructive/80"
     : "text-muted-foreground"
@@ -345,7 +316,7 @@ function SettingsActionRow({
 
   return (
     <div
-      className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-6 transition-colors ${containerClass}`}
+      className={`flex items-center justify-between gap-4 p-4 sm:p-6 transition-colors ${containerClass}`}
     >
       <div className="flex items-center gap-3.5 min-w-0">
         <div
@@ -354,17 +325,7 @@ function SettingsActionRow({
           <Icon className="h-5 w-5" />
         </div>
         <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={`font-semibold text-sm ${titleClass}`}>
-              {title}
-            </span>
-            <Badge
-              variant="outline"
-              className={`text-[11px] py-0 px-2 font-normal rounded-full ${badgeClass}`}
-            >
-              {badgeText}
-            </Badge>
-          </div>
+          <span className={`font-semibold text-sm ${titleClass}`}>{title}</span>
           <p className={`text-xs mt-0.5 truncate ${descClass}`}>
             {description}
           </p>
@@ -376,7 +337,7 @@ function SettingsActionRow({
         variant="outline"
         size="sm"
         onClick={onAction}
-        className={`h-8 px-4 text-xs font-bold rounded-full shadow-none cursor-pointer shrink-0 self-start sm:self-center transition-colors ${buttonClass}`}
+        className={`h-8 px-4 text-xs font-bold rounded-full shadow-none cursor-pointer shrink-0 transition-colors ${buttonClass}`}
       >
         {buttonText}
       </Button>
@@ -598,7 +559,6 @@ export function SettingsPage() {
 
         <SettingsActionRow
           title="Security"
-          badgeText="Authentication"
           description="Update your account password."
           icon={KeyRound}
           buttonText="Change Password"
@@ -607,7 +567,6 @@ export function SettingsPage() {
 
         <SettingsActionRow
           title="Danger Zone"
-          badgeText="Irreversible"
           description="Permanently delete your account and all associated post records."
           icon={Trash2}
           buttonText="Delete Account"
