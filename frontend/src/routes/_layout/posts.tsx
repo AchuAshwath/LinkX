@@ -417,6 +417,154 @@ function PostStatusCard({
   )
 }
 
+function PostFiltersHeader({
+  hasActiveFilters,
+  onClearFilters,
+}: {
+  hasActiveFilters: boolean
+  onClearFilters: () => void
+}) {
+  return (
+    <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
+      <h2 className="text-lg font-bold tracking-tight text-foreground">
+        Filters
+      </h2>
+      {hasActiveFilters && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onClearFilters}
+          className="h-7 px-2.5 text-xs text-muted-foreground hover:text-primary rounded-full cursor-pointer flex items-center gap-1 font-medium"
+        >
+          <X className="h-3 w-3" />
+          Clear
+        </Button>
+      )}
+    </div>
+  )
+}
+
+function PostDateFilterSelect({
+  dateFilter,
+  onDateFilterChange,
+}: {
+  dateFilter: string
+  onDateFilterChange: (val: string) => void
+}) {
+  return (
+    <div className="space-y-1.5">
+      <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 pl-0.5">
+        <Clock className="h-3.5 w-3.5" />
+        Date Range
+      </span>
+      <Select value={dateFilter} onValueChange={onDateFilterChange}>
+        <SelectTrigger className="w-full h-9 text-xs rounded-full bg-muted/20 border-border/60 hover:bg-muted/40 transition-colors px-3.5 focus:ring-1 focus:ring-primary">
+          <SelectValue placeholder="Select date range" />
+        </SelectTrigger>
+        <SelectContent className="rounded-xl">
+          <SelectItem value="today" className="rounded-lg">
+            Today
+          </SelectItem>
+          <SelectItem value="week" className="rounded-lg">
+            This Week
+          </SelectItem>
+          <SelectItem value="month" className="rounded-lg">
+            This Month
+          </SelectItem>
+          <SelectItem value="quarter" className="rounded-lg">
+            This Quarter
+          </SelectItem>
+          <SelectItem value="year" className="rounded-lg">
+            This Year
+          </SelectItem>
+          <SelectItem value="all" className="rounded-lg">
+            All Time
+          </SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+function PostPlatformFilterSelect({
+  platformFilter,
+  onPlatformFilterChange,
+}: {
+  platformFilter: string
+  onPlatformFilterChange: (val: string) => void
+}) {
+  return (
+    <div className="space-y-1.5">
+      <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 pl-0.5">
+        <Globe className="h-3.5 w-3.5" />
+        Platform
+      </span>
+      <Select value={platformFilter} onValueChange={onPlatformFilterChange}>
+        <SelectTrigger className="w-full h-9 text-xs rounded-full bg-muted/20 border-border/60 hover:bg-muted/40 transition-colors px-3.5 focus:ring-1 focus:ring-primary">
+          <SelectValue placeholder="Select platform" />
+        </SelectTrigger>
+        <SelectContent className="rounded-xl">
+          <SelectItem value="all" className="rounded-lg">
+            All Platforms
+          </SelectItem>
+          <SelectItem value="linkx" className="rounded-lg">
+            LinkX (Both)
+          </SelectItem>
+          <SelectItem value="linkedin" className="rounded-lg">
+            LinkedIn
+          </SelectItem>
+          <SelectItem value="x" className="rounded-lg">
+            X (Twitter)
+          </SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+function PostSortFilterSelect({
+  sortBy,
+  onSortByChange,
+  activeCategory,
+}: {
+  sortBy: string
+  onSortByChange: (val: string) => void
+  activeCategory: PostCategory
+}) {
+  return (
+    <div className="space-y-1.5">
+      <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 pl-0.5">
+        <TrendingUp className="h-3.5 w-3.5" />
+        Sort By
+      </span>
+      <Select value={sortBy} onValueChange={onSortByChange}>
+        <SelectTrigger className="w-full h-9 text-xs rounded-full bg-muted/20 border-border/60 hover:bg-muted/40 transition-colors px-3.5 focus:ring-1 focus:ring-primary">
+          <SelectValue placeholder="Sort by" />
+        </SelectTrigger>
+        <SelectContent className="rounded-xl">
+          <SelectItem value="newest" className="rounded-lg">
+            Newest First
+          </SelectItem>
+          <SelectItem value="oldest" className="rounded-lg">
+            Oldest First
+          </SelectItem>
+          {activeCategory === "scheduled" && (
+            <SelectItem value="scheduled" className="rounded-lg">
+              Scheduled Date
+            </SelectItem>
+          )}
+          {activeCategory === "posted" && (
+            <SelectItem value="engagement" className="rounded-lg">
+              Engagement
+            </SelectItem>
+          )}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
 interface FiltersCardProps {
   dateFilter: string
   onDateFilterChange: (val: string) => void
@@ -442,111 +590,24 @@ function PostFiltersCard({
 }: FiltersCardProps) {
   return (
     <div className="w-full rounded-2xl border border-border/80 bg-background overflow-hidden shadow-none">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
-        <h2 className="text-lg font-bold tracking-tight text-foreground">
-          Filters
-        </h2>
-        {hasActiveFilters && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={onClearFilters}
-            className="h-7 px-2.5 text-xs text-muted-foreground hover:text-primary rounded-full cursor-pointer flex items-center gap-1 font-medium"
-          >
-            <X className="h-3 w-3" />
-            Clear
-          </Button>
-        )}
-      </div>
+      <PostFiltersHeader
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={onClearFilters}
+      />
       <div className="p-4 space-y-4">
-        <div className="space-y-1.5">
-          <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 pl-0.5">
-            <Clock className="h-3.5 w-3.5" />
-            Date Range
-          </span>
-          <Select value={dateFilter} onValueChange={onDateFilterChange}>
-            <SelectTrigger className="w-full h-9 text-xs rounded-full bg-muted/20 border-border/60 hover:bg-muted/40 transition-colors px-3.5 focus:ring-1 focus:ring-primary">
-              <SelectValue placeholder="Select date range" />
-            </SelectTrigger>
-            <SelectContent className="rounded-xl">
-              <SelectItem value="today" className="rounded-lg">
-                Today
-              </SelectItem>
-              <SelectItem value="week" className="rounded-lg">
-                This Week
-              </SelectItem>
-              <SelectItem value="month" className="rounded-lg">
-                This Month
-              </SelectItem>
-              <SelectItem value="quarter" className="rounded-lg">
-                This Quarter
-              </SelectItem>
-              <SelectItem value="year" className="rounded-lg">
-                This Year
-              </SelectItem>
-              <SelectItem value="all" className="rounded-lg">
-                All Time
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-1.5">
-          <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 pl-0.5">
-            <Globe className="h-3.5 w-3.5" />
-            Platform
-          </span>
-          <Select value={platformFilter} onValueChange={onPlatformFilterChange}>
-            <SelectTrigger className="w-full h-9 text-xs rounded-full bg-muted/20 border-border/60 hover:bg-muted/40 transition-colors px-3.5 focus:ring-1 focus:ring-primary">
-              <SelectValue placeholder="Select platform" />
-            </SelectTrigger>
-            <SelectContent className="rounded-xl">
-              <SelectItem value="all" className="rounded-lg">
-                All Platforms
-              </SelectItem>
-              <SelectItem value="linkx" className="rounded-lg">
-                LinkX (Both)
-              </SelectItem>
-              <SelectItem value="linkedin" className="rounded-lg">
-                LinkedIn
-              </SelectItem>
-              <SelectItem value="x" className="rounded-lg">
-                X (Twitter)
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-1.5">
-          <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 pl-0.5">
-            <TrendingUp className="h-3.5 w-3.5" />
-            Sort By
-          </span>
-          <Select value={sortBy} onValueChange={onSortByChange}>
-            <SelectTrigger className="w-full h-9 text-xs rounded-full bg-muted/20 border-border/60 hover:bg-muted/40 transition-colors px-3.5 focus:ring-1 focus:ring-primary">
-              <SelectValue placeholder="Sort by" />
-            </SelectTrigger>
-            <SelectContent className="rounded-xl">
-              <SelectItem value="newest" className="rounded-lg">
-                Newest First
-              </SelectItem>
-              <SelectItem value="oldest" className="rounded-lg">
-                Oldest First
-              </SelectItem>
-              {activeCategory === "scheduled" && (
-                <SelectItem value="scheduled" className="rounded-lg">
-                  Scheduled Date
-                </SelectItem>
-              )}
-              {activeCategory === "posted" && (
-                <SelectItem value="engagement" className="rounded-lg">
-                  Engagement
-                </SelectItem>
-              )}
-            </SelectContent>
-          </Select>
-        </div>
+        <PostDateFilterSelect
+          dateFilter={dateFilter}
+          onDateFilterChange={onDateFilterChange}
+        />
+        <PostPlatformFilterSelect
+          platformFilter={platformFilter}
+          onPlatformFilterChange={onPlatformFilterChange}
+        />
+        <PostSortFilterSelect
+          sortBy={sortBy}
+          onSortByChange={onSortByChange}
+          activeCategory={activeCategory}
+        />
       </div>
     </div>
   )

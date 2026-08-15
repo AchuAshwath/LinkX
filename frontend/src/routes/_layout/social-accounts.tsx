@@ -135,7 +135,7 @@ function LinkedInActions({
         size="sm"
         onClick={onDisconnect}
         disabled={isDisconnecting}
-        className="h-8 px-4 text-xs font-semibold border-destructive/30 text-destructive bg-destructive/5 hover:bg-destructive hover:text-destructive-foreground hover:border-destructive transition-all shadow-none rounded-full cursor-pointer"
+        className="h-8 px-4 text-xs font-bold border-destructive/30 text-destructive bg-destructive/5 hover:bg-destructive hover:text-destructive-foreground hover:border-destructive transition-all shadow-none rounded-full cursor-pointer"
       >
         {isDisconnecting ? (
           <span className="flex items-center gap-1.5">
@@ -155,7 +155,7 @@ function LinkedInActions({
         onClick={onConnect}
         disabled={isConnecting}
         size="sm"
-        className="h-8 px-4 text-xs font-semibold bg-[#0077b5] hover:bg-[#0077b5]/90 text-white shadow-none rounded-full cursor-pointer"
+        className="h-8 px-4 text-xs font-bold bg-[#0077b5] hover:bg-[#0077b5]/90 text-white shadow-none rounded-full cursor-pointer"
       >
         {isConnecting ? (
           <span className="flex items-center gap-1.5">
@@ -174,7 +174,7 @@ function LinkedInActions({
       onClick={onConnect}
       disabled={isConnecting}
       size="sm"
-      className="h-8 px-4 text-xs font-semibold bg-[#0077b5] hover:bg-[#0077b5]/90 text-white shadow-none rounded-full cursor-pointer"
+      className="h-8 px-4 text-xs font-bold bg-[#0077b5] hover:bg-[#0077b5]/90 text-white shadow-none rounded-full cursor-pointer"
     >
       {isConnecting ? (
         <span className="flex items-center gap-1.5">
@@ -292,6 +292,159 @@ function CliCommandSnippet({
   )
 }
 
+function XProfileDetails({
+  isCookiePresent,
+  sessionPath,
+  copiedKey,
+  onCopy,
+}: {
+  isCookiePresent: boolean
+  sessionPath: string
+  copiedKey: string | null
+  onCopy: (text: string, key: string, label: string) => void
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="font-semibold text-sm">X (Twitter)</span>
+        <Badge
+          variant="outline"
+          className="text-[11px] py-0 px-2 font-normal text-muted-foreground rounded-full"
+        >
+          Browser Profile
+        </Badge>
+        {isCookiePresent ? (
+          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 font-medium bg-emerald-500/10 px-2.5 py-0.5 rounded-full">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Session
+            Active
+          </span>
+        ) : (
+          <span className="text-[11px] text-muted-foreground bg-muted px-2.5 py-0.5 rounded-full font-medium">
+            No Session
+          </span>
+        )}
+      </div>
+
+      <div className="flex items-center gap-1.5 mt-1">
+        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-muted/60 border border-border/50 text-xs text-foreground/80 group/path">
+          <Folder className="h-3 w-3 text-muted-foreground/70 shrink-0" />
+          <code className="text-[11px] font-mono truncate max-w-[180px] sm:max-w-[260px] select-all">
+            {sessionPath}
+          </code>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground p-0.5 rounded-full transition-colors ml-0.5 focus:outline-none cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onCopy(sessionPath, "path", "Session path")
+                }}
+              >
+                {copiedKey === "path" ? (
+                  <Check className="h-3 w-3 text-emerald-500" />
+                ) : (
+                  <Copy className="h-3 w-3" />
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Copy session path</TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function XActions({
+  isCookiePresent,
+  isConnecting,
+  isVerifying,
+  onConnect,
+  onVerify,
+}: {
+  isCookiePresent: boolean
+  isConnecting: boolean
+  isVerifying: boolean
+  onConnect: () => void
+  onVerify: () => void
+}) {
+  return (
+    <div className="flex items-center gap-2 shrink-0 sm:self-center">
+      <Button
+        type="button"
+        onClick={onConnect}
+        disabled={isConnecting}
+        size="sm"
+        className="h-8 px-4 text-xs font-bold rounded-full bg-white text-black hover:bg-white/95 border border-zinc-200/90 shadow-2xs hover:shadow-sm transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-[1.03] active:scale-95 cursor-pointer disabled:opacity-50 disabled:hover:scale-100 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+      >
+        {isConnecting ? (
+          <span className="flex items-center gap-1.5">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Launching…
+          </span>
+        ) : isCookiePresent ? (
+          "Re-login"
+        ) : (
+          "Launch Login"
+        )}
+      </Button>
+
+      {isCookiePresent && (
+        <Button
+          type="button"
+          size="sm"
+          onClick={onVerify}
+          disabled={isVerifying}
+          className="h-8 px-4 text-xs font-bold rounded-full bg-primary text-primary-foreground hover:bg-primary/90 shadow-2xs hover:shadow-sm transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-[1.03] active:scale-95 cursor-pointer disabled:opacity-50 disabled:hover:scale-100"
+        >
+          {isVerifying ? (
+            <span className="flex items-center gap-1.5">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Verifying…
+            </span>
+          ) : (
+            "Verify"
+          )}
+        </Button>
+      )}
+    </div>
+  )
+}
+
+function XCliDrawer({
+  isCliExpanded,
+  copiedKey,
+  onCopy,
+}: {
+  isCliExpanded: boolean
+  copiedKey: string | null
+  onCopy: (text: string, key: string, label: string) => void
+}) {
+  if (!isCliExpanded) return null
+  const headedLoginCmd = "uv run python scripts/headed_login.py --platform x"
+  const testSessionCmd = "uv run python scripts/test_session.py --platform x"
+
+  return (
+    <div className="p-4 sm:px-6 sm:pb-5 pt-2 bg-muted/10 border-t border-border/40 space-y-3 animate-in slide-in-from-top-1 duration-150">
+      <CliCommandSnippet
+        label="1. Headed Login"
+        command={headedLoginCmd}
+        copiedKey={copiedKey}
+        onCopy={onCopy}
+        copyKey="cli-login"
+      />
+      <CliCommandSnippet
+        label="2. Verify Session"
+        command={testSessionCmd}
+        copiedKey={copiedKey}
+        onCopy={onCopy}
+        copyKey="cli-verify"
+      />
+    </div>
+  )
+}
+
 interface XRowProps {
   isCookiePresent: boolean
   sessionPath: string
@@ -305,146 +458,40 @@ interface XRowProps {
   onCopy: (text: string, key: string, label: string) => void
 }
 
-function XRow({
-  isCookiePresent,
-  sessionPath,
-  isCliExpanded,
-  onToggleCli,
-  isConnecting,
-  isVerifying,
-  onConnect,
-  onVerify,
-  copiedKey,
-  onCopy,
-}: XRowProps) {
-  const headedLoginCmd = "uv run python scripts/headed_login.py --platform x"
-  const testSessionCmd = "uv run python scripts/test_session.py --platform x"
-
+function XRow(props: XRowProps) {
   return (
     <div className="flex flex-col">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:px-6 hover:bg-muted/10 transition-colors">
         <button
           type="button"
-          onClick={onToggleCli}
+          onClick={props.onToggleCli}
           className="flex items-center gap-3.5 min-w-0 text-left cursor-pointer flex-1 group focus:outline-none"
         >
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-foreground/10 text-foreground group-hover:bg-foreground/15 transition-colors">
             <FaXTwitter className="h-5 w-5" />
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-semibold text-sm">X (Twitter)</span>
-              <Badge
-                variant="outline"
-                className="text-[11px] py-0 px-2 font-normal text-muted-foreground rounded-full"
-              >
-                Browser Profile
-              </Badge>
-              {isCookiePresent ? (
-                <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 font-medium bg-emerald-500/10 px-2.5 py-0.5 rounded-full">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{" "}
-                  Session Active
-                </span>
-              ) : (
-                <span className="text-[11px] text-muted-foreground bg-muted px-2.5 py-0.5 rounded-full font-medium">
-                  No Session
-                </span>
-              )}
-            </div>
-
-            {/* Session Path with embedded copy button */}
-            <div className="flex items-center gap-1.5 mt-1">
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-muted/60 border border-border/50 text-xs text-foreground/80 group/path">
-                <Folder className="h-3 w-3 text-muted-foreground/70 shrink-0" />
-                <code className="text-[11px] font-mono truncate max-w-[180px] sm:max-w-[260px] select-all">
-                  {sessionPath}
-                </code>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      className="text-muted-foreground hover:text-foreground p-0.5 rounded-full transition-colors ml-0.5 focus:outline-none cursor-pointer"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onCopy(sessionPath, "path", "Session path")
-                      }}
-                    >
-                      {copiedKey === "path" ? (
-                        <Check className="h-3 w-3 text-emerald-500" />
-                      ) : (
-                        <Copy className="h-3 w-3" />
-                      )}
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">Copy session path</TooltipContent>
-                </Tooltip>
-              </div>
-            </div>
-          </div>
+          <XProfileDetails
+            isCookiePresent={props.isCookiePresent}
+            sessionPath={props.sessionPath}
+            copiedKey={props.copiedKey}
+            onCopy={props.onCopy}
+          />
         </button>
 
-        {/* Right Action Hub without decorative button icons */}
-        <div className="flex items-center gap-2 shrink-0 sm:self-center">
-          <Button
-            onClick={onConnect}
-            disabled={isConnecting}
-            size="sm"
-            variant="outline"
-            className={`h-8 px-4 text-xs font-semibold rounded-full cursor-pointer shadow-none border-border/80 hover:bg-muted/40 ${
-              isCookiePresent ? "min-w-[5.5rem] justify-center" : ""
-            }`}
-          >
-            {isConnecting ? (
-              <span className="flex items-center gap-1.5">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Launching…
-              </span>
-            ) : isCookiePresent ? (
-              "Re-login"
-            ) : (
-              "Launch Login"
-            )}
-          </Button>
-
-          {isCookiePresent && (
-            <Button
-              size="sm"
-              onClick={onVerify}
-              disabled={isVerifying}
-              className="h-8 px-4 min-w-[5.5rem] justify-center text-xs font-semibold shadow-none rounded-full cursor-pointer"
-            >
-              {isVerifying ? (
-                <span className="flex items-center gap-1.5">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Verifying…
-                </span>
-              ) : (
-                "Verify"
-              )}
-            </Button>
-          )}
-        </div>
+        <XActions
+          isCookiePresent={props.isCookiePresent}
+          isConnecting={props.isConnecting}
+          isVerifying={props.isVerifying}
+          onConnect={props.onConnect}
+          onVerify={props.onVerify}
+        />
       </div>
 
-      {/* Expandable CLI command snippets */}
-      {isCliExpanded && (
-        <div className="p-4 sm:px-6 sm:pb-5 pt-2 bg-muted/10 border-t border-border/40 space-y-3 animate-in slide-in-from-top-1 duration-150">
-          <CliCommandSnippet
-            label="1. Headed Login"
-            command={headedLoginCmd}
-            copiedKey={copiedKey}
-            onCopy={onCopy}
-            copyKey="cli-login"
-          />
-          <CliCommandSnippet
-            label="2. Verify Session"
-            command={testSessionCmd}
-            copiedKey={copiedKey}
-            onCopy={onCopy}
-            copyKey="cli-verify"
-          />
-        </div>
-      )}
+      <XCliDrawer
+        isCliExpanded={props.isCliExpanded}
+        copiedKey={props.copiedKey}
+        onCopy={props.onCopy}
+      />
     </div>
   )
 }
