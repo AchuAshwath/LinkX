@@ -14,9 +14,11 @@ interface PlatformSelectorProps {
   /** Selected platform - single value only */
   value: Platform
   /** Callback when platform selection changes */
-  onChange: (platform: Platform) => void
+  onChange?: (platform: Platform) => void
   /** Size variant - 'sm' for smaller (used in Draft/Scheduled posts), 'md' for medium (used in PostInputBox) */
   size?: "sm" | "md"
+  /** Whether the selector is disabled / read-only */
+  disabled?: boolean
   /** Additional className for the container */
   className?: string
 }
@@ -24,7 +26,8 @@ interface PlatformSelectorProps {
 export function PlatformSelector({
   value,
   onChange,
-  size = "md",
+  size = "sm",
+  disabled = false,
   className = "",
 }: PlatformSelectorProps) {
   const { resolvedTheme } = useTheme()
@@ -49,7 +52,9 @@ export function PlatformSelector({
   return (
     <TooltipProvider delayDuration={150}>
       <div
-        className={`relative inline-flex items-center rounded-full border border-border/80 bg-card/60 backdrop-blur-xs select-none ${paddingClass} ${className}`}
+        className={`relative inline-flex items-center rounded-full border border-border/80 bg-card/60 backdrop-blur-xs select-none ${paddingClass} ${
+          disabled ? "cursor-default" : ""
+        } ${className}`}
       >
         {/* Fluid sliding active background indicator */}
         <div
@@ -72,8 +77,13 @@ export function PlatformSelector({
           <TooltipTrigger asChild>
             <button
               type="button"
-              onClick={() => onChange("linkedin")}
-              className={`relative z-10 flex ${buttonClass} items-center justify-center rounded-full transition-colors active:scale-95 cursor-pointer ${
+              disabled={disabled}
+              onClick={() => !disabled && onChange?.("linkedin")}
+              className={`relative z-10 flex ${buttonClass} items-center justify-center rounded-full transition-colors ${
+                disabled
+                  ? "cursor-default pointer-events-none"
+                  : "active:scale-95 cursor-pointer"
+              } ${
                 isLinkedIn
                   ? "text-[#0077b5] font-semibold"
                   : "text-muted-foreground hover:text-[#0077b5]"
@@ -84,7 +94,7 @@ export function PlatformSelector({
             </button>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
-            Post to LinkedIn
+            {disabled ? "Published to LinkedIn" : "Post to LinkedIn"}
           </TooltipContent>
         </Tooltip>
 
@@ -93,17 +103,22 @@ export function PlatformSelector({
           <TooltipTrigger asChild>
             <button
               type="button"
-              onClick={() => onChange("linkx")}
-              className={`relative z-10 flex ${buttonClass} items-center justify-center rounded-full transition-colors active:scale-95 cursor-pointer ${
-                isLinkX ? "opacity-100" : "opacity-50 hover:opacity-100"
-              }`}
+              disabled={disabled}
+              onClick={() => !disabled && onChange?.("linkx")}
+              className={`relative z-10 flex ${buttonClass} items-center justify-center rounded-full transition-colors ${
+                disabled
+                  ? "cursor-default pointer-events-none"
+                  : "active:scale-95 cursor-pointer"
+              } ${isLinkX ? "opacity-100" : "opacity-50 hover:opacity-100"}`}
               aria-label="Cross-post to both LinkedIn and X (LinkX)"
             >
               <img src={linkxIconSrc} alt="LinkX" className={imageSize} />
             </button>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
-            Cross-post to both (LinkX)
+            {disabled
+              ? "Published to LinkX (LinkedIn & X)"
+              : "Cross-post to both (LinkX)"}
           </TooltipContent>
         </Tooltip>
 
@@ -112,8 +127,13 @@ export function PlatformSelector({
           <TooltipTrigger asChild>
             <button
               type="button"
-              onClick={() => onChange("x")}
-              className={`relative z-10 flex ${buttonClass} items-center justify-center rounded-full transition-colors active:scale-95 cursor-pointer ${
+              disabled={disabled}
+              onClick={() => !disabled && onChange?.("x")}
+              className={`relative z-10 flex ${buttonClass} items-center justify-center rounded-full transition-colors ${
+                disabled
+                  ? "cursor-default pointer-events-none"
+                  : "active:scale-95 cursor-pointer"
+              } ${
                 isX
                   ? "text-foreground font-semibold"
                   : "text-muted-foreground hover:text-foreground"
@@ -124,7 +144,7 @@ export function PlatformSelector({
             </button>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
-            Post to X (Twitter)
+            {disabled ? "Published to X (Twitter)" : "Post to X (Twitter)"}
           </TooltipContent>
         </Tooltip>
       </div>

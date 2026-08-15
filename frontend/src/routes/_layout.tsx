@@ -38,7 +38,7 @@ function Layout() {
         <Logo variant="full" className="h-6" />
       </header>
 
-      <div className="mx-auto flex w-full max-w-7xl px-4 lg:px-6">
+      <div className="mx-auto flex w-full max-w-7xl px-0 sm:px-4 lg:px-6">
         {/* Left Sidebar */}
         <Sidebar
           sidebarOpen={sidebarOpen}

@@ -202,6 +202,10 @@ export const PostCard = React.memo(function PostCard({
       post.status === "scheduled",
   )
 
+  const isPosted = Boolean(
+    post.type === "posted" || post.status === "published",
+  )
+
   return (
     <article
       className={`group border-b transition-colors ${
@@ -357,7 +361,7 @@ export const PostCard = React.memo(function PostCard({
               <PostActionFooter
                 isEditing={isEditing}
                 platform={platform}
-                onPlatformChange={handlePlatformChange}
+                onPlatformChange={isPosted ? undefined : handlePlatformChange}
                 isLiked={isLiked}
                 likeCount={likeCount}
                 onLike={handleLike}
@@ -367,6 +371,7 @@ export const PostCard = React.memo(function PostCard({
                 commentsCount={post.comments ?? 0}
                 onComment={() => onComment?.(post.id)}
                 onShare={() => onShare?.(post.id)}
+                isPosted={isPosted}
               />
             </div>
           </div>

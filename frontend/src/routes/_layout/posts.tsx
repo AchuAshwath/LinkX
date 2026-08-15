@@ -452,7 +452,7 @@ function PostsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-7xl min-h-[calc(100vh-3.5rem)]">
-      <div className="border-border min-w-0 flex-1 border-r md:max-w-2xl flex flex-col">
+      <div className="border-border min-w-0 flex-1 border-r-0 md:border-r md:max-w-2xl flex flex-col">
         <Tabs
           value={activeTab}
           onValueChange={(value) =>
@@ -633,7 +633,6 @@ function PostsPage() {
                       onShare={(id) => handlePostAction("share", id)}
                       onPreview={(id) => handlePostAction("preview", id)}
                       onDelete={(id) => handlePostAction("delete", id)}
-                      onPlatformChange={handlePlatformChange}
                     />
                   ))}
                 </div>

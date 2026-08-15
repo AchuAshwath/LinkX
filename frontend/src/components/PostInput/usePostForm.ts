@@ -11,7 +11,7 @@ export function usePostForm() {
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const [content, setContent] = useState("")
   const [scheduledAt, setScheduledAt] = useState<Date | undefined>()
-  const [channel, setChannel] = useState<Platform>("linkedin")
+  const [channel, setChannel] = useState<Platform>("linkx")
   const [actionType, setActionType] = useState<"draft" | "schedule" | "post">(
     "post",
   )
@@ -38,7 +38,7 @@ export function usePostForm() {
       // Reset form
       setContent("")
       setScheduledAt(undefined)
-      setChannel("linkedin")
+      setChannel("linkx")
       setActionType("post")
       // Invalidate queries to refetch posts
       queryClient.invalidateQueries({ queryKey: ["posts"] })

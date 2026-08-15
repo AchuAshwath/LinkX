@@ -356,7 +356,6 @@ function TimelinePage() {
             onShare={(id) => handlePostAction("share", id)}
             onPreview={(id) => handlePostAction("preview", id)}
             onDelete={(id) => handlePostAction("delete", id)}
-            onPlatformChange={handlePlatformChange}
           />
         )
     }
@@ -372,9 +371,9 @@ function TimelinePage() {
   return (
     <div className="flex w-full">
       {/* Feed Column - Center */}
-      <div className="flex-1 min-w-0 max-w-2xl border-r">
+      <div className="flex-1 min-w-0 max-w-2xl border-r-0 md:border-r border-border">
         {/* Sticky top composer */}
-        <div className="border-b p-4">
+        <div className="border-b p-3.5 sm:p-4">
           <PostInputBox
             username={user?.full_name || user?.email || "User"}
             avatarUrl={undefined}

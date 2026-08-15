@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 export interface PostActionFooterProps {
   isEditing?: boolean
   platform: Platform
-  onPlatformChange: (platform: Platform) => void
+  onPlatformChange?: (platform: Platform) => void
   isLiked?: boolean
   likeCount?: number
   onLike?: () => void
@@ -18,6 +18,7 @@ export interface PostActionFooterProps {
   commentsCount?: number
   onComment?: () => void
   onShare?: () => void
+  isPosted?: boolean
 }
 
 export function PostActionFooter({
@@ -33,13 +34,16 @@ export function PostActionFooter({
   commentsCount = 0,
   onComment,
   onShare,
+  isPosted = false,
 }: PostActionFooterProps) {
+  const isPlatformChangeDisabled = Boolean(isPosted || !onPlatformChange)
+
   if (isEditing) {
     return (
       <div className="flex items-center justify-end pt-2">
         <PlatformSelector
           value={platform}
-          onChange={onPlatformChange}
+          onChange={onPlatformChange || (() => {})}
           size="sm"
         />
       </div>
@@ -106,6 +110,7 @@ export function PostActionFooter({
       <PlatformSelector
         value={platform}
         onChange={onPlatformChange}
+        disabled={isPlatformChangeDisabled}
         size="sm"
       />
     </div>
