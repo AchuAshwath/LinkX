@@ -70,6 +70,11 @@ export interface PostCardProps {
   isRetrying?: boolean
 }
 
+function parseScheduledDate(scheduledAt?: Date | string | null): Date | null {
+  if (!scheduledAt) return null
+  return typeof scheduledAt === "string" ? new Date(scheduledAt) : scheduledAt
+}
+
 function PostCardAuthorMeta({
   author,
   createdAt,
@@ -380,37 +385,34 @@ function PostCardScheduleRow({
   )
 }
 
-function usePostCardEditor(
-  post: PostCardData,
+interface EditorOptions {
+  post: PostCardData
   onSave?: (
     id: string,
     data: { content: string; platform: Platform; scheduledAt?: Date | null },
-  ) => void,
-  onCancel?: () => void,
-  onPlatformChange?: (id: string, platform: Platform) => void,
-) {
+  ) => void
+  onCancel?: () => void
+  onPlatformChange?: (id: string, platform: Platform) => void
+}
+
+function usePostCardEditor({
+  post,
+  onSave,
+  onCancel,
+  onPlatformChange,
+}: EditorOptions) {
   const [platform, setPlatform] = React.useState<Platform>(
     post.platform || "linkx",
   )
   const [editedContent, setEditedContent] = React.useState(post.content)
   const [editedScheduledAt, setEditedScheduledAt] = React.useState<Date | null>(
-    post.scheduledAt
-      ? typeof post.scheduledAt === "string"
-        ? new Date(post.scheduledAt)
-        : post.scheduledAt
-      : null,
+    parseScheduledDate(post.scheduledAt),
   )
 
   React.useEffect(() => {
     setEditedContent(post.content)
     setPlatform(post.platform || "linkx")
-    if (post.scheduledAt) {
-      setEditedScheduledAt(
-        typeof post.scheduledAt === "string"
-          ? new Date(post.scheduledAt)
-          : post.scheduledAt,
-      )
-    }
+    setEditedScheduledAt(parseScheduledDate(post.scheduledAt))
   }, [post.content, post.platform, post.scheduledAt])
 
   const handleSave = React.useCallback(() => {
@@ -424,13 +426,7 @@ function usePostCardEditor(
   const handleCancel = React.useCallback(() => {
     setEditedContent(post.content)
     setPlatform(post.platform || "linkx")
-    if (post.scheduledAt) {
-      setEditedScheduledAt(
-        typeof post.scheduledAt === "string"
-          ? new Date(post.scheduledAt)
-          : post.scheduledAt,
-      )
-    }
+    setEditedScheduledAt(parseScheduledDate(post.scheduledAt))
     onCancel?.()
   }, [onCancel, post.content, post.platform, post.scheduledAt])
 
@@ -634,9 +630,17 @@ function PostCardLayout({
 }
 
 export const PostCard = React.memo(function PostCard(props: PostCardProps) {
-  const { post, onSave, onCancel, onPlatformChange, onLike, onRepost } = props
-  const editor = usePostCardEditor(post, onSave, onCancel, onPlatformChange)
-  const engagement = usePostCardEngagement(post, onLike, onRepost)
+  const editor = usePostCardEditor({
+    post: props.post,
+    onSave: props.onSave,
+    onCancel: props.onCancel,
+    onPlatformChange: props.onPlatformChange,
+  })
+  const engagement = usePostCardEngagement(
+    props.post,
+    props.onLike,
+    props.onRepost,
+  )
 
   return <PostCardLayout {...props} editor={editor} engagement={engagement} />
 })
