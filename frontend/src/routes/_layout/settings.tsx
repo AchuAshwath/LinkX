@@ -84,6 +84,34 @@ function SettingsHeader() {
   )
 }
 
+function ProfileHeaderRow({ fullName }: { fullName?: string }) {
+  const initials = getInitials(fullName || "User")
+
+  return (
+    <div className="flex items-center gap-3.5">
+      <Avatar className="h-10 w-10 shrink-0">
+        <AvatarFallback className="bg-primary/10 text-primary font-bold text-sm">
+          {initials}
+        </AvatarFallback>
+      </Avatar>
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-sm">Profile Details</span>
+          <Badge
+            variant="outline"
+            className="text-[11px] py-0 px-2 font-normal text-muted-foreground rounded-full"
+          >
+            Personal Info
+          </Badge>
+        </div>
+        <p className="text-xs text-muted-foreground mt-0.5 truncate">
+          Your display name and primary contact email.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 interface ProfileRowProps {
   currentUser: any
   onUpdateProfile: (data: ProfileFormData) => void
@@ -115,31 +143,9 @@ function ProfileRow({
     })
   }, [currentUser?.full_name, currentUser?.email, reset])
 
-  const initials = getInitials(currentUser?.full_name || "User")
-
   return (
     <div className="p-4 sm:p-6 space-y-4 hover:bg-muted/5 transition-colors">
-      <div className="flex items-center gap-3.5">
-        <Avatar className="h-10 w-10 shrink-0">
-          <AvatarFallback className="bg-primary/10 text-primary font-bold text-sm">
-            {initials}
-          </AvatarFallback>
-        </Avatar>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-sm">Profile Details</span>
-            <Badge
-              variant="outline"
-              className="text-[11px] py-0 px-2 font-normal text-muted-foreground rounded-full"
-            >
-              Personal Info
-            </Badge>
-          </div>
-          <p className="text-xs text-muted-foreground mt-0.5 truncate">
-            Your display name and primary contact email.
-          </p>
-        </div>
-      </div>
+      <ProfileHeaderRow fullName={currentUser?.full_name} />
 
       <form onSubmit={handleSubmit(onUpdateProfile)} className="space-y-4 pt-1">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -503,11 +509,10 @@ function DeleteAccountDialog({
   )
 }
 
-export function SettingsPage() {
-  const { user, logout } = useAuth()
+function useSettingsActions() {
+  const { logout } = useAuth()
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const queryClient = useQueryClient()
-  const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
   const [passwordDialogOpen, setPasswordDialogOpen] = React.useState(false)
 
   const updateProfileMutation = useMutation({
@@ -538,6 +543,26 @@ export function SettingsPage() {
     },
     onError: handleError.bind(showErrorToast),
   })
+
+  return {
+    passwordDialogOpen,
+    setPasswordDialogOpen,
+    updateProfileMutation,
+    updatePasswordMutation,
+    deleteAccountMutation,
+  }
+}
+
+export function SettingsPage() {
+  const { user } = useAuth()
+  const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
+  const {
+    passwordDialogOpen,
+    setPasswordDialogOpen,
+    updateProfileMutation,
+    updatePasswordMutation,
+    deleteAccountMutation,
+  } = useSettingsActions()
 
   const handleUpdateProfile = (data: ProfileFormData) => {
     const payload: UserUpdateMe = {}
