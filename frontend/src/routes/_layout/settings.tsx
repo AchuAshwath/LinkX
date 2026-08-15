@@ -179,14 +179,15 @@ function ProfileCard({
           form="profile-form"
           disabled={!isDirty || isUpdating}
           size="sm"
-          className="h-8 px-4 text-xs font-bold rounded-full bg-primary text-primary-foreground hover:bg-primary/90 shadow-none cursor-pointer transition-all disabled:opacity-50 shrink-0"
+          className="h-8 px-4 text-xs font-bold rounded-full bg-white text-black hover:bg-white/95 border border-zinc-200/90 shadow-2xs hover:shadow-sm transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-[1.03] active:scale-95 cursor-pointer disabled:opacity-50 disabled:hover:scale-100 shrink-0"
         >
           {isUpdating ? (
             <span className="flex items-center gap-1.5">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-black" />{" "}
+              Saving…
             </span>
           ) : (
-            "Save Changes"
+            "Save"
           )}
         </Button>
       </div>
