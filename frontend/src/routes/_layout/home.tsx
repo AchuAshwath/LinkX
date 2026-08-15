@@ -29,7 +29,6 @@ import useAuth from "@/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
 import { transformToPostedPost, transformToScheduledPost } from "@/utils"
 
-// Union type for timeline posts
 type TimelinePost =
   | (PostedData & { type: "posted" })
   | (ScheduledPostData & { type: "scheduled" })
@@ -45,24 +44,50 @@ export const Route = createFileRoute("/_layout/home")({
   }),
 })
 
+function convertToPreviewData(post: TimelinePost): PreviewPostData {
+  if (post.type === "posted") {
+    return {
+      id: post.id,
+      author: {
+        name: post.author.name,
+        username: post.author.username,
+        avatarUrl: post.author.avatarUrl ?? undefined,
+      },
+      content: post.content,
+      imageUrl: post.imageUrl ?? undefined,
+      createdAt: post.createdAt,
+      likes: post.likes,
+      reposts: post.reposts,
+      comments: post.comments,
+    }
+  }
+  return {
+    id: post.id,
+    author: {
+      name: post.author.name,
+      username: post.author.username,
+      avatarUrl: post.author.avatarUrl ?? undefined,
+    },
+    content: post.content,
+    imageUrl: post.imageUrl ?? undefined,
+    createdAt: post.createdAt,
+    scheduledAt: post.scheduledAt ?? undefined,
+  }
+}
+
 function TimelinePage() {
   const queryClient = useQueryClient()
   const { user } = useAuth()
 
-  // Topic draft state for pre-filling composer
   const [draftContent, setDraftContent] = React.useState<string>("")
-
-  // Edit state management
   const [editingPostId, setEditingPostId] = React.useState<string | null>(null)
 
-  // Delete confirmation dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
   const [postToDelete, setPostToDelete] = React.useState<{
     id: string
     type: "draft" | "scheduled" | "posted"
   } | null>(null)
 
-  // Preview dialog state
   const [previewDialogOpen, setPreviewDialogOpen] = React.useState(false)
   const [previewPost, setPreviewPost] = React.useState<PreviewPostData | null>(
     null,
@@ -70,40 +95,33 @@ function TimelinePage() {
 
   const { showSuccessToast, showErrorToast } = useCustomToast()
 
-  // Fetch scheduled and published posts for timeline
   const { data: scheduledData, isLoading: isLoadingScheduled } = useQuery({
     queryKey: ["posts", "scheduled"],
-    queryFn: async () => {
-      return await PostsService.readPosts({
+    queryFn: async () =>
+      PostsService.readPosts({
         status: "scheduled",
         skip: 0,
         limit: 100,
-      })
-    },
+      }),
   })
 
   const { data: publishedData, isLoading: isLoadingPublished } = useQuery({
     queryKey: ["posts", "published"],
-    queryFn: async () => {
-      return await PostsService.readPosts({
+    queryFn: async () =>
+      PostsService.readPosts({
         status: "published",
         skip: 0,
         limit: 100,
-      })
-    },
+      }),
   })
 
-  // Fetch live trending topics from DB
   const { data: trendingData } = useQuery({
     queryKey: ["trending"],
-    queryFn: async () => {
-      return await TrendingService.getTrending()
-    },
+    queryFn: async () => TrendingService.getTrending(),
   })
   const trendingTopics = trendingData?.data ?? []
   const latestScrapedAt = trendingTopics[0]?.scraped_at ?? null
 
-  // Transform API data to timeline posts
   const posts: TimelinePost[] = React.useMemo(() => {
     const scheduled: TimelinePost[] = (scheduledData?.data || [])
       .filter((p) => p.status === "scheduled" && p.scheduled_at)
@@ -148,17 +166,14 @@ function TimelinePage() {
     return [...scheduled, ...posted]
   }, [scheduledData, publishedData])
 
-  // Delete mutation
   const deleteMutation = useMutation({
-    mutationFn: async (postId: string) => {
-      await PostsService.deleteExistingPost({ postId })
-    },
+    mutationFn: async (postId: string) =>
+      PostsService.deleteExistingPost({ postId }),
     onSuccess: () => {
       if (postToDelete) {
         showSuccessToast("Post deleted successfully")
         setDeleteDialogOpen(false)
         setPostToDelete(null)
-        // Invalidate and refetch posts
         queryClient.invalidateQueries({ queryKey: ["posts"] })
       }
     },
@@ -168,7 +183,6 @@ function TimelinePage() {
     },
   })
 
-  // Update mutation
   const updateMutation = useMutation({
     mutationFn: async ({
       postId,
@@ -183,12 +197,11 @@ function TimelinePage() {
         scheduled_at?: string
         status?: string
       }
-    }) => {
-      return await PostsService.updateExistingPost({
+    }) =>
+      PostsService.updateExistingPost({
         postId,
         requestBody: data,
-      })
-    },
+      }),
     onSuccess: () => {
       showSuccessToast("Post updated successfully")
       setEditingPostId(null)
@@ -214,29 +227,6 @@ function TimelinePage() {
     }
   }
 
-  const handlePostAction = (action: string, postId: string) => {
-    if (action === "delete") {
-      handleDelete(postId, "posted")
-    } else if (action === "preview") {
-      handlePreview(postId)
-    } else {
-      // Handle post actions (like, repost, comment, share)
-      console.log(`${action} post ${postId}`)
-    }
-  }
-
-  const handleScheduledAction = (action: string, postId: string) => {
-    if (action === "edit") {
-      setEditingPostId(postId)
-    } else if (action === "cancel" || action === "delete") {
-      handleDelete(postId, "scheduled")
-    } else if (action === "preview") {
-      handlePreview(postId)
-    } else {
-      console.log(`${action} scheduled post ${postId}`)
-    }
-  }
-
   const handleSaveScheduled = (
     postId: string,
     data: { content: string; platform: Platform; scheduledAt?: Date | null },
@@ -253,47 +243,11 @@ function TimelinePage() {
     })
   }
 
-  const handleCancel = () => {
-    setEditingPostId(null)
-  }
-
   const handlePlatformChange = (postId: string, platform: Platform) => {
     updateMutation.mutate({
       postId,
       data: { platform },
     })
-  }
-
-  const convertToPreviewData = (post: TimelinePost): PreviewPostData => {
-    if (post.type === "posted") {
-      return {
-        id: post.id,
-        author: {
-          name: post.author.name,
-          username: post.author.username,
-          avatarUrl: post.author.avatarUrl ?? undefined,
-        },
-        content: post.content,
-        imageUrl: post.imageUrl ?? undefined,
-        createdAt: post.createdAt,
-        likes: post.likes,
-        reposts: post.reposts,
-        comments: post.comments,
-      }
-    }
-    // scheduled
-    return {
-      id: post.id,
-      author: {
-        name: post.author.name,
-        username: post.author.username,
-        avatarUrl: post.author.avatarUrl ?? undefined,
-      },
-      content: post.content,
-      imageUrl: post.imageUrl ?? undefined,
-      createdAt: post.createdAt,
-      scheduledAt: post.scheduledAt ?? undefined,
-    }
   }
 
   const handlePreview = (postId: string) => {
@@ -313,7 +267,6 @@ function TimelinePage() {
     const toTime = (d: Date | string) =>
       (typeof d === "string" ? new Date(d) : d).getTime()
 
-    // Sort by relevant date: scheduledAt for scheduled posts, createdAt for posted posts
     return [...posts].sort((a, b) => {
       const aTime =
         a.type === "scheduled" && a.scheduledAt
@@ -323,50 +276,9 @@ function TimelinePage() {
         b.type === "scheduled" && b.scheduledAt
           ? toTime(b.scheduledAt)
           : toTime(b.createdAt)
-      return bTime - aTime // Descending: newest first
+      return bTime - aTime
     })
   }, [posts])
-
-  const renderPost = (post: TimelinePost) => {
-    const isEditing = editingPostId === post.id
-
-    switch (post.type) {
-      case "scheduled":
-        return (
-          <ScheduledPost
-            key={post.id}
-            post={post}
-            isEditing={isEditing}
-            onEdit={(id) => handleScheduledAction("edit", id)}
-            onDelete={(id) => handleScheduledAction("delete", id)}
-            onSave={handleSaveScheduled}
-            onCancel={handleCancel}
-            onPlatformChange={handlePlatformChange}
-            onPreview={(id) => handleScheduledAction("preview", id)}
-          />
-        )
-      case "posted":
-        return (
-          <Posted
-            key={post.id}
-            post={post}
-            onLike={(id) => handlePostAction("like", id)}
-            onRepost={(id) => handlePostAction("repost", id)}
-            onComment={(id) => handlePostAction("comment", id)}
-            onShare={(id) => handlePostAction("share", id)}
-            onPreview={(id) => handlePostAction("preview", id)}
-            onDelete={(id) => handlePostAction("delete", id)}
-          />
-        )
-    }
-  }
-
-  const handlePostCreated = () => {
-    // Clear draftContent on successful create
-    setDraftContent("")
-    // Posts will be refetched automatically via query invalidation
-    queryClient.invalidateQueries({ queryKey: ["posts"] })
-  }
 
   return (
     <div className="flex w-full">
@@ -378,7 +290,10 @@ function TimelinePage() {
             username={user?.full_name || user?.email || "User"}
             avatarUrl={undefined}
             initialContent={draftContent}
-            onSubmit={handlePostCreated}
+            onSubmit={() => {
+              setDraftContent("")
+              queryClient.invalidateQueries({ queryKey: ["posts"] })
+            }}
           />
         </div>
 
@@ -399,7 +314,32 @@ function TimelinePage() {
           </div>
         ) : (
           <div className="w-full pb-20">
-            {sortedPosts.map((post) => renderPost(post))}
+            {sortedPosts.map((post) => {
+              if (post.type === "scheduled") {
+                return (
+                  <ScheduledPost
+                    key={post.id}
+                    post={post}
+                    isEditing={editingPostId === post.id}
+                    onEdit={(id) => setEditingPostId(id)}
+                    onDelete={(id) => handleDelete(id, "scheduled")}
+                    onSave={handleSaveScheduled}
+                    onCancel={() => setEditingPostId(null)}
+                    onPlatformChange={handlePlatformChange}
+                    onPreview={(id) => handlePreview(id)}
+                  />
+                )
+              }
+
+              return (
+                <Posted
+                  key={post.id}
+                  post={post}
+                  onPreview={(id) => handlePreview(id)}
+                  onDelete={(id) => handleDelete(id, "posted")}
+                />
+              )
+            })}
           </div>
         )}
       </div>

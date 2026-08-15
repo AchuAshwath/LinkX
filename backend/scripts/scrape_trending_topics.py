@@ -445,19 +445,8 @@ def _save_topic_record(payload: TopicRecordPayload) -> None:
         logger.info(f"💾 Saved topic '{db_topic.topic_title}' to DB.")
 
 
-async def scrape_trending_topics(
-    *,
-    user_id: str | None = None,
-    max_topics: int | None = None,
-    headless: bool | None = None,
-) -> ScrapeResult:
-    """Scrape trending news topics from X.com."""
-    if headless is not None:
-        os.environ["PLAYWRIGHT_HEADLESS"] = "1" if headless else "0"
-    elif "PLAYWRIGHT_HEADLESS" not in os.environ:
-        os.environ["PLAYWRIGHT_HEADLESS"] = "0"
-
-    db_user_id = None
+def _resolve_target_user(user_id: str | None) -> Any:
+    """Resolve the user ID from database for scoping scraped topics."""
     with Session(engine) as session:
         if user_id:
             try:
@@ -472,25 +461,88 @@ async def scrape_trending_topics(
                 user = session.exec(select(User)).first()
 
         if user:
-            db_user_id = user.id
-        else:
-            logger.warning("No user found. DB save will be skipped.")
+            return user.id
+        logger.warning("No user found. DB save will be skipped.")
+        return None
 
-    config_path = Path(__file__).parent.parent / "scrape_config.json"
-    with open(config_path) as f:
-        config = json.load(f)
 
-    if max_topics is None:
-        max_topics = config.get("max_topics_to_scrape", 3)
-    scrolls_per_topic = config.get("scrolls_per_topic", 2)
-    min_delay = config.get("min_delay_between_topics", 4.0)
-    max_delay = config.get("max_delay_between_topics", 7.0)
+async def _extract_candidate_summary(
+    page: Any, summary_selectors: list[str]
+) -> str | None:
+    """Extract Grok or event summary from a topic page."""
+    summary_text = await extract_grok_summary(page)
+    if summary_text:
+        return summary_text
+
+    for sel in summary_selectors:
+        try:
+            summary_locator = page.locator(sel).first
+            if await summary_locator.count() > 0:
+                candidate = await summary_locator.inner_text()
+                if candidate and len(candidate.strip()) > 30:
+                    return candidate.strip()
+        except Exception:
+            continue
+    return None
+
+
+async def _navigate_and_verify_topic(
+    page: Any,
+    mouse: EvasionMouse,
+    target_id: str,
+    is_href: bool,
+    tweet_selector: str,
+) -> tuple[bool, TopicFailure | None]:
+    """Click a topic link and verify the resulting page state."""
+    selector = f'a[href="{target_id}"]' if is_href else f'[data-testid="{target_id}"]'
+    link_locator = page.locator(selector).first
+
+    if is_href:
+        try:
+            await link_locator.evaluate("node => node.removeAttribute('target')")
+        except Exception as e:
+            logger.debug(f"Could not remove target attribute: {e}")
+
+    await mouse.human_click(selector=selector)
+    logger.info("Navigated to topic page. Waiting for content...")
+
+    try:
+        await page.wait_for_selector(tweet_selector, state="visible", timeout=15000)
+    except PlaywrightError:
+        logger.warning(f"Timeout waiting for tweets on {target_id}. Skipping.")
+        failure = TopicFailure(
+            topic_id=target_id,
+            reason="timeout",
+            detail="Timed out waiting for tweet selector after 15s.",
+        )
+        return False, failure
+
+    topic_page_state = await detect_page_state(page)
+    if topic_page_state != "ok":
+        failure = TopicFailure(
+            topic_id=target_id,
+            reason="page_state_error",
+            detail=f"detect_page_state returned: {topic_page_state}",
+        )
+        return False, failure
+
+    return True, None
+
+
+async def _process_single_topic(
+    page: Any,
+    mouse: EvasionMouse,
+    target_id: str,
+    target_title: str,
+    is_href: bool,
+    db_user_id: Any,
+    config: dict[str, Any],
+) -> tuple[bool, TopicFailure | None]:
+    """Process a single topic navigation, scraping, and database persistence."""
+    logger.info(f"Targeting topic: {target_id}")
+    await random_delay(min_sec=1.0, max_sec=3.0)
 
     selectors = config.get("selectors", {})
-    sidebar_selector = selectors.get(
-        "sidebar_container", "[data-testid='sidebarColumn']"
-    )
-    sidebar_link_selector = selectors.get("sidebar_link", "a[role='link']")
     tweet_selector = selectors.get("tweet_container", "[data-testid='tweet']")
     summary_selectors = selectors.get(
         "summary_selectors",
@@ -500,6 +552,86 @@ async def scrape_trending_topics(
             "div[data-testid='cellInnerDiv']",
         ],
     )
+    scrolls_per_topic = config.get("scrolls_per_topic", 2)
+
+    ok, failure = await _navigate_and_verify_topic(
+        page, mouse, target_id, is_href, tweet_selector
+    )
+    if not ok:
+        await page.goto("https://x.com/home", wait_until="domcontentloaded")
+        await random_delay(min_sec=3.0, max_sec=5.0)
+        return False, failure
+
+    await random_delay(min_sec=2.0, max_sec=5.0)
+    summary_text = await _extract_candidate_summary(page, summary_selectors)
+    conversations = await _scrape_topic_tweets(
+        page, mouse, tweet_selector, scrolls_per_topic
+    )
+    title_data = parse_title_metadata(target_title)
+    scraped_at = datetime.now(timezone.utc)
+
+    db_failure = None
+    try:
+        _save_topic_record(
+            TopicRecordPayload(
+                db_user_id=db_user_id,
+                topic_url=page.url,
+                title_data=title_data,
+                summary_text=summary_text,
+                conversations=conversations,
+                scraped_at=scraped_at,
+            )
+        )
+    except Exception as e:
+        logger.error(f"DB save error: {e}")
+        db_failure = TopicFailure(
+            topic_id=target_id,
+            reason="db_error",
+            detail=str(e),
+        )
+
+    await page.goto("https://x.com/home", wait_until="domcontentloaded")
+    min_delay = config.get("min_delay_between_topics", 4.0)
+    max_delay = config.get("max_delay_between_topics", 7.0)
+    delay = random.uniform(min_delay, max_delay)
+    await random_delay(min_sec=delay, max_sec=delay)
+
+    if len(conversations) == 0:
+        return True, TopicFailure(
+            topic_id=target_id,
+            reason="no_tweets",
+            detail="Page loaded but no tweets could be extracted.",
+        )
+
+    return True, db_failure
+
+
+async def scrape_trending_topics(
+    *,
+    user_id: str | None = None,
+    max_topics: int | None = None,
+    headless: bool | None = None,
+) -> ScrapeResult:
+    """Scrape trending news topics from X.com."""
+    if headless is not None:
+        os.environ["PLAYWRIGHT_HEADLESS"] = "1" if headless else "0"
+    elif "PLAYWRIGHT_HEADLESS" not in os.environ:
+        os.environ["PLAYWRIGHT_HEADLESS"] = "0"
+
+    db_user_id = _resolve_target_user(user_id)
+
+    config_path = Path(__file__).parent.parent / "scrape_config.json"
+    with open(config_path) as f:
+        config = json.load(f)
+
+    if max_topics is None:
+        max_topics = config.get("max_topics_to_scrape", 3)
+
+    selectors = config.get("selectors", {})
+    sidebar_selector = selectors.get(
+        "sidebar_container", "[data-testid='sidebarColumn']"
+    )
+    sidebar_link_selector = selectors.get("sidebar_link", "a[role='link']")
     heuristic = config.get("link_heuristic", {})
 
     result = ScrapeResult(status="error")
@@ -510,12 +642,11 @@ async def scrape_trending_topics(
         async with manager.get_context(
             "x", headless=(os.environ["PLAYWRIGHT_HEADLESS"] == "1")
         ) as context:
-            if len(context.pages) > 0:
-                page = context.pages[0]
-                for p in context.pages[1:]:
-                    await p.close()
-            else:
-                page = await context.new_page()
+            page = (
+                context.pages[0] if len(context.pages) > 0 else await context.new_page()
+            )
+            for p in context.pages[1:]:
+                await p.close()
 
             mouse = EvasionMouse(page)
             asyncio.create_task(mouse.start_idle())
@@ -552,115 +683,19 @@ async def scrape_trending_topics(
 
             for target_id, is_href in targets:
                 target_title = news_titles[target_id]
-                logger.info(f"Targeting topic: {target_id}")
-                await random_delay(min_sec=1.0, max_sec=3.0)
-
-                selector = (
-                    f'a[href="{target_id}"]'
-                    if is_href
-                    else f'[data-testid="{target_id}"]'
+                scraped, failure = await _process_single_topic(
+                    page=page,
+                    mouse=mouse,
+                    target_id=target_id,
+                    target_title=target_title,
+                    is_href=is_href,
+                    db_user_id=db_user_id,
+                    config=config,
                 )
-                link_locator = page.locator(selector).first
-
-                if is_href:
-                    try:
-                        await link_locator.evaluate(
-                            "node => node.removeAttribute('target')"
-                        )
-                    except Exception as e:
-                        logger.debug(f"Could not remove target attribute: {e}")
-
-                await mouse.human_click(selector=selector)
-                logger.info("Navigated to topic page. Waiting for content...")
-                try:
-                    await page.wait_for_selector(
-                        tweet_selector, state="visible", timeout=15000
-                    )
-                except PlaywrightError:
-                    logger.warning(
-                        f"Timeout waiting for tweets on {target_id}. Skipping."
-                    )
-                    result.topics_failed.append(
-                        TopicFailure(
-                            topic_id=target_id,
-                            reason="timeout",
-                            detail="Timed out waiting for tweet selector after 15s.",
-                        )
-                    )
-                    await page.goto("https://x.com/home", wait_until="domcontentloaded")
-                    await random_delay(min_sec=3.0, max_sec=5.0)
-                    continue
-
-                topic_page_state = await detect_page_state(page)
-                if topic_page_state != "ok":
-                    result.topics_failed.append(
-                        TopicFailure(
-                            topic_id=target_id,
-                            reason="page_state_error",
-                            detail=f"detect_page_state returned: {topic_page_state}",
-                        )
-                    )
-                    await page.goto("https://x.com/home", wait_until="domcontentloaded")
-                    await random_delay(min_sec=3.0, max_sec=5.0)
-                    continue
-
-                await random_delay(min_sec=2.0, max_sec=5.0)
-                summary_text = await extract_grok_summary(page)
-                if not summary_text:
-                    for sel in summary_selectors:
-                        try:
-                            summary_locator = page.locator(sel).first
-                            if await summary_locator.count() > 0:
-                                candidate = await summary_locator.inner_text()
-                                if candidate and len(candidate.strip()) > 30:
-                                    summary_text = candidate.strip()
-                                    break
-                        except Exception:
-                            continue
-
-                conversations = await _scrape_topic_tweets(
-                    page, mouse, tweet_selector, scrolls_per_topic
-                )
-                title_data = parse_title_metadata(target_title)
-                scraped_at = datetime.now(timezone.utc)
-
-                try:
-                    _save_topic_record(
-                        TopicRecordPayload(
-                            db_user_id=db_user_id,
-                            topic_url=page.url,
-                            title_data=title_data,
-                            summary_text=summary_text,
-                            conversations=conversations,
-                            scraped_at=scraped_at,
-                        )
-                    )
-                except Exception as e:
-                    logger.error(f"DB save error: {e}")
-                    result.topics_failed.append(
-                        TopicFailure(
-                            topic_id=target_id,
-                            reason="db_error",
-                            detail=str(e),
-                        )
-                    )
-
-                result.topics_scraped += 1
-                if len(conversations) == 0:
-                    result.topics_failed.append(
-                        TopicFailure(
-                            topic_id=target_id,
-                            reason="no_tweets",
-                            detail="Page loaded but no tweets could be extracted.",
-                        )
-                    )
-
-                await page.goto("https://x.com/home", wait_until="domcontentloaded")
-                delay = random.uniform(min_delay, max_delay)
-                await random_delay(min_sec=delay, max_sec=delay)
-                if random.random() < 0.20:
-                    extra = random.uniform(3.0, 8.0)
-                    await random_delay(min_sec=extra, max_sec=extra)
+                if scraped:
+                    result.topics_scraped += 1
+                if failure:
+                    result.topics_failed.append(failure)
 
             await mouse.stop_idle()
 

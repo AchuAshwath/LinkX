@@ -70,6 +70,191 @@ export interface PostCardProps {
   isRetrying?: boolean
 }
 
+interface PostCardHeaderProps {
+  author: PostAuthorData
+  createdAt: Date | string
+  scheduledAt?: Date | string | null
+  isScheduled: boolean
+  scheduledDateTime: string
+  isEditing: boolean
+  canSave: boolean
+  onCancel: () => void
+  onSave: () => void
+  onPreview?: () => void
+  onEdit?: () => void
+  onDelete?: () => void
+}
+
+function PostCardHeader({
+  author,
+  createdAt,
+  scheduledAt,
+  isScheduled,
+  scheduledDateTime,
+  isEditing,
+  canSave,
+  onCancel,
+  onSave,
+  onPreview,
+  onEdit,
+  onDelete,
+}: PostCardHeaderProps) {
+  const relativeTime = React.useMemo(
+    () => formatRelativeTime(createdAt),
+    [createdAt],
+  )
+  const fullDateTime = React.useMemo(
+    () => formatFullDateTime(createdAt),
+    [createdAt],
+  )
+
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex min-w-0 items-center gap-1.5 flex-wrap sm:flex-nowrap">
+        <button
+          type="button"
+          className="truncate text-sm font-semibold hover:underline focus:outline-none"
+          aria-label={`View ${author.name}'s profile`}
+        >
+          {author.name}
+        </button>
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0">
+          <span className="shrink-0">@{author.username}</span>
+          <span className="shrink-0" aria-hidden="true">
+            ·
+          </span>
+          {isScheduled && scheduledAt ? (
+            <span
+              title={`Scheduled for ${scheduledDateTime}`}
+              className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline cursor-default"
+            >
+              <Clock className="h-3 w-3 shrink-0" />
+              {scheduledDateTime}
+            </span>
+          ) : (
+            <time
+              dateTime={
+                typeof createdAt === "string"
+                  ? createdAt
+                  : createdAt.toISOString()
+              }
+              title={fullDateTime}
+              className="shrink-0 text-xs hover:underline"
+            >
+              {relativeTime}
+            </time>
+          )}
+        </div>
+      </div>
+
+      {isEditing ? (
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onCancel}
+            className="h-8 px-3 text-xs"
+          >
+            <X className="mr-1.5 h-3.5 w-3.5" />
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            onClick={onSave}
+            className="h-8 px-3 text-xs"
+            disabled={!canSave}
+          >
+            <Check className="mr-1.5 h-3.5 w-3.5" />
+            Save
+          </Button>
+        </div>
+      ) : (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              aria-label="More options"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {onPreview && (
+              <DropdownMenuItem onClick={onPreview}>
+                <Eye className="mr-2 h-4 w-4" />
+                Preview
+              </DropdownMenuItem>
+            )}
+            {onEdit && (
+              <DropdownMenuItem onClick={onEdit}>
+                <Edit className="mr-2 h-4 w-4" />
+                Edit
+              </DropdownMenuItem>
+            )}
+            {onDelete && (
+              <DropdownMenuItem
+                onClick={onDelete}
+                className="text-destructive focus:text-destructive"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </div>
+  )
+}
+
+interface FailureNoticeProps {
+  errorReason?: string | null
+  onRetry?: () => void
+  isRetrying: boolean
+}
+
+function FailureNotice({
+  errorReason,
+  onRetry,
+  isRetrying,
+}: FailureNoticeProps) {
+  return (
+    <div className="mt-2 flex items-center justify-between gap-2 text-xs text-destructive">
+      <div className="flex items-center gap-1.5 min-w-0 flex-1">
+        <AlertCircle className="h-3.5 w-3.5 shrink-0 text-destructive" />
+        <span className="truncate font-medium">
+          {errorReason || "Publish failed"}
+        </span>
+      </div>
+
+      {onRetry && (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={onRetry}
+          disabled={isRetrying}
+          className="h-6.5 px-2.5 text-[11px] font-bold border-destructive/40 bg-background text-destructive hover:bg-destructive/15 rounded-full cursor-pointer shadow-2xs transition-all active:scale-95 shrink-0"
+        >
+          {isRetrying ? (
+            <>
+              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+              Retrying…
+            </>
+          ) : (
+            <>
+              <RotateCcw className="mr-1 h-3 w-3" />
+              Retry
+            </>
+          )}
+        </Button>
+      )}
+    </div>
+  )
+}
+
 export const PostCard = React.memo(function PostCard({
   post,
   isEditing = false,
@@ -116,14 +301,6 @@ export const PostCard = React.memo(function PostCard({
   }, [post.content, post.platform, post.scheduledAt])
 
   const initials = getInitials(post.author.name)
-
-  const relativeTime = React.useMemo(() => {
-    return formatRelativeTime(post.createdAt)
-  }, [post.createdAt])
-
-  const fullDateTime = React.useMemo(() => {
-    return formatFullDateTime(post.createdAt)
-  }, [post.createdAt])
 
   const scheduledDateTime = React.useMemo(() => {
     if (!post.scheduledAt) return ""
@@ -176,9 +353,7 @@ export const PostCard = React.memo(function PostCard({
       post.type === "scheduled" ||
       post.status === "scheduled",
   )
-
   const isFailed = Boolean(post.status === "failed")
-
   const isPosted = Boolean(
     post.type === "posted" || post.status === "published",
   )
@@ -192,7 +367,6 @@ export const PostCard = React.memo(function PostCard({
     >
       <div className="p-3 sm:p-4">
         <div className="flex gap-2.5 sm:gap-3">
-          {/* Avatar */}
           <div className="flex-shrink-0">
             <Avatar className="h-10 w-10 cursor-pointer transition-transform hover:scale-105">
               {post.author.avatarUrl ? (
@@ -207,109 +381,22 @@ export const PostCard = React.memo(function PostCard({
             </Avatar>
           </div>
 
-          {/* Post Body Column */}
           <div className="min-w-0 flex-1">
-            {/* Header: Author + Username + Date / Scheduled Time + Menu */}
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex min-w-0 items-center gap-1.5 flex-wrap sm:flex-nowrap">
-                <button
-                  type="button"
-                  className="truncate text-sm font-semibold hover:underline focus:outline-none"
-                  aria-label={`View ${post.author.name}'s profile`}
-                >
-                  {post.author.name}
-                </button>
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0">
-                  <span className="shrink-0">@{post.author.username}</span>
-                  <span className="shrink-0" aria-hidden="true">
-                    ·
-                  </span>
-                  {/* If scheduled, display the scheduled time right where the date is */}
-                  {isScheduled && post.scheduledAt ? (
-                    <span
-                      title={`Scheduled for ${scheduledDateTime}`}
-                      className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline cursor-default"
-                    >
-                      <Clock className="h-3 w-3 shrink-0" />
-                      {scheduledDateTime}
-                    </span>
-                  ) : (
-                    <time
-                      dateTime={
-                        typeof post.createdAt === "string"
-                          ? post.createdAt
-                          : post.createdAt.toISOString()
-                      }
-                      title={fullDateTime}
-                      className="shrink-0 text-xs hover:underline"
-                    >
-                      {relativeTime}
-                    </time>
-                  )}
-                </div>
-              </div>
+            <PostCardHeader
+              author={post.author}
+              createdAt={post.createdAt}
+              scheduledAt={post.scheduledAt}
+              isScheduled={isScheduled}
+              scheduledDateTime={scheduledDateTime}
+              isEditing={isEditing}
+              canSave={editedContent.trim().length > 0}
+              onCancel={handleCancel}
+              onSave={handleSave}
+              onPreview={onPreview ? () => onPreview(post.id) : undefined}
+              onEdit={onEdit ? () => onEdit(post.id) : undefined}
+              onDelete={onDelete ? () => onDelete(post.id) : undefined}
+            />
 
-              {isEditing ? (
-                <div className="flex items-center gap-1.5">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleCancel}
-                    className="h-8 px-3 text-xs"
-                  >
-                    <X className="mr-1.5 h-3.5 w-3.5" />
-                    Cancel
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={handleSave}
-                    className="h-8 px-3 text-xs"
-                    disabled={editedContent.trim().length === 0}
-                  >
-                    <Check className="mr-1.5 h-3.5 w-3.5" />
-                    Save
-                  </Button>
-                </div>
-              ) : (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                      aria-label="More options"
-                    >
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    {onPreview && (
-                      <DropdownMenuItem onClick={() => onPreview(post.id)}>
-                        <Eye className="mr-2 h-4 w-4" />
-                        Preview
-                      </DropdownMenuItem>
-                    )}
-                    {onEdit && (
-                      <DropdownMenuItem onClick={() => onEdit(post.id)}>
-                        <Edit className="mr-2 h-4 w-4" />
-                        Edit
-                      </DropdownMenuItem>
-                    )}
-                    {onDelete && (
-                      <DropdownMenuItem
-                        onClick={() => onDelete(post.id)}
-                        className="text-destructive focus:text-destructive"
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Delete
-                      </DropdownMenuItem>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-            </div>
-
-            {/* Editing Schedule Picker */}
             {isEditing && isScheduled && (
               <div className="my-2 flex items-center gap-2 p-2 rounded-xl bg-muted/40 border">
                 <span className="text-xs font-medium text-muted-foreground">
@@ -322,7 +409,6 @@ export const PostCard = React.memo(function PostCard({
               </div>
             )}
 
-            {/* Textarea or Content Text */}
             {isEditing ? (
               <div className="mt-1.5">
                 <Textarea
@@ -342,7 +428,6 @@ export const PostCard = React.memo(function PostCard({
               </div>
             )}
 
-            {/* Media Attachment */}
             {post.imageUrl && !isEditing && (
               <div className="mt-2.5 overflow-hidden rounded-2xl">
                 <img
@@ -354,42 +439,14 @@ export const PostCard = React.memo(function PostCard({
               </div>
             )}
 
-            {/* Failed Error Notice: Clean red text with warning icon + same-line retry */}
             {isFailed && (
-              <div className="mt-2 flex items-center justify-between gap-2 text-xs text-destructive">
-                <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                  <AlertCircle className="h-3.5 w-3.5 shrink-0 text-destructive" />
-                  <span className="truncate font-medium">
-                    {post.errorReason || "Publish failed"}
-                  </span>
-                </div>
-
-                {onRetry && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => onRetry(post.id)}
-                    disabled={isRetrying}
-                    className="h-6.5 px-2.5 text-[11px] font-bold border-destructive/40 bg-background text-destructive hover:bg-destructive/15 rounded-full cursor-pointer shadow-2xs transition-all active:scale-95 shrink-0"
-                  >
-                    {isRetrying ? (
-                      <>
-                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                        Retrying…
-                      </>
-                    ) : (
-                      <>
-                        <RotateCcw className="mr-1 h-3 w-3" />
-                        Retry
-                      </>
-                    )}
-                  </Button>
-                )}
-              </div>
+              <FailureNotice
+                errorReason={post.errorReason}
+                onRetry={onRetry ? () => onRetry(post.id) : undefined}
+                isRetrying={isRetrying}
+              />
             )}
 
-            {/* Action Footer */}
             <div className="mt-2">
               <PostActionFooter
                 isEditing={isEditing}

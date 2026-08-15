@@ -26,6 +26,130 @@ function formatPostCount(count?: number | null): string {
   return `${count} posts`
 }
 
+interface HeaderProps {
+  title: string
+  relativeTime: string | null
+  isPending: boolean
+  onRefresh: () => void
+}
+
+function TrendingHeader({
+  title,
+  relativeTime,
+  isPending,
+  onRefresh,
+}: HeaderProps) {
+  return (
+    <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
+      <div>
+        <h2 className="text-lg font-bold tracking-tight text-foreground">
+          {title}
+        </h2>
+        {relativeTime && (
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Synced {relativeTime}
+          </p>
+        )}
+      </div>
+
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        onClick={onRefresh}
+        disabled={isPending}
+        className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-full transition-colors cursor-pointer disabled:opacity-100"
+        title={
+          isPending
+            ? "Refreshing trends in background..."
+            : "Refresh trending topics from X"
+        }
+        aria-label="Refresh trending topics from X"
+      >
+        <RefreshCw
+          className={`h-4 w-4 transition-colors ${
+            isPending
+              ? "animate-spin text-primary"
+              : "text-muted-foreground hover:text-primary"
+          }`}
+        />
+      </Button>
+    </div>
+  )
+}
+
+interface EmptyProps {
+  isPending: boolean
+  onRefresh: () => void
+}
+
+function TrendingEmptyState({ isPending, onRefresh }: EmptyProps) {
+  return (
+    <div className="p-5 text-center space-y-3">
+      <p className="text-xs text-muted-foreground">
+        No trending topics extracted yet.
+      </p>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={onRefresh}
+        disabled={isPending}
+        className="text-xs h-8 gap-1.5 rounded-full hover:text-primary hover:border-primary"
+      >
+        <RefreshCw
+          className={`h-3.5 w-3.5 ${isPending ? "animate-spin text-primary" : ""}`}
+        />
+        <span>
+          {isPending ? "Extracting from X..." : "Extract Live Trends"}
+        </span>
+      </Button>
+    </div>
+  )
+}
+
+interface RowProps {
+  topic: TrendingTopicPublic
+  onTopicDraft?: (topicTitle: string) => void
+}
+
+function TrendingTopicRow({ topic, onTopicDraft }: RowProps) {
+  const postCountStr = formatPostCount(topic.post_count)
+
+  return (
+    <div className="w-full py-3 px-4 transition-colors hover:bg-muted/10">
+      <div className="text-xs font-medium text-muted-foreground mb-1">
+        {topic.category ? `${topic.category} · Trending` : "Trending"}
+      </div>
+
+      <a
+        href={topic.topic_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block text-sm font-semibold text-foreground hover:text-primary transition-colors leading-snug line-clamp-2"
+      >
+        {topic.topic_title}
+      </a>
+
+      <div className="flex items-center justify-between text-xs text-muted-foreground mt-2">
+        <span className="text-xs text-muted-foreground">
+          {postCountStr || ""}
+        </span>
+        {onTopicDraft && (
+          <button
+            type="button"
+            onClick={() => onTopicDraft(topic.topic_title)}
+            className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary transition-colors cursor-pointer focus:outline-none"
+          >
+            <Bot className="h-3.5 w-3.5" />
+            <span>Draft</span>
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function TrendingTopics({
   topics,
   title = "Trending Topics",
@@ -36,16 +160,14 @@ export function TrendingTopics({
   const { showSuccessToast, showErrorToast } = useCustomToast()
 
   const extractMutation = useMutation({
-    mutationFn: async () => {
-      return await TrendingService.extractTrendingTopics({ maxTopics: 3 })
-    },
+    mutationFn: async () =>
+      TrendingService.extractTrendingTopics({ maxTopics: 3 }),
     onSuccess: (res) => {
       showSuccessToast(
         res.count > 0
           ? `Successfully refreshed ${res.count} trending topics from X!`
           : "Checked X: No new trending topics found.",
       )
-      // Instantly update query cache and invalidate to re-render
       queryClient.setQueryData(["trending"], res)
       queryClient.invalidateQueries({ queryKey: ["trending"] })
     },
@@ -59,113 +181,27 @@ export function TrendingTopics({
 
   return (
     <div className="w-full rounded-2xl border border-border/80 bg-background overflow-hidden shadow-none">
-      {/* Header: Title + Synced description on left, Refresh button on right */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
-        <div>
-          <h2 className="text-lg font-bold tracking-tight text-foreground">
-            {title}
-          </h2>
-          {relativeTime && (
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Synced {relativeTime}
-            </p>
-          )}
-        </div>
+      <TrendingHeader
+        title={title}
+        relativeTime={relativeTime}
+        isPending={extractMutation.isPending}
+        onRefresh={() => extractMutation.mutate()}
+      />
 
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={() => extractMutation.mutate()}
-          disabled={extractMutation.isPending}
-          className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-full transition-colors cursor-pointer disabled:opacity-100"
-          title={
-            extractMutation.isPending
-              ? "Refreshing trends in background..."
-              : "Refresh trending topics from X"
-          }
-          aria-label="Refresh trending topics from X"
-        >
-          <RefreshCw
-            className={`h-4 w-4 transition-colors ${
-              extractMutation.isPending
-                ? "animate-spin text-primary"
-                : "text-muted-foreground hover:text-primary"
-            }`}
-          />
-        </Button>
-      </div>
-
-      {/* Topics List or Empty State */}
       {topics.length === 0 ? (
-        <div className="p-5 text-center space-y-3">
-          <p className="text-xs text-muted-foreground">
-            No trending topics extracted yet.
-          </p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => extractMutation.mutate()}
-            disabled={extractMutation.isPending}
-            className="text-xs h-8 gap-1.5 rounded-full hover:text-primary hover:border-primary"
-          >
-            <RefreshCw
-              className={`h-3.5 w-3.5 ${
-                extractMutation.isPending ? "animate-spin text-primary" : ""
-              }`}
-            />
-            <span>
-              {extractMutation.isPending
-                ? "Extracting from X..."
-                : "Extract Live Trends"}
-            </span>
-          </Button>
-        </div>
+        <TrendingEmptyState
+          isPending={extractMutation.isPending}
+          onRefresh={() => extractMutation.mutate()}
+        />
       ) : (
         <div className="w-full divide-y divide-border/30">
-          {topics.map((topic) => {
-            const postCountStr = formatPostCount(topic.post_count)
-
-            return (
-              <div
-                key={topic.id}
-                className="w-full py-3 px-4 transition-colors hover:bg-muted/10"
-              >
-                {/* Category */}
-                <div className="text-xs font-medium text-muted-foreground mb-1">
-                  {topic.category ? `${topic.category} · Trending` : "Trending"}
-                </div>
-
-                {/* Topic Title Link with Primary Hover Color */}
-                <a
-                  href={topic.topic_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block text-sm font-semibold text-foreground hover:text-primary transition-colors leading-snug line-clamp-2"
-                >
-                  {topic.topic_title}
-                </a>
-
-                {/* Bottom Row: Number of posts on left, Draft button on right */}
-                <div className="flex items-center justify-between text-xs text-muted-foreground mt-2">
-                  <span className="text-xs text-muted-foreground">
-                    {postCountStr || ""}
-                  </span>
-                  {onTopicDraft && (
-                    <button
-                      type="button"
-                      onClick={() => onTopicDraft(topic.topic_title)}
-                      className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary transition-colors cursor-pointer focus:outline-none"
-                    >
-                      <Bot className="h-3.5 w-3.5" />
-                      <span>Draft</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-            )
-          })}
+          {topics.map((topic) => (
+            <TrendingTopicRow
+              key={topic.id}
+              topic={topic}
+              onTopicDraft={onTopicDraft}
+            />
+          ))}
         </div>
       )}
     </div>
