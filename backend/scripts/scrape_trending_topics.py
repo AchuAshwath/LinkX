@@ -18,6 +18,7 @@ import os
 import random
 import re
 import sys
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -444,26 +445,43 @@ def _save_topic_record(payload: TopicRecordPayload) -> None:
         logger.info(f"💾 Saved topic '{db_topic.topic_title}' to DB.")
 
 
-async def scrape_trending_topics() -> ScrapeResult:
+async def scrape_trending_topics(
+    *,
+    user_id: str | None = None,
+    max_topics: int | None = None,
+    headless: bool | None = None,
+) -> ScrapeResult:
     """Scrape trending news topics from X.com."""
-    if "PLAYWRIGHT_HEADLESS" not in os.environ:
+    if headless is not None:
+        os.environ["PLAYWRIGHT_HEADLESS"] = "1" if headless else "0"
+    elif "PLAYWRIGHT_HEADLESS" not in os.environ:
         os.environ["PLAYWRIGHT_HEADLESS"] = "0"
 
     db_user_id = None
     with Session(engine) as session:
-        user = session.exec(
-            select(User).where(User.email == settings.FIRST_SUPERUSER)
-        ).first()
+        if user_id:
+            try:
+                user = session.get(User, uuid.UUID(user_id))
+            except Exception:
+                user = session.exec(select(User).where(User.email == user_id)).first()
+        else:
+            user = session.exec(
+                select(User).where(User.email == settings.FIRST_SUPERUSER)
+            ).first()
+            if not user:
+                user = session.exec(select(User)).first()
+
         if user:
             db_user_id = user.id
         else:
-            logger.warning("No default user found. DB save will be skipped.")
+            logger.warning("No user found. DB save will be skipped.")
 
     config_path = Path(__file__).parent.parent / "scrape_config.json"
     with open(config_path) as f:
         config = json.load(f)
 
-    max_topics = config.get("max_topics_to_scrape", 3)
+    if max_topics is None:
+        max_topics = config.get("max_topics_to_scrape", 3)
     scrolls_per_topic = config.get("scrolls_per_topic", 2)
     min_delay = config.get("min_delay_between_topics", 4.0)
     max_delay = config.get("max_delay_between_topics", 7.0)
@@ -485,8 +503,7 @@ async def scrape_trending_topics() -> ScrapeResult:
     heuristic = config.get("link_heuristic", {})
 
     result = ScrapeResult(status="error")
-    brand_id = sys.argv[1] if len(sys.argv) > 1 else "default"
-    manager = BrowserManager(brand_id=brand_id)
+    manager = BrowserManager(user_id=str(db_user_id) if db_user_id else "default")
 
     try:
         logger.info("Connecting to X.com...")

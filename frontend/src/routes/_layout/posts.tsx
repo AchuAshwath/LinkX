@@ -328,7 +328,7 @@ function PostsPage() {
 
   const handleSaveDraft = (
     postId: string,
-    data: { content: string; platform: Platform },
+    data: { content: string; platform: Platform; scheduledAt?: Date | null },
   ) => {
     updateMutation.mutate({
       postId,
@@ -341,21 +341,23 @@ function PostsPage() {
 
   const handleSaveScheduled = (
     postId: string,
-    data: { content: string; platform: Platform; scheduledAt: Date },
+    data: { content: string; platform: Platform; scheduledAt?: Date | null },
   ) => {
     updateMutation.mutate({
       postId,
       data: {
         content: data.content,
         platform: data.platform,
-        scheduled_at: data.scheduledAt.toISOString(),
+        scheduled_at: data.scheduledAt
+          ? data.scheduledAt.toISOString()
+          : undefined,
       },
     })
   }
 
   const handleSavePosted = (
     postId: string,
-    data: { content: string; platform: Platform },
+    data: { content: string; platform: Platform; scheduledAt?: Date | null },
   ) => {
     updateMutation.mutate({
       postId,
@@ -384,32 +386,44 @@ function PostsPage() {
       // PostedData
       return {
         id: post.id,
-        author: post.author,
+        author: {
+          name: post.author.name,
+          username: post.author.username,
+          avatarUrl: post.author.avatarUrl ?? undefined,
+        },
         content: post.content,
-        imageUrl: post.imageUrl,
+        imageUrl: post.imageUrl ?? undefined,
         createdAt: post.createdAt,
         likes: post.likes,
         reposts: post.reposts,
         comments: post.comments,
       }
     }
-    if ("scheduledAt" in post) {
+    if ("scheduledAt" in post && post.scheduledAt) {
       // ScheduledPostData
       return {
         id: post.id,
-        author: post.author,
+        author: {
+          name: post.author.name,
+          username: post.author.username,
+          avatarUrl: post.author.avatarUrl ?? undefined,
+        },
         content: post.content,
-        imageUrl: post.imageUrl,
+        imageUrl: post.imageUrl ?? undefined,
         createdAt: post.createdAt,
-        scheduledAt: post.scheduledAt,
+        scheduledAt: post.scheduledAt ?? undefined,
       }
     }
     // DraftPostData
     return {
       id: post.id,
-      author: post.author,
+      author: {
+        name: post.author.name,
+        username: post.author.username,
+        avatarUrl: post.author.avatarUrl ?? undefined,
+      },
       content: post.content,
-      imageUrl: post.imageUrl,
+      imageUrl: post.imageUrl ?? undefined,
       createdAt: post.createdAt,
     }
   }
@@ -468,7 +482,7 @@ function PostsPage() {
             <TabsList className="w-full h-auto p-0 bg-transparent rounded-none border-0 border-b border-border grid grid-cols-3 relative">
               <TabsTrigger
                 value="drafts"
-                className="relative flex-1 h-14 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-base transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
+                className="relative flex-1 h-12 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-sm transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
               >
                 <div className="flex items-center justify-center gap-2">
                   <FileText className="h-4 w-4" />
@@ -476,7 +490,7 @@ function PostsPage() {
                   {draftPosts.length > 0 && (
                     <Badge
                       variant="secondary"
-                      className="ml-1 h-5 min-w-5 px-1.5 text-xs font-normal"
+                      className="ml-1 h-5 min-w-5 px-1.5 text-[11px] font-normal"
                     >
                       {draftPosts.length}
                     </Badge>
@@ -485,7 +499,7 @@ function PostsPage() {
               </TabsTrigger>
               <TabsTrigger
                 value="scheduled"
-                className="relative flex-1 h-14 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-base transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
+                className="relative flex-1 h-12 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-sm transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
               >
                 <div className="flex items-center justify-center gap-2">
                   <Calendar className="h-4 w-4" />
@@ -493,7 +507,7 @@ function PostsPage() {
                   {scheduledPosts.length > 0 && (
                     <Badge
                       variant="secondary"
-                      className="ml-1 h-5 min-w-5 px-1.5 text-xs font-normal"
+                      className="ml-1 h-5 min-w-5 px-1.5 text-[11px] font-normal"
                     >
                       {scheduledPosts.length}
                     </Badge>
@@ -502,7 +516,7 @@ function PostsPage() {
               </TabsTrigger>
               <TabsTrigger
                 value="posted"
-                className="relative flex-1 h-14 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-base transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
+                className="relative flex-1 h-12 rounded-none border-0 border-b-2 border-transparent bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:z-10 font-semibold text-sm transition-all hover:text-foreground hover:bg-accent/50 data-[state=active]:hover:bg-transparent"
               >
                 <div className="flex items-center justify-center gap-2">
                   <CheckCircle2 className="h-4 w-4" />
@@ -510,7 +524,7 @@ function PostsPage() {
                   {postedPosts.length > 0 && (
                     <Badge
                       variant="secondary"
-                      className="ml-1 h-5 min-w-5 px-1.5 text-xs font-normal"
+                      className="ml-1 h-5 min-w-5 px-1.5 text-[11px] font-normal"
                     >
                       {postedPosts.length}
                     </Badge>

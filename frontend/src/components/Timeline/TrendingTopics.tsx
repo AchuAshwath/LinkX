@@ -1,61 +1,173 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { Bot, RefreshCw } from "lucide-react"
+import * as React from "react"
+import { TrendingService, type TrendingTopicPublic } from "@/client"
+import { Button } from "@/components/ui/button"
+import useCustomToast from "@/hooks/useCustomToast"
+import { formatRelativeTime, handleError } from "@/utils"
 
-export interface TrendingTopic {
-  id: string
-  hashtag: string
-  postCount: number
-}
+export type TrendingTopic = TrendingTopicPublic
 
 export interface TrendingTopicsProps {
-  topics: TrendingTopic[]
+  topics: TrendingTopicPublic[]
   title?: string
-  onTopicClick?: (topicId: string, hashtag: string) => void
+  lastScrapedAt?: string | null
+  onTopicDraft?: (topicTitle: string) => void
 }
 
-function formatPostCount(count: number): string {
-  if (count >= 1000000) {
-    return `${(count / 1000000).toFixed(1)}M`
+function formatPostCount(count?: number | null): string {
+  if (!count) return ""
+  if (count >= 1_000_000) {
+    return `${(count / 1_000_000).toFixed(1)}M posts`
   }
-  if (count >= 1000) {
-    return `${(count / 1000).toFixed(1)}K`
+  if (count >= 1_000) {
+    return `${count.toLocaleString()} posts`
   }
-  return count.toString()
+  return `${count} posts`
 }
 
 export function TrendingTopics({
   topics,
   title = "Trending Topics",
-  onTopicClick,
+  lastScrapedAt,
+  onTopicDraft,
 }: TrendingTopicsProps) {
-  if (topics.length === 0) {
-    return null
-  }
+  const queryClient = useQueryClient()
+  const { showSuccessToast, showErrorToast } = useCustomToast()
+
+  const extractMutation = useMutation({
+    mutationFn: async () => {
+      return await TrendingService.extractTrendingTopics({ maxTopics: 3 })
+    },
+    onSuccess: (res) => {
+      showSuccessToast(
+        res.count > 0
+          ? `Successfully refreshed ${res.count} trending topics from X!`
+          : "Checked X: No new trending topics found.",
+      )
+      // Instantly update query cache and invalidate to re-render
+      queryClient.setQueryData(["trending"], res)
+      queryClient.invalidateQueries({ queryKey: ["trending"] })
+    },
+    onError: handleError.bind(showErrorToast),
+  })
+
+  const relativeTime = React.useMemo(() => {
+    if (!lastScrapedAt) return null
+    return formatRelativeTime(lastScrapedAt)
+  }, [lastScrapedAt])
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg font-semibold">{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {topics.map((topic) => (
-            <button
-              key={topic.id}
-              type="button"
-              onClick={() => onTopicClick?.(topic.id, topic.hashtag)}
-              className="w-full flex items-center justify-between gap-2 rounded-lg p-2 -m-2 text-left transition-colors hover:bg-accent/50 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-              aria-label={`View ${topic.hashtag} with ${formatPostCount(topic.postCount)} posts`}
-            >
-              <span className="truncate font-medium text-primary hover:underline">
-                {topic.hashtag}
-              </span>
-              <span className="shrink-0 text-sm text-muted-foreground">
-                {formatPostCount(topic.postCount)} posts
-              </span>
-            </button>
-          ))}
+    <div className="w-full rounded-2xl border border-border/80 bg-background overflow-hidden shadow-none">
+      {/* Header: Title + Synced description on left, Refresh button on right */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
+        <div>
+          <h2 className="text-lg font-bold tracking-tight text-foreground">
+            {title}
+          </h2>
+          {relativeTime && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Synced {relativeTime}
+            </p>
+          )}
         </div>
-      </CardContent>
-    </Card>
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={() => extractMutation.mutate()}
+          disabled={extractMutation.isPending}
+          className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-full transition-colors cursor-pointer disabled:opacity-100"
+          title={
+            extractMutation.isPending
+              ? "Refreshing trends in background..."
+              : "Refresh trending topics from X"
+          }
+          aria-label="Refresh trending topics from X"
+        >
+          <RefreshCw
+            className={`h-4 w-4 transition-colors ${
+              extractMutation.isPending
+                ? "animate-spin text-primary"
+                : "text-muted-foreground hover:text-primary"
+            }`}
+          />
+        </Button>
+      </div>
+
+      {/* Topics List or Empty State */}
+      {topics.length === 0 ? (
+        <div className="p-5 text-center space-y-3">
+          <p className="text-xs text-muted-foreground">
+            No trending topics extracted yet.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => extractMutation.mutate()}
+            disabled={extractMutation.isPending}
+            className="text-xs h-8 gap-1.5 rounded-full hover:text-primary hover:border-primary"
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${
+                extractMutation.isPending ? "animate-spin text-primary" : ""
+              }`}
+            />
+            <span>
+              {extractMutation.isPending
+                ? "Extracting from X..."
+                : "Extract Live Trends"}
+            </span>
+          </Button>
+        </div>
+      ) : (
+        <div className="w-full divide-y divide-border/30">
+          {topics.map((topic) => {
+            const postCountStr = formatPostCount(topic.post_count)
+
+            return (
+              <div
+                key={topic.id}
+                className="w-full py-3 px-4 transition-colors hover:bg-muted/10"
+              >
+                {/* Category */}
+                <div className="text-xs font-medium text-muted-foreground mb-1">
+                  {topic.category ? `${topic.category} · Trending` : "Trending"}
+                </div>
+
+                {/* Topic Title Link with Primary Hover Color */}
+                <a
+                  href={topic.topic_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-sm font-semibold text-foreground hover:text-primary transition-colors leading-snug line-clamp-2"
+                >
+                  {topic.topic_title}
+                </a>
+
+                {/* Bottom Row: Number of posts on left, Draft button on right */}
+                <div className="flex items-center justify-between text-xs text-muted-foreground mt-2">
+                  <span className="text-xs text-muted-foreground">
+                    {postCountStr || ""}
+                  </span>
+                  {onTopicDraft && (
+                    <button
+                      type="button"
+                      onClick={() => onTopicDraft(topic.topic_title)}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary transition-colors cursor-pointer focus:outline-none"
+                    >
+                      <Bot className="h-3.5 w-3.5" />
+                      <span>Draft</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }

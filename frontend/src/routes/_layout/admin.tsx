@@ -61,8 +61,8 @@ function Admin() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Users</h1>
-          <p className="text-muted-foreground">
-            Manage user accounts and permissions
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Manage user accounts and permissions.
           </p>
         </div>
         <AddUser />

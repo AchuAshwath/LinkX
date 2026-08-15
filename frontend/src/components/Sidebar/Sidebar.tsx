@@ -47,10 +47,10 @@ export function Sidebar({ sidebarOpen, onClose }: SidebarProps) {
             <X className="h-5 w-5" />
           </Button>
         </div>
-        <nav className="space-y-2">
+        <nav className="space-y-1">
           <Button
             variant="ghost"
-            className="w-full justify-start text-base"
+            className="w-full justify-start text-sm font-medium h-9"
             asChild
           >
             <Link to="/home">
@@ -60,7 +60,7 @@ export function Sidebar({ sidebarOpen, onClose }: SidebarProps) {
           </Button>
           <Button
             variant="ghost"
-            className="w-full justify-start text-base"
+            className="w-full justify-start text-sm font-medium h-9"
             asChild
           >
             <Link to="/posts">
@@ -70,7 +70,7 @@ export function Sidebar({ sidebarOpen, onClose }: SidebarProps) {
           </Button>
           <Button
             variant="ghost"
-            className="w-full justify-start text-base"
+            className="w-full justify-start text-sm font-medium h-9"
             asChild
           >
             <Link to="/social-accounts">
@@ -81,7 +81,7 @@ export function Sidebar({ sidebarOpen, onClose }: SidebarProps) {
         </nav>
 
         <Button
-          className="mt-6 w-full text-base"
+          className="mt-6 w-full text-sm font-medium h-9"
           onClick={() => setCreatePostDialogOpen(true)}
         >
           Create Post

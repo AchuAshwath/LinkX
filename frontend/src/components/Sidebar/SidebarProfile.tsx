@@ -41,7 +41,7 @@ export function SidebarProfile({
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            className="w-full justify-start text-base h-auto py-2 px-3 data-[state=open]:bg-accent data-[state=open]:text-accent-foreground"
+            className="w-full justify-start text-sm h-auto py-2 px-3 data-[state=open]:bg-accent data-[state=open]:text-accent-foreground"
           >
             <UserInfo fullName={fullName} email={email} />
             <ChevronsUpDown className="ml-auto size-4 text-muted-foreground shrink-0" />

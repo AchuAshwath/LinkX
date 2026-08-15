@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { Home as HomeIcon, Loader2 } from "lucide-react"
 import * as React from "react"
-import { PostsService } from "@/client"
+import { PostsService, TrendingService } from "@/client"
 import type { Platform } from "@/components/Common/PlatformSelector"
 import type { PostedData } from "@/components/Post/Posted"
 import { Posted } from "@/components/Post/Posted"
@@ -13,11 +13,7 @@ import {
 import type { ScheduledPostData } from "@/components/Post/ScheduledPost"
 import { ScheduledPost } from "@/components/Post/ScheduledPost"
 import { PostInputBox } from "@/components/PostInput/PostInputBox"
-import {
-  TimelineFilters,
-  type TrendingTopic,
-  TrendingTopics,
-} from "@/components/Timeline"
+import { TrendingTopics } from "@/components/Timeline"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -54,9 +50,8 @@ function TimelinePage() {
   const { user } = useAuth()
   const canPublishOrSchedule = true
 
-  // Filter state
-  const [dateFilter, setDateFilter] = React.useState<string>("all")
-  const [sortBy, setSortBy] = React.useState<string>("newest")
+  // Topic draft state for pre-filling composer
+  const [draftContent, setDraftContent] = React.useState<string>("")
 
   // Edit state management
   const [editingPostId, setEditingPostId] = React.useState<string | null>(null)
@@ -98,6 +93,16 @@ function TimelinePage() {
       })
     },
   })
+
+  // Fetch live trending topics from DB
+  const { data: trendingData } = useQuery({
+    queryKey: ["trending"],
+    queryFn: async () => {
+      return await TrendingService.getTrending()
+    },
+  })
+  const trendingTopics = trendingData?.data ?? []
+  const latestScrapedAt = trendingTopics[0]?.scraped_at ?? null
 
   // Transform API data to timeline posts
   const posts: TimelinePost[] = React.useMemo(() => {
@@ -212,17 +217,6 @@ function TimelinePage() {
     }
   }
 
-  // Sample trending topics
-  const trendingTopics: TrendingTopic[] = React.useMemo(
-    () => [
-      { id: "1", hashtag: "#TechInnovation", postCount: 5200 },
-      { id: "2", hashtag: "#ArtificialIntelligence", postCount: 12000 },
-      { id: "3", hashtag: "#ClimateAction", postCount: 8700 },
-      { id: "4", hashtag: "#SpaceExploration", postCount: 3900 },
-    ],
-    [],
-  )
-
   const handlePostAction = (action: string, postId: string) => {
     if (action === "delete") {
       handleDelete(postId, "posted")
@@ -252,21 +246,23 @@ function TimelinePage() {
 
   const handleSaveScheduled = (
     postId: string,
-    data: { content: string; platform: Platform; scheduledAt: Date },
+    data: { content: string; platform: Platform; scheduledAt?: Date | null },
   ) => {
     updateMutation.mutate({
       postId,
       data: {
         content: data.content,
         platform: data.platform,
-        scheduled_at: data.scheduledAt.toISOString(),
+        scheduled_at: data.scheduledAt
+          ? data.scheduledAt.toISOString()
+          : undefined,
       },
     })
   }
 
   const handleSavePosted = (
     postId: string,
-    data: { content: string; platform: Platform },
+    data: { content: string; platform: Platform; scheduledAt?: Date | null },
   ) => {
     updateMutation.mutate({
       postId,
@@ -292,9 +288,13 @@ function TimelinePage() {
     if (post.type === "posted") {
       return {
         id: post.id,
-        author: post.author,
+        author: {
+          name: post.author.name,
+          username: post.author.username,
+          avatarUrl: post.author.avatarUrl ?? undefined,
+        },
         content: post.content,
-        imageUrl: post.imageUrl,
+        imageUrl: post.imageUrl ?? undefined,
         createdAt: post.createdAt,
         likes: post.likes,
         reposts: post.reposts,
@@ -304,11 +304,15 @@ function TimelinePage() {
     // scheduled
     return {
       id: post.id,
-      author: post.author,
+      author: {
+        name: post.author.name,
+        username: post.author.username,
+        avatarUrl: post.author.avatarUrl ?? undefined,
+      },
       content: post.content,
-      imageUrl: post.imageUrl,
+      imageUrl: post.imageUrl ?? undefined,
       createdAt: post.createdAt,
-      scheduledAt: post.scheduledAt,
+      scheduledAt: post.scheduledAt ?? undefined,
     }
   }
 
@@ -320,13 +324,9 @@ function TimelinePage() {
     }
   }
 
-  const handleTopicClick = (_topicId: string, hashtag: string) => {
-    console.log(`View topic ${hashtag}`)
-  }
-
-  const handleClearFilters = () => {
-    setDateFilter("all")
-    setSortBy("newest")
+  const handleTopicDraft = (topicTitle: string) => {
+    setDraftContent(topicTitle)
+    window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
   const sortedPosts = React.useMemo(() => {
@@ -334,22 +334,18 @@ function TimelinePage() {
       (typeof d === "string" ? new Date(d) : d).getTime()
 
     // Sort by relevant date: scheduledAt for scheduled posts, createdAt for posted posts
-    const sorted = [...posts].sort((a, b) => {
+    return [...posts].sort((a, b) => {
       const aTime =
-        a.type === "scheduled" ? toTime(a.scheduledAt) : toTime(a.createdAt)
+        a.type === "scheduled" && a.scheduledAt
+          ? toTime(a.scheduledAt)
+          : toTime(a.createdAt)
       const bTime =
-        b.type === "scheduled" ? toTime(b.scheduledAt) : toTime(b.createdAt)
-
-      // Apply sort order based on sortBy filter
-      if (sortBy === "oldest") {
-        return aTime - bTime // Ascending: oldest first
-      }
-      return bTime - aTime // Descending: newest/future first
+        b.type === "scheduled" && b.scheduledAt
+          ? toTime(b.scheduledAt)
+          : toTime(b.createdAt)
+      return bTime - aTime // Descending: newest first
     })
-
-    // TODO: Apply dateFilter filtering logic here
-    return sorted
-  }, [posts, sortBy])
+  }, [posts])
 
   const renderPost = (post: TimelinePost) => {
     const isEditing = editingPostId === post.id
@@ -391,6 +387,8 @@ function TimelinePage() {
   }
 
   const handlePostCreated = () => {
+    // Clear draftContent on successful create
+    setDraftContent("")
     // Posts will be refetched automatically via query invalidation
     queryClient.invalidateQueries({ queryKey: ["posts"] })
   }
@@ -404,6 +402,7 @@ function TimelinePage() {
           <PostInputBox
             username={user?.full_name || user?.email || "User"}
             avatarUrl={undefined}
+            initialContent={draftContent}
             onSubmit={handlePostCreated}
             canPublishOrSchedule={canPublishOrSchedule}
           />
@@ -439,17 +438,11 @@ function TimelinePage() {
 
       {/* Right Sidebar */}
       <div className="hidden w-80 md:block">
-        <div className="sticky top-0 self-start p-4 space-y-6">
-          <TimelineFilters
-            dateFilter={dateFilter}
-            sortBy={sortBy}
-            onDateFilterChange={setDateFilter}
-            onSortByChange={setSortBy}
-            onClearFilters={handleClearFilters}
-          />
+        <div className="sticky top-0 self-start p-4">
           <TrendingTopics
             topics={trendingTopics}
-            onTopicClick={handleTopicClick}
+            lastScrapedAt={latestScrapedAt}
+            onTopicDraft={handleTopicDraft}
           />
         </div>
       </div>

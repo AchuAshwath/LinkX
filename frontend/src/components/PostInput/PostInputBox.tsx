@@ -12,6 +12,7 @@ import { usePostForm } from "./usePostForm"
 interface PostInputBoxProps {
   username: string
   avatarUrl?: string
+  initialContent?: string
   onSubmit?: () => void
   onCancel?: () => void
   canPublishOrSchedule?: boolean
@@ -20,12 +21,14 @@ interface PostInputBoxProps {
 export function PostInputBox({
   username,
   avatarUrl,
+  initialContent,
   onSubmit,
   onCancel,
   canPublishOrSchedule = true,
 }: PostInputBoxProps) {
   const {
     content,
+    setContent,
     scheduledAt,
     setScheduledAt,
     channel,
@@ -36,6 +39,13 @@ export function PostInputBox({
     handleContentChange,
     createPostMutation,
   } = usePostForm()
+
+  // Sync initialContent when provided
+  React.useEffect(() => {
+    if (initialContent !== undefined && initialContent !== "") {
+      setContent(initialContent)
+    }
+  }, [initialContent, setContent])
 
   // Call onSubmit callback if provided
   React.useEffect(() => {
@@ -55,14 +65,14 @@ export function PostInputBox({
     <div className="w-full space-y-4">
       {/* Header: Avatar + Username + Channel Selector */}
       <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <Avatar className="h-10 w-10 shrink-0 sm:h-11 sm:w-11">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <Avatar className="h-9 w-9 shrink-0">
             {avatarUrl ? <AvatarImage src={avatarUrl} alt={username} /> : null}
-            <AvatarFallback className="text-sm font-semibold sm:text-base">
+            <AvatarFallback className="text-xs font-semibold">
               {initials}
             </AvatarFallback>
           </Avatar>
-          <span className="truncate text-base font-semibold sm:text-lg">
+          <span className="truncate text-sm font-semibold text-foreground">
             {username}
           </span>
         </div>
@@ -82,7 +92,7 @@ export function PostInputBox({
         onChange={handleContentChange}
         placeholder="What's happening?"
         aria-label="Post content"
-        className="min-h-24 resize-none border border-input rounded-lg bg-background py-3 px-4 text-base leading-relaxed placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 sm:min-h-20"
+        className="min-h-24 resize-none border border-input rounded-lg bg-background py-2.5 px-3.5 text-sm leading-relaxed placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary sm:min-h-20"
         data-testid="post-content-textarea"
       />
 
