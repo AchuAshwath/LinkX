@@ -140,7 +140,7 @@ function LinkedInActions({
         size="sm"
         onClick={onDisconnect}
         disabled={isDisconnecting}
-        className="text-xs h-8 font-medium border-destructive/30 text-destructive bg-destructive/5 hover:bg-destructive hover:text-destructive-foreground hover:border-destructive gap-1.5 transition-all shadow-none rounded-full cursor-pointer"
+        className="h-8 px-3.5 text-xs font-semibold border-destructive/30 text-destructive bg-destructive/5 hover:bg-destructive hover:text-destructive-foreground hover:border-destructive gap-1.5 transition-all shadow-none rounded-full cursor-pointer"
       >
         {isDisconnecting ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -158,7 +158,7 @@ function LinkedInActions({
         onClick={onConnect}
         disabled={isConnecting}
         size="sm"
-        className="text-xs h-8 bg-[#0077b5] hover:bg-[#0077b5]/90 text-white gap-1.5 font-medium shadow-none rounded-full cursor-pointer"
+        className="h-8 px-3.5 text-xs font-semibold bg-[#0077b5] hover:bg-[#0077b5]/90 text-white gap-1.5 shadow-none rounded-full cursor-pointer"
       >
         <RotateCcw className="h-3.5 w-3.5" />
         Reconnect
@@ -171,7 +171,7 @@ function LinkedInActions({
       onClick={onConnect}
       disabled={isConnecting}
       size="sm"
-      className="text-xs h-8 bg-[#0077b5] hover:bg-[#0077b5]/90 text-white gap-1.5 font-medium shadow-none rounded-full cursor-pointer"
+      className="h-8 px-3.5 text-xs font-semibold bg-[#0077b5] hover:bg-[#0077b5]/90 text-white gap-1.5 shadow-none rounded-full cursor-pointer"
     >
       <ExternalLink className="h-3.5 w-3.5" />
       Connect
@@ -374,14 +374,16 @@ function XRow({
           </div>
         </button>
 
-        {/* Right Action Hub */}
+        {/* Right Action Hub with identical button sizing */}
         <div className="flex items-center gap-2 shrink-0 sm:self-center">
           <Button
             onClick={onConnect}
             disabled={isConnecting}
             size="sm"
             variant="outline"
-            className="text-xs h-8 gap-1.5 font-medium rounded-full cursor-pointer shadow-none"
+            className={`h-8 px-3.5 text-xs font-semibold gap-1.5 rounded-full cursor-pointer shadow-none border-border/80 hover:bg-muted/40 ${
+              isCookiePresent ? "min-w-[6.25rem] justify-center" : ""
+            }`}
           >
             {isConnecting ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -396,7 +398,7 @@ function XRow({
               size="sm"
               onClick={onVerify}
               disabled={isVerifying}
-              className="text-xs h-8 gap-1.5 font-medium shadow-none rounded-full cursor-pointer"
+              className="h-8 px-3.5 min-w-[6.25rem] justify-center text-xs font-semibold gap-1.5 shadow-none rounded-full cursor-pointer"
             >
               {isVerifying ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
