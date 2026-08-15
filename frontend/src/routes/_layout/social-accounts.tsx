@@ -4,14 +4,9 @@ import {
   AlertTriangle,
   Check,
   Copy,
-  ExternalLink,
   Folder,
-  Laptop,
   Loader2,
-  LogOut,
   RefreshCw,
-  RotateCcw,
-  ShieldCheck,
 } from "lucide-react"
 import * as React from "react"
 import { FaLinkedinIn, FaXTwitter } from "react-icons/fa6"
@@ -140,14 +135,16 @@ function LinkedInActions({
         size="sm"
         onClick={onDisconnect}
         disabled={isDisconnecting}
-        className="h-8 px-3.5 text-xs font-semibold border-destructive/30 text-destructive bg-destructive/5 hover:bg-destructive hover:text-destructive-foreground hover:border-destructive gap-1.5 transition-all shadow-none rounded-full cursor-pointer"
+        className="h-8 px-4 text-xs font-semibold border-destructive/30 text-destructive bg-destructive/5 hover:bg-destructive hover:text-destructive-foreground hover:border-destructive transition-all shadow-none rounded-full cursor-pointer"
       >
         {isDisconnecting ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          <span className="flex items-center gap-1.5">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Disconnecting…
+          </span>
         ) : (
-          <LogOut className="h-3.5 w-3.5" />
+          "Disconnect"
         )}
-        Disconnect
       </Button>
     )
   }
@@ -158,10 +155,16 @@ function LinkedInActions({
         onClick={onConnect}
         disabled={isConnecting}
         size="sm"
-        className="h-8 px-3.5 text-xs font-semibold bg-[#0077b5] hover:bg-[#0077b5]/90 text-white gap-1.5 shadow-none rounded-full cursor-pointer"
+        className="h-8 px-4 text-xs font-semibold bg-[#0077b5] hover:bg-[#0077b5]/90 text-white shadow-none rounded-full cursor-pointer"
       >
-        <RotateCcw className="h-3.5 w-3.5" />
-        Reconnect
+        {isConnecting ? (
+          <span className="flex items-center gap-1.5">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Connecting…
+          </span>
+        ) : (
+          "Reconnect"
+        )}
       </Button>
     )
   }
@@ -171,10 +174,16 @@ function LinkedInActions({
       onClick={onConnect}
       disabled={isConnecting}
       size="sm"
-      className="h-8 px-3.5 text-xs font-semibold bg-[#0077b5] hover:bg-[#0077b5]/90 text-white gap-1.5 shadow-none rounded-full cursor-pointer"
+      className="h-8 px-4 text-xs font-semibold bg-[#0077b5] hover:bg-[#0077b5]/90 text-white shadow-none rounded-full cursor-pointer"
     >
-      <ExternalLink className="h-3.5 w-3.5" />
-      Connect
+      {isConnecting ? (
+        <span className="flex items-center gap-1.5">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Connecting…
+        </span>
+      ) : (
+        "Connect"
+      )}
     </Button>
   )
 }
@@ -374,23 +383,27 @@ function XRow({
           </div>
         </button>
 
-        {/* Right Action Hub with identical button sizing */}
+        {/* Right Action Hub without decorative button icons */}
         <div className="flex items-center gap-2 shrink-0 sm:self-center">
           <Button
             onClick={onConnect}
             disabled={isConnecting}
             size="sm"
             variant="outline"
-            className={`h-8 px-3.5 text-xs font-semibold gap-1.5 rounded-full cursor-pointer shadow-none border-border/80 hover:bg-muted/40 ${
-              isCookiePresent ? "min-w-[6.25rem] justify-center" : ""
+            className={`h-8 px-4 text-xs font-semibold rounded-full cursor-pointer shadow-none border-border/80 hover:bg-muted/40 ${
+              isCookiePresent ? "min-w-[5.5rem] justify-center" : ""
             }`}
           >
             {isConnecting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <span className="flex items-center gap-1.5">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Launching…
+              </span>
+            ) : isCookiePresent ? (
+              "Re-login"
             ) : (
-              <Laptop className="h-3.5 w-3.5" />
+              "Launch Login"
             )}
-            {isCookiePresent ? "Re-login" : "Launch Login"}
           </Button>
 
           {isCookiePresent && (
@@ -398,14 +411,16 @@ function XRow({
               size="sm"
               onClick={onVerify}
               disabled={isVerifying}
-              className="h-8 px-3.5 min-w-[6.25rem] justify-center text-xs font-semibold gap-1.5 shadow-none rounded-full cursor-pointer"
+              className="h-8 px-4 min-w-[5.5rem] justify-center text-xs font-semibold shadow-none rounded-full cursor-pointer"
             >
               {isVerifying ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span className="flex items-center gap-1.5">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Verifying…
+                </span>
               ) : (
-                <ShieldCheck className="h-3.5 w-3.5" />
+                "Verify"
               )}
-              Verify
             </Button>
           )}
         </div>
