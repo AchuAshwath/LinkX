@@ -544,7 +544,7 @@ interface PostCardLayoutProps extends PostCardProps {
   engagement: ReturnType<typeof usePostCardEngagement>
 }
 
-function PostCardLayout({
+function PostCardMainColumn({
   post,
   isEditing = false,
   onComment,
@@ -561,68 +561,71 @@ function PostCardLayout({
     getPostCardFlags(post)
 
   return (
+    <div className="min-w-0 flex-1">
+      <PostCardHeader
+        author={post.author}
+        createdAt={post.createdAt}
+        scheduledAt={post.scheduledAt}
+        isScheduled={isScheduled}
+        scheduledDateTime={scheduledDateTime}
+        isEditing={isEditing}
+        canSave={editor.editedContent.trim().length > 0}
+        onCancel={editor.handleCancel}
+        onSave={editor.handleSave}
+        onPreview={onPreview ? () => onPreview(post.id) : undefined}
+        onEdit={onEdit ? () => onEdit(post.id) : undefined}
+        onDelete={onDelete ? () => onDelete(post.id) : undefined}
+      />
+
+      {isEditing && isScheduled && (
+        <PostCardScheduleRow
+          scheduledAt={editor.editedScheduledAt}
+          onChangeDateTime={(d) => editor.setEditedScheduledAt(d || null)}
+        />
+      )}
+
+      <PostCardBodyContent
+        isEditing={isEditing}
+        content={post.content}
+        editedContent={editor.editedContent}
+        onContentChange={editor.setEditedContent}
+        imageUrl={post.imageUrl}
+      />
+
+      {isFailed && (
+        <FailureNotice
+          errorReason={post.errorReason}
+          onRetry={onRetry ? () => onRetry(post.id) : undefined}
+          isRetrying={isRetrying}
+        />
+      )}
+
+      <PostCardActionsRow
+        isEditing={isEditing}
+        platform={editor.platform}
+        onPlatformChange={isPosted ? undefined : editor.handlePlatformChange}
+        engagement={engagement}
+        commentsCount={post.comments ?? 0}
+        onComment={() => onComment?.(post.id)}
+        onShare={() => onShare?.(post.id)}
+        isPosted={isPosted}
+      />
+    </div>
+  )
+}
+
+function PostCardLayout(props: PostCardLayoutProps) {
+  return (
     <article
       className={`group border-b transition-colors ${
-        isEditing ? "border-primary bg-muted/20" : "hover:bg-accent/40"
+        props.isEditing ? "border-primary bg-muted/20" : "hover:bg-accent/40"
       }`}
-      aria-label={`Post by ${post.author.name}`}
+      aria-label={`Post by ${props.post.author.name}`}
     >
       <div className="p-3 sm:p-4">
         <div className="flex gap-2.5 sm:gap-3">
-          <PostCardAvatar author={post.author} />
-
-          <div className="min-w-0 flex-1">
-            <PostCardHeader
-              author={post.author}
-              createdAt={post.createdAt}
-              scheduledAt={post.scheduledAt}
-              isScheduled={isScheduled}
-              scheduledDateTime={scheduledDateTime}
-              isEditing={isEditing}
-              canSave={editor.editedContent.trim().length > 0}
-              onCancel={editor.handleCancel}
-              onSave={editor.handleSave}
-              onPreview={onPreview ? () => onPreview(post.id) : undefined}
-              onEdit={onEdit ? () => onEdit(post.id) : undefined}
-              onDelete={onDelete ? () => onDelete(post.id) : undefined}
-            />
-
-            {isEditing && isScheduled && (
-              <PostCardScheduleRow
-                scheduledAt={editor.editedScheduledAt}
-                onChangeDateTime={(d) => editor.setEditedScheduledAt(d || null)}
-              />
-            )}
-
-            <PostCardBodyContent
-              isEditing={isEditing}
-              content={post.content}
-              editedContent={editor.editedContent}
-              onContentChange={editor.setEditedContent}
-              imageUrl={post.imageUrl}
-            />
-
-            {isFailed && (
-              <FailureNotice
-                errorReason={post.errorReason}
-                onRetry={onRetry ? () => onRetry(post.id) : undefined}
-                isRetrying={isRetrying}
-              />
-            )}
-
-            <PostCardActionsRow
-              isEditing={isEditing}
-              platform={editor.platform}
-              onPlatformChange={
-                isPosted ? undefined : editor.handlePlatformChange
-              }
-              engagement={engagement}
-              commentsCount={post.comments ?? 0}
-              onComment={() => onComment?.(post.id)}
-              onShare={() => onShare?.(post.id)}
-              isPosted={isPosted}
-            />
-          </div>
+          <PostCardAvatar author={props.post.author} />
+          <PostCardMainColumn {...props} />
         </div>
       </div>
     </article>
