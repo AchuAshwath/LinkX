@@ -74,6 +74,41 @@ const DATE_LIMITS: Record<string, number> = {
   year: 365,
 }
 
+const EMPTY_STATE_CONFIGS: Record<
+  PostCategory,
+  {
+    icon: typeof FileText
+    title: string
+    desc: string
+    iconClass: string
+  }
+> = {
+  drafts: {
+    icon: FileText,
+    title: "No drafts",
+    desc: "Your draft posts will appear here. Start writing to save ideas for later.",
+    iconClass: "text-muted-foreground",
+  },
+  scheduled: {
+    icon: Calendar,
+    title: "No scheduled posts",
+    desc: "Posts you schedule for future publication will appear here.",
+    iconClass: "text-muted-foreground",
+  },
+  posted: {
+    icon: CheckCircle2,
+    title: "No published content",
+    desc: "Your successfully published posts across LinkedIn and X will appear here.",
+    iconClass: "text-muted-foreground",
+  },
+  failed: {
+    icon: AlertCircle,
+    title: "No failed posts",
+    desc: "Great job! All your scheduled and published posts completed with zero errors.",
+    iconClass: "text-destructive/80",
+  },
+}
+
 function isWithinDateRange(
   dateStrOrObj: Date | string,
   range: string,
@@ -228,44 +263,20 @@ function PostsEmptyState({
   hasActiveFilters,
   onClearFilters,
 }: EmptyStateProps) {
+  const config = EMPTY_STATE_CONFIGS[activeCategory]
+  const IconComponent = config.icon
+  const title = hasActiveFilters ? "No matching posts found" : config.title
+  const desc = hasActiveFilters
+    ? "Try clearing or relaxing your date and platform filters."
+    : config.desc
+
   return (
     <div className="flex flex-col items-center justify-center text-center py-20 px-4">
       <div className="rounded-full bg-muted/50 p-6 mb-4">
-        {activeCategory === "drafts" && (
-          <FileText className="h-10 w-10 text-muted-foreground" />
-        )}
-        {activeCategory === "scheduled" && (
-          <Calendar className="h-10 w-10 text-muted-foreground" />
-        )}
-        {activeCategory === "posted" && (
-          <CheckCircle2 className="h-10 w-10 text-muted-foreground" />
-        )}
-        {activeCategory === "failed" && (
-          <AlertCircle className="h-10 w-10 text-destructive/80" />
-        )}
+        <IconComponent className={`h-10 w-10 ${config.iconClass}`} />
       </div>
-      <h3 className="text-xl font-semibold mb-1">
-        {hasActiveFilters
-          ? "No matching posts found"
-          : activeCategory === "drafts"
-            ? "No drafts"
-            : activeCategory === "scheduled"
-              ? "No scheduled posts"
-              : activeCategory === "posted"
-                ? "No published content"
-                : "No failed posts"}
-      </h3>
-      <p className="text-muted-foreground text-sm max-w-sm">
-        {hasActiveFilters
-          ? "Try clearing or relaxing your date and platform filters."
-          : activeCategory === "drafts"
-            ? "Your draft posts will appear here. Start writing to save ideas for later."
-            : activeCategory === "scheduled"
-              ? "Posts you schedule for future publication will appear here."
-              : activeCategory === "posted"
-                ? "Your successfully published posts across LinkedIn and X will appear here."
-                : "Great job! All your scheduled and published posts completed with zero errors."}
-      </p>
+      <h3 className="text-xl font-semibold mb-1">{title}</h3>
+      <p className="text-muted-foreground text-sm max-w-sm">{desc}</p>
       {hasActiveFilters && (
         <Button
           variant="outline"

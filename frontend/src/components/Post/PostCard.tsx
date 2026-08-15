@@ -318,6 +318,26 @@ function PostCardAvatar({ author }: { author: PostAuthorData }) {
   )
 }
 
+function PostCardScheduleRow({
+  scheduledAt,
+  onChangeDateTime,
+}: {
+  scheduledAt: Date | null
+  onChangeDateTime: (d: Date | undefined) => void
+}) {
+  return (
+    <div className="my-2 flex items-center gap-2 p-2 rounded-xl bg-muted/40 border">
+      <span className="text-xs font-medium text-muted-foreground">
+        Schedule:
+      </span>
+      <PostSchedulePicker
+        initialValue={scheduledAt || undefined}
+        onChangeDateTime={onChangeDateTime}
+      />
+    </div>
+  )
+}
+
 function usePostCardEditor(
   post: PostCardData,
   onSave?: (
@@ -429,6 +449,46 @@ interface PostCardLayoutProps extends PostCardProps {
   engagement: ReturnType<typeof usePostCardEngagement>
 }
 
+function PostCardActionsRow({
+  isEditing,
+  platform,
+  onPlatformChange,
+  engagement,
+  commentsCount,
+  onComment,
+  onShare,
+  isPosted,
+}: {
+  isEditing: boolean
+  platform: Platform
+  onPlatformChange?: (platform: Platform) => void
+  engagement: ReturnType<typeof usePostCardEngagement>
+  commentsCount: number
+  onComment?: () => void
+  onShare?: () => void
+  isPosted: boolean
+}) {
+  return (
+    <div className="mt-2">
+      <PostActionFooter
+        isEditing={isEditing}
+        platform={platform}
+        onPlatformChange={onPlatformChange}
+        isLiked={engagement.isLiked}
+        likeCount={engagement.likeCount}
+        onLike={engagement.handleLike}
+        isReposted={engagement.isReposted}
+        repostCount={engagement.repostCount}
+        onRepost={engagement.handleRepost}
+        commentsCount={commentsCount}
+        onComment={onComment}
+        onShare={onShare}
+        isPosted={isPosted}
+      />
+    </div>
+  )
+}
+
 function PostCardLayout({
   post,
   isEditing = false,
@@ -484,17 +544,10 @@ function PostCardLayout({
             />
 
             {isEditing && isScheduled && (
-              <div className="my-2 flex items-center gap-2 p-2 rounded-xl bg-muted/40 border">
-                <span className="text-xs font-medium text-muted-foreground">
-                  Schedule:
-                </span>
-                <PostSchedulePicker
-                  initialValue={editor.editedScheduledAt || undefined}
-                  onChangeDateTime={(d) =>
-                    editor.setEditedScheduledAt(d || null)
-                  }
-                />
-              </div>
+              <PostCardScheduleRow
+                scheduledAt={editor.editedScheduledAt}
+                onChangeDateTime={(d) => editor.setEditedScheduledAt(d || null)}
+              />
             )}
 
             <PostCardBodyContent
@@ -513,25 +566,18 @@ function PostCardLayout({
               />
             )}
 
-            <div className="mt-2">
-              <PostActionFooter
-                isEditing={isEditing}
-                platform={editor.platform}
-                onPlatformChange={
-                  isPosted ? undefined : editor.handlePlatformChange
-                }
-                isLiked={engagement.isLiked}
-                likeCount={engagement.likeCount}
-                onLike={engagement.handleLike}
-                isReposted={engagement.isReposted}
-                repostCount={engagement.repostCount}
-                onRepost={engagement.handleRepost}
-                commentsCount={post.comments ?? 0}
-                onComment={() => onComment?.(post.id)}
-                onShare={() => onShare?.(post.id)}
-                isPosted={isPosted}
-              />
-            </div>
+            <PostCardActionsRow
+              isEditing={isEditing}
+              platform={editor.platform}
+              onPlatformChange={
+                isPosted ? undefined : editor.handlePlatformChange
+              }
+              engagement={engagement}
+              commentsCount={post.comments ?? 0}
+              onComment={() => onComment?.(post.id)}
+              onShare={() => onShare?.(post.id)}
+              isPosted={isPosted}
+            />
           </div>
         </div>
       </div>
