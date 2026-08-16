@@ -1,4 +1,5 @@
 import { Loader2, X } from "lucide-react"
+import { resolveMediaUrl } from "@/utils"
 
 export interface MediaThumbnailProps {
   imageUrl: string
@@ -17,7 +18,7 @@ export function MediaThumbnail({
       data-testid="post-media-preview"
     >
       <img
-        src={imageUrl}
+        src={resolveMediaUrl(imageUrl) ?? imageUrl}
         alt="Post attachment"
         className="w-full max-h-52 object-cover rounded-xl"
       />

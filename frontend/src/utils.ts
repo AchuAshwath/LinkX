@@ -1,5 +1,26 @@
 import { AxiosError } from "axios"
 import type { ApiError } from "./client"
+import { OpenAPI } from "./client"
+
+/**
+ * Resolve a potentially relative media URL (e.g. /static/uploads/foo.jpg)
+ * to an absolute URL using the configured API base. Safe to call on already-absolute URLs.
+ */
+export function resolveMediaUrl(url: string | null | undefined): string | null {
+  if (!url) return null
+  if (
+    url.startsWith("http://") ||
+    url.startsWith("https://") ||
+    url.startsWith("blob:")
+  ) {
+    return url
+  }
+  const base = (typeof OpenAPI.BASE === "string" ? OpenAPI.BASE : "").replace(
+    /\/$/,
+    "",
+  )
+  return base + url
+}
 
 function extractErrorMessage(err: ApiError): string {
   if (err instanceof AxiosError) {

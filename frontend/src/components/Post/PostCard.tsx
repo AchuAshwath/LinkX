@@ -24,7 +24,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Textarea } from "@/components/ui/textarea"
-import { formatFullDateTime, formatRelativeTime, getInitials } from "@/utils"
+import {
+  formatFullDateTime,
+  formatRelativeTime,
+  getInitials,
+  resolveMediaUrl,
+} from "@/utils"
 
 export interface PostAuthorData {
   name: string
@@ -363,7 +368,7 @@ function PostCardBodyContent({
       {imageUrl && (
         <div className="mt-2.5 overflow-hidden rounded-2xl">
           <img
-            src={imageUrl}
+            src={resolveMediaUrl(imageUrl) ?? imageUrl}
             alt=""
             className="w-full object-cover"
             loading="lazy"
