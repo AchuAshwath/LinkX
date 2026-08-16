@@ -391,29 +391,18 @@ class LinkedInPostClient:
         image_urn: str,
         title: str | None = None,
     ) -> str:
-        post_payload = {
-            "author": f"urn:li:person:{person_sub}",
-            "commentary": commentary,
-            "visibility": "PUBLIC",
-            "distribution": {
-                "feedDistribution": "MAIN_FEED",
-                "targetEntities": [],
-                "thirdPartyDistributionChannels": [],
-            },
-            "content": {
-                "media": {
-                    "id": image_urn,
-                    "title": title or "Post Image",
-                }
-            },
-            "lifecycleState": "PUBLISHED",
-        }
+        payload = self._build_image_post_payload(
+            person_sub=person_sub,
+            commentary=commentary,
+            image_urn=image_urn,
+            title=title,
+        )
 
         try:
             post_resp = await client.post(
                 f"{self.base_url}/posts",
                 headers=headers,
-                json=post_payload,
+                json=payload,
             )
         except httpx.RequestError as exc:
             raise LinkedInPostError(
@@ -434,6 +423,35 @@ class LinkedInPostClient:
                 details={"platform": "linkedin", "status_code": post_resp.status_code},
             )
 
+        return self._extract_post_urn(post_resp=post_resp)
+
+    def _build_image_post_payload(
+        self,
+        *,
+        person_sub: str,
+        commentary: str,
+        image_urn: str,
+        title: str | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "author": f"urn:li:person:{person_sub}",
+            "commentary": commentary,
+            "visibility": "PUBLIC",
+            "distribution": {
+                "feedDistribution": "MAIN_FEED",
+                "targetEntities": [],
+                "thirdPartyDistributionChannels": [],
+            },
+            "content": {
+                "media": {
+                    "id": image_urn,
+                    "title": title or "Post Image",
+                }
+            },
+            "lifecycleState": "PUBLISHED",
+        }
+
+    def _extract_post_urn(self, *, post_resp: httpx.Response) -> str:
         post_urn = post_resp.headers.get("x-restli-id")
         if not post_urn:
             post_data = post_resp.json()

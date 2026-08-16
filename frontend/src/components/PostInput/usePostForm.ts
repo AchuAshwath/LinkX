@@ -117,19 +117,13 @@ function useCreatePostMutation({
   })
 }
 
-export function usePostForm(options?: UsePostFormOptions) {
-  const { showSuccessToast, showErrorToast } = useCustomToast()
-  const [content, setContent] = useState(options?.initialContent || "")
-  const [scheduledAt, setScheduledAt] = useState<Date | undefined>()
-  const [channel, setChannel] = useState<Platform>(
-    options?.initialPlatform || "linkx",
-  )
-  const [actionType, setActionType] = useState<"draft" | "schedule" | "post">(
-    "post",
-  )
+function useComposerMedia(
+  showErrorToast: (msg: string) => void,
+  initialImageUrl?: string | null,
+) {
   const [mediaFile, setMediaFile] = useState<File | null>(null)
   const [imageUrl, setImageUrl] = useState<string | null>(
-    options?.initialImageUrl || null,
+    initialImageUrl || null,
   )
   const [isUploadingMedia, setIsUploadingMedia] = useState(false)
 
@@ -138,20 +132,6 @@ export function usePostForm(options?: UsePostFormOptions) {
     setImageUrl(null)
     setIsUploadingMedia(false)
   }, [])
-
-  const resetForm = useCallback(() => {
-    setContent("")
-    setScheduledAt(undefined)
-    setChannel("linkx")
-    setActionType("post")
-    removeMedia()
-  }, [removeMedia])
-
-  const createPostMutation = useCreatePostMutation({
-    showSuccessToast,
-    showErrorToast,
-    onSuccessReset: resetForm,
-  })
 
   const uploadMedia = useCallback(
     async (file: File): Promise<string | null> => {
@@ -176,6 +156,50 @@ export function usePostForm(options?: UsePostFormOptions) {
     },
     [showErrorToast],
   )
+
+  return {
+    mediaFile,
+    imageUrl,
+    setImageUrl,
+    isUploadingMedia,
+    uploadMedia,
+    removeMedia,
+  }
+}
+
+export function usePostForm(options?: UsePostFormOptions) {
+  const { showSuccessToast, showErrorToast } = useCustomToast()
+  const [content, setContent] = useState(options?.initialContent || "")
+  const [scheduledAt, setScheduledAt] = useState<Date | undefined>()
+  const [channel, setChannel] = useState<Platform>(
+    options?.initialPlatform || "linkx",
+  )
+  const [actionType, setActionType] = useState<"draft" | "schedule" | "post">(
+    "post",
+  )
+
+  const {
+    mediaFile,
+    imageUrl,
+    setImageUrl,
+    isUploadingMedia,
+    uploadMedia,
+    removeMedia,
+  } = useComposerMedia(showErrorToast, options?.initialImageUrl)
+
+  const resetForm = useCallback(() => {
+    setContent("")
+    setScheduledAt(undefined)
+    setChannel("linkx")
+    setActionType("post")
+    removeMedia()
+  }, [removeMedia])
+
+  const createPostMutation = useCreatePostMutation({
+    showSuccessToast,
+    showErrorToast,
+    onSuccessReset: resetForm,
+  })
 
   const handleSubmit = useCallback(
     (action: "draft" | "schedule" | "post") => {

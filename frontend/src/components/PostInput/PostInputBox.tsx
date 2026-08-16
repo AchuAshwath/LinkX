@@ -264,6 +264,51 @@ function PostInputFormBody({
   )
 }
 
+interface UseComposerLifecycleOptions {
+  initialContent?: string
+  initialImageUrl?: string | null
+  autoFocus?: boolean
+  isSuccess: boolean
+  setContent: (content: string) => void
+  setImageUrl: (url: string | null) => void
+  onSubmit?: () => void
+  setIsScheduleOpen: (open: boolean) => void
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>
+}
+
+function useComposerLifecycle({
+  initialContent,
+  initialImageUrl,
+  autoFocus,
+  isSuccess,
+  setContent,
+  setImageUrl,
+  onSubmit,
+  setIsScheduleOpen,
+  textareaRef,
+}: UseComposerLifecycleOptions) {
+  React.useEffect(() => {
+    if (initialContent) setContent(initialContent)
+  }, [initialContent, setContent])
+
+  React.useEffect(() => {
+    if (initialImageUrl) setImageUrl(initialImageUrl)
+  }, [initialImageUrl, setImageUrl])
+
+  React.useEffect(() => {
+    if (isSuccess) {
+      onSubmit?.()
+      setIsScheduleOpen(false)
+    }
+  }, [isSuccess, onSubmit, setIsScheduleOpen])
+
+  React.useEffect(() => {
+    if (!autoFocus) return
+    const timer = setTimeout(() => textareaRef.current?.focus(), 50)
+    return () => clearTimeout(timer)
+  }, [autoFocus, textareaRef])
+}
+
 export function PostInputBox({
   username,
   avatarUrl,
@@ -274,24 +319,7 @@ export function PostInputBox({
   canPublishOrSchedule = true,
   autoFocus = false,
 }: PostInputBoxProps) {
-  const {
-    content,
-    setContent,
-    scheduledAt,
-    setScheduledAt,
-    channel,
-    setChannel,
-    actionType,
-    setActionType,
-    imageUrl,
-    setImageUrl,
-    isUploadingMedia,
-    uploadMedia,
-    removeMedia,
-    handleSubmit,
-    handleContentChange,
-    createPostMutation,
-  } = usePostForm({
+  const form = usePostForm({
     initialContent,
     initialImageUrl,
   })
@@ -299,28 +327,19 @@ export function PostInputBox({
   const [isScheduleOpen, setIsScheduleOpen] = React.useState(false)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const { isDragging, fileInputRef, handleFileSelect, dragProps } =
-    useComposerDragDrop(uploadMedia)
+    useComposerDragDrop(form.uploadMedia)
 
-  React.useEffect(() => {
-    if (initialContent) setContent(initialContent)
-  }, [initialContent, setContent])
-
-  React.useEffect(() => {
-    if (initialImageUrl) setImageUrl(initialImageUrl)
-  }, [initialImageUrl, setImageUrl])
-
-  React.useEffect(() => {
-    if (createPostMutation.isSuccess) {
-      onSubmit?.()
-      setIsScheduleOpen(false)
-    }
-  }, [createPostMutation.isSuccess, onSubmit])
-
-  React.useEffect(() => {
-    if (!autoFocus) return
-    const timer = setTimeout(() => textareaRef.current?.focus(), 50)
-    return () => clearTimeout(timer)
-  }, [autoFocus])
+  useComposerLifecycle({
+    initialContent,
+    initialImageUrl,
+    autoFocus,
+    isSuccess: form.createPostMutation.isSuccess,
+    setContent: form.setContent,
+    setImageUrl: form.setImageUrl,
+    onSubmit,
+    setIsScheduleOpen,
+    textareaRef,
+  })
 
   return (
     <section
@@ -344,23 +363,25 @@ export function PostInputBox({
 
       <PostInputFormBody
         username={username}
-        channel={channel}
-        setChannel={setChannel}
+        channel={form.channel}
+        setChannel={form.setChannel}
         textareaRef={textareaRef}
-        content={content}
-        handleContentChange={handleContentChange}
-        imageUrl={imageUrl}
-        isUploadingMedia={isUploadingMedia}
-        removeMedia={removeMedia}
-        isSubmitting={createPostMutation.isPending || isUploadingMedia}
-        actionType={actionType}
-        setActionType={setActionType}
+        content={form.content}
+        handleContentChange={form.handleContentChange}
+        imageUrl={form.imageUrl}
+        isUploadingMedia={form.isUploadingMedia}
+        removeMedia={form.removeMedia}
+        isSubmitting={
+          form.createPostMutation.isPending || form.isUploadingMedia
+        }
+        actionType={form.actionType}
+        setActionType={form.setActionType}
         canPublishOrSchedule={canPublishOrSchedule}
         onImageClick={() => fileInputRef.current?.click()}
-        handleSubmit={handleSubmit}
+        handleSubmit={form.handleSubmit}
         onCancel={onCancel}
-        scheduledAt={scheduledAt}
-        setScheduledAt={setScheduledAt}
+        scheduledAt={form.scheduledAt}
+        setScheduledAt={form.setScheduledAt}
         isScheduleOpen={isScheduleOpen}
         setIsScheduleOpen={setIsScheduleOpen}
       />

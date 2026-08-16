@@ -170,86 +170,57 @@ async def test_create_image_post_missing_token_and_sub() -> None:
 
 
 @pytest.mark.anyio
-async def test_create_image_post_step1_fail(monkeypatch: pytest.MonkeyPatch) -> None:
-    _mock_async_client_transport(
-        monkeypatch,
-        lambda _req: httpx.Response(500, json={"message": "LinkedIn server error"}),
-    )
-
-    client = LinkedInPostClient()
-    with pytest.raises(LinkedInPostError) as exc:
-        await client.create_image_post(
-            text="Fail step 1",
-            image_bytes=b"bytes",
-            content_type="image/png",
-            token="tok",
-            sub="sub1",
-        )
-    assert exc.value.code == "linkedin_image_init_failed"
-    assert exc.value.retryable is True
-
-
-@pytest.mark.anyio
-async def test_create_image_post_step2_binary_fail(
+@pytest.mark.parametrize(
+    (
+        "init_status",
+        "upload_status",
+        "post_status",
+        "expected_code",
+        "expected_retryable",
+    ),
+    [
+        (500, 200, 201, "linkedin_image_init_failed", True),
+        (200, 500, 201, "linkedin_image_upload_failed", True),
+        (200, 200, 400, "linkedin_publish_failed", False),
+    ],
+)
+async def test_create_image_post_pipeline_failures(
     monkeypatch: pytest.MonkeyPatch,
+    init_status: int,
+    upload_status: int,
+    post_status: int,
+    expected_code: str,
+    expected_retryable: bool,
 ) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        if "initializeUpload" in str(request.url):
+        url = str(request.url)
+        if "initializeUpload" in url:
+            if init_status >= 400:
+                return httpx.Response(init_status, json={"message": "fail"})
             return httpx.Response(
                 200,
                 json={
                     "value": {
-                        "uploadUrl": "https://upload.fail",
-                        "image": "urn:li:image:img_1",
+                        "uploadUrl": "https://upload.test",
+                        "image": "urn:li:image:1",
                     }
                 },
             )
-        return httpx.Response(500)
+        if "https://upload.test" in url:
+            return httpx.Response(upload_status)
+        if "/posts" in url:
+            return httpx.Response(post_status, json={"message": "fail"})
+        return httpx.Response(404)
 
     _mock_async_client_transport(monkeypatch, handler)
-
     client = LinkedInPostClient()
     with pytest.raises(LinkedInPostError) as exc:
         await client.create_image_post(
-            text="Fail step 2",
+            text="Pipeline error test",
             image_bytes=b"bytes",
             content_type="image/png",
             token="tok",
             sub="sub1",
         )
-    assert exc.value.code == "linkedin_image_upload_failed"
-    assert exc.value.retryable is True
-
-
-@pytest.mark.anyio
-async def test_create_image_post_step3_post_fail(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        if "initializeUpload" in str(request.url):
-            return httpx.Response(
-                200,
-                json={
-                    "value": {
-                        "uploadUrl": "https://upload.ok",
-                        "image": "urn:li:image:img_1",
-                    }
-                },
-            )
-        if "https://upload.ok" in str(request.url):
-            return httpx.Response(200)
-        return httpx.Response(400, json={"message": "Invalid post schema"})
-
-    _mock_async_client_transport(monkeypatch, handler)
-
-    client = LinkedInPostClient()
-    with pytest.raises(LinkedInPostError) as exc:
-        await client.create_image_post(
-            text="Fail step 3",
-            image_bytes=b"bytes",
-            content_type="image/png",
-            token="tok",
-            sub="sub1",
-        )
-    assert exc.value.code == "linkedin_publish_failed"
-    assert exc.value.retryable is False
+    assert exc.value.code == expected_code
+    assert exc.value.retryable is expected_retryable
