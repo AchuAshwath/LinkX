@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router"
-import { ChevronsUpDown, Layers, LogOut, Settings } from "lucide-react"
+import { ChevronsUpDown, LogOut, Settings } from "lucide-react"
 import { UserInfo } from "@/components/Common/UserInfo"
 import { Button } from "@/components/ui/button"
 import {
@@ -56,12 +56,6 @@ export function SidebarProfile({
             <DropdownMenuItem className="rounded-lg cursor-pointer">
               <Settings className="mr-2 h-4 w-4" />
               Settings
-            </DropdownMenuItem>
-          </Link>
-          <Link to="/about" onClick={onMenuClick}>
-            <DropdownMenuItem className="rounded-lg cursor-pointer">
-              <Layers className="mr-2 h-4 w-4" />
-              Brand Kit
             </DropdownMenuItem>
           </Link>
           <DropdownMenuSeparator />
