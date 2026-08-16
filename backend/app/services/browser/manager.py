@@ -93,6 +93,56 @@ async def _inspect_x_profile(page: Any) -> tuple[bool, str | None, str | None]:
     return is_premium, username, display_name
 
 
+def _format_verification_message(
+    *, is_logged_in: bool, is_premium: bool, username: str | None
+) -> str:
+    if not is_logged_in:
+        return "Session cookies expired or login required."
+    if is_premium:
+        return f"Session authenticated! Verified X Premium account ({username or 'user'}) - 25,000 chars limit."
+    return "Session authenticated! Home feed verified."
+
+
+def _build_verification_payload(
+    *,
+    is_logged_in: bool,
+    is_premium: bool,
+    username: str | None,
+    display_name: str | None,
+    url: str | None,
+) -> dict[str, Any]:
+    max_limit = 25000 if is_premium else 280
+    return {
+        "connected": True,
+        "authenticated": is_logged_in,
+        "is_premium": is_premium,
+        "max_character_limit": max_limit,
+        "username": username,
+        "display_name": display_name,
+        "url": url,
+        "message": _format_verification_message(
+            is_logged_in=is_logged_in,
+            is_premium=is_premium,
+            username=username,
+        ),
+    }
+
+
+def _build_unauthenticated_response(
+    *, session_dir: Path, message: str
+) -> dict[str, Any]:
+    cached = _read_session_meta_file(session_dir)
+    return {
+        "connected": True,
+        "authenticated": False,
+        "is_premium": cached.get("is_premium", False),
+        "max_character_limit": cached.get("max_character_limit", 280),
+        "username": cached.get("username"),
+        "display_name": cached.get("display_name"),
+        "message": message,
+    }
+
+
 class BrowserManager:
     """Manages browser sessions and Playwright contexts for automation."""
 
@@ -148,63 +198,58 @@ class BrowserManager:
             raise ValueError(f"Unknown platform: {platform_name}")
 
         try:
-            async with self.get_context(platform_name, headless=True) as context:
-                page = context.pages[0] if context.pages else await context.new_page()
-                for p in context.pages[1:]:
-                    await p.close()
-                await page.goto(
-                    config.url, wait_until="domcontentloaded", timeout=15000
-                )
-                await asyncio.sleep(2)
-
-                element = await page.query_selector(config.sentinel_selector)
-                is_logged_in = bool(element and await element.is_visible())
-
-                is_premium, username, display_name = False, None, None
-                if is_logged_in and platform_name == "x":
-                    is_premium, username, display_name = await _inspect_x_profile(page)
-
-                max_limit = 25000 if is_premium else 280
-                meta = {
-                    "is_premium": is_premium,
-                    "max_character_limit": max_limit,
-                    "username": username,
-                    "display_name": display_name,
-                }
-                if is_logged_in:
-                    _write_session_meta_file(session_dir, meta)
-
-                msg = (
-                    (
-                        f"Session authenticated! Verified X Premium account ({username or 'user'}) - 25,000 chars limit."
-                        if is_premium
-                        else "Session authenticated! Home feed verified."
-                    )
-                    if is_logged_in
-                    else "Session cookies expired or login required."
-                )
-
-                return {
-                    "connected": True,
-                    "authenticated": is_logged_in,
-                    "is_premium": is_premium,
-                    "max_character_limit": max_limit,
-                    "username": username,
-                    "display_name": display_name,
-                    "url": page.url,
-                    "message": msg,
-                }
+            return await self._verify_live_session(
+                platform_name=platform_name,
+                config=config,
+                session_dir=session_dir,
+            )
         except Exception as e:
-            cached = _read_session_meta_file(session_dir)
-            return {
-                "connected": True,
-                "authenticated": False,
-                "is_premium": cached.get("is_premium", False),
-                "max_character_limit": cached.get("max_character_limit", 280),
-                "username": cached.get("username"),
-                "display_name": cached.get("display_name"),
-                "message": f"Verification error: {e}",
-            }
+            return _build_unauthenticated_response(
+                session_dir=session_dir,
+                message=f"Verification error: {e}",
+            )
+
+    async def _verify_live_session(
+        self,
+        *,
+        platform_name: str,
+        config: Any,
+        session_dir: Path,
+    ) -> dict[str, Any]:
+        async with self.get_context(platform_name, headless=True) as context:
+            page = context.pages[0] if context.pages else await context.new_page()
+            for p in context.pages[1:]:
+                await p.close()
+            await page.goto(config.url, wait_until="domcontentloaded", timeout=15000)
+            await asyncio.sleep(2)
+
+            element = await page.query_selector(config.sentinel_selector)
+            is_logged_in = bool(element and await element.is_visible())
+
+            is_premium, username, display_name = (
+                await _inspect_x_profile(page)
+                if (is_logged_in and platform_name == "x")
+                else (False, None, None)
+            )
+
+            if is_logged_in:
+                _write_session_meta_file(
+                    session_dir,
+                    {
+                        "is_premium": is_premium,
+                        "max_character_limit": 25000 if is_premium else 280,
+                        "username": username,
+                        "display_name": display_name,
+                    },
+                )
+
+            return _build_verification_payload(
+                is_logged_in=is_logged_in,
+                is_premium=is_premium,
+                username=username,
+                display_name=display_name,
+                url=page.url,
+            )
 
     def start_login_subprocess(self, platform_name: str, force: bool = False) -> None:
         """Launch a vanilla Chrome window for manual user login.

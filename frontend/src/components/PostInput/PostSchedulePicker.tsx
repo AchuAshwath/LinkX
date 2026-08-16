@@ -43,26 +43,39 @@ export function formatDateTime(date: Date | undefined): string {
   })
 }
 
+function adjustMeridiemHours(rawHours: number, meridiem?: string): number {
+  if (meridiem === "pm" && rawHours < 12) return rawHours + 12
+  if (meridiem === "am" && rawHours === 12) return 0
+  return rawHours
+}
+
+function isValidTime(hours: number, minutes: number): boolean {
+  return hours >= 0 && hours < 24 && minutes >= 0 && minutes < 60
+}
+
+function parseRegexTime(match: RegExpMatchArray, baseDate: Date): Date | null {
+  const hours = adjustMeridiemHours(
+    parseInt(match[1], 10),
+    match[3]?.toLowerCase(),
+  )
+  const minutes = match[2] ? parseInt(match[2], 10) : 0
+
+  if (!isValidTime(hours, minutes)) return null
+
+  const next = new Date(baseDate)
+  next.setHours(hours, minutes, 0, 0)
+  return next
+}
+
 export function parseTimeInput(timeStr: string, baseDate: Date): Date | null {
   const trimmed = timeStr.trim()
   if (!trimmed) return null
 
-  // 1. Match 12-hour or 24-hour time strings like "3:23 pm", "15:23", "3pm", "3:30"
   const match = trimmed.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i)
   if (match) {
-    let hours = parseInt(match[1], 10)
-    const minutes = match[2] ? parseInt(match[2], 10) : 0
-    const meridiem = match[3]?.toLowerCase()
-    if (meridiem === "pm" && hours < 12) hours += 12
-    if (meridiem === "am" && hours === 12) hours = 0
-    if (hours >= 0 && hours < 24 && minutes >= 0 && minutes < 60) {
-      const next = new Date(baseDate)
-      next.setHours(hours, minutes, 0, 0)
-      return next
-    }
+    return parseRegexTime(match, baseDate)
   }
 
-  // 2. Fallback to chrono parse
   const parsed = parseDate(trimmed, baseDate)
   if (parsed) {
     const next = new Date(baseDate)
