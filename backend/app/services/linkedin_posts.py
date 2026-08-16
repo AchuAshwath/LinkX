@@ -59,6 +59,33 @@ def linkedin_state_redis_key(*, state: str) -> str:
     return f"linkedin:oauth_state:{state}"
 
 
+def _check_linkedin_response(
+    resp: httpx.Response,
+    *,
+    error_detail: str,
+    error_code: str,
+) -> None:
+    if resp.status_code >= 400:
+        retryable = _is_retryable_status(status_code=resp.status_code)
+        raise LinkedInPostError(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=error_detail,
+            code=error_code,
+            retryable=retryable,
+            details={"platform": "linkedin", "status_code": resp.status_code},
+        )
+
+
+def _handle_request_error(exc: httpx.RequestError, *, action: str) -> LinkedInPostError:
+    return LinkedInPostError(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail=f"Error {action}: {exc}",
+        code="linkedin_network_error",
+        retryable=True,
+        details={"platform": "linkedin"},
+    )
+
+
 class LinkedInPostClient:
     """Minimal client for LinkedIn Posts API for member text posts.
 
@@ -150,87 +177,23 @@ class LinkedInPostClient:
         linkedin_person_id: str,
         content: str,
     ) -> str:
-        """Create a text-only post on the member's LinkedIn profile.
+        """Create a text-only post on the member's LinkedIn profile."""
+        return await self.create_post(
+            text=content,
+            user_id=user_id,
+            linkedin_person_id=linkedin_person_id,
+        )
 
-        Returns the LinkedIn Post URN (e.g. `urn:li:ugcPost:...`).
-        """
-        access_token = self._get_access_token(user_id=user_id)
-        author_urn = f"urn:li:person:{linkedin_person_id}"
-
-        payload = {
-            "author": author_urn,
-            "commentary": content,
-            "visibility": "PUBLIC",
-            "distribution": {
-                "feedDistribution": "MAIN_FEED",
-                "targetEntities": [],
-                "thirdPartyDistributionChannels": [],
-            },
-            "lifecycleState": "PUBLISHED",
-            "isReshareDisabledByAuthor": False,
-        }
-
-        async with httpx.AsyncClient(timeout=20) as client:
-            try:
-                resp = await client.post(
-                    f"{self.base_url}/posts",
-                    headers=self._common_headers(access_token=access_token),
-                    json=payload,
-                )
-            except httpx.RequestError as exc:
-                raise LinkedInPostError(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"Error communicating with LinkedIn: {exc}",
-                    code="linkedin_network_error",
-                    retryable=True,
-                    details={"platform": "linkedin"},
-                )
-
-        if resp.status_code >= 400:
-            retryable = _is_retryable_status(status_code=resp.status_code)
-            raise LinkedInPostError(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="LinkedIn rejected the post. Please try again or reconnect LinkedIn.",
-                code="linkedin_publish_failed",
-                retryable=retryable,
-                details={"platform": "linkedin", "status_code": resp.status_code},
-            )
-
-        post_urn = resp.headers.get("x-restli-id")
-        if not post_urn:
-            data = resp.json()
-            post_urn = data.get("id")
-
-        if not post_urn:
-            raise LinkedInPostError(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="LinkedIn did not return a post id. Please try again later.",
-                code="linkedin_missing_post_id",
-                retryable=True,
-                details={"platform": "linkedin"},
-            )
-
-        return str(post_urn)
-
-    async def create_image_post(
+    async def create_post(
         self,
         *,
-        text: str = "",
-        image_bytes: bytes,
-        content_type: str = "image/jpeg",
-        title: str | None = None,
-        token: str | None = None,
-        sub: str | None = None,
+        text: str,
         user_id: str | None = None,
+        sub: str | None = None,
+        token: str | None = None,
         linkedin_person_id: str | None = None,
         content: str | None = None,
-    ) -> LinkedInPostResult:
-        """Create an image post on the member's LinkedIn profile using 3-step upload protocol.
-
-        1. Initialize image upload (POST /rest/images?action=initializeUpload)
-        2. Upload binary bytes to the uploadUrl (PUT uploadUrl)
-        3. Create post with content.media.id (POST /rest/posts)
-        """
+    ) -> str:
         access_token = token
         if not access_token:
             if user_id:
@@ -253,7 +216,91 @@ class LinkedInPostClient:
             )
 
         commentary = text if text else (content or "")
+        post_payload = {
+            "author": f"urn:li:person:{person_sub}",
+            "commentary": commentary,
+            "visibility": "PUBLIC",
+            "distribution": {
+                "feedDistribution": "MAIN_FEED",
+                "targetEntities": [],
+                "thirdPartyDistributionChannels": [],
+            },
+            "lifecycleState": "PUBLISHED",
+        }
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Linkedin-Version": _LINKEDIN_VERSION,
+            "X-Restli-Protocol-Version": _RESTLI_PROTOCOL_VERSION,
+            "Content-Type": "application/json",
+        }
 
+        async with httpx.AsyncClient(timeout=30) as client:
+            try:
+                resp = await client.post(
+                    f"{self.base_url}/posts",
+                    headers=headers,
+                    json=post_payload,
+                )
+            except httpx.RequestError as exc:
+                raise _handle_request_error(exc, action="creating LinkedIn post")
+
+            _check_linkedin_response(
+                resp,
+                error_detail="LinkedIn rejected the post.",
+                error_code="linkedin_publish_failed",
+            )
+
+            post_urn = resp.headers.get("x-restli-id")
+            if not post_urn:
+                data = resp.json()
+                post_urn = data.get("id")
+
+            if not post_urn:
+                raise LinkedInPostError(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="LinkedIn did not return a post id.",
+                    code="linkedin_missing_post_id",
+                    retryable=True,
+                    details={"platform": "linkedin"},
+                )
+
+            return str(post_urn)
+
+    async def create_image_post(
+        self,
+        *,
+        text: str,
+        image_bytes: bytes,
+        content_type: str,
+        user_id: str | None = None,
+        sub: str | None = None,
+        token: str | None = None,
+        linkedin_person_id: str | None = None,
+        content: str | None = None,
+        title: str | None = None,
+    ) -> LinkedInPostResult:
+        access_token = token
+        if not access_token:
+            if user_id:
+                access_token = self._get_access_token(user_id=user_id)
+            else:
+                raise LinkedInPostError(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="LinkedIn access token or user_id is required.",
+                    code="linkedin_token_missing",
+                    retryable=False,
+                )
+
+        person_sub = sub or linkedin_person_id
+        if not person_sub:
+            raise LinkedInPostError(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="LinkedIn person sub/id is required.",
+                code="linkedin_sub_missing",
+                retryable=False,
+            )
+
+        commentary = text if text else (content or "")
         common_headers = {
             "Authorization": f"Bearer {access_token}",
             "Linkedin-Version": _LINKEDIN_VERSION,
@@ -303,23 +350,15 @@ class LinkedInPostClient:
                 json=init_payload,
             )
         except httpx.RequestError as exc:
-            raise LinkedInPostError(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Error initializing LinkedIn image upload: {exc}",
-                code="linkedin_network_error",
-                retryable=True,
-                details={"platform": "linkedin"},
+            raise _handle_request_error(
+                exc, action="initializing LinkedIn image upload"
             )
 
-        if init_resp.status_code >= 400:
-            retryable = _is_retryable_status(status_code=init_resp.status_code)
-            raise LinkedInPostError(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="LinkedIn rejected image upload initialization.",
-                code="linkedin_image_init_failed",
-                retryable=retryable,
-                details={"platform": "linkedin", "status_code": init_resp.status_code},
-            )
+        _check_linkedin_response(
+            init_resp,
+            error_detail="LinkedIn rejected image upload initialization.",
+            error_code="linkedin_image_init_failed",
+        )
 
         return self._parse_init_upload_response(init_resp=init_resp)
 
@@ -360,26 +399,15 @@ class LinkedInPostClient:
                 content=image_bytes,
             )
         except httpx.RequestError as exc:
-            raise LinkedInPostError(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Error uploading image binary to LinkedIn: {exc}",
-                code="linkedin_network_error",
-                retryable=True,
-                details={"platform": "linkedin"},
+            raise _handle_request_error(
+                exc, action="uploading image binary to LinkedIn"
             )
 
-        if upload_resp.status_code >= 400:
-            retryable = _is_retryable_status(status_code=upload_resp.status_code)
-            raise LinkedInPostError(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="LinkedIn binary image upload failed.",
-                code="linkedin_image_upload_failed",
-                retryable=retryable,
-                details={
-                    "platform": "linkedin",
-                    "status_code": upload_resp.status_code,
-                },
-            )
+        _check_linkedin_response(
+            upload_resp,
+            error_detail="LinkedIn binary image upload failed.",
+            error_code="linkedin_image_upload_failed",
+        )
 
     async def _create_image_post_record(
         self,
@@ -405,23 +433,13 @@ class LinkedInPostClient:
                 json=payload,
             )
         except httpx.RequestError as exc:
-            raise LinkedInPostError(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Error creating LinkedIn image post: {exc}",
-                code="linkedin_network_error",
-                retryable=True,
-                details={"platform": "linkedin"},
-            )
+            raise _handle_request_error(exc, action="creating LinkedIn image post")
 
-        if post_resp.status_code >= 400:
-            retryable = _is_retryable_status(status_code=post_resp.status_code)
-            raise LinkedInPostError(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="LinkedIn rejected the media post.",
-                code="linkedin_publish_failed",
-                retryable=retryable,
-                details={"platform": "linkedin", "status_code": post_resp.status_code},
-            )
+        _check_linkedin_response(
+            post_resp,
+            error_detail="LinkedIn rejected the media post.",
+            error_code="linkedin_publish_failed",
+        )
 
         return self._extract_post_urn(post_resp=post_resp)
 
@@ -498,13 +516,7 @@ class LinkedInPostClient:
                     json=payload,
                 )
             except httpx.RequestError as exc:
-                raise LinkedInPostError(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"Error communicating with LinkedIn: {exc}",
-                    code="linkedin_network_error",
-                    retryable=True,
-                    details={"platform": "linkedin"},
-                )
+                raise _handle_request_error(exc, action="updating LinkedIn post")
 
         if resp.status_code == status.HTTP_404_NOT_FOUND:
             raise LinkedInPostError(
@@ -515,15 +527,11 @@ class LinkedInPostClient:
                 details={"platform": "linkedin", "status_code": resp.status_code},
             )
 
-        if resp.status_code >= 400:
-            retryable = _is_retryable_status(status_code=resp.status_code)
-            raise LinkedInPostError(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="LinkedIn could not update the post. Please try again.",
-                code="linkedin_update_failed",
-                retryable=retryable,
-                details={"platform": "linkedin", "status_code": resp.status_code},
-            )
+        _check_linkedin_response(
+            resp,
+            error_detail="LinkedIn could not update the post. Please try again.",
+            error_code="linkedin_update_failed",
+        )
 
     async def delete_post(
         self,
@@ -548,23 +556,13 @@ class LinkedInPostClient:
                     headers=headers,
                 )
             except httpx.RequestError as exc:
-                raise LinkedInPostError(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"Error communicating with LinkedIn: {exc}",
-                    code="linkedin_network_error",
-                    retryable=True,
-                    details={"platform": "linkedin"},
-                )
+                raise _handle_request_error(exc, action="deleting LinkedIn post")
 
         if resp.status_code in (status.HTTP_404_NOT_FOUND, status.HTTP_204_NO_CONTENT):
             return
 
-        if resp.status_code >= 400:
-            retryable = _is_retryable_status(status_code=resp.status_code)
-            raise LinkedInPostError(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="LinkedIn could not delete the post. Please try again.",
-                code="linkedin_delete_failed",
-                retryable=retryable,
-                details={"platform": "linkedin", "status_code": resp.status_code},
-            )
+        _check_linkedin_response(
+            resp,
+            error_detail="LinkedIn could not delete the post. Please try again.",
+            error_code="linkedin_delete_failed",
+        )

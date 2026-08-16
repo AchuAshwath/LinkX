@@ -171,13 +171,7 @@ async def test_create_image_post_missing_token_and_sub() -> None:
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    (
-        "init_status",
-        "upload_status",
-        "post_status",
-        "expected_code",
-        "expected_retryable",
-    ),
+    "case",
     [
         (500, 200, 201, "linkedin_image_init_failed", True),
         (200, 500, 201, "linkedin_image_upload_failed", True),
@@ -186,12 +180,10 @@ async def test_create_image_post_missing_token_and_sub() -> None:
 )
 async def test_create_image_post_pipeline_failures(
     monkeypatch: pytest.MonkeyPatch,
-    init_status: int,
-    upload_status: int,
-    post_status: int,
-    expected_code: str,
-    expected_retryable: bool,
+    case: tuple[int, int, int, str, bool],
 ) -> None:
+    init_status, upload_status, post_status, expected_code, expected_retryable = case
+
     def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
         if "initializeUpload" in url:

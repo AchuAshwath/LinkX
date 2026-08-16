@@ -1,4 +1,4 @@
-import { Calendar, Loader2, X } from "lucide-react"
+import { Calendar } from "lucide-react"
 import * as React from "react"
 
 import {
@@ -7,11 +7,13 @@ import {
 } from "@/components/Common/PlatformSelector"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
+import { MediaThumbnail } from "./MediaThumbnail"
 import { PostActionBar } from "./PostActionBar"
 import { formatDateTime } from "./PostSchedulePicker"
+import { useComposerDragDrop } from "./useComposerDragDrop"
 import { usePostForm } from "./usePostForm"
 
-interface PostInputBoxProps {
+export interface PostInputBoxProps {
   username: string
   avatarUrl?: string
   initialContent?: string
@@ -72,91 +74,6 @@ function PostInputScheduledNotice({
       </span>
     </div>
   )
-}
-
-interface MediaThumbnailProps {
-  imageUrl: string
-  isUploading: boolean
-  onRemove: () => void
-}
-
-function MediaThumbnail({
-  imageUrl,
-  isUploading,
-  onRemove,
-}: MediaThumbnailProps) {
-  return (
-    <div
-      className="relative mt-3 group overflow-hidden rounded-xl border border-border/60 bg-muted/20 max-w-md"
-      data-testid="post-media-preview"
-    >
-      <img
-        src={imageUrl}
-        alt="Post attachment"
-        className="w-full max-h-52 object-cover rounded-xl"
-      />
-      <button
-        type="button"
-        onClick={onRemove}
-        aria-label="Remove image"
-        className="absolute top-2.5 right-2.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-white shadow-md backdrop-blur-xs transition-all hover:bg-black hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-white/50 cursor-pointer"
-        data-testid="remove-media-btn"
-      >
-        <X className="h-4 w-4" />
-      </button>
-      {isUploading && (
-        <div
-          className="absolute inset-0 bg-black/40 backdrop-blur-[1px] rounded-xl flex items-center justify-center text-white"
-          data-testid="media-uploading-spinner"
-        >
-          <Loader2 className="h-6 w-6 animate-spin text-white" />
-        </div>
-      )}
-    </div>
-  )
-}
-
-function useComposerDragDrop(onUpload: (file: File) => void) {
-  const [isDragging, setIsDragging] = React.useState(false)
-  const fileInputRef = React.useRef<HTMLInputElement>(null)
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) onUpload(file)
-    e.target.value = ""
-  }
-
-  const handleDragOver = (e: React.DragEvent<HTMLElement>) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (!isDragging) setIsDragging(true)
-  }
-
-  const handleDragLeave = (e: React.DragEvent<HTMLElement>) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (e.currentTarget.contains(e.relatedTarget as Node)) return
-    setIsDragging(false)
-  }
-
-  const handleDrop = (e: React.DragEvent<HTMLElement>) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(false)
-    const file = e.dataTransfer.files?.[0]
-    if (file?.type.startsWith("image/")) onUpload(file)
-  }
-
-  return {
-    isDragging,
-    fileInputRef,
-    handleFileSelect,
-    dragProps: {
-      onDragOver: handleDragOver,
-      onDragLeave: handleDragLeave,
-      onDrop: handleDrop,
-    },
-  }
 }
 
 interface PostInputFormBodyProps {
