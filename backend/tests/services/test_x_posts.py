@@ -34,6 +34,44 @@ async def test_validate_content_length_exceeded(tmp_path: Path) -> None:
 
 
 @pytest.mark.anyio
+async def test_validate_content_length_premium_allowed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = XPostClient()
+    dummy_file = tmp_path / "test.png"
+    dummy_file.write_bytes(b"test")
+
+    monkeypatch.setattr(
+        "app.services.browser.manager.BrowserManager.session_exists",
+        lambda _self, _platform: True,
+    )
+    monkeypatch.setattr(
+        "app.services.browser.manager.BrowserManager.read_session_metadata",
+        lambda _self, _platform: {"is_premium": True, "max_character_limit": 25000},
+    )
+
+    # 1000 chars should pass validation without raising x_content_too_long
+    # It will proceed to launch context, which we mock to avoid actual browser launch
+    mock_context_manager = MagicMock()
+    mock_context_manager.__aenter__ = AsyncMock(
+        side_effect=XPostError(status_code=500, detail="Mocked stop", code="mocked")
+    )
+    mock_context_manager.__aexit__ = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        "app.services.browser.manager.BrowserManager.get_context",
+        lambda _self, _p, **_kwargs: mock_context_manager,
+    )
+
+    with pytest.raises(XPostError) as exc_info:
+        await client.create_media_post(
+            content="A" * 1000,
+            image_path=str(dummy_file),
+            user_id="user_123",
+        )
+    assert exc_info.value.code == "mocked"
+
+
+@pytest.mark.anyio
 async def test_create_media_post_missing_image_file() -> None:
     client = XPostClient()
     with pytest.raises(XPostError) as exc_info:

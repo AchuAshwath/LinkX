@@ -61,8 +61,10 @@ class XPostClient:
 
     async def create_text_post(self, *, user_id: str, content: str) -> str:
         """Create a text-only post on X.com using Playwright."""
-        self._validate_content(content)
         manager = self._get_manager(user_id=user_id)
+        meta = manager.read_session_metadata("x")
+        max_limit = int(meta.get("max_character_limit", 280))
+        self._validate_content(content, max_length=max_limit)
         return await self._execute_post_flow(manager=manager, content=content)
 
     async def create_media_post(
@@ -74,7 +76,11 @@ class XPostClient:
         headless: bool | None = None,
     ) -> XPostResult:
         """Create a post with image media attachment on X.com using Playwright."""
-        self._validate_content(content)
+        manager = self._get_manager(user_id=user_id)
+        meta = manager.read_session_metadata("x")
+        max_limit = int(meta.get("max_character_limit", 280))
+        self._validate_content(content, max_length=max_limit)
+
         path = Path(image_path)
         if not path.exists():
             raise XPostError(
@@ -85,7 +91,6 @@ class XPostClient:
                 details={"platform": "x", "image_path": image_path},
             )
 
-        manager = self._get_manager(user_id=user_id)
         is_headless = (
             (os.environ.get("PLAYWRIGHT_HEADLESS", "1") == "1")
             if headless is None
@@ -98,15 +103,19 @@ class XPostClient:
             headless=is_headless,
         )
 
-    def _validate_content(self, content: str) -> None:
+    def _validate_content(self, content: str, max_length: int = 280) -> None:
         normalized_content = normalize_post_text(content)
-        if len(normalized_content) > 280:
+        if len(normalized_content) > max_length:
             raise XPostError(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Post content exceeds X.com's 280 character limit.",
+                detail=f"Post content exceeds X.com's {max_length} character limit.",
                 code="x_content_too_long",
                 retryable=False,
-                details={"platform": "x", "length": len(content)},
+                details={
+                    "platform": "x",
+                    "length": len(content),
+                    "max_length": max_length,
+                },
             )
 
     def _get_manager(self, *, user_id: str | None = None) -> BrowserManager:

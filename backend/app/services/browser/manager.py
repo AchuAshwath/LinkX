@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import subprocess
 from collections.abc import AsyncGenerator
@@ -24,6 +25,74 @@ from .platforms import PLATFORMS
 logger = logging.getLogger(__name__)
 
 
+def _read_session_meta_file(session_dir: Path) -> dict[str, Any]:
+    meta_path = session_dir / "session_meta.json"
+    if not meta_path.exists():
+        return {
+            "is_premium": False,
+            "max_character_limit": 280,
+            "username": None,
+            "display_name": None,
+        }
+    try:
+        with open(meta_path, encoding="utf-8") as f:
+            data = json.load(f)
+            return {
+                "is_premium": bool(data.get("is_premium", False)),
+                "max_character_limit": int(data.get("max_character_limit", 280)),
+                "username": data.get("username"),
+                "display_name": data.get("display_name"),
+            }
+    except Exception:
+        return {
+            "is_premium": False,
+            "max_character_limit": 280,
+            "username": None,
+            "display_name": None,
+        }
+
+
+def _write_session_meta_file(session_dir: Path, meta: dict[str, Any]) -> None:
+    meta_path = session_dir / "session_meta.json"
+    try:
+        session_dir.mkdir(parents=True, exist_ok=True)
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2)
+    except Exception as exc:
+        logger.warning("Could not write session_meta.json: %s", exc)
+
+
+async def _inspect_x_profile(page: Any) -> tuple[bool, str | None, str | None]:
+    is_premium = False
+    username: str | None = None
+    display_name: str | None = None
+
+    try:
+        verified_elem = await page.query_selector(
+            "svg[data-testid='icon-verified'], [data-testid='SideNav_AccountSwitcher_Button'] svg[data-testid='icon-verified']"
+        )
+        if verified_elem and await verified_elem.is_visible():
+            is_premium = True
+
+        profile_link = await page.query_selector(
+            "a[data-testid='AppTabBar_Profile_Link']"
+        )
+        if profile_link:
+            href = await profile_link.get_attribute("href")
+            if href and href.startswith("/"):
+                username = href.strip("/")
+
+        name_elem = await page.query_selector(
+            "[data-testid='SideNav_AccountSwitcher_Button'] [dir='ltr']"
+        )
+        if name_elem:
+            display_name = await name_elem.inner_text()
+    except Exception as exc:
+        logger.debug("Could not inspect X profile details: %s", exc)
+
+    return is_premium, username, display_name
+
+
 class BrowserManager:
     """Manages browser sessions and Playwright contexts for automation."""
 
@@ -41,6 +110,11 @@ class BrowserManager:
         """Return the directory path for this user and platform."""
         return get_session_dir(self.brand_id, platform_name)
 
+    def read_session_metadata(self, platform_name: str = "x") -> dict[str, Any]:
+        """Read cached session metadata from disk."""
+        session_dir = self.get_session_dir_path(platform_name)
+        return _read_session_meta_file(session_dir)
+
     def session_exists(self, platform_name: str) -> bool:
         """Check if a persistent session directory exists and contains cookies."""
         if platform_name not in PLATFORMS:
@@ -57,10 +131,15 @@ class BrowserManager:
 
     async def verify_session(self, platform_name: str = "x") -> dict[str, Any]:
         """Verify that the browser session is valid and authenticated."""
+        session_dir = self.get_session_dir_path(platform_name)
         if not self.session_exists(platform_name):
             return {
                 "connected": False,
                 "authenticated": False,
+                "is_premium": False,
+                "max_character_limit": 280,
+                "username": None,
+                "display_name": None,
                 "message": "No cookie session found. Please launch headed browser login.",
             }
 
@@ -76,22 +155,54 @@ class BrowserManager:
                 await page.goto(
                     config.url, wait_until="domcontentloaded", timeout=15000
                 )
-                await asyncio.sleep(3)
+                await asyncio.sleep(2)
 
                 element = await page.query_selector(config.sentinel_selector)
                 is_logged_in = bool(element and await element.is_visible())
+
+                is_premium, username, display_name = False, None, None
+                if is_logged_in and platform_name == "x":
+                    is_premium, username, display_name = await _inspect_x_profile(page)
+
+                max_limit = 25000 if is_premium else 280
+                meta = {
+                    "is_premium": is_premium,
+                    "max_character_limit": max_limit,
+                    "username": username,
+                    "display_name": display_name,
+                }
+                if is_logged_in:
+                    _write_session_meta_file(session_dir, meta)
+
+                msg = (
+                    (
+                        f"Session authenticated! Verified X Premium account ({username or 'user'}) - 25,000 chars limit."
+                        if is_premium
+                        else "Session authenticated! Home feed verified."
+                    )
+                    if is_logged_in
+                    else "Session cookies expired or login required."
+                )
+
                 return {
                     "connected": True,
                     "authenticated": is_logged_in,
+                    "is_premium": is_premium,
+                    "max_character_limit": max_limit,
+                    "username": username,
+                    "display_name": display_name,
                     "url": page.url,
-                    "message": "Session authenticated! Home feed verified."
-                    if is_logged_in
-                    else "Session cookies expired or login required.",
+                    "message": msg,
                 }
         except Exception as e:
+            cached = _read_session_meta_file(session_dir)
             return {
                 "connected": True,
                 "authenticated": False,
+                "is_premium": cached.get("is_premium", False),
+                "max_character_limit": cached.get("max_character_limit", 280),
+                "username": cached.get("username"),
+                "display_name": cached.get("display_name"),
                 "message": f"Verification error: {e}",
             }
 

@@ -1,6 +1,8 @@
-import { Calendar } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
+import { Calendar, X } from "lucide-react"
 import * as React from "react"
 
+import { AuthService } from "@/client"
 import {
   type Platform,
   PlatformSelector,
@@ -53,25 +55,41 @@ function PostInputAvatar({
 
 function PostInputScheduledNotice({
   scheduledAt,
+  onClear,
 }: {
   scheduledAt: Date | null | undefined
+  onClear?: () => void
 }) {
   if (!scheduledAt) return null
 
   return (
     <div
-      className="animate-in fade-in-0 slide-in-from-top-1 duration-200 flex items-center gap-1.5 text-xs text-muted-foreground pt-2"
+      className="animate-in fade-in-0 slide-in-from-top-1 duration-200 flex items-center justify-between gap-2 text-xs text-muted-foreground mb-2.5"
       aria-live="polite"
       aria-atomic="true"
       data-testid="schedule-info"
     >
-      <Calendar className="h-3.5 w-3.5 text-primary shrink-0" />
-      <span>
-        Will be published on{" "}
-        <span className="font-medium text-foreground">
-          {formatDateTime(scheduledAt)}
+      <div className="flex items-center gap-1.5 min-w-0 truncate">
+        <Calendar className="h-3.5 w-3.5 text-primary shrink-0" />
+        <span className="truncate">
+          Will be published on{" "}
+          <span className="font-medium text-foreground">
+            {formatDateTime(scheduledAt)}
+          </span>
         </span>
-      </span>
+      </div>
+      {onClear && (
+        <button
+          type="button"
+          onClick={onClear}
+          className="h-5 w-5 rounded-full hover:bg-muted/80 text-muted-foreground hover:text-foreground flex items-center justify-center transition-all duration-150 active:scale-95 cursor-pointer shrink-0 ml-2 -mr-1"
+          title="Remove schedule"
+          aria-label="Remove schedule"
+          data-testid="clear-schedule-btn"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
     </div>
   )
 }
@@ -87,11 +105,13 @@ interface PostInputFormBodyProps {
   isUploadingMedia: boolean
   removeMedia: () => void
   isSubmitting: boolean
-  actionType: "draft" | "schedule" | "post"
+  isAiGenerating?: boolean
   setActionType: (type: "draft" | "schedule" | "post") => void
   canPublishOrSchedule: boolean
+  isXPremium?: boolean
   onImageClick: () => void
   handleSubmit: (action: "draft" | "schedule" | "post") => void
+  onAiDraftClick?: () => void
   onCancel?: () => void
   scheduledAt?: Date
   setScheduledAt: (date?: Date) => void
@@ -110,11 +130,13 @@ function PostInputFormBody({
   isUploadingMedia,
   removeMedia,
   isSubmitting,
-  actionType,
+  isAiGenerating,
   setActionType,
   canPublishOrSchedule,
+  isXPremium,
   onImageClick,
   handleSubmit,
+  onAiDraftClick,
   onCancel,
   scheduledAt,
   setScheduledAt,
@@ -155,16 +177,27 @@ function PostInputFormBody({
       )}
 
       <div className="pt-2.5 border-t border-border/40 mt-2">
+        <PostInputScheduledNotice
+          scheduledAt={scheduledAt}
+          onClear={() => {
+            setScheduledAt(undefined)
+            setIsScheduleOpen(false)
+            setActionType("post")
+          }}
+        />
+
         <PostActionBar
           isSubmitting={isSubmitting}
+          isAiGenerating={isAiGenerating}
           isContentEmpty={content.trim().length === 0 && !imageUrl}
-          actionType={actionType}
           canPublishOrSchedule={canPublishOrSchedule}
           currentLength={content.length}
           platform={channel}
+          isXPremium={isXPremium}
           onActionTypeChange={setActionType}
           onImageClick={onImageClick}
           onDraftClick={() => handleSubmit("draft")}
+          onAiDraftClick={onAiDraftClick}
           onScheduleClick={() => handleSubmit("schedule")}
           onPostClick={() => handleSubmit("post")}
           onCancelClick={onCancel}
@@ -175,8 +208,6 @@ function PostInputFormBody({
           onToggleSchedule={setIsScheduleOpen}
         />
       </div>
-
-      <PostInputScheduledNotice scheduledAt={scheduledAt} />
     </div>
   )
 }
@@ -241,6 +272,12 @@ export function PostInputBox({
     initialImageUrl,
   })
 
+  const { data: xStatus } = useQuery({
+    queryKey: ["x", "status"],
+    queryFn: () => AuthService.xStatus(),
+    staleTime: 60000,
+  })
+
   const [isScheduleOpen, setIsScheduleOpen] = React.useState(false)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const { isDragging, fileInputRef, handleFileSelect, dragProps } =
@@ -291,11 +328,13 @@ export function PostInputBox({
         isSubmitting={
           form.createPostMutation.isPending || form.isUploadingMedia
         }
-        actionType={form.actionType}
+        isAiGenerating={form.isGeneratingAiDraft}
         setActionType={form.setActionType}
         canPublishOrSchedule={canPublishOrSchedule}
+        isXPremium={Boolean(xStatus?.is_premium)}
         onImageClick={() => fileInputRef.current?.click()}
         handleSubmit={form.handleSubmit}
+        onAiDraftClick={form.handleAiDraft}
         onCancel={onCancel}
         scheduledAt={form.scheduledAt}
         setScheduledAt={form.setScheduledAt}

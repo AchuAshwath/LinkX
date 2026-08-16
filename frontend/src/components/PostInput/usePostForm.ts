@@ -197,6 +197,30 @@ function useComposerCoreState(options?: UsePostFormOptions) {
   }
 }
 
+function useAiDraftMutation(
+  showSuccessToast: (msg: string) => void,
+  showErrorToast: (msg: string) => void,
+  onDraftGenerated: (content: string) => void,
+) {
+  return useMutation({
+    mutationFn: async (data: { prompt: string; platform: Platform }) => {
+      return await PostsService.generateAiDraft({
+        requestBody: {
+          prompt: data.prompt,
+          platform: data.platform,
+        },
+      })
+    },
+    onSuccess: (res) => {
+      if (res?.content) {
+        onDraftGenerated(res.content)
+        showSuccessToast("AI draft generated!")
+      }
+    },
+    onError: handleError.bind(showErrorToast),
+  })
+}
+
 export function usePostForm(options?: UsePostFormOptions) {
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const core = useComposerCoreState(options)
@@ -215,6 +239,19 @@ export function usePostForm(options?: UsePostFormOptions) {
     showErrorToast,
     onSuccessReset: resetForm,
   })
+
+  const aiDraftMutation = useAiDraftMutation(
+    showSuccessToast,
+    showErrorToast,
+    (generatedContent) => core.setContent(generatedContent),
+  )
+
+  const handleAiDraft = useCallback(() => {
+    aiDraftMutation.mutate({
+      prompt: core.content,
+      platform: core.channel,
+    })
+  }, [core.content, core.channel, aiDraftMutation])
 
   const handleSubmit = useCallback(
     (action: "draft" | "schedule" | "post") => {
@@ -242,5 +279,7 @@ export function usePostForm(options?: UsePostFormOptions) {
     ...media,
     handleSubmit,
     createPostMutation,
+    handleAiDraft,
+    isGeneratingAiDraft: aiDraftMutation.isPending,
   }
 }

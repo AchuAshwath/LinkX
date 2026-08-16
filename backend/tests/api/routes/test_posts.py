@@ -361,3 +361,36 @@ def test_upload_media_oversized_file(
     )
     assert response.status_code == 413
     assert "File size exceeds maximum limit" in response.json()["detail"]
+
+
+def test_generate_ai_draft_success(
+    client: TestClient,
+    db: Session,
+) -> None:
+    _user, headers = _create_user_with_auth(client=client, db=db)
+    response = client.post(
+        f"{settings.API_V1_STR}/posts/ai-draft",
+        headers=headers,
+        json={"prompt": "NextGen AI Agents", "platform": "x"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "content" in data
+    assert len(data["content"]) > 10
+    assert "NextGen AI Agents" in data["content"]
+
+
+def test_generate_ai_draft_empty_prompt(
+    client: TestClient,
+    db: Session,
+) -> None:
+    _user, headers = _create_user_with_auth(client=client, db=db)
+    response = client.post(
+        f"{settings.API_V1_STR}/posts/ai-draft",
+        headers=headers,
+        json={"prompt": "", "platform": "linkedin"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "content" in data
+    assert len(data["content"]) > 10

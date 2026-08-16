@@ -5,25 +5,37 @@ import { cn } from "@/lib/utils"
 export interface CharacterLimitCircleProps {
   currentLength: number
   platform: Platform
+  isXPremium?: boolean
+  maxLimit?: number
   className?: string
 }
 
 const RADIUS = 10
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS // ~62.831853
 
-export function getCharacterLimit(platform: Platform): number {
-  return platform === "linkedin" ? 3000 : 280
+export function getCharacterLimit(
+  platform: Platform,
+  isXPremium?: boolean,
+): number {
+  if (platform === "linkedin") return 3000
+  if (platform === "linkx") return isXPremium ? 3000 : 280
+  return isXPremium ? 25000 : 280
 }
 
-export function getWarnThreshold(platform: Platform): number {
-  return platform === "linkedin" ? 100 : 20
+export function getWarnThreshold(
+  platform: Platform,
+  isXPremium?: boolean,
+): number {
+  const limit = getCharacterLimit(platform, isXPremium)
+  return limit >= 3000 ? 100 : 20
 }
 
 export function isCharacterLimitExceeded(
   currentLength: number,
   platform: Platform,
+  isXPremium?: boolean,
 ): boolean {
-  return currentLength > getCharacterLimit(platform)
+  return currentLength > getCharacterLimit(platform, isXPremium)
 }
 
 function getGaugeColorClasses(isOverLimit: boolean, isWarning: boolean) {
@@ -48,10 +60,12 @@ function getGaugeColorClasses(isOverLimit: boolean, isWarning: boolean) {
 export const CharacterLimitCircle = React.memo(function CharacterLimitCircle({
   currentLength,
   platform,
+  isXPremium,
+  maxLimit: customMaxLimit,
   className,
 }: CharacterLimitCircleProps) {
-  const maxLimit = getCharacterLimit(platform)
-  const warnThreshold = getWarnThreshold(platform)
+  const maxLimit = customMaxLimit ?? getCharacterLimit(platform, isXPremium)
+  const warnThreshold = getWarnThreshold(platform, isXPremium)
   const remaining = maxLimit - currentLength
   const isOverLimit = remaining < 0
   const isWarning = remaining <= warnThreshold && remaining >= 0

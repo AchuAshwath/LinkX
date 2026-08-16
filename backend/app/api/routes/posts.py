@@ -14,6 +14,8 @@ from app.api.deps import CurrentUser, SessionDep
 from app.core.config import settings
 from app.crud import create_post, delete_post, get_post, get_posts, update_post
 from app.models import (
+    AIDraftRequest,
+    AIDraftResponse,
     MediaPublic,
     Message,
     Post,
@@ -24,6 +26,7 @@ from app.models import (
     PostUpdate,
     User,
 )
+from app.services.ai_draft import generate_ai_post_draft
 from app.services.post_state_machine import validate_transition
 from app.services.publishing import PublishFailure, publish_post
 
@@ -77,6 +80,21 @@ async def upload_media(
         content_type=file.content_type,
         size_bytes=size,
     )
+
+
+@router.post("/ai-draft", response_model=AIDraftResponse)
+async def generate_ai_draft(
+    *,
+    _current_user: CurrentUser,
+    draft_in: AIDraftRequest,
+) -> Any:
+    """Generate or enhance a post draft using AI based on prompt and platform."""
+    content = await generate_ai_post_draft(
+        prompt=draft_in.prompt,
+        platform=draft_in.platform,
+        tone=draft_in.tone,
+    )
+    return AIDraftResponse(content=content)
 
 
 def _get_user_details(*, session: Session, user_id: uuid.UUID) -> User | None:
