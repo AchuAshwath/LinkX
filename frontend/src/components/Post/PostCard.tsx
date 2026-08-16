@@ -7,6 +7,7 @@ import {
   Loader2,
   MoreHorizontal,
   RotateCcw,
+  Send,
   Trash2,
   X,
 } from "lucide-react"
@@ -68,6 +69,8 @@ export interface PostCardProps {
   onPlatformChange?: (postId: string, platform: Platform) => void
   onRetry?: (postId: string) => void
   isRetrying?: boolean
+  onPublish?: (postId: string) => void
+  isPublishing?: boolean
 }
 
 function parseScheduledDate(scheduledAt?: Date | string | null): Date | null {
@@ -145,6 +148,8 @@ function PostCardHeaderActions({
   onPreview,
   onEdit,
   onDelete,
+  onPublish,
+  isPublishing,
 }: {
   isEditing: boolean
   canSave: boolean
@@ -153,6 +158,8 @@ function PostCardHeaderActions({
   onPreview?: () => void
   onEdit?: () => void
   onDelete?: () => void
+  onPublish?: () => void
+  isPublishing?: boolean
 }) {
   if (isEditing) {
     return (
@@ -191,15 +198,29 @@ function PostCardHeaderActions({
           <MoreHorizontal className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" className="rounded-xl">
+        {onPublish && (
+          <DropdownMenuItem
+            onClick={onPublish}
+            disabled={isPublishing}
+            className="text-primary focus:text-primary font-medium cursor-pointer"
+          >
+            {isPublishing ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin text-primary" />
+            ) : (
+              <Send className="mr-2 h-4 w-4 text-primary" />
+            )}
+            Publish
+          </DropdownMenuItem>
+        )}
         {onPreview && (
-          <DropdownMenuItem onClick={onPreview}>
+          <DropdownMenuItem onClick={onPreview} className="cursor-pointer">
             <Eye className="mr-2 h-4 w-4" />
             Preview
           </DropdownMenuItem>
         )}
         {onEdit && (
-          <DropdownMenuItem onClick={onEdit}>
+          <DropdownMenuItem onClick={onEdit} className="cursor-pointer">
             <Edit className="mr-2 h-4 w-4" />
             Edit
           </DropdownMenuItem>
@@ -207,7 +228,7 @@ function PostCardHeaderActions({
         {onDelete && (
           <DropdownMenuItem
             onClick={onDelete}
-            className="text-destructive focus:text-destructive"
+            className="text-destructive focus:text-destructive cursor-pointer"
           >
             <Trash2 className="mr-2 h-4 w-4" />
             Delete
@@ -231,6 +252,8 @@ interface PostCardHeaderProps {
   onPreview?: () => void
   onEdit?: () => void
   onDelete?: () => void
+  onPublish?: () => void
+  isPublishing?: boolean
 }
 
 function PostCardHeader(props: PostCardHeaderProps) {
@@ -251,6 +274,8 @@ function PostCardHeader(props: PostCardHeaderProps) {
         onPreview={props.onPreview}
         onEdit={props.onEdit}
         onDelete={props.onDelete}
+        onPublish={props.onPublish}
+        isPublishing={props.isPublishing}
       />
     </div>
   )
@@ -593,6 +618,8 @@ function PostCardHeaderWrapper({
   onPreview,
   onEdit,
   onDelete,
+  onPublish,
+  isPublishing,
 }: {
   post: PostCardData
   flags: ReturnType<typeof getPostCardFlags>
@@ -601,6 +628,8 @@ function PostCardHeaderWrapper({
   onPreview?: (id: string) => void
   onEdit?: (id: string) => void
   onDelete?: (id: string) => void
+  onPublish?: (id: string) => void
+  isPublishing?: boolean
 }) {
   return (
     <PostCardHeader
@@ -616,6 +645,8 @@ function PostCardHeaderWrapper({
       onPreview={onPreview ? () => onPreview(post.id) : undefined}
       onEdit={onEdit ? () => onEdit(post.id) : undefined}
       onDelete={onDelete ? () => onDelete(post.id) : undefined}
+      onPublish={onPublish ? () => onPublish(post.id) : undefined}
+      isPublishing={isPublishing}
     />
   )
 }
@@ -634,6 +665,8 @@ function PostCardMainColumn(props: PostCardLayoutProps) {
         onPreview={props.onPreview}
         onEdit={props.onEdit}
         onDelete={props.onDelete}
+        onPublish={props.onPublish}
+        isPublishing={props.isPublishing}
       />
 
       <PostCardScheduleEditor
