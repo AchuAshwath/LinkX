@@ -45,6 +45,32 @@ ALLOWED_MEDIA_TYPES = {
 MAX_MEDIA_SIZE = 5 * 1024 * 1024  # 5 MB
 
 
+def normalize_uploaded_image(content: bytes) -> tuple[bytes, str, str]:
+    """Validate and normalize raw image bytes to standard web formats.
+
+    Returns:
+        tuple[bytes, str, str]: (normalized_bytes, file_extension, content_type)
+    """
+    try:
+        image = Image.open(io.BytesIO(content))
+        if image.format == "GIF":
+            return content, ".gif", "image/gif"
+        if image.format == "PNG" and image.mode in ("RGBA", "LA", "P"):
+            out_buf = io.BytesIO()
+            image.save(out_buf, format="PNG", optimize=True)
+            return out_buf.getvalue(), ".png", "image/png"
+
+        rgb_image = image.convert("RGB") if image.mode != "RGB" else image
+        out_buf = io.BytesIO()
+        rgb_image.save(out_buf, format="JPEG", quality=92, optimize=True)
+        return out_buf.getvalue(), ".jpg", "image/jpeg"
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid or unsupported image file: {exc}",
+        ) from exc
+
+
 @router.post("/media", response_model=MediaPublic)
 async def upload_media(
     *,
@@ -59,40 +85,13 @@ async def upload_media(
         )
 
     content = await file.read()
-    size = len(content)
-
-    if size > MAX_MEDIA_SIZE:
+    if len(content) > MAX_MEDIA_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail="File size exceeds maximum limit of 5MB",
         )
 
-    try:
-        image = Image.open(io.BytesIO(content))
-        # For animated GIFs, preserve as GIF
-        if image.format == "GIF":
-            out_bytes = content
-            final_ext = ".gif"
-            final_content_type = "image/gif"
-        elif image.format == "PNG" and image.mode in ("RGBA", "LA", "P"):
-            out_buf = io.BytesIO()
-            image.save(out_buf, format="PNG", optimize=True)
-            out_bytes = out_buf.getvalue()
-            final_ext = ".png"
-            final_content_type = "image/png"
-        else:
-            # Convert AVIF, WebP, and other formats to clean, standard JPEG
-            rgb_image = image.convert("RGB") if image.mode != "RGB" else image
-            out_buf = io.BytesIO()
-            rgb_image.save(out_buf, format="JPEG", quality=92, optimize=True)
-            out_bytes = out_buf.getvalue()
-            final_ext = ".jpg"
-            final_content_type = "image/jpeg"
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid or unsupported image file: {exc}",
-        ) from exc
+    out_bytes, final_ext, final_content_type = normalize_uploaded_image(content)
 
     filename = f"{uuid.uuid4()}{final_ext}"
     settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)

@@ -62,6 +62,30 @@ def _write_session_meta_file(session_dir: Path, meta: dict[str, Any]) -> None:
         logger.warning("Could not write session_meta.json: %s", exc)
 
 
+def _clean_stale_singleton_locks(session_dir: Path) -> None:
+    """Clean stale Singleton locks if no Chrome process is actively running."""
+    singleton_lock = session_dir / "SingletonLock"
+    if singleton_lock.exists() and not is_chrome_running():
+        for f in session_dir.glob("Singleton*"):
+            try:
+                f.unlink()
+            except OSError:
+                pass
+
+
+def _handle_launch_error(exc: Exception) -> None:
+    """Translate Chrome launch exceptions into user-actionable errors."""
+    err_msg = str(exc)
+    lock_patterns = ("Singleton", "ProcessSingleton", "File exists")
+    if any(pattern in err_msg for pattern in lock_patterns):
+        raise RuntimeError(
+            "Google Chrome is currently open with this session or locked by another process. "
+            "Please close any open Chrome windows and try again."
+        ) from exc
+    logger.error("Failed to launch Chrome persistent context: %s", exc, exc_info=True)
+    raise exc
+
+
 async def _inspect_x_profile(page: Any) -> tuple[bool, str | None, str | None]:
     is_premium = False
     username: str | None = None
@@ -339,15 +363,7 @@ class BrowserManager:
                 f"Please run headed_login first for platform '{platform_name}'."
             )
 
-        # Clean stale Singleton locks if no Chrome process is actively running
-        singleton_lock = session_dir / "SingletonLock"
-        if singleton_lock.exists() and not is_chrome_running():
-            for f in session_dir.glob("Singleton*"):
-                try:
-                    f.unlink()
-                except OSError:
-                    pass
-
+        _clean_stale_singleton_locks(session_dir)
         playwright_args = get_playwright_args()
 
         async with async_playwright() as p:
@@ -362,22 +378,7 @@ class BrowserManager:
                     args=playwright_args,
                 )
             except Exception as e:
-                err_msg = str(e)
-                if (
-                    "Singleton" in err_msg
-                    or "ProcessSingleton" in err_msg
-                    or "File exists" in err_msg
-                ):
-                    raise RuntimeError(
-                        "Google Chrome is currently open with this session or locked by another process. "
-                        "Please close any open Chrome windows and try again."
-                    ) from e
-                logger.error(
-                    "Failed to launch Chrome persistent context: %s",
-                    e,
-                    exc_info=True,
-                )
-                raise
+                _handle_launch_error(e)
 
             try:
                 yield context

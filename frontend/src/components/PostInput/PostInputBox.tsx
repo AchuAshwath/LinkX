@@ -290,45 +290,23 @@ function useEditPostMutation(editMode: EditMode, onDone: () => void) {
   })
 }
 
-export function PostInputBox({
-  username,
-  avatarUrl,
-  initialContent,
-  initialImageUrl,
-  initialPlatform,
-  onSubmit,
-  onCancel,
-  canPublishOrSchedule = true,
-  autoFocus = false,
-  editMode,
-}: PostInputBoxProps) {
-  const form = usePostForm({
-    initialContent,
-    initialImageUrl,
-    initialPlatform,
-  })
+interface UseComposerSubmissionOptions {
+  editMode?: EditMode
+  form: ReturnType<typeof usePostForm>
+}
 
+function useComposerSubmission({
+  editMode,
+  form,
+}: UseComposerSubmissionOptions) {
   const editMutation = useEditPostMutation(editMode ?? { postId: "" }, () => {
     editMode?.onSaved?.()
   })
 
-  const { data: xStatus } = useQuery({
-    queryKey: ["x", "status"],
-    queryFn: () => AuthService.xStatus(),
-    staleTime: 60000,
-  })
-
-  const [isScheduleOpen, setIsScheduleOpen] = React.useState(false)
-  const textareaRef = React.useRef<HTMLTextAreaElement>(null)
-  const { isDragging, fileInputRef, handleFileSelect, dragProps } =
-    useComposerDragDrop(form.uploadMedia)
-
-  // For edit mode: set initialScheduledAt into the form state once
   React.useEffect(() => {
     if (editMode?.initialScheduledAt) {
       form.setScheduledAt(editMode.initialScheduledAt ?? undefined)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editMode, form.setScheduledAt])
 
   const handleEditSubmit = React.useCallback(
@@ -349,6 +327,53 @@ export function PostInputBox({
     ? editMutation.isSuccess
     : form.createPostMutation.isSuccess
 
+  const isSubmitting = editMode
+    ? editMutation.isPending || form.isUploadingMedia
+    : form.createPostMutation.isPending || form.isUploadingMedia
+
+  const onSubmitHandler = editMode ? handleEditSubmit : form.handleSubmit
+  const onAiDraftHandler = editMode ? undefined : form.handleAiDraft
+
+  return {
+    isSuccess,
+    isSubmitting,
+    onSubmitHandler,
+    onAiDraftHandler,
+  }
+}
+
+export function PostInputBox({
+  username,
+  avatarUrl,
+  initialContent,
+  initialImageUrl,
+  initialPlatform,
+  onSubmit,
+  onCancel,
+  canPublishOrSchedule = true,
+  autoFocus = false,
+  editMode,
+}: PostInputBoxProps) {
+  const form = usePostForm({
+    initialContent,
+    initialImageUrl,
+    initialPlatform,
+  })
+
+  const { isSuccess, isSubmitting, onSubmitHandler, onAiDraftHandler } =
+    useComposerSubmission({ editMode, form })
+
+  const { data: xStatus } = useQuery({
+    queryKey: ["x", "status"],
+    queryFn: () => AuthService.xStatus(),
+    staleTime: 60000,
+  })
+
+  const [isScheduleOpen, setIsScheduleOpen] = React.useState(false)
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null)
+  const { isDragging, fileInputRef, handleFileSelect, dragProps } =
+    useComposerDragDrop(form.uploadMedia)
+
   useComposerLifecycle({
     initialContent,
     initialImageUrl,
@@ -360,10 +385,6 @@ export function PostInputBox({
     setIsScheduleOpen,
     textareaRef,
   })
-
-  const isSubmitting = editMode
-    ? editMutation.isPending || form.isUploadingMedia
-    : form.createPostMutation.isPending || form.isUploadingMedia
 
   return (
     <section
@@ -401,8 +422,8 @@ export function PostInputBox({
         canPublishOrSchedule={canPublishOrSchedule}
         isXPremium={Boolean(xStatus?.is_premium)}
         onImageClick={() => fileInputRef.current?.click()}
-        handleSubmit={editMode ? handleEditSubmit : form.handleSubmit}
-        onAiDraftClick={editMode ? undefined : form.handleAiDraft}
+        handleSubmit={onSubmitHandler}
+        onAiDraftClick={onAiDraftHandler}
         onCancel={onCancel}
         scheduledAt={form.scheduledAt}
         setScheduledAt={form.setScheduledAt}
