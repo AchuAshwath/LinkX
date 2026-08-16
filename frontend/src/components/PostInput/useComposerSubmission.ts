@@ -29,26 +29,22 @@ export function useEditPostMutation(editMode: EditMode, onDone: () => void) {
   })
 }
 
-export interface UseComposerSubmissionOptions {
-  editMode?: EditMode
-  form: ReturnType<typeof usePostForm>
-}
-
-export function useComposerSubmission({
-  editMode,
-  form,
-}: UseComposerSubmissionOptions) {
-  const editMutation = useEditPostMutation(editMode ?? { postId: "" }, () => {
-    editMode?.onSaved?.()
-  })
-
+function useEditScheduledSync(
+  editMode: EditMode | undefined,
+  setScheduledAt: (date?: Date) => void,
+) {
   React.useEffect(() => {
     if (editMode?.initialScheduledAt) {
-      form.setScheduledAt(editMode.initialScheduledAt ?? undefined)
+      setScheduledAt(editMode.initialScheduledAt ?? undefined)
     }
-  }, [editMode, form.setScheduledAt])
+  }, [editMode, setScheduledAt])
+}
 
-  const handleEditSubmit = React.useCallback(() => {
+function useEditSubmissionCallback(
+  editMutation: ReturnType<typeof useEditPostMutation>,
+  form: ReturnType<typeof usePostForm>,
+) {
+  return React.useCallback(() => {
     editMutation.mutate({
       content: form.content.trim(),
       platform: form.channel,
@@ -62,19 +58,39 @@ export function useComposerSubmission({
     form.imageUrl,
     form.scheduledAt,
   ])
+}
 
-  const isSuccess = Boolean(
-    editMode ? editMutation.isSuccess : form.createPostMutation.isSuccess,
+export interface UseComposerSubmissionOptions {
+  editMode?: EditMode
+  form: ReturnType<typeof usePostForm>
+}
+
+export function useComposerSubmission({
+  editMode,
+  form,
+}: UseComposerSubmissionOptions) {
+  const onSaved = editMode?.onSaved
+  const editMutation = useEditPostMutation(
+    editMode ?? { postId: "" },
+    onSaved ?? (() => {}),
   )
-  const isPending = Boolean(
-    editMode ? editMutation.isPending : form.createPostMutation.isPending,
-  )
-  const isSubmitting = isPending || form.isUploadingMedia
+
+  useEditScheduledSync(editMode, form.setScheduledAt)
+  const handleEditSubmit = useEditSubmissionCallback(editMutation, form)
+
+  if (editMode) {
+    return {
+      isSuccess: editMutation.isSuccess,
+      isSubmitting: editMutation.isPending || form.isUploadingMedia,
+      onSubmitHandler: handleEditSubmit,
+      onAiDraftHandler: undefined,
+    }
+  }
 
   return {
-    isSuccess,
-    isSubmitting,
-    onSubmitHandler: editMode ? handleEditSubmit : form.handleSubmit,
-    onAiDraftHandler: editMode ? undefined : form.handleAiDraft,
+    isSuccess: form.createPostMutation.isSuccess,
+    isSubmitting: form.createPostMutation.isPending || form.isUploadingMedia,
+    onSubmitHandler: form.handleSubmit,
+    onAiDraftHandler: form.handleAiDraft,
   }
 }
