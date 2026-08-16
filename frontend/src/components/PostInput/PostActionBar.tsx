@@ -1,4 +1,4 @@
-import { Bot, Calendar, ImageIcon, Plus } from "lucide-react"
+import { Calendar, ImageIcon, Plus } from "lucide-react"
 import * as React from "react"
 
 import type { Platform } from "@/components/Common/PlatformSelector"
@@ -8,6 +8,32 @@ import {
   isCharacterLimitExceeded,
 } from "./CharacterLimitCircle"
 import { PostSchedulePicker } from "./PostSchedulePicker"
+
+function PencilSparklesIcon({
+  className,
+  ...props
+}: React.ComponentProps<"svg">) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+      {...props}
+    >
+      <title>Draft with AI</title>
+      <path d="M17.7 3.3a2.4 2.4 0 0 1 3.4 3.4L9.5 18.3 4 19.5l1.2-5.5z" />
+      <path d="m15 6 3 3" />
+      <path d="M4 2c0 1.5-1 2.5-2.5 2.5C3 4.5 4 5.5 4 7c0-1.5 1-2.5 2.5-2.5C5 4.5 4 3.5 4 2z" />
+      <path d="M20 16c0 1-.7 1.7-1.7 1.7 1 0 1.7.7 1.7 1.7 0-1 .7-1.7 1.7-1.7-1 0-1.7-.7-1.7-1.7z" />
+    </svg>
+  )
+}
 
 export interface PostActionBarProps {
   isSubmitting: boolean
@@ -87,7 +113,7 @@ function ScheduleAndMediaControls({
         disabled={isSubmitting || isAiGenerating}
         data-testid="ai-draft-btn"
       >
-        <Bot
+        <PencilSparklesIcon
           className={`h-4.5 w-4.5 transition-transform duration-200 ${
             isAiGenerating ? "animate-spin" : "group-hover:scale-110"
           }`}
