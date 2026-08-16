@@ -1,29 +1,39 @@
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Calendar, X } from "lucide-react"
 import * as React from "react"
 
-import { AuthService } from "@/client"
+import { AuthService, PostsService } from "@/client"
 import {
   type Platform,
   PlatformSelector,
 } from "@/components/Common/PlatformSelector"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import useCustomToast from "@/hooks/useCustomToast"
 import { cn } from "@/lib/utils"
+import { handleError } from "@/utils"
 import { MediaThumbnail } from "./MediaThumbnail"
 import { PostActionBar } from "./PostActionBar"
 import { formatDateTime } from "./PostSchedulePicker"
 import { useComposerDragDrop } from "./useComposerDragDrop"
 import { usePostForm } from "./usePostForm"
 
+export interface EditMode {
+  postId: string
+  initialScheduledAt?: Date | null
+  onSaved?: () => void
+}
+
 export interface PostInputBoxProps {
   username: string
   avatarUrl?: string
   initialContent?: string
   initialImageUrl?: string
+  initialPlatform?: Platform
   onSubmit?: () => void
   onCancel?: () => void
   canPublishOrSchedule?: boolean
   autoFocus?: boolean
+  editMode?: EditMode
 }
 
 function PostInputAvatar({
@@ -257,19 +267,49 @@ function useComposerLifecycle({
   }, [autoFocus, textareaRef])
 }
 
+function useEditPostMutation(editMode: EditMode, onDone: () => void) {
+  const queryClient = useQueryClient()
+  const { showSuccessToast, showErrorToast } = useCustomToast()
+  return useMutation({
+    mutationFn: async (data: {
+      content: string
+      platform: string
+      scheduled_at?: string
+      image_url?: string | null
+    }) =>
+      PostsService.updateExistingPost({
+        postId: editMode.postId,
+        requestBody: data,
+      }),
+    onSuccess: () => {
+      showSuccessToast("Post updated successfully")
+      queryClient.invalidateQueries({ queryKey: ["posts"] })
+      onDone()
+    },
+    onError: handleError.bind(showErrorToast),
+  })
+}
+
 export function PostInputBox({
   username,
   avatarUrl,
   initialContent,
   initialImageUrl,
+  initialPlatform,
   onSubmit,
   onCancel,
   canPublishOrSchedule = true,
   autoFocus = false,
+  editMode,
 }: PostInputBoxProps) {
   const form = usePostForm({
     initialContent,
     initialImageUrl,
+    initialPlatform,
+  })
+
+  const editMutation = useEditPostMutation(editMode ?? { postId: "" }, () => {
+    editMode?.onSaved?.()
   })
 
   const { data: xStatus } = useQuery({
@@ -283,11 +323,37 @@ export function PostInputBox({
   const { isDragging, fileInputRef, handleFileSelect, dragProps } =
     useComposerDragDrop(form.uploadMedia)
 
+  // For edit mode: set initialScheduledAt into the form state once
+  React.useEffect(() => {
+    if (editMode?.initialScheduledAt) {
+      form.setScheduledAt(editMode.initialScheduledAt ?? undefined)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editMode, form.setScheduledAt])
+
+  const handleEditSubmit = React.useCallback(
+    (_action: "draft" | "schedule" | "post") => {
+      editMutation.mutate({
+        content: form.content.trim(),
+        platform: form.channel,
+        image_url: form.imageUrl,
+        scheduled_at: form.scheduledAt
+          ? form.scheduledAt.toISOString()
+          : undefined,
+      })
+    },
+    [editMutation, form.content, form.channel, form.imageUrl, form.scheduledAt],
+  )
+
+  const isSuccess = editMode
+    ? editMutation.isSuccess
+    : form.createPostMutation.isSuccess
+
   useComposerLifecycle({
     initialContent,
     initialImageUrl,
     autoFocus,
-    isSuccess: form.createPostMutation.isSuccess,
+    isSuccess,
     setContent: form.setContent,
     setImageUrl: form.setImageUrl,
     onSubmit,
@@ -295,9 +361,13 @@ export function PostInputBox({
     textareaRef,
   })
 
+  const isSubmitting = editMode
+    ? editMutation.isPending || form.isUploadingMedia
+    : form.createPostMutation.isPending || form.isUploadingMedia
+
   return (
     <section
-      aria-label="Post composer"
+      aria-label={editMode ? "Edit post" : "Post composer"}
       className={cn(
         "flex gap-3 w-full rounded-2xl p-1 transition-colors duration-200",
         isDragging && "bg-primary/5 ring-2 ring-primary/30 ring-dashed",
@@ -325,16 +395,14 @@ export function PostInputBox({
         imageUrl={form.imageUrl}
         isUploadingMedia={form.isUploadingMedia}
         removeMedia={form.removeMedia}
-        isSubmitting={
-          form.createPostMutation.isPending || form.isUploadingMedia
-        }
+        isSubmitting={isSubmitting}
         isAiGenerating={form.isGeneratingAiDraft}
         setActionType={form.setActionType}
         canPublishOrSchedule={canPublishOrSchedule}
         isXPremium={Boolean(xStatus?.is_premium)}
         onImageClick={() => fileInputRef.current?.click()}
-        handleSubmit={form.handleSubmit}
-        onAiDraftClick={form.handleAiDraft}
+        handleSubmit={editMode ? handleEditSubmit : form.handleSubmit}
+        onAiDraftClick={editMode ? undefined : form.handleAiDraft}
         onCancel={onCancel}
         scheduledAt={form.scheduledAt}
         setScheduledAt={form.setScheduledAt}

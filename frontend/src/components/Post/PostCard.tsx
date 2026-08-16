@@ -14,7 +14,7 @@ import {
 import * as React from "react"
 import type { Platform } from "@/components/Common/PlatformSelector"
 import { PostActionFooter } from "@/components/Post/PostActionFooter"
-import { PostSchedulePicker } from "@/components/PostInput/PostSchedulePicker"
+import { PostInputBox } from "@/components/PostInput/PostInputBox"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -230,7 +230,7 @@ function PostCardHeaderActions({
             onClick={onDelete}
             className="text-destructive focus:text-destructive cursor-pointer"
           >
-            <Trash2 className="mr-2 h-4 w-4" />
+            <Trash2 className="mr-2 h-4 w-4 text-destructive" />
             Delete
           </DropdownMenuItem>
         )}
@@ -386,26 +386,6 @@ function PostCardAvatar({ author }: { author: PostAuthorData }) {
           {initials}
         </AvatarFallback>
       </Avatar>
-    </div>
-  )
-}
-
-function PostCardScheduleRow({
-  scheduledAt,
-  onChangeDateTime,
-}: {
-  scheduledAt: Date | null
-  onChangeDateTime: (d: Date | undefined) => void
-}) {
-  return (
-    <div className="my-2 flex items-center gap-2 p-2 rounded-xl bg-muted/40 border">
-      <span className="text-xs font-medium text-muted-foreground">
-        Schedule:
-      </span>
-      <PostSchedulePicker
-        initialValue={scheduledAt || undefined}
-        onChangeDateTime={onChangeDateTime}
-      />
     </div>
   )
 }
@@ -569,26 +549,6 @@ interface PostCardLayoutProps extends PostCardProps {
   engagement: ReturnType<typeof usePostCardEngagement>
 }
 
-function PostCardScheduleEditor({
-  isEditing,
-  isScheduled,
-  scheduledAt,
-  onChangeDateTime,
-}: {
-  isEditing: boolean
-  isScheduled: boolean
-  scheduledAt: Date | null
-  onChangeDateTime: (d: Date | null) => void
-}) {
-  if (!isEditing || !isScheduled) return null
-  return (
-    <PostCardScheduleRow
-      scheduledAt={scheduledAt}
-      onChangeDateTime={(d) => onChangeDateTime(d || null)}
-    />
-  )
-}
-
 function PostCardFailureNotice({
   isFailed,
   errorReason,
@@ -655,12 +615,34 @@ function PostCardMainColumn(props: PostCardLayoutProps) {
   const flags = getPostCardFlags(props.post)
   const isEditing = Boolean(props.isEditing)
 
+  if (isEditing) {
+    return (
+      <div className="min-w-0 flex-1">
+        <PostInputBox
+          username={props.post.author.name}
+          initialContent={props.post.content}
+          initialImageUrl={props.post.imageUrl ?? undefined}
+          initialPlatform={props.post.platform}
+          autoFocus
+          onCancel={props.onCancel}
+          editMode={{
+            postId: props.post.id,
+            initialScheduledAt: props.post.scheduledAt
+              ? new Date(props.post.scheduledAt as string)
+              : null,
+            onSaved: props.onCancel,
+          }}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="min-w-0 flex-1">
       <PostCardHeaderWrapper
         post={props.post}
         flags={flags}
-        isEditing={isEditing}
+        isEditing={false}
         editor={props.editor}
         onPreview={props.onPreview}
         onEdit={props.onEdit}
@@ -669,15 +651,8 @@ function PostCardMainColumn(props: PostCardLayoutProps) {
         isPublishing={props.isPublishing}
       />
 
-      <PostCardScheduleEditor
-        isEditing={isEditing}
-        isScheduled={flags.isScheduled}
-        scheduledAt={props.editor.editedScheduledAt}
-        onChangeDateTime={props.editor.setEditedScheduledAt}
-      />
-
       <PostCardBodyContent
-        isEditing={isEditing}
+        isEditing={false}
         content={props.post.content}
         editedContent={props.editor.editedContent}
         onContentChange={props.editor.setEditedContent}
@@ -694,7 +669,7 @@ function PostCardMainColumn(props: PostCardLayoutProps) {
       />
 
       <PostCardActionsRow
-        isEditing={isEditing}
+        isEditing={false}
         platform={props.editor.platform}
         onPlatformChange={
           flags.isPosted ? undefined : props.editor.handlePlatformChange
@@ -712,9 +687,7 @@ function PostCardMainColumn(props: PostCardLayoutProps) {
 function PostCardLayout(props: PostCardLayoutProps) {
   return (
     <article
-      className={`group border-b transition-colors ${
-        props.isEditing ? "border-primary bg-muted/20" : "hover:bg-accent/40"
-      }`}
+      className={`group border-b transition-colors hover:bg-accent/40`}
       aria-label={`Post by ${props.post.author.name}`}
     >
       <div className="p-3 sm:p-4">
