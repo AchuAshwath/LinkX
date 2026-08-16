@@ -159,6 +159,111 @@ function useComposerDragDrop(onUpload: (file: File) => void) {
   }
 }
 
+interface PostInputFormBodyProps {
+  username: string
+  channel: Platform
+  setChannel: (val: Platform) => void
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>
+  content: string
+  handleContentChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
+  imageUrl: string | null
+  isUploadingMedia: boolean
+  removeMedia: () => void
+  isSubmitting: boolean
+  actionType: "draft" | "schedule" | "post"
+  setActionType: (type: "draft" | "schedule" | "post") => void
+  canPublishOrSchedule: boolean
+  onImageClick: () => void
+  handleSubmit: (action: "draft" | "schedule" | "post") => void
+  onCancel?: () => void
+  scheduledAt?: Date
+  setScheduledAt: (date?: Date) => void
+  isScheduleOpen: boolean
+  setIsScheduleOpen: (open: boolean) => void
+}
+
+function PostInputFormBody({
+  username,
+  channel,
+  setChannel,
+  textareaRef,
+  content,
+  handleContentChange,
+  imageUrl,
+  isUploadingMedia,
+  removeMedia,
+  isSubmitting,
+  actionType,
+  setActionType,
+  canPublishOrSchedule,
+  onImageClick,
+  handleSubmit,
+  onCancel,
+  scheduledAt,
+  setScheduledAt,
+  isScheduleOpen,
+  setIsScheduleOpen,
+}: PostInputFormBodyProps) {
+  return (
+    <div className="flex-1 min-w-0">
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <span className="truncate text-sm font-semibold text-foreground">
+          {username}
+        </span>
+        <PlatformSelector
+          value={channel}
+          onChange={setChannel}
+          size="sm"
+          className="shrink-0"
+        />
+      </div>
+
+      <textarea
+        ref={textareaRef}
+        value={content}
+        onChange={handleContentChange}
+        placeholder="What's happening?"
+        aria-label="Post content"
+        rows={2}
+        className="w-full bg-transparent border-0 outline-none resize-none text-[15px] sm:text-[16px] leading-relaxed placeholder:text-muted-foreground/60 focus:outline-none focus:ring-0 p-0 text-foreground min-h-[64px]"
+        data-testid="post-content-textarea"
+      />
+
+      {imageUrl && (
+        <MediaThumbnail
+          imageUrl={imageUrl}
+          isUploading={isUploadingMedia}
+          onRemove={removeMedia}
+        />
+      )}
+
+      <div className="pt-2.5 border-t border-border/40 mt-2">
+        <PostActionBar
+          isSubmitting={isSubmitting}
+          isContentEmpty={content.trim().length === 0 && !imageUrl}
+          actionType={actionType}
+          canPublishOrSchedule={canPublishOrSchedule}
+          currentLength={content.length}
+          platform={channel}
+          onActionTypeChange={setActionType}
+          onImageClick={onImageClick}
+          onDraftClick={() => handleSubmit("draft")}
+          onScheduleClick={() => handleSubmit("schedule")}
+          onPostClick={() => handleSubmit("post")}
+          onCancelClick={onCancel}
+          showCancel={!!onCancel}
+          scheduledAt={scheduledAt}
+          onScheduleChange={setScheduledAt}
+          isScheduleOpen={isScheduleOpen}
+          onToggleSchedule={setIsScheduleOpen}
+        />
+      </div>
+
+      <PostInputScheduledNotice scheduledAt={scheduledAt} />
+    </div>
+  )
+}
+
 export function PostInputBox({
   username,
   avatarUrl,
@@ -237,62 +342,28 @@ export function PostInputBox({
 
       <PostInputAvatar username={username} avatarUrl={avatarUrl} />
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between gap-2 mb-1.5">
-          <span className="truncate text-sm font-semibold text-foreground">
-            {username}
-          </span>
-          <PlatformSelector
-            value={channel}
-            onChange={(val: Platform) => setChannel(val)}
-            size="sm"
-            className="shrink-0"
-          />
-        </div>
-
-        <textarea
-          ref={textareaRef}
-          value={content}
-          onChange={handleContentChange}
-          placeholder="What's happening?"
-          aria-label="Post content"
-          rows={2}
-          className="w-full bg-transparent border-0 outline-none resize-none text-[15px] sm:text-[16px] leading-relaxed placeholder:text-muted-foreground/60 focus:outline-none focus:ring-0 p-0 text-foreground min-h-[64px]"
-          data-testid="post-content-textarea"
-        />
-
-        {imageUrl && (
-          <MediaThumbnail
-            imageUrl={imageUrl}
-            isUploading={isUploadingMedia}
-            onRemove={removeMedia}
-          />
-        )}
-
-        <div className="pt-2.5 border-t border-border/40 mt-2">
-          <PostActionBar
-            isSubmitting={createPostMutation.isPending || isUploadingMedia}
-            isContentEmpty={content.trim().length === 0 && !imageUrl}
-            actionType={actionType}
-            canPublishOrSchedule={canPublishOrSchedule}
-            currentLength={content.length}
-            platform={channel}
-            onActionTypeChange={setActionType}
-            onImageClick={() => fileInputRef.current?.click()}
-            onDraftClick={() => handleSubmit("draft")}
-            onScheduleClick={() => handleSubmit("schedule")}
-            onPostClick={() => handleSubmit("post")}
-            onCancelClick={onCancel}
-            showCancel={!!onCancel}
-            scheduledAt={scheduledAt}
-            onScheduleChange={setScheduledAt}
-            isScheduleOpen={isScheduleOpen}
-            onToggleSchedule={setIsScheduleOpen}
-          />
-        </div>
-
-        <PostInputScheduledNotice scheduledAt={scheduledAt} />
-      </div>
+      <PostInputFormBody
+        username={username}
+        channel={channel}
+        setChannel={setChannel}
+        textareaRef={textareaRef}
+        content={content}
+        handleContentChange={handleContentChange}
+        imageUrl={imageUrl}
+        isUploadingMedia={isUploadingMedia}
+        removeMedia={removeMedia}
+        isSubmitting={createPostMutation.isPending || isUploadingMedia}
+        actionType={actionType}
+        setActionType={setActionType}
+        canPublishOrSchedule={canPublishOrSchedule}
+        onImageClick={() => fileInputRef.current?.click()}
+        handleSubmit={handleSubmit}
+        onCancel={onCancel}
+        scheduledAt={scheduledAt}
+        setScheduledAt={setScheduledAt}
+        isScheduleOpen={isScheduleOpen}
+        setIsScheduleOpen={setIsScheduleOpen}
+      />
     </section>
   )
 }

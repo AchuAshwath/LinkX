@@ -321,6 +321,11 @@ class LinkedInPostClient:
                 details={"platform": "linkedin", "status_code": init_resp.status_code},
             )
 
+        return self._parse_init_upload_response(init_resp=init_resp)
+
+    def _parse_init_upload_response(
+        self, *, init_resp: httpx.Response
+    ) -> tuple[str, str]:
         init_data = init_resp.json()
         value = init_data.get("value", {})
         upload_url = value.get("uploadUrl") or init_data.get("uploadUrl")

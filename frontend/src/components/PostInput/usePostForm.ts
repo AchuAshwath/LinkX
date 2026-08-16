@@ -85,8 +85,39 @@ function getSuccessMessage(status: string): string {
   return messages[status] || "Post created successfully"
 }
 
-export function usePostForm(options?: UsePostFormOptions) {
+interface UseCreatePostMutationOptions {
+  showSuccessToast: (msg: string) => void
+  showErrorToast: (msg: string) => void
+  onSuccessReset: () => void
+}
+
+function useCreatePostMutation({
+  showSuccessToast,
+  showErrorToast,
+  onSuccessReset,
+}: UseCreatePostMutationOptions) {
   const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (data: {
+      content: string
+      platform: string
+      scheduled_at?: string
+      status: string
+      image_url?: string | null
+    }) => {
+      return await PostsService.createNewPost({ requestBody: data })
+    },
+    onSuccess: (_, variables) => {
+      showSuccessToast(getSuccessMessage(variables.status))
+      onSuccessReset()
+      queryClient.invalidateQueries({ queryKey: ["posts"] })
+    },
+    onError: handleError.bind(showErrorToast),
+  })
+}
+
+export function usePostForm(options?: UsePostFormOptions) {
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const [content, setContent] = useState(options?.initialContent || "")
   const [scheduledAt, setScheduledAt] = useState<Date | undefined>()
@@ -107,6 +138,20 @@ export function usePostForm(options?: UsePostFormOptions) {
     setImageUrl(null)
     setIsUploadingMedia(false)
   }, [])
+
+  const resetForm = useCallback(() => {
+    setContent("")
+    setScheduledAt(undefined)
+    setChannel("linkx")
+    setActionType("post")
+    removeMedia()
+  }, [removeMedia])
+
+  const createPostMutation = useCreatePostMutation({
+    showSuccessToast,
+    showErrorToast,
+    onSuccessReset: resetForm,
+  })
 
   const uploadMedia = useCallback(
     async (file: File): Promise<string | null> => {
@@ -131,28 +176,6 @@ export function usePostForm(options?: UsePostFormOptions) {
     },
     [showErrorToast],
   )
-
-  const createPostMutation = useMutation({
-    mutationFn: async (data: {
-      content: string
-      platform: string
-      scheduled_at?: string
-      status: string
-      image_url?: string | null
-    }) => {
-      return await PostsService.createNewPost({ requestBody: data })
-    },
-    onSuccess: (_, variables) => {
-      showSuccessToast(getSuccessMessage(variables.status))
-      setContent("")
-      setScheduledAt(undefined)
-      setChannel("linkx")
-      setActionType("post")
-      removeMedia()
-      queryClient.invalidateQueries({ queryKey: ["posts"] })
-    },
-    onError: handleError.bind(showErrorToast),
-  })
 
   const handleSubmit = useCallback(
     (action: "draft" | "schedule" | "post") => {

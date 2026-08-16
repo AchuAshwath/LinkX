@@ -51,6 +51,18 @@ def _build_success_transport(calls: list[dict[str, Any]]) -> httpx.MockTransport
     return httpx.MockTransport(handler)
 
 
+def _mock_async_client_transport(monkeypatch: pytest.MonkeyPatch, handler: Any) -> None:
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(
+        "app.services.linkedin_posts.httpx.AsyncClient",
+        lambda *args, **kwargs: _ORIGINAL_ASYNC_CLIENT(
+            *args,
+            transport=transport,
+            **{k: v for k, v in kwargs.items() if k != "transport"},
+        ),
+    )
+
+
 @pytest.mark.anyio
 async def test_create_image_post_success(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[dict[str, Any]] = []
@@ -111,24 +123,16 @@ async def test_create_image_post_with_user_id_and_redis(
                     }
                 },
             )
-        elif "https://upload.url" in url_str:
+        if "https://upload.url" in url_str:
             return httpx.Response(200)
-        elif "/posts" in url_str:
+        if "/posts" in url_str:
             return httpx.Response(
                 201,
                 headers={"x-restli-id": "urn:li:ugcPost:999"},
             )
         return httpx.Response(404)
 
-    transport = httpx.MockTransport(handler)
-    monkeypatch.setattr(
-        "app.services.linkedin_posts.httpx.AsyncClient",
-        lambda *args, **kwargs: _ORIGINAL_ASYNC_CLIENT(
-            *args,
-            transport=transport,
-            **{k: v for k, v in kwargs.items() if k != "transport"},
-        ),
-    )
+    _mock_async_client_transport(monkeypatch, handler)
 
     client = LinkedInPostClient()
     result = await client.create_image_post(
@@ -167,17 +171,9 @@ async def test_create_image_post_missing_token_and_sub() -> None:
 
 @pytest.mark.anyio
 async def test_create_image_post_step1_fail(monkeypatch: pytest.MonkeyPatch) -> None:
-    def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(500, json={"message": "LinkedIn server error"})
-
-    transport = httpx.MockTransport(handler)
-    monkeypatch.setattr(
-        "app.services.linkedin_posts.httpx.AsyncClient",
-        lambda *args, **kwargs: _ORIGINAL_ASYNC_CLIENT(
-            *args,
-            transport=transport,
-            **{k: v for k, v in kwargs.items() if k != "transport"},
-        ),
+    _mock_async_client_transport(
+        monkeypatch,
+        lambda _req: httpx.Response(500, json={"message": "LinkedIn server error"}),
     )
 
     client = LinkedInPostClient()
@@ -210,15 +206,7 @@ async def test_create_image_post_step2_binary_fail(
             )
         return httpx.Response(500)
 
-    transport = httpx.MockTransport(handler)
-    monkeypatch.setattr(
-        "app.services.linkedin_posts.httpx.AsyncClient",
-        lambda *args, **kwargs: _ORIGINAL_ASYNC_CLIENT(
-            *args,
-            transport=transport,
-            **{k: v for k, v in kwargs.items() if k != "transport"},
-        ),
-    )
+    _mock_async_client_transport(monkeypatch, handler)
 
     client = LinkedInPostClient()
     with pytest.raises(LinkedInPostError) as exc:
@@ -252,15 +240,7 @@ async def test_create_image_post_step3_post_fail(
             return httpx.Response(200)
         return httpx.Response(400, json={"message": "Invalid post schema"})
 
-    transport = httpx.MockTransport(handler)
-    monkeypatch.setattr(
-        "app.services.linkedin_posts.httpx.AsyncClient",
-        lambda *args, **kwargs: _ORIGINAL_ASYNC_CLIENT(
-            *args,
-            transport=transport,
-            **{k: v for k, v in kwargs.items() if k != "transport"},
-        ),
-    )
+    _mock_async_client_transport(monkeypatch, handler)
 
     client = LinkedInPostClient()
     with pytest.raises(LinkedInPostError) as exc:
