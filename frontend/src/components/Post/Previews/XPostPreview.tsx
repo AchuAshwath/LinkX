@@ -85,7 +85,7 @@ export function XPostPreview({ post }: XPostPreviewProps) {
 
               {/* Media */}
               {post.imageUrl && (
-                <div className="mt-3 overflow-hidden rounded-2xl border border-black/10 dark:border-white/10 max-h-[520px]">
+                <div className="mt-3 overflow-hidden border border-black/10 dark:border-white/10 max-h-[520px]">
                   <img
                     src={post.imageUrl}
                     alt="Post attachment"

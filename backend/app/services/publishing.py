@@ -210,8 +210,20 @@ async def _publish_all(*, session: Session, post: Post) -> str | PublishFailure:
     if isinstance(li_res, PublishFailure):
         return li_res
 
+    # Record LinkedIn external ID so it is not lost if X fails
+    post.external_post_id = f"linkedin:{li_res}"
+    session.add(post)
+    session.commit()
+    session.refresh(post)
+
     x_res = await _publish_x(session=session, post=post)
     if isinstance(x_res, PublishFailure):
+        post.error_message = (
+            f"LinkedIn published ({li_res}), but X failed: {x_res.payload.message}"
+        )
+        session.add(post)
+        session.commit()
+        session.refresh(post)
         return x_res
 
     return f"linkedin:{li_res},x:{x_res}"

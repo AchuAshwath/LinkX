@@ -157,7 +157,7 @@ export function Post({
 
             {/* Image */}
             {post.imageUrl && (
-              <div className="overflow-hidden rounded-2xl">
+              <div className="overflow-hidden">
                 <img
                   src={post.imageUrl}
                   alt=""

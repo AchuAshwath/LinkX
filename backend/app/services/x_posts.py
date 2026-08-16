@@ -233,6 +233,18 @@ class XPostClient:
                 "Progress bar did not detach within 10s or was not present; proceeding."
             )
 
+        post_button_selector = self.selectors["compose"]["post_button"]
+        logger.info("Waiting for post button to be enabled after media attachment...")
+        try:
+            await page.wait_for_selector(
+                f'{post_button_selector}:not([disabled]):not([aria-disabled="true"])',
+                timeout=15000,
+            )
+        except PlaywrightTimeoutError:
+            logger.warning(
+                "Timed out waiting for enabled post button; proceeding with click attempt."
+            )
+
         await random_delay(min_sec=1.5, max_sec=3.0)
         return await self._click_publish_and_wait(page, mouse)
 
@@ -337,9 +349,9 @@ class XPostClient:
         try:
             async with page.expect_response(
                 lambda response: "graphql" in response.url
-                and "CreateTweet" in response.url
+                and ("CreateTweet" in response.url or "CreateNoteTweet" in response.url)
                 and response.request.method == "POST",
-                timeout=15000,
+                timeout=30000,
             ) as response_info:
                 await mouse.human_click(selector=post_button_selector)
 

@@ -110,7 +110,7 @@ export function LinkedInPostPreview({ post }: LinkedInPostPreviewProps) {
 
           {/* Media / embedded image */}
           {post.imageUrl && (
-            <div className="mt-3 overflow-hidden rounded-md border border-[#e0e0e0] bg-[#fafafa] dark:border-[#3a3f45] dark:bg-[#111418] max-h-[420px]">
+            <div className="mt-3 overflow-hidden border border-[#e0e0e0] bg-[#fafafa] dark:border-[#3a3f45] dark:bg-[#111418] max-h-[420px]">
               <img
                 src={post.imageUrl}
                 alt="Post attachment"

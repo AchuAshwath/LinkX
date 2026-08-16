@@ -14,13 +14,13 @@ export function MediaThumbnail({
 }: MediaThumbnailProps) {
   return (
     <div
-      className="relative mt-3 group overflow-hidden rounded-xl border border-border/60 bg-muted/20 max-w-md"
+      className="relative mt-3 group overflow-hidden border border-border/60 bg-muted/20 max-w-md"
       data-testid="post-media-preview"
     >
       <img
         src={resolveMediaUrl(imageUrl) ?? imageUrl}
         alt="Post attachment"
-        className="w-full max-h-52 object-cover rounded-xl"
+        className="w-full max-h-52 object-cover"
       />
       <button
         type="button"
@@ -33,7 +33,7 @@ export function MediaThumbnail({
       </button>
       {isUploading && (
         <div
-          className="absolute inset-0 bg-black/40 backdrop-blur-[1px] rounded-xl flex items-center justify-center text-white"
+          className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center text-white"
           data-testid="media-uploading-spinner"
         >
           <Loader2 className="h-6 w-6 animate-spin text-white" />

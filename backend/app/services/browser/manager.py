@@ -339,10 +339,18 @@ class BrowserManager:
                 f"Please run headed_login first for platform '{platform_name}'."
             )
 
+        # Clean stale Singleton locks if no Chrome process is actively running
+        singleton_lock = session_dir / "SingletonLock"
+        if singleton_lock.exists() and not is_chrome_running():
+            for f in session_dir.glob("Singleton*"):
+                try:
+                    f.unlink()
+                except OSError:
+                    pass
+
         playwright_args = get_playwright_args()
 
         async with async_playwright() as p:
-            context = None
             try:
                 logger.debug("Attempting to launch with channel='chrome'...")
                 context = await p.chromium.launch_persistent_context(
@@ -354,19 +362,22 @@ class BrowserManager:
                     args=playwright_args,
                 )
             except Exception as e:
-                logger.warning(
-                    "Could not launch with channel='chrome', falling back "
-                    "to bundled Chromium. Error: %s",
+                err_msg = str(e)
+                if (
+                    "Singleton" in err_msg
+                    or "ProcessSingleton" in err_msg
+                    or "File exists" in err_msg
+                ):
+                    raise RuntimeError(
+                        "Google Chrome is currently open with this session or locked by another process. "
+                        "Please close any open Chrome windows and try again."
+                    ) from e
+                logger.error(
+                    "Failed to launch Chrome persistent context: %s",
                     e,
                     exc_info=True,
                 )
-                context = await p.chromium.launch_persistent_context(
-                    user_data_dir=str(session_dir),
-                    headless=headless,
-                    viewport={"width": 1280, "height": 800},
-                    ignore_default_args=["--enable-automation"],
-                    args=playwright_args,
-                )
+                raise
 
             try:
                 yield context

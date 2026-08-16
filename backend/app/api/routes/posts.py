@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import io
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
+from PIL import Image
 from sqlmodel import Session
 
 from app.api.deps import CurrentUser, SessionDep
@@ -32,7 +33,15 @@ from app.services.publishing import PublishFailure, publish_post
 
 router = APIRouter(prefix="/posts", tags=["posts"])
 
-ALLOWED_MEDIA_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+ALLOWED_MEDIA_TYPES = {
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "image/avif",
+    "image/bmp",
+}
 MAX_MEDIA_SIZE = 5 * 1024 * 1024  # 5 MB
 
 
@@ -46,7 +55,7 @@ async def upload_media(
     if not file.content_type or file.content_type.lower() not in ALLOWED_MEDIA_TYPES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid file type. Allowed types: image/jpeg, image/png, image/gif, image/webp",
+            detail="Invalid file type. Allowed types: JPEG, PNG, GIF, WebP, AVIF",
         )
 
     content = await file.read()
@@ -58,27 +67,44 @@ async def upload_media(
             detail="File size exceeds maximum limit of 5MB",
         )
 
-    ext = Path(file.filename).suffix.lower() if file.filename else ""
-    if ext not in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
-        content_type_ext_map = {
-            "image/jpeg": ".jpg",
-            "image/png": ".png",
-            "image/gif": ".gif",
-            "image/webp": ".webp",
-        }
-        ext = content_type_ext_map.get(file.content_type.lower(), ".png")
+    try:
+        image = Image.open(io.BytesIO(content))
+        # For animated GIFs, preserve as GIF
+        if image.format == "GIF":
+            out_bytes = content
+            final_ext = ".gif"
+            final_content_type = "image/gif"
+        elif image.format == "PNG" and image.mode in ("RGBA", "LA", "P"):
+            out_buf = io.BytesIO()
+            image.save(out_buf, format="PNG", optimize=True)
+            out_bytes = out_buf.getvalue()
+            final_ext = ".png"
+            final_content_type = "image/png"
+        else:
+            # Convert AVIF, WebP, and other formats to clean, standard JPEG
+            rgb_image = image.convert("RGB") if image.mode != "RGB" else image
+            out_buf = io.BytesIO()
+            rgb_image.save(out_buf, format="JPEG", quality=92, optimize=True)
+            out_bytes = out_buf.getvalue()
+            final_ext = ".jpg"
+            final_content_type = "image/jpeg"
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid or unsupported image file: {exc}",
+        ) from exc
 
-    filename = f"{uuid.uuid4()}{ext}"
+    filename = f"{uuid.uuid4()}{final_ext}"
     settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     destination = settings.UPLOAD_DIR / filename
     with open(destination, "wb") as f:
-        f.write(content)
+        f.write(out_bytes)
 
     return MediaPublic(
         url=f"/static/uploads/{filename}",
         filename=filename,
-        content_type=file.content_type,
-        size_bytes=size,
+        content_type=final_content_type,
+        size_bytes=len(out_bytes),
     )
 
 

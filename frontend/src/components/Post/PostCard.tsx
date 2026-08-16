@@ -366,7 +366,7 @@ function PostCardBodyContent({
       </div>
 
       {imageUrl && (
-        <div className="mt-2.5 overflow-hidden rounded-2xl">
+        <div className="mt-2.5 overflow-hidden">
           <img
             src={resolveMediaUrl(imageUrl) ?? imageUrl}
             alt=""

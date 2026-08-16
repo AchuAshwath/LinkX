@@ -314,7 +314,14 @@ def test_upload_media_success(
     db: Session,
 ) -> None:
     _user, headers = _create_user_with_auth(client=client, db=db)
-    file_bytes = b"\x89PNG\r\n\x1a\nfakeimagecontent"
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGBA", (10, 10), color=(255, 0, 0, 255)).save(buf, format="PNG")
+    file_bytes = buf.getvalue()
+
     response = client.post(
         f"{settings.API_V1_STR}/posts/media",
         headers=headers,
@@ -325,13 +332,13 @@ def test_upload_media_success(
     assert "url" in data
     assert data["url"].startswith("/static/uploads/")
     assert data["content_type"] == "image/png"
-    assert data["size_bytes"] == len(file_bytes)
+    assert data["size_bytes"] > 0
     assert data["filename"].endswith(".png")
 
     # Verify static file is accessible
     static_resp = client.get(data["url"])
     assert static_resp.status_code == 200
-    assert static_resp.content == file_bytes
+    assert len(static_resp.content) > 0
 
 
 def test_upload_media_invalid_mime(
