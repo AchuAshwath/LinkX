@@ -26,11 +26,10 @@ openapi.json
 **/*.af
 *.af
 
-# Environment files (do not commit secrets)
-.env
+# Environment files (do not commit secrets; .env is base template, .env.local has secrets)
+.env.local
 .env.*
-*.env
-frontend/.env
+frontend/.env.local
 frontend/.env.*
 *.key
 

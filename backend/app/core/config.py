@@ -115,6 +115,14 @@ class Settings(BaseSettings):
     # Redis (for OAuth session/token storage)
     REDIS_URL: str = "redis://redis:6379/0"
 
+    # AI Proxy / Router (CLIProxyAPI, OpenAI-compatible proxy, LiteLLM)
+    OPENAI_API_COMPATIBLE_API_KEY: str | None = None
+    OPENAI_API_COMPATIBLE_BASE_URL: str = "http://127.0.0.1:8317/v1"
+    AI_API_KEY: str | None = None
+    AI_API_BASE: str = "http://127.0.0.1:8317/v1"
+    AI_MODEL: str = "openai/gemini-3-flash"
+    VISION_AI_MODEL: str = "openai/gemini-3.1-flash-image"
+
     def _check_default_secret(self, var_name: str, value: str | None) -> None:
         if value == "changethis":
             message = (
