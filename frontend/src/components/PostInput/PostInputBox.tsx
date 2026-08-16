@@ -1,20 +1,19 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import { Calendar, X } from "lucide-react"
 import * as React from "react"
 
-import { AuthService, PostsService } from "@/client"
+import { AuthService } from "@/client"
 import {
   type Platform,
   PlatformSelector,
 } from "@/components/Common/PlatformSelector"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import useCustomToast from "@/hooks/useCustomToast"
 import { cn } from "@/lib/utils"
-import { handleError } from "@/utils"
 import { MediaThumbnail } from "./MediaThumbnail"
 import { PostActionBar } from "./PostActionBar"
 import { formatDateTime } from "./PostSchedulePicker"
 import { useComposerDragDrop } from "./useComposerDragDrop"
+import { useComposerSubmission } from "./useComposerSubmission"
 import { usePostForm } from "./usePostForm"
 
 export interface EditMode {
@@ -265,81 +264,6 @@ function useComposerLifecycle({
     const timer = setTimeout(() => textareaRef.current?.focus(), 50)
     return () => clearTimeout(timer)
   }, [autoFocus, textareaRef])
-}
-
-function useEditPostMutation(editMode: EditMode, onDone: () => void) {
-  const queryClient = useQueryClient()
-  const { showSuccessToast, showErrorToast } = useCustomToast()
-  return useMutation({
-    mutationFn: async (data: {
-      content: string
-      platform: string
-      scheduled_at?: string
-      image_url?: string | null
-    }) =>
-      PostsService.updateExistingPost({
-        postId: editMode.postId,
-        requestBody: data,
-      }),
-    onSuccess: () => {
-      showSuccessToast("Post updated successfully")
-      queryClient.invalidateQueries({ queryKey: ["posts"] })
-      onDone()
-    },
-    onError: handleError.bind(showErrorToast),
-  })
-}
-
-interface UseComposerSubmissionOptions {
-  editMode?: EditMode
-  form: ReturnType<typeof usePostForm>
-}
-
-function useComposerSubmission({
-  editMode,
-  form,
-}: UseComposerSubmissionOptions) {
-  const editMutation = useEditPostMutation(editMode ?? { postId: "" }, () => {
-    editMode?.onSaved?.()
-  })
-
-  React.useEffect(() => {
-    if (editMode?.initialScheduledAt) {
-      form.setScheduledAt(editMode.initialScheduledAt ?? undefined)
-    }
-  }, [editMode, form.setScheduledAt])
-
-  const handleEditSubmit = React.useCallback(
-    (_action: "draft" | "schedule" | "post") => {
-      editMutation.mutate({
-        content: form.content.trim(),
-        platform: form.channel,
-        image_url: form.imageUrl,
-        scheduled_at: form.scheduledAt
-          ? form.scheduledAt.toISOString()
-          : undefined,
-      })
-    },
-    [editMutation, form.content, form.channel, form.imageUrl, form.scheduledAt],
-  )
-
-  const isSuccess = editMode
-    ? editMutation.isSuccess
-    : form.createPostMutation.isSuccess
-
-  const isSubmitting = editMode
-    ? editMutation.isPending || form.isUploadingMedia
-    : form.createPostMutation.isPending || form.isUploadingMedia
-
-  const onSubmitHandler = editMode ? handleEditSubmit : form.handleSubmit
-  const onAiDraftHandler = editMode ? undefined : form.handleAiDraft
-
-  return {
-    isSuccess,
-    isSubmitting,
-    onSubmitHandler,
-    onAiDraftHandler,
-  }
 }
 
 export function PostInputBox({
