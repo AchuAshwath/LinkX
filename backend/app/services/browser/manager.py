@@ -106,19 +106,18 @@ def _format_verification_message(
 def _build_verification_payload(
     *,
     is_logged_in: bool,
-    is_premium: bool,
-    username: str | None,
-    display_name: str | None,
+    meta: dict[str, Any],
     url: str | None,
 ) -> dict[str, Any]:
-    max_limit = 25000 if is_premium else 280
+    is_premium = bool(meta.get("is_premium", False))
+    username = meta.get("username")
     return {
         "connected": True,
         "authenticated": is_logged_in,
         "is_premium": is_premium,
-        "max_character_limit": max_limit,
+        "max_character_limit": int(meta.get("max_character_limit", 280)),
         "username": username,
-        "display_name": display_name,
+        "display_name": meta.get("display_name"),
         "url": url,
         "message": _format_verification_message(
             is_logged_in=is_logged_in,
@@ -232,22 +231,19 @@ class BrowserManager:
                 else (False, None, None)
             )
 
+            meta = {
+                "is_premium": is_premium,
+                "max_character_limit": 25000 if is_premium else 280,
+                "username": username,
+                "display_name": display_name,
+            }
+
             if is_logged_in:
-                _write_session_meta_file(
-                    session_dir,
-                    {
-                        "is_premium": is_premium,
-                        "max_character_limit": 25000 if is_premium else 280,
-                        "username": username,
-                        "display_name": display_name,
-                    },
-                )
+                _write_session_meta_file(session_dir, meta)
 
             return _build_verification_payload(
                 is_logged_in=is_logged_in,
-                is_premium=is_premium,
-                username=username,
-                display_name=display_name,
+                meta=meta,
                 url=page.url,
             )
 
