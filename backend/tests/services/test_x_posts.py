@@ -71,14 +71,12 @@ async def test_create_media_post_no_session(
     assert exc_info.value.code == "x_not_connected"
 
 
-@pytest.mark.anyio
-async def test_create_media_post_success(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    client = XPostClient()
-    dummy_file = tmp_path / "test.png"
-    dummy_file.write_bytes(b"test image data")
-
+def _setup_mock_browser_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    mock_expect_response_fn: Any = None,
+    mock_wait_for_selector_fn: Any = None,
+) -> AsyncMock:
     monkeypatch.setattr(
         "app.services.browser.manager.BrowserManager.session_exists",
         lambda _self, _platform: True,
@@ -92,6 +90,52 @@ async def test_create_media_post_success(
     )
     mock_locator.click = AsyncMock()
     mock_locator.first = mock_locator
+
+    mock_page = AsyncMock()
+    mock_page.viewport_size = {"width": 1280, "height": 800}
+    mock_page.mouse = AsyncMock()
+    mock_page.inner_text = AsyncMock(return_value="Home feed content")
+    mock_page.url = "https://x.com/home"
+    mock_page.goto = AsyncMock()
+    mock_page.wait_for_url = AsyncMock()
+    mock_page.wait_for_selector = mock_wait_for_selector_fn or AsyncMock()
+    mock_page.locator = MagicMock(return_value=mock_locator)
+    if mock_expect_response_fn:
+        mock_page.expect_response = mock_expect_response_fn
+
+    mock_context = AsyncMock()
+    mock_context.pages = [mock_page]
+
+    @asynccontextmanager
+    async def mock_get_context(*_args: Any, **_kwargs: Any) -> Any:
+        yield mock_context
+
+    monkeypatch.setattr(
+        "app.services.browser.manager.BrowserManager.get_context",
+        mock_get_context,
+    )
+    monkeypatch.setattr(
+        "app.services.browser.actions.random_delay",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "app.services.x_posts.random_delay",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "app.services.browser.actions.HumanTyper.type",
+        AsyncMock(),
+    )
+    return mock_locator
+
+
+@pytest.mark.anyio
+async def test_create_media_post_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = XPostClient()
+    dummy_file = tmp_path / "test.png"
+    dummy_file.write_bytes(b"test image data")
 
     mock_response = MagicMock()
     mock_response.status = 200
@@ -113,39 +157,9 @@ async def test_create_media_post_success(
         val.value = fut
         yield val
 
-    mock_page = AsyncMock()
-    mock_page.viewport_size = {"width": 1280, "height": 800}
-    mock_page.mouse = AsyncMock()
-    mock_page.inner_text = AsyncMock(return_value="Home feed content")
-    mock_page.url = "https://x.com/home"
-    mock_page.goto = AsyncMock()
-    mock_page.wait_for_url = AsyncMock()
-    mock_page.wait_for_selector = AsyncMock()
-    mock_page.locator = MagicMock(return_value=mock_locator)
-    mock_page.expect_response = mock_expect_response
-
-    mock_context = AsyncMock()
-    mock_context.pages = [mock_page]
-
-    @asynccontextmanager
-    async def mock_get_context(*_args: Any, **_kwargs: Any) -> Any:
-        yield mock_context
-
-    monkeypatch.setattr(
-        "app.services.browser.manager.BrowserManager.get_context",
-        mock_get_context,
-    )
-    monkeypatch.setattr(
-        "app.services.browser.actions.random_delay",
-        AsyncMock(),
-    )
-    monkeypatch.setattr(
-        "app.services.x_posts.random_delay",
-        AsyncMock(),
-    )
-    monkeypatch.setattr(
-        "app.services.browser.actions.HumanTyper.type",
-        AsyncMock(),
+    mock_locator = _setup_mock_browser_environment(
+        monkeypatch,
+        mock_expect_response_fn=mock_expect_response,
     )
 
     result = await client.create_media_post(
@@ -159,7 +173,6 @@ async def test_create_media_post_success(
     assert result.success is True
     assert result.post_id == "18928374619283"
     assert result.post_url == "https://x.com/i/status/18928374619283"
-
     mock_locator.set_input_files.assert_awaited_once_with(str(dummy_file.resolve()))
 
 
@@ -171,57 +184,14 @@ async def test_create_media_post_attachment_timeout(
     dummy_file = tmp_path / "test.png"
     dummy_file.write_bytes(b"test image data")
 
-    monkeypatch.setattr(
-        "app.services.browser.manager.BrowserManager.session_exists",
-        lambda _self, _platform: True,
-    )
-
-    mock_locator = AsyncMock()
-    mock_locator.set_input_files = AsyncMock()
-    mock_locator.scroll_into_view_if_needed = AsyncMock()
-    mock_locator.bounding_box = AsyncMock(
-        return_value={"x": 100, "y": 100, "width": 50, "height": 30}
-    )
-    mock_locator.click = AsyncMock()
-    mock_locator.first = mock_locator
-
     async def mock_wait_for_selector(selector: str, *_args: Any, **_kwargs: Any) -> Any:
         if "attachments" in selector:
             raise PlaywrightTimeoutError("Attachment timed out")
         return None
 
-    mock_page = AsyncMock()
-    mock_page.viewport_size = {"width": 1280, "height": 800}
-    mock_page.mouse = AsyncMock()
-    mock_page.inner_text = AsyncMock(return_value="Home feed content")
-    mock_page.url = "https://x.com/home"
-    mock_page.goto = AsyncMock()
-    mock_page.wait_for_url = AsyncMock()
-    mock_page.wait_for_selector = mock_wait_for_selector
-    mock_page.locator = MagicMock(return_value=mock_locator)
-
-    mock_context = AsyncMock()
-    mock_context.pages = [mock_page]
-
-    @asynccontextmanager
-    async def mock_get_context(*_args: Any, **_kwargs: Any) -> Any:
-        yield mock_context
-
-    monkeypatch.setattr(
-        "app.services.browser.manager.BrowserManager.get_context",
-        mock_get_context,
-    )
-    monkeypatch.setattr(
-        "app.services.browser.actions.random_delay",
-        AsyncMock(),
-    )
-    monkeypatch.setattr(
-        "app.services.x_posts.random_delay",
-        AsyncMock(),
-    )
-    monkeypatch.setattr(
-        "app.services.browser.actions.HumanTyper.type",
-        AsyncMock(),
+    _setup_mock_browser_environment(
+        monkeypatch,
+        mock_wait_for_selector_fn=mock_wait_for_selector,
     )
 
     with pytest.raises(XPostError) as exc_info:
@@ -243,60 +213,15 @@ async def test_create_media_post_button_disabled(
     dummy_file = tmp_path / "test.png"
     dummy_file.write_bytes(b"test image data")
 
-    monkeypatch.setattr(
-        "app.services.browser.manager.BrowserManager.session_exists",
-        lambda _self, _platform: True,
-    )
-
-    mock_locator = AsyncMock()
-    mock_locator.set_input_files = AsyncMock()
-    mock_locator.scroll_into_view_if_needed = AsyncMock()
-    mock_locator.bounding_box = AsyncMock(
-        return_value={"x": 100, "y": 100, "width": 50, "height": 30}
-    )
-    mock_locator.click = AsyncMock()
-    mock_locator.first = mock_locator
-
     @asynccontextmanager
     async def mock_expect_response(*_args: Any, **_kwargs: Any) -> Any:
         yield MagicMock()
 
-    mock_page = AsyncMock()
-    mock_page.viewport_size = {"width": 1280, "height": 800}
-    mock_page.mouse = AsyncMock()
-    mock_page.inner_text = AsyncMock(return_value="Home feed content")
-    mock_page.url = "https://x.com/home"
-    mock_page.goto = AsyncMock()
-    mock_page.wait_for_url = AsyncMock()
-    mock_page.wait_for_selector = AsyncMock()
-    mock_page.locator = MagicMock(return_value=mock_locator)
-    mock_page.expect_response = mock_expect_response
-
-    mock_context = AsyncMock()
-    mock_context.pages = [mock_page]
-
-    @asynccontextmanager
-    async def mock_get_context(*_args: Any, **_kwargs: Any) -> Any:
-        yield mock_context
-
-    monkeypatch.setattr(
-        "app.services.browser.manager.BrowserManager.get_context",
-        mock_get_context,
-    )
-    monkeypatch.setattr(
-        "app.services.browser.actions.random_delay",
-        AsyncMock(),
-    )
-    monkeypatch.setattr(
-        "app.services.x_posts.random_delay",
-        AsyncMock(),
-    )
-    monkeypatch.setattr(
-        "app.services.browser.actions.HumanTyper.type",
-        AsyncMock(),
+    _setup_mock_browser_environment(
+        monkeypatch,
+        mock_expect_response_fn=mock_expect_response,
     )
 
-    # Simulate button remaining disabled
     async def mock_human_click(*_args: Any, **kwargs: Any) -> None:
         selector = kwargs.get("selector", "")
         if "tweetButtonInline" in selector:

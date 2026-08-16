@@ -116,6 +116,49 @@ function MediaThumbnail({
   )
 }
 
+function useComposerDragDrop(onUpload: (file: File) => void) {
+  const [isDragging, setIsDragging] = React.useState(false)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) onUpload(file)
+    e.target.value = ""
+  }
+
+  const handleDragOver = (e: React.DragEvent<HTMLElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!isDragging) setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent<HTMLElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return
+    setIsDragging(false)
+  }
+
+  const handleDrop = (e: React.DragEvent<HTMLElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file?.type.startsWith("image/")) onUpload(file)
+  }
+
+  return {
+    isDragging,
+    fileInputRef,
+    handleFileSelect,
+    dragProps: {
+      onDragOver: handleDragOver,
+      onDragLeave: handleDragLeave,
+      onDrop: handleDrop,
+    },
+  }
+}
+
 export function PostInputBox({
   username,
   avatarUrl,
@@ -149,20 +192,16 @@ export function PostInputBox({
   })
 
   const [isScheduleOpen, setIsScheduleOpen] = React.useState(false)
-  const [isDragging, setIsDragging] = React.useState(false)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
-  const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const { isDragging, fileInputRef, handleFileSelect, dragProps } =
+    useComposerDragDrop(uploadMedia)
 
   React.useEffect(() => {
-    if (initialContent !== undefined && initialContent !== "") {
-      setContent(initialContent)
-    }
+    if (initialContent) setContent(initialContent)
   }, [initialContent, setContent])
 
   React.useEffect(() => {
-    if (initialImageUrl !== undefined && initialImageUrl !== "") {
-      setImageUrl(initialImageUrl)
-    }
+    if (initialImageUrl) setImageUrl(initialImageUrl)
   }, [initialImageUrl, setImageUrl])
 
   React.useEffect(() => {
@@ -173,44 +212,10 @@ export function PostInputBox({
   }, [createPostMutation.isSuccess, onSubmit])
 
   React.useEffect(() => {
-    if (autoFocus) {
-      const timer = setTimeout(() => {
-        textareaRef.current?.focus()
-      }, 50)
-      return () => clearTimeout(timer)
-    }
+    if (!autoFocus) return
+    const timer = setTimeout(() => textareaRef.current?.focus(), 50)
+    return () => clearTimeout(timer)
   }, [autoFocus])
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      uploadMedia(file)
-    }
-    e.target.value = ""
-  }
-
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (!isDragging) setIsDragging(true)
-  }
-
-  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (e.currentTarget.contains(e.relatedTarget as Node)) return
-    setIsDragging(false)
-  }
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(false)
-    const file = e.dataTransfer.files?.[0]
-    if (file?.type.startsWith("image/")) {
-      uploadMedia(file)
-    }
-  }
 
   return (
     <section
@@ -219,9 +224,7 @@ export function PostInputBox({
         "flex gap-3 w-full rounded-2xl p-1 transition-colors duration-200",
         isDragging && "bg-primary/5 ring-2 ring-primary/30 ring-dashed",
       )}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+      {...dragProps}
     >
       <input
         type="file"

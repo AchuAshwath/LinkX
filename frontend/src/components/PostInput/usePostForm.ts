@@ -12,6 +12,79 @@ export interface UsePostFormOptions {
   initialPlatform?: Platform
 }
 
+const VALID_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+])
+const MAX_MEDIA_BYTES = 5 * 1024 * 1024 // 5 MB
+
+function validateMediaFile(
+  file: File,
+  showErrorToast: (msg: string) => void,
+): boolean {
+  if (!VALID_IMAGE_TYPES.has(file.type)) {
+    showErrorToast(
+      "Invalid file type. Please upload a JPEG, PNG, GIF, or WebP image.",
+    )
+    return false
+  }
+  if (file.size > MAX_MEDIA_BYTES) {
+    showErrorToast("Image size exceeds the 5 MB limit.")
+    return false
+  }
+  return true
+}
+
+interface PostPayloadOptions {
+  action: "draft" | "schedule" | "post"
+  content: string
+  channel: Platform
+  scheduledAt?: Date
+  imageUrl: string | null
+}
+
+function buildPostPayload({
+  action,
+  content,
+  channel,
+  scheduledAt,
+  imageUrl,
+}: PostPayloadOptions) {
+  const status =
+    action === "draft"
+      ? "draft"
+      : action === "schedule"
+        ? "scheduled"
+        : "published"
+
+  const finalScheduledAt =
+    action === "schedule"
+      ? scheduledAt || new Date(Date.now() + 4 * 3600 * 1000)
+      : undefined
+
+  return {
+    content: content.trim(),
+    platform: channel,
+    status,
+    image_url: imageUrl || undefined,
+    scheduled_at:
+      action === "schedule" && finalScheduledAt
+        ? finalScheduledAt.toISOString()
+        : undefined,
+  }
+}
+
+function getSuccessMessage(status: string): string {
+  const messages: Record<string, string> = {
+    draft: "Draft saved successfully",
+    scheduled: "Post scheduled successfully",
+    published: "Post published successfully",
+  }
+  return messages[status] || "Post created successfully"
+}
+
 export function usePostForm(options?: UsePostFormOptions) {
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
@@ -37,23 +110,10 @@ export function usePostForm(options?: UsePostFormOptions) {
 
   const uploadMedia = useCallback(
     async (file: File): Promise<string | null> => {
-      const validTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"]
-      if (!validTypes.includes(file.type)) {
-        showErrorToast(
-          "Invalid file type. Please upload a JPEG, PNG, GIF, or WebP image.",
-        )
-        return null
-      }
-
-      // Max size: 5MB
-      if (file.size > 5 * 1024 * 1024) {
-        showErrorToast("Image size exceeds the 5 MB limit.")
-        return null
-      }
+      if (!validateMediaFile(file, showErrorToast)) return null
 
       setMediaFile(file)
       setIsUploadingMedia(true)
-
       const localPreviewUrl = URL.createObjectURL(file)
       setImageUrl(localPreviewUrl)
 
@@ -63,7 +123,7 @@ export function usePostForm(options?: UsePostFormOptions) {
         setImageUrl(uploadedUrl)
         return uploadedUrl
       } catch (err) {
-        handleError.bind(showErrorToast)(err as any)
+        handleError.call(showErrorToast, err as any)
         return localPreviewUrl
       } finally {
         setIsUploadingMedia(false)
@@ -83,22 +143,12 @@ export function usePostForm(options?: UsePostFormOptions) {
       return await PostsService.createNewPost({ requestBody: data })
     },
     onSuccess: (_, variables) => {
-      const statusMessages = {
-        draft: "Draft saved successfully",
-        scheduled: "Post scheduled successfully",
-        published: "Post published successfully",
-      }
-      showSuccessToast(
-        statusMessages[variables.status as keyof typeof statusMessages] ||
-          "Post created successfully",
-      )
-      // Reset form
+      showSuccessToast(getSuccessMessage(variables.status))
       setContent("")
       setScheduledAt(undefined)
       setChannel("linkx")
       setActionType("post")
       removeMedia()
-      // Invalidate queries to refetch posts
       queryClient.invalidateQueries({ queryKey: ["posts"] })
     },
     onError: handleError.bind(showErrorToast),
@@ -107,34 +157,13 @@ export function usePostForm(options?: UsePostFormOptions) {
   const handleSubmit = useCallback(
     (action: "draft" | "schedule" | "post") => {
       if (content.trim().length === 0) return
-
-      const finalScheduledAt =
-        action === "schedule"
-          ? scheduledAt || new Date(Date.now() + 4 * 3600 * 1000)
-          : undefined
-
-      const postData: {
-        content: string
-        platform: string
-        scheduled_at?: string
-        status: string
-        image_url?: string | null
-      } = {
-        content: content.trim(),
-        platform: channel,
-        status:
-          action === "draft"
-            ? "draft"
-            : action === "schedule"
-              ? "scheduled"
-              : "published",
-        image_url: imageUrl || undefined,
-      }
-
-      if (action === "schedule" && finalScheduledAt) {
-        postData.scheduled_at = finalScheduledAt.toISOString()
-      }
-
+      const postData = buildPostPayload({
+        action,
+        content,
+        channel,
+        scheduledAt,
+        imageUrl,
+      })
       createPostMutation.mutate(postData)
     },
     [channel, content, createPostMutation, imageUrl, scheduledAt],
