@@ -1,4 +1,4 @@
-import { Calendar } from "lucide-react"
+import { Calendar, Loader2, X } from "lucide-react"
 import * as React from "react"
 
 import {
@@ -6,6 +6,7 @@ import {
   PlatformSelector,
 } from "@/components/Common/PlatformSelector"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { cn } from "@/lib/utils"
 import { PostActionBar } from "./PostActionBar"
 import { formatDateTime } from "./PostSchedulePicker"
 import { usePostForm } from "./usePostForm"
@@ -14,6 +15,7 @@ interface PostInputBoxProps {
   username: string
   avatarUrl?: string
   initialContent?: string
+  initialImageUrl?: string
   onSubmit?: () => void
   onCancel?: () => void
   canPublishOrSchedule?: boolean
@@ -72,10 +74,53 @@ function PostInputScheduledNotice({
   )
 }
 
+interface MediaThumbnailProps {
+  imageUrl: string
+  isUploading: boolean
+  onRemove: () => void
+}
+
+function MediaThumbnail({
+  imageUrl,
+  isUploading,
+  onRemove,
+}: MediaThumbnailProps) {
+  return (
+    <div
+      className="relative mt-3 group overflow-hidden rounded-xl border border-border/60 bg-muted/20 max-w-md"
+      data-testid="post-media-preview"
+    >
+      <img
+        src={imageUrl}
+        alt="Post attachment"
+        className="w-full max-h-52 object-cover rounded-xl"
+      />
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label="Remove image"
+        className="absolute top-2.5 right-2.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-white shadow-md backdrop-blur-xs transition-all hover:bg-black hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-white/50 cursor-pointer"
+        data-testid="remove-media-btn"
+      >
+        <X className="h-4 w-4" />
+      </button>
+      {isUploading && (
+        <div
+          className="absolute inset-0 bg-black/40 backdrop-blur-[1px] rounded-xl flex items-center justify-center text-white"
+          data-testid="media-uploading-spinner"
+        >
+          <Loader2 className="h-6 w-6 animate-spin text-white" />
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function PostInputBox({
   username,
   avatarUrl,
   initialContent,
+  initialImageUrl,
   onSubmit,
   onCancel,
   canPublishOrSchedule = true,
@@ -90,19 +135,35 @@ export function PostInputBox({
     setChannel,
     actionType,
     setActionType,
+    imageUrl,
+    setImageUrl,
+    isUploadingMedia,
+    uploadMedia,
+    removeMedia,
     handleSubmit,
     handleContentChange,
     createPostMutation,
-  } = usePostForm()
+  } = usePostForm({
+    initialContent,
+    initialImageUrl,
+  })
 
   const [isScheduleOpen, setIsScheduleOpen] = React.useState(false)
+  const [isDragging, setIsDragging] = React.useState(false)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   React.useEffect(() => {
     if (initialContent !== undefined && initialContent !== "") {
       setContent(initialContent)
     }
   }, [initialContent, setContent])
+
+  React.useEffect(() => {
+    if (initialImageUrl !== undefined && initialImageUrl !== "") {
+      setImageUrl(initialImageUrl)
+    }
+  }, [initialImageUrl, setImageUrl])
 
   React.useEffect(() => {
     if (createPostMutation.isSuccess) {
@@ -120,8 +181,57 @@ export function PostInputBox({
     }
   }, [autoFocus])
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      uploadMedia(file)
+    }
+    e.target.value = ""
+  }
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!isDragging) setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return
+    setIsDragging(false)
+  }
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file?.type.startsWith("image/")) {
+      uploadMedia(file)
+    }
+  }
+
   return (
-    <div className="flex gap-3 w-full">
+    <section
+      aria-label="Post composer"
+      className={cn(
+        "flex gap-3 w-full rounded-2xl p-1 transition-colors duration-200",
+        isDragging && "bg-primary/5 ring-2 ring-primary/30 ring-dashed",
+      )}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept="image/jpeg,image/png,image/gif,image/webp"
+        onChange={handleFileSelect}
+        className="hidden"
+        data-testid="post-image-file-input"
+      />
+
       <PostInputAvatar username={username} avatarUrl={avatarUrl} />
 
       <div className="flex-1 min-w-0">
@@ -148,14 +258,24 @@ export function PostInputBox({
           data-testid="post-content-textarea"
         />
 
+        {imageUrl && (
+          <MediaThumbnail
+            imageUrl={imageUrl}
+            isUploading={isUploadingMedia}
+            onRemove={removeMedia}
+          />
+        )}
+
         <div className="pt-2.5 border-t border-border/40 mt-2">
           <PostActionBar
-            isSubmitting={createPostMutation.isPending}
-            isContentEmpty={content.trim().length === 0}
+            isSubmitting={createPostMutation.isPending || isUploadingMedia}
+            isContentEmpty={content.trim().length === 0 && !imageUrl}
             actionType={actionType}
             canPublishOrSchedule={canPublishOrSchedule}
+            currentLength={content.length}
+            platform={channel}
             onActionTypeChange={setActionType}
-            onImageClick={() => {}}
+            onImageClick={() => fileInputRef.current?.click()}
             onDraftClick={() => handleSubmit("draft")}
             onScheduleClick={() => handleSubmit("schedule")}
             onPostClick={() => handleSubmit("post")}
@@ -170,6 +290,6 @@ export function PostInputBox({
 
         <PostInputScheduledNotice scheduledAt={scheduledAt} />
       </div>
-    </div>
+    </section>
   )
 }

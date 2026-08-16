@@ -8,3 +8,5 @@ htmlcov
 .venv
 sessions/
 data/
+uploads/*
+!uploads/.gitkeep

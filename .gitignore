@@ -16,6 +16,8 @@ frontend/.opencode/
 
 # Playwright/Browser State
 sessions/
+uploads/*
+!backend/uploads/.gitkeep
 
 # Generated API schema
 openapi.json

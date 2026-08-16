@@ -57,6 +57,19 @@ export const Body_login_login_access_tokenSchema = {
     title: 'Body_login-login_access_token'
 } as const;
 
+export const Body_posts_upload_mediaSchema = {
+    properties: {
+        file: {
+            type: 'string',
+            format: 'binary',
+            title: 'File'
+        }
+    },
+    type: 'object',
+    required: ['file'],
+    title: 'Body_posts-upload_media'
+} as const;
+
 export const HTTPValidationErrorSchema = {
     properties: {
         detail: {
@@ -194,6 +207,30 @@ export const ItemsPublicSchema = {
     type: 'object',
     required: ['data', 'count'],
     title: 'ItemsPublic'
+} as const;
+
+export const MediaPublicSchema = {
+    properties: {
+        url: {
+            type: 'string',
+            title: 'Url'
+        },
+        filename: {
+            type: 'string',
+            title: 'Filename'
+        },
+        content_type: {
+            type: 'string',
+            title: 'Content Type'
+        },
+        size_bytes: {
+            type: 'integer',
+            title: 'Size Bytes'
+        }
+    },
+    type: 'object',
+    required: ['url', 'filename', 'content_type', 'size_bytes'],
+    title: 'MediaPublic'
 } as const;
 
 export const MessageSchema = {

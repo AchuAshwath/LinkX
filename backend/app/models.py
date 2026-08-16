@@ -216,6 +216,13 @@ class PublishErrorResponse(SQLModel):
     trace_id: str
 
 
+class MediaPublic(SQLModel):
+    url: str
+    filename: str
+    content_type: str
+    size_bytes: int
+
+
 # --- SocialAccount (OAuth / Browser session metadata) ---
 
 

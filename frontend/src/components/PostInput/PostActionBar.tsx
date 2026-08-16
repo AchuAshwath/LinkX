@@ -1,9 +1,12 @@
-"use client"
-
 import { Calendar, ImageIcon, X } from "lucide-react"
 import * as React from "react"
 
+import type { Platform } from "@/components/Common/PlatformSelector"
 import { Button } from "@/components/ui/button"
+import {
+  CharacterLimitCircle,
+  isCharacterLimitExceeded,
+} from "./CharacterLimitCircle"
 import { PostSchedulePicker } from "./PostSchedulePicker"
 
 export interface PostActionBarProps {
@@ -11,6 +14,8 @@ export interface PostActionBarProps {
   isContentEmpty: boolean
   actionType: "draft" | "schedule" | "post"
   canPublishOrSchedule?: boolean
+  currentLength?: number
+  platform?: Platform
   onActionTypeChange: (type: "draft" | "schedule" | "post") => void
   onImageClick?: () => void
   onDraftClick: () => void
@@ -128,8 +133,11 @@ interface ActionButtonsProps {
   isContentEmpty: boolean
   actionType: "draft" | "schedule" | "post"
   isScheduled: boolean
+  isDraftDisabled: boolean
   isScheduleOrPublishDisabled: boolean
   showCancel: boolean
+  currentLength: number
+  platform: Platform
   onCancelClick?: () => void
   onDraftClick: () => void
   onScheduleClick: () => void
@@ -138,11 +146,13 @@ interface ActionButtonsProps {
 
 function ActionButtonsGroup({
   isSubmitting,
-  isContentEmpty,
   actionType,
   isScheduled,
+  isDraftDisabled,
   isScheduleOrPublishDisabled,
   showCancel,
+  currentLength,
+  platform,
   onCancelClick,
   onDraftClick,
   onScheduleClick,
@@ -172,11 +182,13 @@ function ActionButtonsGroup({
         </Button>
       )}
 
+      <CharacterLimitCircle currentLength={currentLength} platform={platform} />
+
       <Button
         type="button"
         size="sm"
         onClick={onDraftClick}
-        disabled={isContentEmpty || isSubmitting}
+        disabled={isDraftDisabled}
         className="h-8.5 px-4 text-xs font-bold rounded-full bg-white text-black hover:bg-white/95 border border-zinc-200/90 shadow-2xs hover:shadow-sm transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-[1.03] active:scale-95 cursor-pointer disabled:opacity-50 disabled:hover:scale-100"
         data-testid="save-draft-btn"
       >
@@ -207,6 +219,8 @@ export const PostActionBar = React.memo(function PostActionBar({
   isContentEmpty,
   actionType,
   canPublishOrSchedule = true,
+  currentLength = 0,
+  platform = "linkx",
   onActionTypeChange,
   onImageClick,
   onDraftClick,
@@ -220,8 +234,10 @@ export const PostActionBar = React.memo(function PostActionBar({
   onToggleSchedule,
 }: PostActionBarProps) {
   const isScheduled = Boolean(scheduledAt || isScheduleOpen)
+  const isOverLimit = isCharacterLimitExceeded(currentLength, platform)
+  const isDraftDisabled = isContentEmpty || isSubmitting || isOverLimit
   const isScheduleOrPublishDisabled =
-    isContentEmpty || isSubmitting || !canPublishOrSchedule
+    isContentEmpty || isSubmitting || !canPublishOrSchedule || isOverLimit
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2.5 w-full">
@@ -241,8 +257,11 @@ export const PostActionBar = React.memo(function PostActionBar({
         isContentEmpty={isContentEmpty}
         actionType={actionType}
         isScheduled={isScheduled}
+        isDraftDisabled={isDraftDisabled}
         isScheduleOrPublishDisabled={isScheduleOrPublishDisabled}
         showCancel={showCancel}
+        currentLength={currentLength}
+        platform={platform}
         onCancelClick={onCancelClick}
         onDraftClick={onDraftClick}
         onScheduleClick={onScheduleClick}

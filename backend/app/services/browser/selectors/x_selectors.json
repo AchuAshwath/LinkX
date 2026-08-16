@@ -2,7 +2,11 @@
   "compose": {
     "post_input": "[data-testid=\"tweetTextarea_0\"], .public-DraftEditor-content",
     "post_button": "[data-testid=\"tweetButtonInline\"]",
-    "reply_button": "[data-testid=\"reply\"]"
+    "reply_button": "[data-testid=\"reply\"]",
+    "file_input": "input[data-testid='fileInput']",
+    "attachments_container": "[data-testid='attachments'], [data-testid='mediaDraft']",
+    "progress_bar": "[role='progressbar']",
+    "remove_media": "[data-testid='removeMedia']"
   },
   "navigation": {
     "home": "a[href=\"/home\"]",

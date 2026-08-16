@@ -88,8 +88,8 @@ export function XPostPreview({ post }: XPostPreviewProps) {
                 <div className="mt-3 overflow-hidden rounded-2xl border border-black/10 dark:border-white/10 max-h-[520px]">
                   <img
                     src={post.imageUrl}
-                    alt=""
-                    className="w-full h-full object-cover"
+                    alt="Post attachment"
+                    className="w-full h-auto max-h-[520px] object-cover"
                     loading="lazy"
                   />
                 </div>

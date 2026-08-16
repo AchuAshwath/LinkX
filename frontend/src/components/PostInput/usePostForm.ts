@@ -6,14 +6,70 @@ import type { Platform } from "@/components/Common/PlatformSelector"
 import useCustomToast from "@/hooks/useCustomToast"
 import { handleError } from "@/utils"
 
-export function usePostForm() {
+export interface UsePostFormOptions {
+  initialContent?: string
+  initialImageUrl?: string | null
+  initialPlatform?: Platform
+}
+
+export function usePostForm(options?: UsePostFormOptions) {
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
-  const [content, setContent] = useState("")
+  const [content, setContent] = useState(options?.initialContent || "")
   const [scheduledAt, setScheduledAt] = useState<Date | undefined>()
-  const [channel, setChannel] = useState<Platform>("linkx")
+  const [channel, setChannel] = useState<Platform>(
+    options?.initialPlatform || "linkx",
+  )
   const [actionType, setActionType] = useState<"draft" | "schedule" | "post">(
     "post",
+  )
+  const [mediaFile, setMediaFile] = useState<File | null>(null)
+  const [imageUrl, setImageUrl] = useState<string | null>(
+    options?.initialImageUrl || null,
+  )
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false)
+
+  const removeMedia = useCallback(() => {
+    setMediaFile(null)
+    setImageUrl(null)
+    setIsUploadingMedia(false)
+  }, [])
+
+  const uploadMedia = useCallback(
+    async (file: File): Promise<string | null> => {
+      const validTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"]
+      if (!validTypes.includes(file.type)) {
+        showErrorToast(
+          "Invalid file type. Please upload a JPEG, PNG, GIF, or WebP image.",
+        )
+        return null
+      }
+
+      // Max size: 5MB
+      if (file.size > 5 * 1024 * 1024) {
+        showErrorToast("Image size exceeds the 5 MB limit.")
+        return null
+      }
+
+      setMediaFile(file)
+      setIsUploadingMedia(true)
+
+      const localPreviewUrl = URL.createObjectURL(file)
+      setImageUrl(localPreviewUrl)
+
+      try {
+        const res = await PostsService.uploadMedia({ formData: { file } })
+        const uploadedUrl = res.url || localPreviewUrl
+        setImageUrl(uploadedUrl)
+        return uploadedUrl
+      } catch (err) {
+        handleError.bind(showErrorToast)(err as any)
+        return localPreviewUrl
+      } finally {
+        setIsUploadingMedia(false)
+      }
+    },
+    [showErrorToast],
   )
 
   const createPostMutation = useMutation({
@@ -22,6 +78,7 @@ export function usePostForm() {
       platform: string
       scheduled_at?: string
       status: string
+      image_url?: string | null
     }) => {
       return await PostsService.createNewPost({ requestBody: data })
     },
@@ -40,6 +97,7 @@ export function usePostForm() {
       setScheduledAt(undefined)
       setChannel("linkx")
       setActionType("post")
+      removeMedia()
       // Invalidate queries to refetch posts
       queryClient.invalidateQueries({ queryKey: ["posts"] })
     },
@@ -60,6 +118,7 @@ export function usePostForm() {
         platform: string
         scheduled_at?: string
         status: string
+        image_url?: string | null
       } = {
         content: content.trim(),
         platform: channel,
@@ -69,6 +128,7 @@ export function usePostForm() {
             : action === "schedule"
               ? "scheduled"
               : "published",
+        image_url: imageUrl || undefined,
       }
 
       if (action === "schedule" && finalScheduledAt) {
@@ -77,7 +137,7 @@ export function usePostForm() {
 
       createPostMutation.mutate(postData)
     },
-    [channel, content, createPostMutation, scheduledAt],
+    [channel, content, createPostMutation, imageUrl, scheduledAt],
   )
 
   const handleContentChange = useCallback(
@@ -96,6 +156,12 @@ export function usePostForm() {
     setChannel,
     actionType,
     setActionType,
+    mediaFile,
+    imageUrl,
+    setImageUrl,
+    isUploadingMedia,
+    uploadMedia,
+    removeMedia,
     handleSubmit,
     handleContentChange,
     createPostMutation,

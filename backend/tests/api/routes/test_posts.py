@@ -307,3 +307,57 @@ def test_publish_linkx_both_platforms(
     assert data["external_post_id"] == "linkedin:urn:li:share:111,x:tweet_222"
     assert called_linkedin is True
     assert called_x is True
+
+
+def test_upload_media_success(
+    client: TestClient,
+    db: Session,
+) -> None:
+    _user, headers = _create_user_with_auth(client=client, db=db)
+    file_bytes = b"\x89PNG\r\n\x1a\nfakeimagecontent"
+    response = client.post(
+        f"{settings.API_V1_STR}/posts/media",
+        headers=headers,
+        files={"file": ("photo.png", file_bytes, "image/png")},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "url" in data
+    assert data["url"].startswith("/static/uploads/")
+    assert data["content_type"] == "image/png"
+    assert data["size_bytes"] == len(file_bytes)
+    assert data["filename"].endswith(".png")
+
+    # Verify static file is accessible
+    static_resp = client.get(data["url"])
+    assert static_resp.status_code == 200
+    assert static_resp.content == file_bytes
+
+
+def test_upload_media_invalid_mime(
+    client: TestClient,
+    db: Session,
+) -> None:
+    _user, headers = _create_user_with_auth(client=client, db=db)
+    response = client.post(
+        f"{settings.API_V1_STR}/posts/media",
+        headers=headers,
+        files={"file": ("document.pdf", b"%PDF-1.4...", "application/pdf")},
+    )
+    assert response.status_code == 400
+    assert "Invalid file type" in response.json()["detail"]
+
+
+def test_upload_media_oversized_file(
+    client: TestClient,
+    db: Session,
+) -> None:
+    _user, headers = _create_user_with_auth(client=client, db=db)
+    large_bytes = b"0" * (5 * 1024 * 1024 + 1)
+    response = client.post(
+        f"{settings.API_V1_STR}/posts/media",
+        headers=headers,
+        files={"file": ("large.jpg", large_bytes, "image/jpeg")},
+    )
+    assert response.status_code == 413
+    assert "File size exceeds maximum limit" in response.json()["detail"]

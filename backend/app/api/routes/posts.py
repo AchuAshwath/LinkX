@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from sqlmodel import Session
 
 from app.api.deps import CurrentUser, SessionDep
+from app.core.config import settings
 from app.crud import create_post, delete_post, get_post, get_posts, update_post
 from app.models import (
+    MediaPublic,
     Message,
     Post,
     PostAuthor,
@@ -25,6 +28,55 @@ from app.services.post_state_machine import validate_transition
 from app.services.publishing import PublishFailure, publish_post
 
 router = APIRouter(prefix="/posts", tags=["posts"])
+
+ALLOWED_MEDIA_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+MAX_MEDIA_SIZE = 5 * 1024 * 1024  # 5 MB
+
+
+@router.post("/media", response_model=MediaPublic)
+async def upload_media(
+    *,
+    _current_user: CurrentUser,
+    file: UploadFile = File(...),
+) -> Any:
+    """Upload a media file (image) for posts."""
+    if not file.content_type or file.content_type.lower() not in ALLOWED_MEDIA_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file type. Allowed types: image/jpeg, image/png, image/gif, image/webp",
+        )
+
+    content = await file.read()
+    size = len(content)
+
+    if size > MAX_MEDIA_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File size exceeds maximum limit of 5MB",
+        )
+
+    ext = Path(file.filename).suffix.lower() if file.filename else ""
+    if ext not in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
+        content_type_ext_map = {
+            "image/jpeg": ".jpg",
+            "image/png": ".png",
+            "image/gif": ".gif",
+            "image/webp": ".webp",
+        }
+        ext = content_type_ext_map.get(file.content_type.lower(), ".png")
+
+    filename = f"{uuid.uuid4()}{ext}"
+    settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    destination = settings.UPLOAD_DIR / filename
+    with open(destination, "wb") as f:
+        f.write(content)
+
+    return MediaPublic(
+        url=f"/static/uploads/{filename}",
+        filename=filename,
+        content_type=file.content_type,
+        size_bytes=size,
+    )
 
 
 def _get_user_details(*, session: Session, user_id: uuid.UUID) -> User | None:

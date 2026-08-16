@@ -9,6 +9,10 @@ export type Body_login_login_access_token = {
     client_secret?: (string | null);
 };
 
+export type Body_posts_upload_media = {
+    file: (Blob | File);
+};
+
 export type HTTPValidationError = {
     detail?: Array<ValidationError>;
 };
@@ -34,6 +38,13 @@ export type ItemsPublic = {
 export type ItemUpdate = {
     title?: (string | null);
     description?: (string | null);
+};
+
+export type MediaPublic = {
+    url: string;
+    filename: string;
+    content_type: string;
+    size_bytes: number;
 };
 
 export type Message = {
@@ -287,6 +298,12 @@ export type LoginRecoverPasswordHtmlContentData = {
 };
 
 export type LoginRecoverPasswordHtmlContentResponse = (string);
+
+export type PostsUploadMediaData = {
+    formData: Body_posts_upload_media;
+};
+
+export type PostsUploadMediaResponse = (MediaPublic);
 
 export type PostsReadPostsData = {
     limit?: number;
