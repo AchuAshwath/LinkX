@@ -14,7 +14,7 @@ import {
 import * as React from "react"
 import type { Platform } from "@/components/Common/PlatformSelector"
 import { PostActionFooter } from "@/components/Post/PostActionFooter"
-import { PostInputBox } from "@/components/PostInput/PostInputBox"
+import { EditPostDialog } from "@/components/PostInput/EditPostDialog"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -613,29 +613,6 @@ function PostCardHeaderWrapper({
 
 function PostCardMainColumn(props: PostCardLayoutProps) {
   const flags = getPostCardFlags(props.post)
-  const isEditing = Boolean(props.isEditing)
-
-  if (isEditing) {
-    return (
-      <div className="min-w-0 flex-1">
-        <PostInputBox
-          username={props.post.author.name}
-          initialContent={props.post.content}
-          initialImageUrl={props.post.imageUrl ?? undefined}
-          initialPlatform={props.post.platform}
-          autoFocus
-          onCancel={props.onCancel}
-          editMode={{
-            postId: props.post.id,
-            initialScheduledAt: props.post.scheduledAt
-              ? new Date(props.post.scheduledAt as string)
-              : null,
-            onSaved: props.onCancel,
-          }}
-        />
-      </div>
-    )
-  }
 
   return (
     <div className="min-w-0 flex-1">
@@ -701,6 +678,8 @@ function PostCardLayout(props: PostCardLayoutProps) {
 }
 
 export const PostCard = React.memo(function PostCard(props: PostCardProps) {
+  const [editDialogOpen, setEditDialogOpen] = React.useState(false)
+
   const editor = usePostCardEditor({
     post: props.post,
     onSave: props.onSave,
@@ -713,7 +692,39 @@ export const PostCard = React.memo(function PostCard(props: PostCardProps) {
     props.onRepost,
   )
 
-  return <PostCardLayout {...props} editor={editor} engagement={engagement} />
+  // Wire onEdit to open the dialog instead of inline edit
+  const handleEdit = React.useCallback(() => {
+    setEditDialogOpen(true)
+    props.onEdit?.(props.post.id)
+  }, [props])
+
+  return (
+    <>
+      <PostCardLayout
+        {...props}
+        editor={editor}
+        engagement={engagement}
+        isEditing={false}
+        onEdit={handleEdit}
+      />
+      <EditPostDialog
+        open={editDialogOpen}
+        onOpenChange={(open) => {
+          setEditDialogOpen(open)
+          if (!open) props.onCancel?.()
+        }}
+        postId={props.post.id}
+        initialContent={props.post.content}
+        initialImageUrl={props.post.imageUrl}
+        initialPlatform={props.post.platform}
+        initialScheduledAt={
+          props.post.scheduledAt
+            ? new Date(props.post.scheduledAt as string)
+            : null
+        }
+      />
+    </>
+  )
 })
 
 // Backwards-compatible aliases

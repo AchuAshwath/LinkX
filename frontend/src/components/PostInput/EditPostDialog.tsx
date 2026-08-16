@@ -1,29 +1,30 @@
-"use client"
-
 import { X } from "lucide-react"
+import type { Platform } from "@/components/Common/PlatformSelector"
 import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog"
 import useAuth from "@/hooks/useAuth"
 import { PostInputBox } from "./PostInputBox"
 
-interface CreatePostDialogProps {
+interface EditPostDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onPostCreated?: () => void
+  postId: string
+  initialContent?: string
+  initialImageUrl?: string | null
+  initialPlatform?: Platform
+  initialScheduledAt?: Date | null
 }
 
-export function CreatePostDialog({
+export function EditPostDialog({
   open,
   onOpenChange,
-  onPostCreated,
-}: CreatePostDialogProps) {
+  postId,
+  initialContent,
+  initialImageUrl,
+  initialPlatform,
+  initialScheduledAt,
+}: EditPostDialogProps) {
   const { user } = useAuth()
   const username = user?.full_name || user?.email?.split("@")[0] || "User"
-  const avatarUrl = undefined // TODO: Add avatar_url to user model if needed
-
-  const handlePostCreated = () => {
-    onPostCreated?.()
-    onOpenChange(false)
-  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -37,9 +38,15 @@ export function CreatePostDialog({
         </DialogClose>
         <PostInputBox
           username={username}
-          avatarUrl={avatarUrl}
-          onSubmit={handlePostCreated}
+          initialContent={initialContent}
+          initialImageUrl={initialImageUrl ?? undefined}
+          initialPlatform={initialPlatform}
           autoFocus
+          editMode={{
+            postId,
+            initialScheduledAt,
+            onSaved: () => onOpenChange(false),
+          }}
         />
       </DialogContent>
     </Dialog>
