@@ -184,16 +184,14 @@ class LinkedInPostClient:
             linkedin_person_id=linkedin_person_id,
         )
 
-    async def create_post(
+    def _resolve_auth_credentials(
         self,
         *,
-        text: str,
-        user_id: str | None = None,
-        sub: str | None = None,
-        token: str | None = None,
-        linkedin_person_id: str | None = None,
-        content: str | None = None,
-    ) -> str:
+        token: str | None,
+        user_id: str | None,
+        sub: str | None,
+        linkedin_person_id: str | None,
+    ) -> tuple[str, str]:
         access_token = token
         if not access_token:
             if user_id:
@@ -214,9 +212,15 @@ class LinkedInPostClient:
                 code="linkedin_sub_missing",
                 retryable=False,
             )
+        return access_token, person_sub
 
-        commentary = text if text else (content or "")
-        post_payload = {
+    def _build_text_post_payload(
+        self,
+        *,
+        person_sub: str,
+        commentary: str,
+    ) -> dict[str, Any]:
+        return {
             "author": f"urn:li:person:{person_sub}",
             "commentary": commentary,
             "visibility": "PUBLIC",
@@ -227,12 +231,28 @@ class LinkedInPostClient:
             },
             "lifecycleState": "PUBLISHED",
         }
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Linkedin-Version": _LINKEDIN_VERSION,
-            "X-Restli-Protocol-Version": _RESTLI_PROTOCOL_VERSION,
-            "Content-Type": "application/json",
-        }
+
+    async def create_post(
+        self,
+        *,
+        text: str,
+        user_id: str | None = None,
+        sub: str | None = None,
+        token: str | None = None,
+        linkedin_person_id: str | None = None,
+        content: str | None = None,
+    ) -> str:
+        access_token, person_sub = self._resolve_auth_credentials(
+            token=token,
+            user_id=user_id,
+            sub=sub,
+            linkedin_person_id=linkedin_person_id,
+        )
+        commentary = text if text else (content or "")
+        post_payload = self._build_text_post_payload(
+            person_sub=person_sub, commentary=commentary
+        )
+        headers = self._common_headers(access_token=access_token)
 
         async with httpx.AsyncClient(timeout=30) as client:
             try:
@@ -249,22 +269,7 @@ class LinkedInPostClient:
                 error_detail="LinkedIn rejected the post.",
                 error_code="linkedin_publish_failed",
             )
-
-            post_urn = resp.headers.get("x-restli-id")
-            if not post_urn:
-                data = resp.json()
-                post_urn = data.get("id")
-
-            if not post_urn:
-                raise LinkedInPostError(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail="LinkedIn did not return a post id.",
-                    code="linkedin_missing_post_id",
-                    retryable=True,
-                    details={"platform": "linkedin"},
-                )
-
-            return str(post_urn)
+            return self._extract_post_urn(post_resp=resp)
 
     async def create_image_post(
         self,
@@ -279,34 +284,14 @@ class LinkedInPostClient:
         content: str | None = None,
         title: str | None = None,
     ) -> LinkedInPostResult:
-        access_token = token
-        if not access_token:
-            if user_id:
-                access_token = self._get_access_token(user_id=user_id)
-            else:
-                raise LinkedInPostError(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="LinkedIn access token or user_id is required.",
-                    code="linkedin_token_missing",
-                    retryable=False,
-                )
-
-        person_sub = sub or linkedin_person_id
-        if not person_sub:
-            raise LinkedInPostError(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="LinkedIn person sub/id is required.",
-                code="linkedin_sub_missing",
-                retryable=False,
-            )
-
+        access_token, person_sub = self._resolve_auth_credentials(
+            token=token,
+            user_id=user_id,
+            sub=sub,
+            linkedin_person_id=linkedin_person_id,
+        )
         commentary = text if text else (content or "")
-        common_headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Linkedin-Version": _LINKEDIN_VERSION,
-            "X-Restli-Protocol-Version": _RESTLI_PROTOCOL_VERSION,
-            "Content-Type": "application/json",
-        }
+        common_headers = self._common_headers(access_token=access_token)
 
         async with httpx.AsyncClient(timeout=30) as client:
             upload_url, image_urn = await self._init_image_upload(
