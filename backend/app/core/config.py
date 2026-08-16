@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     SESSIONS_DIR: Path = (
         Path(__file__).resolve().parent.parent.parent.parent / "sessions"
     )
+    UPLOAD_DIR: Path = Path(__file__).parent.parent.parent / "uploads"
 
     BACKEND_CORS_ORIGINS: Annotated[
         list[AnyUrl] | str, BeforeValidator(parse_cors)
@@ -85,6 +86,11 @@ class Settings(BaseSettings):
     def _set_default_emails_from(self) -> Self:
         if not self.EMAILS_FROM_NAME:
             self.EMAILS_FROM_NAME = self.PROJECT_NAME
+        return self
+
+    @model_validator(mode="after")
+    def _ensure_upload_dir(self) -> Self:
+        self.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         return self
 
     EMAIL_RESET_TOKEN_EXPIRE_HOURS: int = 48

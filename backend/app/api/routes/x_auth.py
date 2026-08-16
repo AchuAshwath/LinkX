@@ -13,6 +13,10 @@ class XStatusPublic(BaseModel):
     status: str  # "connected" or "disconnected"
     session_dir: str
     cookie_files_found: bool
+    is_premium: bool = False
+    max_character_limit: int = 280
+    username: str | None = None
+    display_name: str | None = None
     login_method: str = "headed_chrome_automation"
 
 
@@ -20,6 +24,10 @@ class XVerifyResponse(BaseModel):
     connected: bool
     authenticated: bool
     message: str
+    is_premium: bool = False
+    max_character_limit: int = 280
+    username: str | None = None
+    display_name: str | None = None
     url: str | None = None
 
 
@@ -32,10 +40,16 @@ def x_status(
     manager = BrowserManager(user_id=str(current_user.id))
     is_connected = manager.session_exists("x")
     session_dir_path = str(manager.get_session_dir_path("x"))
+    meta = manager.read_session_metadata("x") if is_connected else {}
+
     return XStatusPublic(
         status="connected" if is_connected else "disconnected",
         session_dir=session_dir_path,
         cookie_files_found=is_connected,
+        is_premium=meta.get("is_premium", False),
+        max_character_limit=meta.get("max_character_limit", 280),
+        username=meta.get("username"),
+        display_name=meta.get("display_name"),
         login_method="headed_chrome_automation",
     )
 

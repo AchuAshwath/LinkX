@@ -1,19 +1,52 @@
-"use client"
-
-import { Calendar, ImageIcon, X } from "lucide-react"
+import { Calendar, ImageIcon, Plus } from "lucide-react"
 import * as React from "react"
 
+import type { Platform } from "@/components/Common/PlatformSelector"
 import { Button } from "@/components/ui/button"
+import {
+  CharacterLimitCircle,
+  isCharacterLimitExceeded,
+} from "./CharacterLimitCircle"
 import { PostSchedulePicker } from "./PostSchedulePicker"
+
+function PencilSparklesIcon({
+  className,
+  ...props
+}: React.ComponentProps<"svg">) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+      {...props}
+    >
+      <title>Draft with AI</title>
+      <path d="M17.7 3.3a2.4 2.4 0 0 1 3.4 3.4L9.5 18.3 4 19.5l1.2-5.5z" />
+      <path d="m15 6 3 3" />
+      <path d="M4 2c0 1.5-1 2.5-2.5 2.5C3 4.5 4 5.5 4 7c0-1.5 1-2.5 2.5-2.5C5 4.5 4 3.5 4 2z" />
+      <path d="M20 16c0 1-.7 1.7-1.7 1.7 1 0 1.7.7 1.7 1.7 0-1 .7-1.7 1.7-1.7-1 0-1.7-.7-1.7-1.7z" />
+    </svg>
+  )
+}
 
 export interface PostActionBarProps {
   isSubmitting: boolean
   isContentEmpty: boolean
-  actionType: "draft" | "schedule" | "post"
   canPublishOrSchedule?: boolean
+  currentLength?: number
+  platform?: Platform
+  isXPremium?: boolean
+  isAiGenerating?: boolean
   onActionTypeChange: (type: "draft" | "schedule" | "post") => void
   onImageClick?: () => void
   onDraftClick: () => void
+  onAiDraftClick?: () => void
   onScheduleClick: () => void
   onPostClick: () => void
   onCancelClick?: () => void
@@ -28,108 +61,118 @@ interface LeftControlsProps {
   isScheduleOpen: boolean
   isScheduled: boolean
   isSubmitting: boolean
+  isAiGenerating?: boolean
   scheduledAt?: Date | undefined
   onScheduleChange?: (date: Date | undefined) => void
   onToggleSchedule: (open: boolean) => void
   onActionTypeChange: (type: "draft" | "schedule" | "post") => void
   onImageClick?: () => void
+  onAiDraftClick?: () => void
 }
 
 function ScheduleAndMediaControls({
   isScheduleOpen,
   isScheduled,
   isSubmitting,
+  isAiGenerating,
   scheduledAt,
   onScheduleChange,
   onToggleSchedule,
   onActionTypeChange,
   onImageClick,
+  onAiDraftClick,
 }: LeftControlsProps) {
-  if (!isScheduleOpen) {
-    return (
-      <div className="flex items-center gap-1.5 min-w-0 flex-1">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={`h-8.5 w-8.5 rounded-full transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-105 active:scale-95 cursor-pointer ${
-            isScheduled
-              ? "text-primary bg-primary/15 hover:bg-primary/20 ring-1 ring-primary/30 shadow-xs"
-              : "text-muted-foreground hover:text-primary hover:bg-primary/10"
-          }`}
-          aria-label="Schedule post"
-          onClick={() => {
-            onToggleSchedule(true)
-            onActionTypeChange("schedule")
-            if (!scheduledAt) {
-              onScheduleChange?.(new Date(Date.now() + 4 * 3600 * 1000))
-            }
-          }}
-          disabled={isSubmitting}
-        >
-          <Calendar className="h-4.5 w-4.5 transition-transform duration-200 group-hover:scale-110" />
-        </Button>
-
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-8.5 w-8.5 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-105 active:scale-95 cursor-pointer"
-          aria-label="Add media"
-          onClick={onImageClick}
-          data-testid="add-image-btn"
-          disabled={isSubmitting}
-        >
-          <ImageIcon className="h-4.5 w-4.5" />
-        </Button>
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex items-center gap-2 flex-wrap min-w-0 flex-1 animate-in fade-in-0 zoom-in-[0.98] slide-in-from-left-3 duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
-      <PostSchedulePicker
-        initialValue={scheduledAt}
-        onChangeDateTime={onScheduleChange}
-      />
+  const mediaAndAiButtons = (
+    <>
       <Button
         type="button"
         variant="ghost"
         size="icon"
-        className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-all duration-200 ease-out hover:rotate-90 active:scale-90 cursor-pointer"
-        aria-label="Close schedule"
-        onClick={() => {
-          onToggleSchedule(false)
-          onScheduleChange?.(undefined)
-          onActionTypeChange("post")
-        }}
-      >
-        <X className="h-3.5 w-3.5" />
-      </Button>
-
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-8.5 w-8.5 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-105 active:scale-95 cursor-pointer"
+        className="-ml-2 h-8.5 w-8.5 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-105 active:scale-95 cursor-pointer shrink-0"
         aria-label="Add media"
+        title="Add media"
         onClick={onImageClick}
         data-testid="add-image-btn"
         disabled={isSubmitting}
       >
         <ImageIcon className="h-4.5 w-4.5" />
       </Button>
+
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className={`h-8.5 w-8.5 rounded-full transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 ${
+          isAiGenerating
+            ? "text-primary bg-primary/15 animate-pulse"
+            : "text-muted-foreground hover:text-primary hover:bg-primary/10"
+        }`}
+        aria-label="Draft with AI"
+        title="Draft with AI"
+        onClick={onAiDraftClick}
+        disabled={isSubmitting || isAiGenerating}
+        data-testid="ai-draft-btn"
+      >
+        <PencilSparklesIcon
+          className={`h-4.5 w-4.5 transition-transform duration-200 ${
+            isAiGenerating ? "animate-spin" : "group-hover:scale-110"
+          }`}
+        />
+      </Button>
+    </>
+  )
+
+  if (!isScheduleOpen) {
+    return (
+      <div className="flex items-center gap-1 min-w-0">
+        {mediaAndAiButtons}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={`h-8.5 w-8.5 rounded-full transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-105 active:scale-95 cursor-pointer shrink-0 ${
+            isScheduled
+              ? "text-primary bg-primary/15 hover:bg-primary/20 ring-1 ring-primary/30 shadow-xs"
+              : "text-muted-foreground hover:text-primary hover:bg-primary/10"
+          }`}
+          aria-label="Schedule post"
+          title="Schedule post"
+          onClick={() => {
+            onToggleSchedule(true)
+            onActionTypeChange("schedule")
+            if (!scheduledAt) {
+              onScheduleChange?.(new Date(Date.now() + 2 * 3600 * 1000))
+            }
+          }}
+          disabled={isSubmitting}
+          data-testid="schedule-post-btn"
+        >
+          <Calendar className="h-4.5 w-4.5 transition-transform duration-200 group-hover:scale-110" />
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 min-w-0 animate-in fade-in-0 slide-in-from-left-1 duration-150">
+      {mediaAndAiButtons}
+      <PostSchedulePicker
+        initialValue={scheduledAt}
+        onChangeDateTime={onScheduleChange}
+      />
     </div>
   )
 }
 
 interface ActionButtonsProps {
   isSubmitting: boolean
-  isContentEmpty: boolean
-  actionType: "draft" | "schedule" | "post"
   isScheduled: boolean
+  isDraftDisabled: boolean
   isScheduleOrPublishDisabled: boolean
   showCancel: boolean
+  currentLength: number
+  platform: Platform
+  isXPremium?: boolean
   onCancelClick?: () => void
   onDraftClick: () => void
   onScheduleClick: () => void
@@ -138,11 +181,13 @@ interface ActionButtonsProps {
 
 function ActionButtonsGroup({
   isSubmitting,
-  isContentEmpty,
-  actionType,
   isScheduled,
+  isDraftDisabled,
   isScheduleOrPublishDisabled,
   showCancel,
+  currentLength,
+  platform,
+  isXPremium,
   onCancelClick,
   onDraftClick,
   onScheduleClick,
@@ -172,15 +217,28 @@ function ActionButtonsGroup({
         </Button>
       )}
 
+      <CharacterLimitCircle
+        currentLength={currentLength}
+        platform={platform}
+        isXPremium={isXPremium}
+      />
+
+      {/* Subtle vertical separator like Twitter/X */}
+      <div className="h-4 w-px bg-border/60 mx-0.5 shrink-0" />
+
+      {/* Save Draft Circular Button - Tooltip: "Add to draft" */}
       <Button
         type="button"
-        size="sm"
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 rounded-full border border-border/70 hover:border-primary/70 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-30 disabled:hover:scale-100 disabled:cursor-not-allowed shrink-0 p-0"
+        aria-label="Add to draft"
+        title="Add to draft"
         onClick={onDraftClick}
-        disabled={isContentEmpty || isSubmitting}
-        className="h-8.5 px-4 text-xs font-bold rounded-full bg-white text-black hover:bg-white/95 border border-zinc-200/90 shadow-2xs hover:shadow-sm transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-[1.03] active:scale-95 cursor-pointer disabled:opacity-50 disabled:hover:scale-100"
+        disabled={isDraftDisabled}
         data-testid="save-draft-btn"
       >
-        {isSubmitting && actionType === "draft" ? "Saving…" : "Save"}
+        <Plus className="h-3.5 w-3.5 transition-transform duration-200 group-hover:scale-110" />
       </Button>
 
       <Button
@@ -205,11 +263,15 @@ function ActionButtonsGroup({
 export const PostActionBar = React.memo(function PostActionBar({
   isSubmitting,
   isContentEmpty,
-  actionType,
   canPublishOrSchedule = true,
+  currentLength = 0,
+  platform = "linkx",
+  isXPremium = false,
+  isAiGenerating = false,
   onActionTypeChange,
   onImageClick,
   onDraftClick,
+  onAiDraftClick,
   onScheduleClick,
   onPostClick,
   onCancelClick,
@@ -220,29 +282,39 @@ export const PostActionBar = React.memo(function PostActionBar({
   onToggleSchedule,
 }: PostActionBarProps) {
   const isScheduled = Boolean(scheduledAt || isScheduleOpen)
+  const isOverLimit = isCharacterLimitExceeded(
+    currentLength,
+    platform,
+    isXPremium,
+  )
+  const isDraftDisabled = isContentEmpty || isSubmitting || isOverLimit
   const isScheduleOrPublishDisabled =
-    isContentEmpty || isSubmitting || !canPublishOrSchedule
+    isContentEmpty || isSubmitting || !canPublishOrSchedule || isOverLimit
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2.5 w-full">
+    <div className="flex items-center justify-between gap-2 w-full min-w-0 flex-nowrap">
       <ScheduleAndMediaControls
         isScheduleOpen={isScheduleOpen}
         isScheduled={isScheduled}
         isSubmitting={isSubmitting}
+        isAiGenerating={isAiGenerating}
         scheduledAt={scheduledAt}
         onScheduleChange={onScheduleChange}
         onToggleSchedule={onToggleSchedule}
         onActionTypeChange={onActionTypeChange}
         onImageClick={onImageClick}
+        onAiDraftClick={onAiDraftClick}
       />
 
       <ActionButtonsGroup
         isSubmitting={isSubmitting}
-        isContentEmpty={isContentEmpty}
-        actionType={actionType}
         isScheduled={isScheduled}
+        isDraftDisabled={isDraftDisabled}
         isScheduleOrPublishDisabled={isScheduleOrPublishDisabled}
         showCancel={showCancel}
+        currentLength={currentLength}
+        platform={platform}
+        isXPremium={isXPremium}
         onCancelClick={onCancelClick}
         onDraftClick={onDraftClick}
         onScheduleClick={onScheduleClick}

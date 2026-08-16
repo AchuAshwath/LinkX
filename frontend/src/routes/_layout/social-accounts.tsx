@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import {
   AlertTriangle,
+  BadgeCheck,
   Check,
   Copy,
   Folder,
@@ -295,24 +296,59 @@ function CliCommandSnippet({
 function XProfileDetails({
   isCookiePresent,
   sessionPath,
+  isPremium,
+  username,
+  displayName,
   copiedKey,
   onCopy,
 }: {
   isCookiePresent: boolean
   sessionPath: string
+  isPremium?: boolean
+  maxLimit?: number
+  username?: string | null
+  displayName?: string | null
   copiedKey: string | null
   onCopy: (text: string, key: string, label: string) => void
 }) {
   return (
     <div className="min-w-0">
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="font-semibold text-sm">X (Twitter)</span>
+        <div className="flex items-center gap-1.5">
+          <span className="font-semibold text-sm">X (Twitter)</span>
+          {isCookiePresent && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex items-center cursor-default">
+                  <BadgeCheck
+                    className={`h-4 w-4 shrink-0 transition-colors ${
+                      isPremium
+                        ? "text-[#1D9BF0] fill-[#1D9BF0]/15"
+                        : "text-muted-foreground/40"
+                    }`}
+                  />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {isPremium ? "Verified Account" : "Unverified Account"}
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
+
+        {username && (
+          <span className="text-xs text-muted-foreground font-mono">
+            @{username} {displayName && `(${displayName})`}
+          </span>
+        )}
+
         <Badge
           variant="outline"
           className="text-[11px] py-0 px-2 font-normal text-muted-foreground rounded-full"
         >
           Browser Profile
         </Badge>
+
         {isCookiePresent ? (
           <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 font-medium bg-emerald-500/10 px-2.5 py-0.5 rounded-full">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Session
@@ -448,6 +484,10 @@ function XCliDrawer({
 interface XRowProps {
   isCookiePresent: boolean
   sessionPath: string
+  isPremium?: boolean
+  maxLimit?: number
+  username?: string | null
+  displayName?: string | null
   isCliExpanded: boolean
   onToggleCli: () => void
   isConnecting: boolean
@@ -473,6 +513,10 @@ function XRow(props: XRowProps) {
           <XProfileDetails
             isCookiePresent={props.isCookiePresent}
             sessionPath={props.sessionPath}
+            isPremium={props.isPremium}
+            maxLimit={props.maxLimit}
+            username={props.username}
+            displayName={props.displayName}
             copiedKey={props.copiedKey}
             onCopy={props.onCopy}
           />
@@ -636,6 +680,10 @@ function ConnectedAccountsPage() {
           <XRow
             isCookiePresent={isXCookiePresent}
             sessionPath={sessionPath}
+            isPremium={Boolean(xStatus?.is_premium)}
+            maxLimit={xStatus?.max_character_limit}
+            username={xStatus?.username}
+            displayName={xStatus?.display_name}
             isCliExpanded={isCliExpanded}
             onToggleCli={() => setIsCliExpanded((prev) => !prev)}
             isConnecting={connectXMutation.isPending}

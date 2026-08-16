@@ -27,4 +27,16 @@ export default defineConfig({
     minify: "esbuild",
     cssMinify: true,
   },
+  server: {
+    proxy: {
+      "/api": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+      },
+      "/static": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+      },
+    },
+  },
 })

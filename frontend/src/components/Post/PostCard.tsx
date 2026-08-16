@@ -7,13 +7,14 @@ import {
   Loader2,
   MoreHorizontal,
   RotateCcw,
+  Send,
   Trash2,
   X,
 } from "lucide-react"
 import * as React from "react"
 import type { Platform } from "@/components/Common/PlatformSelector"
 import { PostActionFooter } from "@/components/Post/PostActionFooter"
-import { PostSchedulePicker } from "@/components/PostInput/PostSchedulePicker"
+import { EditPostDialog } from "@/components/PostInput/EditPostDialog"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -23,7 +24,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Textarea } from "@/components/ui/textarea"
-import { formatFullDateTime, formatRelativeTime, getInitials } from "@/utils"
+import {
+  formatFullDateTime,
+  formatRelativeTime,
+  getInitials,
+  resolveMediaUrl,
+} from "@/utils"
 
 export interface PostAuthorData {
   name: string
@@ -68,6 +74,8 @@ export interface PostCardProps {
   onPlatformChange?: (postId: string, platform: Platform) => void
   onRetry?: (postId: string) => void
   isRetrying?: boolean
+  onPublish?: (postId: string) => void
+  isPublishing?: boolean
 }
 
 function parseScheduledDate(scheduledAt?: Date | string | null): Date | null {
@@ -145,6 +153,8 @@ function PostCardHeaderActions({
   onPreview,
   onEdit,
   onDelete,
+  onPublish,
+  isPublishing,
 }: {
   isEditing: boolean
   canSave: boolean
@@ -153,6 +163,8 @@ function PostCardHeaderActions({
   onPreview?: () => void
   onEdit?: () => void
   onDelete?: () => void
+  onPublish?: () => void
+  isPublishing?: boolean
 }) {
   if (isEditing) {
     return (
@@ -191,15 +203,29 @@ function PostCardHeaderActions({
           <MoreHorizontal className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" className="rounded-xl">
+        {onPublish && (
+          <DropdownMenuItem
+            onClick={onPublish}
+            disabled={isPublishing}
+            className="text-primary focus:text-primary font-medium cursor-pointer"
+          >
+            {isPublishing ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin text-primary" />
+            ) : (
+              <Send className="mr-2 h-4 w-4 text-primary" />
+            )}
+            Publish
+          </DropdownMenuItem>
+        )}
         {onPreview && (
-          <DropdownMenuItem onClick={onPreview}>
+          <DropdownMenuItem onClick={onPreview} className="cursor-pointer">
             <Eye className="mr-2 h-4 w-4" />
             Preview
           </DropdownMenuItem>
         )}
         {onEdit && (
-          <DropdownMenuItem onClick={onEdit}>
+          <DropdownMenuItem onClick={onEdit} className="cursor-pointer">
             <Edit className="mr-2 h-4 w-4" />
             Edit
           </DropdownMenuItem>
@@ -207,9 +233,9 @@ function PostCardHeaderActions({
         {onDelete && (
           <DropdownMenuItem
             onClick={onDelete}
-            className="text-destructive focus:text-destructive"
+            className="text-destructive focus:text-destructive cursor-pointer"
           >
-            <Trash2 className="mr-2 h-4 w-4" />
+            <Trash2 className="mr-2 h-4 w-4 text-destructive" />
             Delete
           </DropdownMenuItem>
         )}
@@ -231,6 +257,8 @@ interface PostCardHeaderProps {
   onPreview?: () => void
   onEdit?: () => void
   onDelete?: () => void
+  onPublish?: () => void
+  isPublishing?: boolean
 }
 
 function PostCardHeader(props: PostCardHeaderProps) {
@@ -251,6 +279,8 @@ function PostCardHeader(props: PostCardHeaderProps) {
         onPreview={props.onPreview}
         onEdit={props.onEdit}
         onDelete={props.onDelete}
+        onPublish={props.onPublish}
+        isPublishing={props.isPublishing}
       />
     </div>
   )
@@ -336,9 +366,9 @@ function PostCardBodyContent({
       </div>
 
       {imageUrl && (
-        <div className="mt-2.5 overflow-hidden rounded-2xl">
+        <div className="mt-2.5 overflow-hidden">
           <img
-            src={imageUrl}
+            src={resolveMediaUrl(imageUrl) ?? imageUrl}
             alt=""
             className="w-full object-cover"
             loading="lazy"
@@ -361,26 +391,6 @@ function PostCardAvatar({ author }: { author: PostAuthorData }) {
           {initials}
         </AvatarFallback>
       </Avatar>
-    </div>
-  )
-}
-
-function PostCardScheduleRow({
-  scheduledAt,
-  onChangeDateTime,
-}: {
-  scheduledAt: Date | null
-  onChangeDateTime: (d: Date | undefined) => void
-}) {
-  return (
-    <div className="my-2 flex items-center gap-2 p-2 rounded-xl bg-muted/40 border">
-      <span className="text-xs font-medium text-muted-foreground">
-        Schedule:
-      </span>
-      <PostSchedulePicker
-        initialValue={scheduledAt || undefined}
-        onChangeDateTime={onChangeDateTime}
-      />
     </div>
   )
 }
@@ -544,26 +554,6 @@ interface PostCardLayoutProps extends PostCardProps {
   engagement: ReturnType<typeof usePostCardEngagement>
 }
 
-function PostCardScheduleEditor({
-  isEditing,
-  isScheduled,
-  scheduledAt,
-  onChangeDateTime,
-}: {
-  isEditing: boolean
-  isScheduled: boolean
-  scheduledAt: Date | null
-  onChangeDateTime: (d: Date | null) => void
-}) {
-  if (!isEditing || !isScheduled) return null
-  return (
-    <PostCardScheduleRow
-      scheduledAt={scheduledAt}
-      onChangeDateTime={(d) => onChangeDateTime(d || null)}
-    />
-  )
-}
-
 function PostCardFailureNotice({
   isFailed,
   errorReason,
@@ -593,6 +583,8 @@ function PostCardHeaderWrapper({
   onPreview,
   onEdit,
   onDelete,
+  onPublish,
+  isPublishing,
 }: {
   post: PostCardData
   flags: ReturnType<typeof getPostCardFlags>
@@ -601,6 +593,8 @@ function PostCardHeaderWrapper({
   onPreview?: (id: string) => void
   onEdit?: (id: string) => void
   onDelete?: (id: string) => void
+  onPublish?: (id: string) => void
+  isPublishing?: boolean
 }) {
   return (
     <PostCardHeader
@@ -616,35 +610,31 @@ function PostCardHeaderWrapper({
       onPreview={onPreview ? () => onPreview(post.id) : undefined}
       onEdit={onEdit ? () => onEdit(post.id) : undefined}
       onDelete={onDelete ? () => onDelete(post.id) : undefined}
+      onPublish={onPublish ? () => onPublish(post.id) : undefined}
+      isPublishing={isPublishing}
     />
   )
 }
 
 function PostCardMainColumn(props: PostCardLayoutProps) {
   const flags = getPostCardFlags(props.post)
-  const isEditing = Boolean(props.isEditing)
 
   return (
     <div className="min-w-0 flex-1">
       <PostCardHeaderWrapper
         post={props.post}
         flags={flags}
-        isEditing={isEditing}
+        isEditing={false}
         editor={props.editor}
         onPreview={props.onPreview}
         onEdit={props.onEdit}
         onDelete={props.onDelete}
-      />
-
-      <PostCardScheduleEditor
-        isEditing={isEditing}
-        isScheduled={flags.isScheduled}
-        scheduledAt={props.editor.editedScheduledAt}
-        onChangeDateTime={props.editor.setEditedScheduledAt}
+        onPublish={props.onPublish}
+        isPublishing={props.isPublishing}
       />
 
       <PostCardBodyContent
-        isEditing={isEditing}
+        isEditing={false}
         content={props.post.content}
         editedContent={props.editor.editedContent}
         onContentChange={props.editor.setEditedContent}
@@ -661,7 +651,7 @@ function PostCardMainColumn(props: PostCardLayoutProps) {
       />
 
       <PostCardActionsRow
-        isEditing={isEditing}
+        isEditing={false}
         platform={props.editor.platform}
         onPlatformChange={
           flags.isPosted ? undefined : props.editor.handlePlatformChange
@@ -679,9 +669,7 @@ function PostCardMainColumn(props: PostCardLayoutProps) {
 function PostCardLayout(props: PostCardLayoutProps) {
   return (
     <article
-      className={`group border-b transition-colors ${
-        props.isEditing ? "border-primary bg-muted/20" : "hover:bg-accent/40"
-      }`}
+      className={`group border-b transition-colors hover:bg-accent/40`}
       aria-label={`Post by ${props.post.author.name}`}
     >
       <div className="p-3 sm:p-4">
@@ -695,6 +683,8 @@ function PostCardLayout(props: PostCardLayoutProps) {
 }
 
 export const PostCard = React.memo(function PostCard(props: PostCardProps) {
+  const [editDialogOpen, setEditDialogOpen] = React.useState(false)
+
   const editor = usePostCardEditor({
     post: props.post,
     onSave: props.onSave,
@@ -707,7 +697,39 @@ export const PostCard = React.memo(function PostCard(props: PostCardProps) {
     props.onRepost,
   )
 
-  return <PostCardLayout {...props} editor={editor} engagement={engagement} />
+  // Wire onEdit to open the dialog instead of inline edit
+  const handleEdit = React.useCallback(() => {
+    setEditDialogOpen(true)
+    props.onEdit?.(props.post.id)
+  }, [props])
+
+  return (
+    <>
+      <PostCardLayout
+        {...props}
+        editor={editor}
+        engagement={engagement}
+        isEditing={false}
+        onEdit={handleEdit}
+      />
+      <EditPostDialog
+        open={editDialogOpen}
+        onOpenChange={(open) => {
+          setEditDialogOpen(open)
+          if (!open) props.onCancel?.()
+        }}
+        postId={props.post.id}
+        initialContent={props.post.content}
+        initialImageUrl={props.post.imageUrl}
+        initialPlatform={props.post.platform}
+        initialScheduledAt={
+          props.post.scheduledAt
+            ? new Date(props.post.scheduledAt as string)
+            : null
+        }
+      />
+    </>
+  )
 })
 
 // Backwards-compatible aliases

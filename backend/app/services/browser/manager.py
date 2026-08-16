@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import subprocess
 from collections.abc import AsyncGenerator
@@ -24,6 +25,147 @@ from .platforms import PLATFORMS
 logger = logging.getLogger(__name__)
 
 
+def _read_session_meta_file(session_dir: Path) -> dict[str, Any]:
+    meta_path = session_dir / "session_meta.json"
+    if not meta_path.exists():
+        return {
+            "is_premium": False,
+            "max_character_limit": 280,
+            "username": None,
+            "display_name": None,
+        }
+    try:
+        with open(meta_path, encoding="utf-8") as f:
+            data = json.load(f)
+            return {
+                "is_premium": bool(data.get("is_premium", False)),
+                "max_character_limit": int(data.get("max_character_limit", 280)),
+                "username": data.get("username"),
+                "display_name": data.get("display_name"),
+            }
+    except Exception:
+        return {
+            "is_premium": False,
+            "max_character_limit": 280,
+            "username": None,
+            "display_name": None,
+        }
+
+
+def _write_session_meta_file(session_dir: Path, meta: dict[str, Any]) -> None:
+    meta_path = session_dir / "session_meta.json"
+    try:
+        session_dir.mkdir(parents=True, exist_ok=True)
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2)
+    except Exception as exc:
+        logger.warning("Could not write session_meta.json: %s", exc)
+
+
+def _clean_stale_singleton_locks(session_dir: Path) -> None:
+    """Clean stale Singleton locks if no Chrome process is actively running."""
+    singleton_lock = session_dir / "SingletonLock"
+    if singleton_lock.exists() and not is_chrome_running():
+        for f in session_dir.glob("Singleton*"):
+            try:
+                f.unlink()
+            except OSError:
+                pass
+
+
+def _handle_launch_error(exc: Exception) -> None:
+    """Translate Chrome launch exceptions into user-actionable errors."""
+    err_msg = str(exc)
+    lock_patterns = ("Singleton", "ProcessSingleton", "File exists")
+    if any(pattern in err_msg for pattern in lock_patterns):
+        raise RuntimeError(
+            "Google Chrome is currently open with this session or locked by another process. "
+            "Please close any open Chrome windows and try again."
+        ) from exc
+    logger.error("Failed to launch Chrome persistent context: %s", exc, exc_info=True)
+    raise exc
+
+
+async def _inspect_x_profile(page: Any) -> tuple[bool, str | None, str | None]:
+    is_premium = False
+    username: str | None = None
+    display_name: str | None = None
+
+    try:
+        verified_elem = await page.query_selector(
+            "svg[data-testid='icon-verified'], [data-testid='SideNav_AccountSwitcher_Button'] svg[data-testid='icon-verified']"
+        )
+        if verified_elem and await verified_elem.is_visible():
+            is_premium = True
+
+        profile_link = await page.query_selector(
+            "a[data-testid='AppTabBar_Profile_Link']"
+        )
+        if profile_link:
+            href = await profile_link.get_attribute("href")
+            if href and href.startswith("/"):
+                username = href.strip("/")
+
+        name_elem = await page.query_selector(
+            "[data-testid='SideNav_AccountSwitcher_Button'] [dir='ltr']"
+        )
+        if name_elem:
+            display_name = await name_elem.inner_text()
+    except Exception as exc:
+        logger.debug("Could not inspect X profile details: %s", exc)
+
+    return is_premium, username, display_name
+
+
+def _format_verification_message(
+    *, is_logged_in: bool, is_premium: bool, username: str | None
+) -> str:
+    if not is_logged_in:
+        return "Session cookies expired or login required."
+    if is_premium:
+        return f"Session authenticated! Verified X Premium account ({username or 'user'}) - 25,000 chars limit."
+    return "Session authenticated! Home feed verified."
+
+
+def _build_verification_payload(
+    *,
+    is_logged_in: bool,
+    meta: dict[str, Any],
+    url: str | None,
+) -> dict[str, Any]:
+    is_premium = bool(meta.get("is_premium", False))
+    username = meta.get("username")
+    return {
+        "connected": True,
+        "authenticated": is_logged_in,
+        "is_premium": is_premium,
+        "max_character_limit": int(meta.get("max_character_limit", 280)),
+        "username": username,
+        "display_name": meta.get("display_name"),
+        "url": url,
+        "message": _format_verification_message(
+            is_logged_in=is_logged_in,
+            is_premium=is_premium,
+            username=username,
+        ),
+    }
+
+
+def _build_unauthenticated_response(
+    *, session_dir: Path, message: str
+) -> dict[str, Any]:
+    cached = _read_session_meta_file(session_dir)
+    return {
+        "connected": True,
+        "authenticated": False,
+        "is_premium": cached.get("is_premium", False),
+        "max_character_limit": cached.get("max_character_limit", 280),
+        "username": cached.get("username"),
+        "display_name": cached.get("display_name"),
+        "message": message,
+    }
+
+
 class BrowserManager:
     """Manages browser sessions and Playwright contexts for automation."""
 
@@ -41,6 +183,11 @@ class BrowserManager:
         """Return the directory path for this user and platform."""
         return get_session_dir(self.brand_id, platform_name)
 
+    def read_session_metadata(self, platform_name: str = "x") -> dict[str, Any]:
+        """Read cached session metadata from disk."""
+        session_dir = self.get_session_dir_path(platform_name)
+        return _read_session_meta_file(session_dir)
+
     def session_exists(self, platform_name: str) -> bool:
         """Check if a persistent session directory exists and contains cookies."""
         if platform_name not in PLATFORMS:
@@ -57,10 +204,15 @@ class BrowserManager:
 
     async def verify_session(self, platform_name: str = "x") -> dict[str, Any]:
         """Verify that the browser session is valid and authenticated."""
+        session_dir = self.get_session_dir_path(platform_name)
         if not self.session_exists(platform_name):
             return {
                 "connected": False,
                 "authenticated": False,
+                "is_premium": False,
+                "max_character_limit": 280,
+                "username": None,
+                "display_name": None,
                 "message": "No cookie session found. Please launch headed browser login.",
             }
 
@@ -69,31 +221,55 @@ class BrowserManager:
             raise ValueError(f"Unknown platform: {platform_name}")
 
         try:
-            async with self.get_context(platform_name, headless=True) as context:
-                page = context.pages[0] if context.pages else await context.new_page()
-                for p in context.pages[1:]:
-                    await p.close()
-                await page.goto(
-                    config.url, wait_until="domcontentloaded", timeout=15000
-                )
-                await asyncio.sleep(3)
-
-                element = await page.query_selector(config.sentinel_selector)
-                is_logged_in = bool(element and await element.is_visible())
-                return {
-                    "connected": True,
-                    "authenticated": is_logged_in,
-                    "url": page.url,
-                    "message": "Session authenticated! Home feed verified."
-                    if is_logged_in
-                    else "Session cookies expired or login required.",
-                }
+            return await self._verify_live_session(
+                platform_name=platform_name,
+                config=config,
+                session_dir=session_dir,
+            )
         except Exception as e:
-            return {
-                "connected": True,
-                "authenticated": False,
-                "message": f"Verification error: {e}",
+            return _build_unauthenticated_response(
+                session_dir=session_dir,
+                message=f"Verification error: {e}",
+            )
+
+    async def _verify_live_session(
+        self,
+        *,
+        platform_name: str,
+        config: Any,
+        session_dir: Path,
+    ) -> dict[str, Any]:
+        async with self.get_context(platform_name, headless=True) as context:
+            page = context.pages[0] if context.pages else await context.new_page()
+            for p in context.pages[1:]:
+                await p.close()
+            await page.goto(config.url, wait_until="domcontentloaded", timeout=15000)
+            await asyncio.sleep(2)
+
+            element = await page.query_selector(config.sentinel_selector)
+            is_logged_in = bool(element and await element.is_visible())
+
+            is_premium, username, display_name = (
+                await _inspect_x_profile(page)
+                if (is_logged_in and platform_name == "x")
+                else (False, None, None)
+            )
+
+            meta = {
+                "is_premium": is_premium,
+                "max_character_limit": 25000 if is_premium else 280,
+                "username": username,
+                "display_name": display_name,
             }
+
+            if is_logged_in:
+                _write_session_meta_file(session_dir, meta)
+
+            return _build_verification_payload(
+                is_logged_in=is_logged_in,
+                meta=meta,
+                url=page.url,
+            )
 
     def start_login_subprocess(self, platform_name: str, force: bool = False) -> None:
         """Launch a vanilla Chrome window for manual user login.
@@ -187,10 +363,10 @@ class BrowserManager:
                 f"Please run headed_login first for platform '{platform_name}'."
             )
 
+        _clean_stale_singleton_locks(session_dir)
         playwright_args = get_playwright_args()
 
         async with async_playwright() as p:
-            context = None
             try:
                 logger.debug("Attempting to launch with channel='chrome'...")
                 context = await p.chromium.launch_persistent_context(
@@ -202,19 +378,7 @@ class BrowserManager:
                     args=playwright_args,
                 )
             except Exception as e:
-                logger.warning(
-                    "Could not launch with channel='chrome', falling back "
-                    "to bundled Chromium. Error: %s",
-                    e,
-                    exc_info=True,
-                )
-                context = await p.chromium.launch_persistent_context(
-                    user_data_dir=str(session_dir),
-                    headless=headless,
-                    viewport={"width": 1280, "height": 800},
-                    ignore_default_args=["--enable-automation"],
-                    args=playwright_args,
-                )
+                _handle_launch_error(e)
 
             try:
                 yield context

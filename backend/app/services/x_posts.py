@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,13 @@ from app.services.browser.actions import (
 from app.services.browser.manager import BrowserManager
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class XPostResult:
+    success: bool = True
+    post_id: str = ""
+    post_url: str = ""
 
 
 class XPostError(HTTPException):
@@ -53,22 +61,64 @@ class XPostClient:
 
     async def create_text_post(self, *, user_id: str, content: str) -> str:
         """Create a text-only post on X.com using Playwright."""
-        self._validate_content(content)
         manager = self._get_manager(user_id=user_id)
-        return await self._execute_post_flow(manager, content)
+        meta = manager.read_session_metadata("x")
+        max_limit = int(meta.get("max_character_limit", 280))
+        self._validate_content(content, max_length=max_limit)
+        return await self._execute_post_flow(manager=manager, content=content)
 
-    def _validate_content(self, content: str) -> None:
-        normalized_content = normalize_post_text(content)
-        if len(normalized_content) > 280:
+    async def create_media_post(
+        self,
+        *,
+        content: str,
+        image_path: str,
+        user_id: str | None = None,
+        headless: bool | None = None,
+    ) -> XPostResult:
+        """Create a post with image media attachment on X.com using Playwright."""
+        manager = self._get_manager(user_id=user_id)
+        meta = manager.read_session_metadata("x")
+        max_limit = int(meta.get("max_character_limit", 280))
+        self._validate_content(content, max_length=max_limit)
+
+        path = Path(image_path)
+        if not path.exists():
             raise XPostError(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Post content exceeds X.com's 280 character limit.",
-                code="x_content_too_long",
+                detail=f"Image file does not exist at {image_path}",
+                code="x_image_not_found",
                 retryable=False,
-                details={"platform": "x", "length": len(content)},
+                details={"platform": "x", "image_path": image_path},
             )
 
-    def _get_manager(self, *, user_id: str) -> BrowserManager:
+        is_headless = (
+            (os.environ.get("PLAYWRIGHT_HEADLESS", "1") == "1")
+            if headless is None
+            else headless
+        )
+        return await self._execute_media_post_flow(
+            manager=manager,
+            content=content,
+            image_path=str(path.resolve()),
+            headless=is_headless,
+        )
+
+    def _validate_content(self, content: str, max_length: int = 280) -> None:
+        normalized_content = normalize_post_text(content)
+        if len(normalized_content) > max_length:
+            raise XPostError(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Post content exceeds X.com's {max_length} character limit.",
+                code="x_content_too_long",
+                retryable=False,
+                details={
+                    "platform": "x",
+                    "length": len(content),
+                    "max_length": max_length,
+                },
+            )
+
+    def _get_manager(self, *, user_id: str | None = None) -> BrowserManager:
         manager = BrowserManager(user_id=user_id)
         if not manager.session_exists("x"):
             raise XPostError(
@@ -80,7 +130,7 @@ class XPostClient:
             )
         return manager
 
-    async def _execute_post_flow(self, manager: BrowserManager, content: str) -> str:
+    async def _execute_post_flow(self, *, manager: BrowserManager, content: str) -> str:
         try:
             async with manager.get_context(
                 "x", headless=(os.environ.get("PLAYWRIGHT_HEADLESS", "1") == "1")
@@ -100,6 +150,103 @@ class XPostClient:
         except Exception as e:
             self._handle_unexpected_error(e)
             return ""
+
+    async def _execute_media_post_flow(
+        self,
+        *,
+        manager: BrowserManager,
+        content: str,
+        image_path: str,
+        headless: bool,
+    ) -> XPostResult:
+        try:
+            async with manager.get_context("x", headless=headless) as context:
+                page = context.pages[0] if context.pages else await context.new_page()
+                mouse = EvasionMouse(page)
+                asyncio.create_task(mouse.start_idle())
+
+                await self._perform_sentinel_check(page, mouse)
+                rest_id = await self._type_attach_and_publish(
+                    page=page,
+                    mouse=mouse,
+                    content=content,
+                    image_path=image_path,
+                )
+                return XPostResult(
+                    success=True,
+                    post_id=rest_id,
+                    post_url=f"https://x.com/i/status/{rest_id}",
+                )
+
+        except XPostError:
+            raise
+        except PlaywrightError as e:
+            self._handle_playwright_error(e)
+            return XPostResult(success=False, post_id="", post_url="")
+        except Exception as e:
+            self._handle_unexpected_error(e)
+            return XPostResult(success=False, post_id="", post_url="")
+
+    async def _type_attach_and_publish(
+        self,
+        *,
+        page: Any,
+        mouse: EvasionMouse,
+        content: str,
+        image_path: str,
+    ) -> str:
+        await self._fill_post_content(mouse, content)
+
+        file_input_selector = self.selectors["compose"]["file_input"]
+        logger.info(
+            f"Injecting media attachment: {image_path} into {file_input_selector}"
+        )
+        await page.locator(file_input_selector).set_input_files(image_path)
+
+        attachments_selector = self.selectors["compose"]["attachments_container"]
+        logger.info(f"Waiting for media attachment container: {attachments_selector}")
+        try:
+            await page.wait_for_selector(
+                attachments_selector,
+                state="visible",
+                timeout=15000,
+            )
+        except PlaywrightTimeoutError:
+            await mouse.stop_idle()
+            raise XPostError(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail="Timeout waiting for media attachment to appear.",
+                code="x_media_upload_timeout",
+                retryable=True,
+                details={"platform": "x"},
+            )
+
+        progress_bar_selector = self.selectors["compose"]["progress_bar"]
+        try:
+            await page.wait_for_selector(
+                progress_bar_selector,
+                state="detached",
+                timeout=10000,
+            )
+        except PlaywrightTimeoutError:
+            logger.warning(
+                "Progress bar did not detach within 10s or was not present; proceeding."
+            )
+
+        post_button_selector = self.selectors["compose"]["post_button"]
+        logger.info("Waiting for post button to be enabled after media attachment...")
+        try:
+            await page.wait_for_selector(
+                f'{post_button_selector}:not([disabled]):not([aria-disabled="true"])',
+                timeout=15000,
+            )
+        except PlaywrightTimeoutError:
+            logger.warning(
+                "Timed out waiting for enabled post button; proceeding with click attempt."
+            )
+
+        await random_delay(min_sec=1.5, max_sec=3.0)
+        return await self._click_publish_and_wait(page, mouse)
 
     def _handle_playwright_error(self, e: PlaywrightError) -> None:
         if "closed" in str(e).lower():
@@ -202,9 +349,9 @@ class XPostClient:
         try:
             async with page.expect_response(
                 lambda response: "graphql" in response.url
-                and "CreateTweet" in response.url
+                and ("CreateTweet" in response.url or "CreateNoteTweet" in response.url)
                 and response.request.method == "POST",
-                timeout=15000,
+                timeout=30000,
             ) as response_info:
                 await mouse.human_click(selector=post_button_selector)
 

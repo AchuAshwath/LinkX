@@ -6,78 +6,175 @@ import type { Platform } from "@/components/Common/PlatformSelector"
 import useCustomToast from "@/hooks/useCustomToast"
 import { handleError } from "@/utils"
 
-export function usePostForm() {
-  const queryClient = useQueryClient()
-  const { showSuccessToast, showErrorToast } = useCustomToast()
-  const [content, setContent] = useState("")
-  const [scheduledAt, setScheduledAt] = useState<Date | undefined>()
-  const [channel, setChannel] = useState<Platform>("linkx")
-  const [actionType, setActionType] = useState<"draft" | "schedule" | "post">(
-    "post",
-  )
+export interface UsePostFormOptions {
+  initialContent?: string
+  initialImageUrl?: string | null
+  initialPlatform?: Platform
+}
 
-  const createPostMutation = useMutation({
+const VALID_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+])
+const MAX_MEDIA_BYTES = 5 * 1024 * 1024 // 5 MB
+
+function validateMediaFile(
+  file: File,
+  showErrorToast: (msg: string) => void,
+): boolean {
+  if (!VALID_IMAGE_TYPES.has(file.type)) {
+    showErrorToast(
+      "Invalid file type. Please upload a JPEG, PNG, GIF, or WebP image.",
+    )
+    return false
+  }
+  if (file.size > MAX_MEDIA_BYTES) {
+    showErrorToast("Image size exceeds the 5 MB limit.")
+    return false
+  }
+  return true
+}
+
+interface PostPayloadOptions {
+  action: "draft" | "schedule" | "post"
+  content: string
+  channel: Platform
+  scheduledAt?: Date
+  imageUrl: string | null
+}
+
+function buildPostPayload({
+  action,
+  content,
+  channel,
+  scheduledAt,
+  imageUrl,
+}: PostPayloadOptions) {
+  const status =
+    action === "draft"
+      ? "draft"
+      : action === "schedule"
+        ? "scheduled"
+        : "published"
+
+  const finalScheduledAt =
+    action === "schedule"
+      ? scheduledAt || new Date(Date.now() + 4 * 3600 * 1000)
+      : undefined
+
+  return {
+    content: content.trim(),
+    platform: channel,
+    status,
+    image_url: imageUrl || undefined,
+    scheduled_at:
+      action === "schedule" && finalScheduledAt
+        ? finalScheduledAt.toISOString()
+        : undefined,
+  }
+}
+
+function getSuccessMessage(status: string): string {
+  const messages: Record<string, string> = {
+    draft: "Draft saved successfully",
+    scheduled: "Post scheduled successfully",
+    published: "Post published successfully",
+  }
+  return messages[status] || "Post created successfully"
+}
+
+interface UseCreatePostMutationOptions {
+  showSuccessToast: (msg: string) => void
+  showErrorToast: (msg: string) => void
+  onSuccessReset: () => void
+}
+
+function useCreatePostMutation({
+  showSuccessToast,
+  showErrorToast,
+  onSuccessReset,
+}: UseCreatePostMutationOptions) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
     mutationFn: async (data: {
       content: string
       platform: string
       scheduled_at?: string
       status: string
+      image_url?: string | null
     }) => {
       return await PostsService.createNewPost({ requestBody: data })
     },
     onSuccess: (_, variables) => {
-      const statusMessages = {
-        draft: "Draft saved successfully",
-        scheduled: "Post scheduled successfully",
-        published: "Post published successfully",
-      }
-      showSuccessToast(
-        statusMessages[variables.status as keyof typeof statusMessages] ||
-          "Post created successfully",
-      )
-      // Reset form
-      setContent("")
-      setScheduledAt(undefined)
-      setChannel("linkx")
-      setActionType("post")
-      // Invalidate queries to refetch posts
+      showSuccessToast(getSuccessMessage(variables.status))
+      onSuccessReset()
       queryClient.invalidateQueries({ queryKey: ["posts"] })
     },
     onError: handleError.bind(showErrorToast),
   })
+}
 
-  const handleSubmit = useCallback(
-    (action: "draft" | "schedule" | "post") => {
-      if (content.trim().length === 0) return
+function useComposerMedia(
+  showErrorToast: (msg: string) => void,
+  initialImageUrl?: string | null,
+) {
+  const [mediaFile, setMediaFile] = useState<File | null>(null)
+  const [imageUrl, setImageUrl] = useState<string | null>(
+    initialImageUrl || null,
+  )
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false)
 
-      const finalScheduledAt =
-        action === "schedule"
-          ? scheduledAt || new Date(Date.now() + 4 * 3600 * 1000)
-          : undefined
+  const removeMedia = useCallback(() => {
+    setMediaFile(null)
+    setImageUrl(null)
+    setIsUploadingMedia(false)
+  }, [])
 
-      const postData: {
-        content: string
-        platform: string
-        scheduled_at?: string
-        status: string
-      } = {
-        content: content.trim(),
-        platform: channel,
-        status:
-          action === "draft"
-            ? "draft"
-            : action === "schedule"
-              ? "scheduled"
-              : "published",
+  const uploadMedia = useCallback(
+    async (file: File): Promise<string | null> => {
+      if (!validateMediaFile(file, showErrorToast)) return null
+
+      setMediaFile(file)
+      setIsUploadingMedia(true)
+      const localPreviewUrl = URL.createObjectURL(file)
+      setImageUrl(localPreviewUrl)
+
+      try {
+        const res = await PostsService.uploadMedia({ formData: { file } })
+        const uploadedUrl = res.url || localPreviewUrl
+        setImageUrl(uploadedUrl)
+        return uploadedUrl
+      } catch (err) {
+        handleError.call(showErrorToast, err as any)
+        return localPreviewUrl
+      } finally {
+        setIsUploadingMedia(false)
       }
-
-      if (action === "schedule" && finalScheduledAt) {
-        postData.scheduled_at = finalScheduledAt.toISOString()
-      }
-
-      createPostMutation.mutate(postData)
     },
-    [channel, content, createPostMutation, scheduledAt],
+    [showErrorToast],
+  )
+
+  return {
+    mediaFile,
+    imageUrl,
+    setImageUrl,
+    isUploadingMedia,
+    uploadMedia,
+    removeMedia,
+  }
+}
+
+function useComposerCoreState(options?: UsePostFormOptions) {
+  const [content, setContent] = useState(options?.initialContent || "")
+  const [scheduledAt, setScheduledAt] = useState<Date | undefined>()
+  const [channel, setChannel] = useState<Platform>(
+    options?.initialPlatform || "linkx",
+  )
+  const [actionType, setActionType] = useState<"draft" | "schedule" | "post">(
+    "post",
   )
 
   const handleContentChange = useCallback(
@@ -96,8 +193,93 @@ export function usePostForm() {
     setChannel,
     actionType,
     setActionType,
-    handleSubmit,
     handleContentChange,
+  }
+}
+
+function useAiDraftMutation(
+  showSuccessToast: (msg: string) => void,
+  showErrorToast: (msg: string) => void,
+  onDraftGenerated: (content: string) => void,
+) {
+  return useMutation({
+    mutationFn: async (data: { prompt: string; platform: Platform }) => {
+      return await PostsService.generateAiDraft({
+        requestBody: {
+          prompt: data.prompt,
+          platform: data.platform,
+        },
+      })
+    },
+    onSuccess: (res) => {
+      if (res?.content) {
+        onDraftGenerated(res.content)
+        showSuccessToast("AI draft generated!")
+      }
+    },
+    onError: handleError.bind(showErrorToast),
+  })
+}
+
+export function usePostForm(options?: UsePostFormOptions) {
+  const { showSuccessToast, showErrorToast } = useCustomToast()
+  const core = useComposerCoreState(options)
+  const media = useComposerMedia(showErrorToast, options?.initialImageUrl)
+
+  const resetForm = useCallback(() => {
+    core.setContent("")
+    core.setScheduledAt(undefined)
+    core.setChannel("linkx")
+    core.setActionType("post")
+    media.removeMedia()
+  }, [core, media])
+
+  const createPostMutation = useCreatePostMutation({
+    showSuccessToast,
+    showErrorToast,
+    onSuccessReset: resetForm,
+  })
+
+  const aiDraftMutation = useAiDraftMutation(
+    showSuccessToast,
+    showErrorToast,
+    (generatedContent) => core.setContent(generatedContent),
+  )
+
+  const handleAiDraft = useCallback(() => {
+    aiDraftMutation.mutate({
+      prompt: core.content,
+      platform: core.channel,
+    })
+  }, [core.content, core.channel, aiDraftMutation])
+
+  const handleSubmit = useCallback(
+    (action: "draft" | "schedule" | "post") => {
+      if (core.content.trim().length === 0) return
+      const postData = buildPostPayload({
+        action,
+        content: core.content,
+        channel: core.channel,
+        scheduledAt: core.scheduledAt,
+        imageUrl: media.imageUrl,
+      })
+      createPostMutation.mutate(postData)
+    },
+    [
+      core.channel,
+      core.content,
+      core.scheduledAt,
+      createPostMutation,
+      media.imageUrl,
+    ],
+  )
+
+  return {
+    ...core,
+    ...media,
+    handleSubmit,
     createPostMutation,
+    handleAiDraft,
+    isGeneratingAiDraft: aiDraftMutation.isPending,
   }
 }

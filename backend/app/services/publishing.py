@@ -4,13 +4,19 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from sqlmodel import Session, select
 
+from app.core.config import settings
 from app.models import Post, PublishErrorResponse, SocialAccount
-from app.services.linkedin_posts import LinkedInPostClient, LinkedInPostError
+from app.services.linkedin_posts import (
+    LinkedInPostClient,
+    LinkedInPostError,
+    LinkedInPostResult,
+)
 from app.services.post_state_machine import validate_transition
-from app.services.x_posts import XPostClient
+from app.services.x_posts import XPostClient, XPostError
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +28,23 @@ BASE_RETRY_SECONDS = 60
 class PublishFailure:
     status_code: int
     payload: PublishErrorResponse
+
+
+def resolve_image_path(*, image_url: str) -> Path:
+    """Resolve an image URL or path to a local filesystem Path."""
+    direct_path = Path(image_url)
+    if direct_path.is_absolute() and direct_path.exists():
+        return direct_path
+
+    clean_url = image_url.split("?")[0].split("#")[0]
+    if "/static/uploads/" in clean_url:
+        filename = clean_url.split("/static/uploads/")[-1]
+    elif "/uploads/" in clean_url:
+        filename = clean_url.split("/uploads/")[-1]
+    else:
+        filename = Path(clean_url).name
+
+    return settings.UPLOAD_DIR / filename
 
 
 def _now_utc() -> datetime:
@@ -114,6 +137,37 @@ async def _publish_linkedin(*, session: Session, post: Post) -> str | PublishFai
 
     try:
         client = LinkedInPostClient()
+        if post.image_url:
+            image_path = resolve_image_path(image_url=post.image_url)
+            if not image_path.exists():
+                raise LinkedInPostError(
+                    status_code=400,
+                    detail=f"Image file not found: {image_path}",
+                    code="linkedin_image_not_found",
+                    retryable=False,
+                    details={"platform": "linkedin", "image_path": str(image_path)},
+                )
+            image_bytes = image_path.read_bytes()
+            ext = image_path.suffix.lower()
+            ext_map = {
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".png": "image/png",
+                ".gif": "image/gif",
+                ".webp": "image/webp",
+            }
+            content_type = ext_map.get(ext, "image/png")
+            result = await client.create_image_post(
+                user_id=str(post.owner_id),
+                linkedin_person_id=linkedin_account.external_user_id,
+                content=post.content,
+                text=post.content,
+                image_bytes=image_bytes,
+                content_type=content_type,
+            )
+            if isinstance(result, LinkedInPostResult):
+                return result.post_id
+            return str(result)
         return await client.create_text_post(
             user_id=str(post.owner_id),
             linkedin_person_id=linkedin_account.external_user_id,
@@ -126,6 +180,22 @@ async def _publish_linkedin(*, session: Session, post: Post) -> str | PublishFai
 async def _publish_x(*, session: Session, post: Post) -> str | PublishFailure:
     try:
         x_client = XPostClient()
+        if post.image_url:
+            image_path = resolve_image_path(image_url=post.image_url)
+            if not image_path.exists():
+                raise XPostError(
+                    status_code=400,
+                    detail=f"Image file not found: {image_path}",
+                    code="x_image_not_found",
+                    retryable=False,
+                    details={"platform": "x", "image_path": str(image_path)},
+                )
+            res = await x_client.create_media_post(
+                user_id=str(post.owner_id),
+                content=post.content,
+                image_path=str(image_path),
+            )
+            return res.post_id
         return await x_client.create_text_post(
             user_id=str(post.owner_id),
             content=post.content,
@@ -140,8 +210,20 @@ async def _publish_all(*, session: Session, post: Post) -> str | PublishFailure:
     if isinstance(li_res, PublishFailure):
         return li_res
 
+    # Record LinkedIn external ID so it is not lost if X fails
+    post.external_post_id = f"linkedin:{li_res}"
+    session.add(post)
+    session.commit()
+    session.refresh(post)
+
     x_res = await _publish_x(session=session, post=post)
     if isinstance(x_res, PublishFailure):
+        post.error_message = (
+            f"LinkedIn published ({li_res}), but X failed: {x_res.payload.message}"
+        )
+        session.add(post)
+        session.commit()
+        session.refresh(post)
         return x_res
 
     return f"linkedin:{li_res},x:{x_res}"

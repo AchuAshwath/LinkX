@@ -55,6 +55,11 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:  # n
     _cleanup_ephemeral_test_users()
 
 
+@pytest.fixture(scope="session")
+def anyio_backend() -> str:
+    return "asyncio"
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _init_db_session() -> None:
     """One-time committed seed (superuser, default team/persona) for all tests."""

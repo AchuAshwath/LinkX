@@ -668,6 +668,8 @@ function PostsFeedList({
   onPreview,
   onRetry,
   isRetrying,
+  onPublish,
+  isPublishing,
 }: {
   activeCategory: PostCategory
   activePosts: any[]
@@ -683,6 +685,8 @@ function PostsFeedList({
   onPreview: (id: string) => void
   onRetry: (id: string) => void
   isRetrying: (id: string) => boolean
+  onPublish: (id: string) => void
+  isPublishing: (id: string) => boolean
 }) {
   return (
     <div className="w-full pb-20">
@@ -701,6 +705,8 @@ function PostsFeedList({
               onCancel={onCancel}
               onPlatformChange={onPlatformChange}
               onPreview={onPreview}
+              onPublish={onPublish}
+              isPublishing={isPublishing(post.id)}
             />
           )
         }
@@ -717,6 +723,8 @@ function PostsFeedList({
               onCancel={onCancel}
               onPlatformChange={onPlatformChange}
               onPreview={onPreview}
+              onPublish={onPublish}
+              isPublishing={isPublishing(post.id)}
             />
           )
         }
@@ -745,6 +753,8 @@ function PostsFeedList({
             onPreview={onPreview}
             onRetry={onRetry}
             isRetrying={isRetrying(post.id)}
+            onPublish={onPublish}
+            isPublishing={isPublishing(post.id)}
           />
         )
       })}
@@ -961,6 +971,16 @@ export function PostsPage() {
     onError: handleError.bind(showErrorToast),
   })
 
+  const publishMutation = useMutation({
+    mutationFn: async (postId: string) =>
+      PostsService.publishExistingPost({ postId }),
+    onSuccess: () => {
+      showSuccessToast("Post published successfully!")
+      queryClient.invalidateQueries({ queryKey: ["posts"] })
+    },
+    onError: handleError.bind(showErrorToast),
+  })
+
   const handleSavePost = (
     postId: string,
     data: { content: string; platform: Platform; scheduledAt?: Date | null },
@@ -1057,6 +1077,10 @@ export function PostsPage() {
               onRetry={(id) => retryMutation.mutate(id)}
               isRetrying={(id) =>
                 retryMutation.isPending && retryMutation.variables === id
+              }
+              onPublish={(id) => publishMutation.mutate(id)}
+              isPublishing={(id) =>
+                publishMutation.isPending && publishMutation.variables === id
               }
             />
           )}

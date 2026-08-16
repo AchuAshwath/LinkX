@@ -117,7 +117,7 @@ class ItemsPublic(SQLModel):
 
 
 class PostBase(SQLModel):
-    content: str = Field(min_length=1, max_length=3000)
+    content: str = Field(min_length=1, max_length=25000)
     image_url: str | None = Field(default=None, max_length=500)
     platform: str = Field(max_length=50)  # linkedin, x, all
     method: str = Field(default="api", max_length=50)  # api, browser, vision
@@ -133,7 +133,7 @@ class PostCreate(PostBase):
 
 
 class PostUpdate(SQLModel):
-    content: str | None = Field(default=None, min_length=1, max_length=3000)
+    content: str | None = Field(default=None, min_length=1, max_length=25000)
     image_url: str | None = Field(default=None, max_length=500)
     platform: str | None = Field(default=None, max_length=50)
     method: str | None = Field(default=None, max_length=50)
@@ -214,6 +214,23 @@ class PublishErrorResponse(SQLModel):
     retryable: bool
     details: dict[str, Any] | None = None
     trace_id: str
+
+
+class MediaPublic(SQLModel):
+    url: str
+    filename: str
+    content_type: str
+    size_bytes: int
+
+
+class AIDraftRequest(SQLModel):
+    prompt: str = Field(default="", max_length=25000)
+    platform: str = Field(default="linkx", max_length=50)
+    tone: str | None = Field(default=None, max_length=50)
+
+
+class AIDraftResponse(SQLModel):
+    content: str
 
 
 # --- SocialAccount (OAuth / Browser session metadata) ---

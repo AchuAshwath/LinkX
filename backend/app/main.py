@@ -2,6 +2,7 @@ import sentry_sdk
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from starlette.middleware.cors import CORSMiddleware
+from starlette.staticfiles import StaticFiles
 
 from app.api.main import api_router
 from app.api.routes.docs import router as docs_router
@@ -22,6 +23,10 @@ app = FastAPI(
     redoc_url=None,  # Disable redoc
     generate_unique_id_function=custom_generate_unique_id,
 )
+
+# Mount static files for media uploads
+settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/static/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 # Add custom docs router (before CORS to ensure it works)
 app.include_router(docs_router)

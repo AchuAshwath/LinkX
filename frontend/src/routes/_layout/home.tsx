@@ -213,6 +213,19 @@ function TimelinePage() {
     },
   })
 
+  const publishMutation = useMutation({
+    mutationFn: async (postId: string) =>
+      PostsService.publishExistingPost({ postId }),
+    onSuccess: () => {
+      showSuccessToast("Post published successfully!")
+      queryClient.invalidateQueries({ queryKey: ["posts"] })
+    },
+    onError: (error) => {
+      console.error("Failed to publish post", error)
+      showErrorToast("Failed to publish post")
+    },
+  })
+
   const handleDelete = (
     postId: string,
     type: "draft" | "scheduled" | "posted",
@@ -327,6 +340,11 @@ function TimelinePage() {
                     onCancel={() => setEditingPostId(null)}
                     onPlatformChange={handlePlatformChange}
                     onPreview={(id) => handlePreview(id)}
+                    onPublish={(id) => publishMutation.mutate(id)}
+                    isPublishing={
+                      publishMutation.isPending &&
+                      publishMutation.variables === post.id
+                    }
                   />
                 )
               }
