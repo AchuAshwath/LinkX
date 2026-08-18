@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-import os
 import re
+from typing import Any
+
+from app.core.config import settings
 
 SYSTEM_PROMPT = """You are an elite social media strategist and copywriter.
 Generate an engaging, high-converting social media post based on the user's input/topic.
@@ -47,38 +49,46 @@ def _generate_fallback_template(*, prompt: str, platform: str) -> str:
     )
 
 
+def _resolve_ai_credentials() -> tuple[str | None, str, str]:
+    """Resolve OpenAI-compatible API key, API base URL, and Model from settings."""
+    api_key = settings.OPENAI_API_COMPATIBLE_API_KEY
+    api_base = settings.OPENAI_API_COMPATIBLE_BASE_URL
+    model = settings.AI_MODEL
+    return api_key, api_base, model
+
+
 async def generate_ai_post_draft(
     *,
     prompt: str = "",
     platform: str = "linkx",
     tone: str | None = None,
+    model: str | None = None,
 ) -> str:
     """Generate an AI drafted post using LiteLLM if available, otherwise smart template."""
-    api_key_present = bool(
-        os.environ.get("OPENAI_API_KEY")
-        or os.environ.get("ANTHROPIC_API_KEY")
-        or os.environ.get("GEMINI_API_KEY")
-        or os.environ.get("GROQ_API_KEY")
-        or os.environ.get("OLLAMA_API_BASE")
-    )
+    api_key, api_base, default_model = _resolve_ai_credentials()
+    target_model = model or default_model
 
-    if api_key_present:
+    if api_key:
         try:
             import litellm
 
-            model = os.environ.get("AI_MODEL", "gpt-4o-mini")
             tone_instruction = f" Tone: {tone}." if tone else ""
             user_msg = f"Platform: {platform}. Topic/Input: {prompt or 'Share a valuable tip for builders and creators.'}{tone_instruction}"
 
-            response = await litellm.acompletion(
-                model=model,
-                messages=[
+            completion_kwargs: dict[str, Any] = {
+                "model": target_model,
+                "api_key": api_key,
+                "messages": [
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": user_msg},
                 ],
-                max_tokens=800,
-                temperature=0.7,
-            )
+                "max_tokens": 800,
+                "temperature": 0.7,
+            }
+            if api_base:
+                completion_kwargs["api_base"] = api_base
+
+            response = await litellm.acompletion(**completion_kwargs)
             content: str = response.choices[0].message.content.strip()
             if content:
                 return content

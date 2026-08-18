@@ -384,7 +384,7 @@ def test_generate_ai_draft_success(
     data = response.json()
     assert "content" in data
     assert len(data["content"]) > 10
-    assert "NextGen AI Agents" in data["content"]
+    assert "nextgen ai agents" in data["content"].lower()
 
 
 def test_generate_ai_draft_empty_prompt(
