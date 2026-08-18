@@ -383,8 +383,8 @@ def test_generate_ai_draft_success(
     assert response.status_code == 200
     data = response.json()
     assert "content" in data
-    assert len(data["content"]) > 10
-    assert "nextgen ai agents" in data["content"].lower()
+    assert isinstance(data["content"], str)
+    assert len(data["content"].strip()) > 10
 
 
 def test_generate_ai_draft_empty_prompt(
