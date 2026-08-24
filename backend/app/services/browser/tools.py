@@ -257,13 +257,12 @@ async def find_or_heal_element(
     selector_key: str,
     selectors_dict: dict[str, Any],
     config_path: str | Path,
-    timeout_ms: int = 2500,
 ) -> Any:
     """Locate an element; if missing, trigger the LangGraph self-healing supervisor."""
     import app.services.agentic.self_healing_graph as shg
 
     current_selector = _get_nested_selector(selectors_dict, selector_key)
-    existing_loc = await _probe_current_selector(page, current_selector, timeout_ms)
+    existing_loc = await _probe_current_selector(page, current_selector, 2500)
     if existing_loc is not None:
         return existing_loc
 

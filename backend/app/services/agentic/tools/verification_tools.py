@@ -7,7 +7,7 @@ import re
 import uuid
 from typing import Any
 
-from sqlmodel import Session
+from sqlmodel import Session, SQLModel
 
 from app import crud
 from app.services.agentic.schemas import (
@@ -166,33 +166,41 @@ def _get_expected_post_data(
         return None, None
 
 
+class LiveVerificationTarget(SQLModel):
+    """Encapsulates parameters for browser timeline verification."""
+
+    profile_url: str
+    expected_content: str
+    expected_ext_id: str | None = None
+    max_tweets_to_check: int = 5
+
+
 async def _verify_live_browser_feed(
     *,
     manager: BrowserManager,
-    profile_url: str,
-    expected_content: str,
-    expected_ext_id: str | None,
-    max_tweets_to_check: int,
+    target: LiveVerificationTarget,
 ) -> ProfileVerificationReport:
     """Navigate to profile and perform timeline match."""
     try:
         async with manager.get_context("x", headless=True) as context:
             page = await get_active_page(context=context)
-            await page.goto(profile_url, wait_until="domcontentloaded", timeout=20000)
+            await page.goto(
+                target.profile_url, wait_until="domcontentloaded", timeout=20000
+            )
             timeline_tweets = await _extract_profile_timeline_tweets(
-                page=page, limit=max_tweets_to_check
+                page=page, limit=target.max_tweets_to_check
             )
             match_found, matched_text, matched_id, best_confidence = (
                 _match_timeline_tweets(
                     timeline_tweets=timeline_tweets,
-                    expected_content=expected_content,
-                    expected_ext_id=expected_ext_id,
+                    expected_content=target.expected_content,
+                    expected_ext_id=target.expected_ext_id,
                 )
             )
             return ProfileVerificationReport(
                 verified_live=match_found,
-                expected_content=expected_content,
-                profile_url=profile_url,
+                expected_content=target.expected_content,
+                profile_url=target.profile_url,
                 latest_live_tweets=timeline_tweets,
                 match_found=match_found,
                 matched_tweet_text=matched_text,
@@ -203,8 +211,8 @@ async def _verify_live_browser_feed(
         logger.error(f"Error during live profile verification: {e}")
         return ProfileVerificationReport(
             verified_live=False,
-            profile_url=profile_url,
-            expected_content=expected_content,
+            profile_url=target.profile_url,
+            expected_content=target.expected_content,
             error=str(e),
         )
 
@@ -252,13 +260,13 @@ async def verify_post_on_live_profile(
     username = meta.get("username")
     profile_url = f"https://x.com/{username}" if username else "https://x.com/home"
 
-    return await _verify_live_browser_feed(
-        manager=manager,
+    target = LiveVerificationTarget(
         profile_url=profile_url,
         expected_content=expected_content,
         expected_ext_id=expected_ext_id,
         max_tweets_to_check=max_tweets_to_check,
     )
+    return await _verify_live_browser_feed(manager=manager, target=target)
 
 
 async def verify_post_url_status(
