@@ -18,6 +18,10 @@ from app.services.browser.tools import (
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_X_SELECTORS_PATH: str = str(
+    Path(__file__).parent.parent.parent / "browser" / "selectors" / "x_selectors.json"
+)
+
 
 async def inspect_dom_snippet(
     *,
@@ -78,12 +82,7 @@ async def probe_and_patch_broken_selector(
             "patched": False,
         }
 
-    cfg_path = config_path or str(
-        Path(__file__).parent.parent.parent
-        / "browser"
-        / "selectors"
-        / "x_selectors.json"
-    )
+    cfg_path = config_path or DEFAULT_X_SELECTORS_PATH
 
     try:
         async with manager.get_context("x", headless=True) as context:
@@ -142,12 +141,7 @@ async def trigger_autonomous_selector_healing(
             "healed_selector": None,
         }
 
-    cfg_path = config_path or str(
-        Path(__file__).parent.parent.parent
-        / "browser"
-        / "selectors"
-        / "x_selectors.json"
-    )
+    cfg_path = config_path or DEFAULT_X_SELECTORS_PATH
 
     try:
         async with manager.get_context("x", headless=True) as context:

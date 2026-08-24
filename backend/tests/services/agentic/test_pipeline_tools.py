@@ -47,7 +47,7 @@ from app.services.agentic.tools.verification_tools import (
 from tests.utils.utils import random_email, random_lower_string
 
 
-def _make_user(db: Session) -> User:
+def _make_user(*, db: Session) -> User:
     return crud.create_user(
         session=db,
         user_create=UserCreate(
@@ -59,7 +59,7 @@ def _make_user(db: Session) -> User:
 
 class TestContextTools:
     def test_get_latest_scraped_trends(self, db: Session) -> None:
-        user = _make_user(db)
+        user = _make_user(db=db)
         now = datetime.now(timezone.utc)
 
         topic = TrendingTopic(
@@ -78,7 +78,7 @@ class TestContextTools:
         assert any(t.topic_title == "AI Architecture 2026" for t in trends)
 
     def test_get_topic_tweets_and_summary(self, db: Session) -> None:
-        user = _make_user(db)
+        user = _make_user(db=db)
         now = datetime.now(timezone.utc)
 
         topic = TrendingTopic(
@@ -112,7 +112,7 @@ class TestContextTools:
         assert details.sample_tweets[0]["author"] == "@quantum_lab"
 
     def test_get_latest_published_post(self, db: Session) -> None:
-        user = _make_user(db)
+        user = _make_user(db=db)
         now = datetime.now(timezone.utc)
 
         post = Post(
@@ -134,7 +134,7 @@ class TestContextTools:
         assert pub_post.status == "published"
 
     def test_get_recent_post_history(self, db: Session) -> None:
-        user = _make_user(db)
+        user = _make_user(db=db)
 
         p1 = Post(owner_id=user.id, content="Draft 1", platform="x", status="draft")
         p2 = Post(
@@ -148,7 +148,7 @@ class TestContextTools:
         assert len(history) >= 2
 
     def test_get_social_account_status(self, db: Session) -> None:
-        user = _make_user(db)
+        user = _make_user(db=db)
 
         with patch(
             "app.services.agentic.tools.context_tools.BrowserManager"
@@ -343,7 +343,7 @@ class TestCurationTools:
 
 class TestPersistenceTools:
     def test_save_draft_post(self, db: Session) -> None:
-        user = _make_user(db)
+        user = _make_user(db=db)
 
         draft = save_draft_post(
             user_id=str(user.id),
@@ -356,7 +356,7 @@ class TestPersistenceTools:
         assert draft.method == "agent"
 
     def test_schedule_post_in_db(self, db: Session) -> None:
-        user = _make_user(db)
+        user = _make_user(db=db)
 
         target_time = (datetime.now(timezone.utc) + timedelta(hours=3)).isoformat()
         sched_post = schedule_post_in_db(
@@ -370,7 +370,7 @@ class TestPersistenceTools:
         assert sched_post.status == "scheduled"
 
     def test_update_and_delete_post_in_db(self, db: Session) -> None:
-        user = _make_user(db)
+        user = _make_user(db=db)
         p = Post(
             owner_id=user.id, content="Original text", platform="x", status="draft"
         )
@@ -393,7 +393,7 @@ class TestPersistenceTools:
 
     @pytest.mark.anyio
     async def test_publish_post_live_success(self, db: Session) -> None:
-        user = _make_user(db)
+        user = _make_user(db=db)
         p = Post(
             owner_id=user.id, content="Ready to publish", platform="x", status="draft"
         )
@@ -415,7 +415,7 @@ class TestPersistenceTools:
 
     @pytest.mark.anyio
     async def test_publish_post_live_linkedin_url(self, db: Session) -> None:
-        user = _make_user(db)
+        user = _make_user(db=db)
         p = Post(
             owner_id=user.id,
             content="Ready to publish on LinkedIn",
@@ -465,7 +465,7 @@ class TestVerificationTools:
 
     @pytest.mark.anyio
     async def test_verify_post_on_live_profile_matching(self, db: Session) -> None:
-        user = _make_user(db)
+        user = _make_user(db=db)
         p = Post(
             owner_id=user.id,
             content="Building the future of agentic coding and browser automation!",
@@ -509,7 +509,7 @@ class TestVerificationTools:
 
     @pytest.mark.anyio
     async def test_verify_post_url_status(self, db: Session) -> None:
-        user = _make_user(db)
+        user = _make_user(db=db)
         mock_page = AsyncMock()
         mock_page.inner_text.return_value = "Normal tweet content on active page"
         mock_context = AsyncMock()
@@ -538,7 +538,7 @@ class TestVerificationTools:
 class TestDiagnosticsTools:
     @pytest.mark.anyio
     async def test_inspect_dom_snippet(self, db: Session) -> None:
-        user = _make_user(db)
+        user = _make_user(db=db)
         mock_page = AsyncMock()
         mock_page.url = "https://x.com/home"
         mock_context = AsyncMock()
@@ -568,8 +568,8 @@ class TestDiagnosticsTools:
             assert "<div data-testid='tweetText'>" in res["dom_snippet"]
 
     @pytest.mark.anyio
-    async def test_test_and_patch_broken_selector(self, db: Session, tmp_path) -> None:
-        user = _make_user(db)
+    async def test_probe_and_patch_broken_selector(self, db: Session, tmp_path) -> None:
+        user = _make_user(db=db)
         mock_page = AsyncMock()
         mock_context = AsyncMock()
         mock_context.pages = [mock_page]
