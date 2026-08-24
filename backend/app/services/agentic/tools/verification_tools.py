@@ -21,6 +21,17 @@ from app.services.browser.manager import BrowserManager
 logger = logging.getLogger(__name__)
 
 
+def _calculate_token_overlap(exp_norm: str, act_norm: str) -> tuple[bool, float]:
+    """Compute token intersection ratio between normalized strings."""
+    exp_tokens = set(re.findall(r"\w+", exp_norm))
+    act_tokens = set(re.findall(r"\w+", act_norm))
+    if not exp_tokens or not act_tokens:
+        return False, 0.0
+    overlap = len(exp_tokens.intersection(act_tokens))
+    ratio = overlap / max(len(exp_tokens), 1)
+    return (ratio >= 0.7), ratio
+
+
 def _fuzzy_text_match(*, expected: str, actual: str) -> tuple[bool, float]:
     """Perform sanitized substring and token overlap matching between expected and actual text."""
     exp_norm = normalize_post_text(expected).lower().strip()
@@ -29,24 +40,13 @@ def _fuzzy_text_match(*, expected: str, actual: str) -> tuple[bool, float]:
     if not exp_norm or not act_norm:
         return False, 0.0
 
-    # Exact or substring match
     if exp_norm in act_norm or act_norm in exp_norm:
         return True, 1.0
 
-    # Prefix match (first 40 characters)
-    exp_prefix = exp_norm[:40]
-    if len(exp_prefix) >= 15 and exp_prefix in act_norm:
+    if len(exp_norm[:40]) >= 15 and exp_norm[:40] in act_norm:
         return True, 0.95
 
-    # Token set intersection
-    exp_tokens = set(re.findall(r"\w+", exp_norm))
-    act_tokens = set(re.findall(r"\w+", act_norm))
-    if not exp_tokens or not act_tokens:
-        return False, 0.0
-
-    overlap = len(exp_tokens.intersection(act_tokens))
-    ratio = overlap / max(len(exp_tokens), 1)
-    return (ratio >= 0.7), ratio
+    return _calculate_token_overlap(exp_norm, act_norm)
 
 
 async def _extract_profile_timeline_tweets(

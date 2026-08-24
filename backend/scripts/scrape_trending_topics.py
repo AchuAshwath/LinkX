@@ -543,34 +543,36 @@ async def _process_single_topic(
     return True, None
 
 
+def _should_abort_candidate_loop(failure: TopicFailure | None) -> bool:
+    """Check if topic failure represents an unrecoverable browser/account page state."""
+    if not failure or failure.reason != "page_state_error":
+        return False
+    detail = str(failure.detail)
+    return any(st in detail for st in ("logged_out", "rate_limited", "captcha"))
+
+
 async def _scrape_candidate_topics(ctx: CandidateScrapeContext) -> None:
     """Iterate through candidate topic URLs until max_topics are successfully scraped."""
     for target_id, is_href in ctx.news_urls:
         if ctx.result.topics_scraped >= ctx.max_topics:
             break
 
-        scraped, failure = await _process_single_topic(
-            TopicProcessContext(
-                page=ctx.page,
-                mouse=ctx.mouse,
-                target_id=target_id,
-                target_title=ctx.news_titles[target_id],
-                is_href=is_href,
-                db_user_id=ctx.db_user_id,
-                config=ctx.config,
-            )
+        proc_ctx = TopicProcessContext(
+            page=ctx.page,
+            mouse=ctx.mouse,
+            target_id=target_id,
+            target_title=ctx.news_titles[target_id],
+            is_href=is_href,
+            db_user_id=ctx.db_user_id,
+            config=ctx.config,
         )
+        scraped, failure = await _process_single_topic(proc_ctx)
         if scraped:
             ctx.result.topics_scraped += 1
         if failure:
             ctx.result.topics_failed.append(failure)
-            if failure.reason == "page_state_error" and any(
-                st in str(failure.detail)
-                for st in ("logged_out", "rate_limited", "captcha")
-            ):
-                logger.warning(
-                    f"Aborting candidate loop early due to unrecoverable page state: {failure.detail}"
-                )
+            if _should_abort_candidate_loop(failure):
+                logger.warning(f"Aborting candidate loop early: {failure.detail}")
                 break
 
 

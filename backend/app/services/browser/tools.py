@@ -93,23 +93,26 @@ DISALLOWED_GENERIC_SELECTORS = {
 }
 
 
+async def _check_nth_elements(locator: Any, count: int, timeout_ms: int) -> bool:
+    """Check if any subsequent elements (up to index 2) are visible."""
+    if not hasattr(locator, "nth"):
+        return False
+    for i in range(1, min(count, 3)):
+        elem = locator.nth(i)
+        if hasattr(elem, "is_visible") and await elem.is_visible(timeout=timeout_ms):
+            return True
+    return False
+
+
 async def _check_elements_visibility(
     locator: Any, *, count: int, timeout_ms: int
 ) -> bool:
     """Helper to check visibility of candidate element(s)."""
-    if hasattr(locator, "first") and hasattr(locator.first, "is_visible"):
-        if await locator.first.is_visible(timeout=timeout_ms):
-            return True
-        if hasattr(locator, "nth") and count > 1:
-            for i in range(1, min(count, 3)):
-                elem = locator.nth(i)
-                if hasattr(elem, "is_visible") and await elem.is_visible(
-                    timeout=timeout_ms
-                ):
-                    return True
-        return False
-    if hasattr(locator, "is_visible"):
-        return bool(await locator.is_visible(timeout=timeout_ms))
+    target = getattr(locator, "first", locator)
+    if hasattr(target, "is_visible") and await target.is_visible(timeout=timeout_ms):
+        return True
+    if count > 1:
+        return await _check_nth_elements(locator, count, timeout_ms)
     return False
 
 

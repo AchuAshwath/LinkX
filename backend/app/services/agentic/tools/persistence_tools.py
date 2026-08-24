@@ -23,8 +23,6 @@ def save_draft_post(
     user_id: str,
     content: str,
     platform: str = "x",
-    image_url: str | None = None,
-    method: str = "agent",
     session: Session | None = None,
 ) -> PostPublic | None:
     """Persist a new post draft to PostgreSQL with method='agent'."""
@@ -37,9 +35,8 @@ def save_draft_post(
     post_in = PostCreate(
         content=content,
         platform=platform,
-        method=method,
+        method="agent",
         status="draft",
-        image_url=image_url,
     )
 
     with resolve_session(session=session) as s:
@@ -51,10 +48,7 @@ def schedule_post_in_db(
     *,
     user_id: str,
     content: str,
-    platform: str,
     scheduled_at_iso: str,
-    image_url: str | None = None,
-    method: str = "agent",
     session: Session | None = None,
 ) -> PostPublic | None:
     """Create a scheduled post in PostgreSQL with future execution time validation."""
@@ -69,11 +63,10 @@ def schedule_post_in_db(
 
     post_in = PostCreate(
         content=content,
-        platform=platform,
-        method=method,
+        platform="x",
+        method="agent",
         status="scheduled",
         scheduled_at=scheduled_dt,
-        image_url=image_url,
     )
 
     with resolve_session(session=session) as s:

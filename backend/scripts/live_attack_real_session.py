@@ -123,6 +123,79 @@ async def _run_browser_healing_and_extraction(
     return topics
 
 
+def _run_db_injection_stress(topics: list[TrendingTopic]) -> None:
+    """Execute SQL injection, payload, and conflict stress test against PostgreSQL."""
+    from app import crud
+
+    with Session(engine) as db:
+        user = db.exec(select(User)).first()
+        if not user:
+            user = User(
+                email="chaos_test_user@linkx.dev",
+                hashed_password="fakehashedpassword123",
+                is_active=True,
+                is_superuser=True,
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+        user_id = user.id
+        print(f"👤 Target User ID : {user_id}")
+
+        saved_topics: list[TrendingTopic] = []
+        now = datetime.now(timezone.utc)
+
+        for t in topics[:3]:
+            topic_data = {
+                "user_id": user_id,
+                "topic_url": t.topic_url,
+                "topic_title": t.topic_title,
+                "category": t.category,
+                "post_count": t.post_count,
+                "last_seen_at": now,
+                "scraped_at": now,
+            }
+            db_topic = crud.upsert_trending_topic(session=db, topic_data=topic_data)
+            saved_topics.append(db_topic)
+
+        print(
+            f"✅ {GREEN}Successfully committed {len(saved_topics)} live topics to database via CRUD upsert.{RESET}"
+        )
+
+        sql_injection_payload = "AI Market Trends'; DROP TABLE trending_topic; SELECT * FROM users WHERE '1'='1"
+        giant_title = sql_injection_payload + (" A" * 1000)
+
+        injection_data = {
+            "user_id": user_id,
+            "topic_url": "https://x.com/search?q=SQL_Injection_Chaos_Test",
+            "topic_title": giant_title[:500],
+            "category": "Cybersecurity · Trending",
+            "post_count": 999999,
+            "last_seen_at": now,
+            "scraped_at": now,
+        }
+        crud.upsert_trending_topic(session=db, topic_data=injection_data)
+        print(
+            f"   ✅ {GREEN}SQL Injection payload safely parameterized & upserted without executing SQL!{RESET}"
+        )
+
+        for t in saved_topics:
+            dup_data = {
+                "user_id": user_id,
+                "topic_url": t.topic_url,
+                "topic_title": t.topic_title,
+                "category": t.category,
+                "post_count": t.post_count,
+                "last_seen_at": datetime.now(timezone.utc),
+                "scraped_at": datetime.now(timezone.utc),
+            }
+            crud.upsert_trending_topic(session=db, topic_data=dup_data)
+        print(
+            f"   ✅ {GREEN}Duplicate topic batch safely handled via ON CONFLICT DO UPDATE!{RESET}"
+        )
+
+
 async def run_live_real_session_attack() -> None:
     banner("🔥 ADVERSARIAL STRESS-TEST: REAL X.com SESSION TO DATABASE", RED)
     attack_config_path = Path("/tmp/live_attack_scrape_config.json")
@@ -131,8 +204,6 @@ async def run_live_real_session_attack() -> None:
     sub_header("ATTACK PHASE 1", "Session Discovery & Intentionally Corrupted Config")
     manager = BrowserManager()
     session_dir = manager.get_session_dir_path("x")
-    print(f"📁 Real Session Directory : {BOLD}{session_dir}{RESET}")
-    print(f"🔑 Session Exists (Cookies): {GREEN}{manager.session_exists('x')}{RESET}")
 
     if not manager.session_exists("x"):
         print(
@@ -159,101 +230,10 @@ async def run_live_real_session_attack() -> None:
             page, selectors_dict, attack_config_path
         )
 
-        for i, topic in enumerate(topics[:5], 1):
-            print(
-                f"   📌 {BOLD}Live Topic {i}:{RESET} {CYAN}{topic.topic_title}{RESET}"
-            )
-            print(f"      • Category   : {topic.category or 'Trending'}")
-            print(f"      • Post Count : {topic.post_count or 'N/A'}")
-            print(f"      • URL        : {DIM}{topic.topic_url}{RESET}")
-
         sub_header("ATTACK PHASE 6", "Database Transaction & Injection Stress Attack")
-        print(
-            "💾 Connecting to PostgreSQL to test transactional insertion & attack payloads..."
-        )
-
-        from app import crud
-
-        with Session(engine) as db:
-            # 1. Fetch or create a real user
-            user = db.exec(select(User)).first()
-            if not user:
-                user = User(
-                    email="chaos_test_user@linkx.dev",
-                    hashed_password="fakehashedpassword123",
-                    is_active=True,
-                    is_superuser=True,
-                )
-                db.add(user)
-                db.commit()
-                db.refresh(user)
-
-            user_id = user.id
-            print(f"👤 Target User ID : {user_id}")
-
-            # 2. Insert extracted live topics via CRUD UPSERT
-            saved_topics: list[TrendingTopic] = []
-            now = datetime.now(timezone.utc)
-
-            for t in topics[:3]:
-                topic_data = {
-                    "user_id": user_id,
-                    "topic_url": t.topic_url,
-                    "topic_title": t.topic_title,
-                    "category": t.category,
-                    "post_count": t.post_count,
-                    "last_seen_at": now,
-                    "scraped_at": now,
-                }
-                db_topic = crud.upsert_trending_topic(session=db, topic_data=topic_data)
-                saved_topics.append(db_topic)
-
-            print(
-                f"✅ {GREEN}Successfully committed {len(saved_topics)} live topics to database via CRUD upsert.{RESET}"
-            )
-
-            # 3. Adversarial Stress Test: SQL Injection & Giant Payload via CRUD UPSERT
-            print(
-                f"\n🧪 {BOLD}Stress Test A: SQL Injection & 5,000-char Topic Title Attack...{RESET}"
-            )
-            sql_injection_payload = "AI Market Trends'; DROP TABLE trending_topic; SELECT * FROM users WHERE '1'='1"
-            giant_title = sql_injection_payload + (" A" * 1000)
-
-            injection_data = {
-                "user_id": user_id,
-                "topic_url": "https://x.com/search?q=SQL_Injection_Chaos_Test",
-                "topic_title": giant_title[:500],  # sanitized length boundary
-                "category": "Cybersecurity · Trending",
-                "post_count": 999999,
-                "last_seen_at": now,
-                "scraped_at": now,
-            }
-            crud.upsert_trending_topic(session=db, topic_data=injection_data)
-            print(
-                f"   ✅ {GREEN}SQL Injection payload safely parameterized & upserted without executing SQL!{RESET}"
-            )
-
-            # 4. Adversarial Stress Test: Rapid Duplicate Insertion via CRUD UPSERT
-            print(
-                f"\n🧪 {BOLD}Stress Test B: Re-inserting identical topics (Idempotency & Conflicts)...{RESET}"
-            )
-            for t in saved_topics:
-                dup_data = {
-                    "user_id": user_id,
-                    "topic_url": t.topic_url,
-                    "topic_title": t.topic_title,
-                    "category": t.category,
-                    "post_count": t.post_count,
-                    "last_seen_at": datetime.now(timezone.utc),
-                    "scraped_at": datetime.now(timezone.utc),
-                }
-                crud.upsert_trending_topic(session=db, topic_data=dup_data)
-            print(
-                f"   ✅ {GREEN}Duplicate topic batch safely handled via ON CONFLICT DO UPDATE!{RESET}"
-            )
+        _run_db_injection_stress(topics)
 
         sub_header("ATTACK PHASE 7", "In-Memory Fast-Path Cache Verification")
-        print("⚡ Testing second lookup on healed selector...")
         t_fast_0 = time.perf_counter()
         await find_or_heal_element(
             page=page,

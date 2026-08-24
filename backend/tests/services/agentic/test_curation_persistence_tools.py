@@ -114,7 +114,6 @@ class TestPersistenceTools:
         sched_post = schedule_post_in_db(
             user_id=str(user.id),
             content="Scheduled agent post.",
-            platform="x",
             scheduled_at_iso=target_time,
             session=db,
         )

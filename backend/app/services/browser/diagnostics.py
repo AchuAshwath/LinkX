@@ -151,16 +151,25 @@ async def _check_error_banners(page: Any) -> str | None:
     return None
 
 
+async def _is_challenge_box(iframe: Any) -> bool:
+    """Check if iframe has visible bounding dimensions characteristic of a CAPTCHA."""
+    try:
+        if not await iframe.is_visible():
+            return False
+        box = await iframe.bounding_box()
+        return bool(box and box["width"] > 100 and box["height"] > 100)
+    except Exception:
+        return False
+
+
 async def _check_challenge_iframes(page: Any) -> str | None:
     """Check for visible, non-tracking CAPTCHA or challenge iframes/wrappers."""
     for sel in CHALLENGE_SELECTORS:
         try:
             locators = await page.locator(sel).all()
             for iframe in locators:
-                if await iframe.is_visible():
-                    box = await iframe.bounding_box()
-                    if box and box["width"] > 100 and box["height"] > 100:
-                        return "captcha"
+                if await _is_challenge_box(iframe):
+                    return "captcha"
         except Exception:
             pass
 
