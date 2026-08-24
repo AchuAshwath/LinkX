@@ -93,6 +93,26 @@ DISALLOWED_GENERIC_SELECTORS = {
 }
 
 
+async def _check_elements_visibility(
+    locator: Any, *, count: int, timeout_ms: int
+) -> bool:
+    """Helper to check visibility of candidate element(s)."""
+    if hasattr(locator, "first") and hasattr(locator.first, "is_visible"):
+        if await locator.first.is_visible(timeout=timeout_ms):
+            return True
+        if hasattr(locator, "nth") and count > 1:
+            for i in range(1, min(count, 3)):
+                elem = locator.nth(i)
+                if hasattr(elem, "is_visible") and await elem.is_visible(
+                    timeout=timeout_ms
+                ):
+                    return True
+        return False
+    if hasattr(locator, "is_visible"):
+        return bool(await locator.is_visible(timeout=timeout_ms))
+    return False
+
+
 async def validate_selector_candidate(
     page: Any,
     *,
@@ -115,22 +135,9 @@ async def validate_selector_candidate(
         if count == 0:
             return {"found": False, "visible": False, "count": 0, "error": None}
 
-        # Check if matching elements are visible
-        is_visible = False
-        if hasattr(locator, "first") and hasattr(locator.first, "is_visible"):
-            is_visible = bool(await locator.first.is_visible(timeout=timeout_ms))
-            if not is_visible and hasattr(locator, "nth") and count > 1:
-                limit = min(count, 3)
-                for i in range(1, limit):
-                    elem = locator.nth(i)
-                    if hasattr(elem, "is_visible") and await elem.is_visible(
-                        timeout=timeout_ms
-                    ):
-                        is_visible = True
-                        break
-        elif hasattr(locator, "is_visible"):
-            is_visible = bool(await locator.is_visible(timeout=timeout_ms))
-
+        is_visible = await _check_elements_visibility(
+            locator, count=count, timeout_ms=timeout_ms
+        )
         return {
             "found": True,
             "visible": is_visible,

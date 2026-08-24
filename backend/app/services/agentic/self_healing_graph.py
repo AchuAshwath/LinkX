@@ -125,20 +125,34 @@ async def apply_patch_node(state: SelfHealingState) -> dict[str, Any]:
     return {"status": "failed"}
 
 
+UNRECOVERABLE_PAGE_STATES = {
+    "logged_out",
+    "rate_limited",
+    "challenge",
+    "captcha",
+    "suspended",
+}
+
+
+def _should_abort_healing(diagnosis: SelectorDiagnosisReport) -> bool:
+    """Check if page state or diagnosis is unrecoverable via selector healing."""
+    if not diagnosis.is_recoverable:
+        return True
+    return diagnosis.page_state in UNRECOVERABLE_PAGE_STATES
+
+
 def _route_after_diagnosis(state: SelfHealingState) -> str:
     diagnosis = state.get("diagnosis")
-    if diagnosis and state.get("status") == "diagnosed":
-        if (
-            diagnosis.page_state
-            in {"logged_out", "rate_limited", "challenge", "captcha", "suspended"}
-            or not diagnosis.is_recoverable
-        ):
-            logger.warning(
-                f"Aborting self-healing: page state is '{diagnosis.page_state}', is_recoverable={diagnosis.is_recoverable}"
-            )
-            return END
-        return "verify_candidates"
-    return END
+    if not diagnosis or state.get("status") != "diagnosed":
+        return END
+
+    if _should_abort_healing(diagnosis):
+        logger.warning(
+            f"Aborting self-healing: page state is '{diagnosis.page_state}', is_recoverable={diagnosis.is_recoverable}"
+        )
+        return END
+
+    return "verify_candidates"
 
 
 def _route_after_verification(state: SelfHealingState) -> str:

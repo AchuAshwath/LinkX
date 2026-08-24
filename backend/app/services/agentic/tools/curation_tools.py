@@ -39,6 +39,28 @@ async def draft_social_post(
         return f"Trending: {topic_title}. {topic_summary or ''}".strip()
 
 
+def _get_platform_char_limit(*, platform: str, is_premium: bool) -> int:
+    """Return max character limit for specified platform."""
+    plat = platform.lower()
+    if plat == "linkedin":
+        return 3000
+    if plat == "x":
+        return 25000 if is_premium else 280
+    return 280
+
+
+def _check_image_validity(*, image_url: str | None, violations: list[str]) -> None:
+    """Validate image exists on local disk if URL is provided."""
+    if not image_url:
+        return
+    try:
+        local_path = resolve_image_path(image_url=image_url)
+        if not local_path.exists():
+            violations.append(f"Referenced image not found on disk: {image_url}")
+    except Exception as e:
+        violations.append(f"Invalid image URL/path: {e}")
+
+
 def validate_post_constraints(
     *,
     content: str,
@@ -52,14 +74,7 @@ def validate_post_constraints(
 
     normalized = normalize_post_text(content)
     char_count = len(normalized)
-
-    # Determine max limits
-    if platform.lower() == "linkedin":
-        max_limit = 3000
-    elif platform.lower() == "x":
-        max_limit = 25000 if is_premium else 280
-    else:  # 'linkx' or 'all'
-        max_limit = 280  # Most restrictive
+    max_limit = _get_platform_char_limit(platform=platform, is_premium=is_premium)
 
     if char_count > max_limit:
         violations.append(
@@ -70,16 +85,8 @@ def validate_post_constraints(
     if char_count == 0:
         violations.append("Post content is empty.")
 
-    # Image check if provided
-    if image_url:
-        try:
-            local_path = resolve_image_path(image_url=image_url)
-            if not local_path.exists():
-                violations.append(f"Referenced image not found on disk: {image_url}")
-        except Exception as e:
-            violations.append(f"Invalid image URL/path: {e}")
+    _check_image_validity(image_url=image_url, violations=violations)
 
-    # Check hashtag formatting
     if "#" not in content and platform.lower() in ("x", "linkedin", "linkx"):
         suggestions.append("Consider adding 1-2 relevant hashtags for discoverability.")
 

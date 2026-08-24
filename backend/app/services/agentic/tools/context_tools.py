@@ -109,7 +109,6 @@ def get_recent_post_history(
     user_id: str,
     platform: str | None = None,
     limit: int = 5,
-    status: str | None = None,
     session: Session | None = None,
 ) -> list[PostPublic]:
     """Retrieve recent posts history to prevent duplicate content and maintain continuity."""
@@ -123,8 +122,6 @@ def get_recent_post_history(
         statement = select(Post).where(Post.owner_id == user_uuid)
         if platform and platform != "all":
             statement = statement.where(Post.platform == platform)
-        if status:
-            statement = statement.where(Post.status == status)
 
         statement = statement.order_by(col(Post.created_at).desc()).limit(limit)
         posts = s.exec(statement).all()

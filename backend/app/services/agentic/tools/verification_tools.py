@@ -87,6 +87,37 @@ async def _extract_profile_timeline_tweets(
     return list(raw_tweets) if isinstance(raw_tweets, list) else []
 
 
+def _match_timeline_tweets(
+    *,
+    timeline_tweets: list[dict[str, Any]],
+    expected_content: str,
+    expected_ext_id: str | None,
+) -> tuple[bool, str | None, str | None, float]:
+    """Find best matching tweet on live timeline by external ID or fuzzy text."""
+    best_confidence = 0.0
+    matched_text: str | None = None
+    matched_id: str | None = None
+
+    for t in timeline_tweets:
+        t_text = t.get("text", "")
+        t_id = t.get("status_id")
+
+        if (
+            expected_ext_id
+            and t_id
+            and (expected_ext_id in str(t_id) or str(t_id) in expected_ext_id)
+        ):
+            return True, t_text, str(t_id), 1.0
+
+        is_match, conf = _fuzzy_text_match(expected=expected_content, actual=t_text)
+        if is_match and conf > best_confidence:
+            best_confidence = conf
+            matched_text = t_text
+            matched_id = str(t_id) if t_id else None
+
+    return best_confidence > 0.0, matched_text, matched_id, best_confidence
+
+
 async def verify_post_on_live_profile(
     *,
     user_id: str,
@@ -155,37 +186,13 @@ async def verify_post_on_live_profile(
                 page=page, limit=max_tweets_to_check
             )
 
-            # 4. Match against live tweets
-            match_found = False
-            best_confidence = 0.0
-            matched_text = None
-            matched_id = None
-
-            for t in timeline_tweets:
-                t_text = t.get("text", "")
-                t_id = t.get("status_id")
-
-                # Match by external post ID
-                if (
-                    expected_ext_id
-                    and t_id
-                    and (expected_ext_id in str(t_id) or str(t_id) in expected_ext_id)
-                ):
-                    match_found = True
-                    best_confidence = 1.0
-                    matched_text = t_text
-                    matched_id = str(t_id)
-                    break
-
-                # Fuzzy text matching
-                is_match, conf = _fuzzy_text_match(
-                    expected=expected_content, actual=t_text
+            match_found, matched_text, matched_id, best_confidence = (
+                _match_timeline_tweets(
+                    timeline_tweets=timeline_tweets,
+                    expected_content=expected_content,
+                    expected_ext_id=expected_ext_id,
                 )
-                if is_match and conf > best_confidence:
-                    match_found = True
-                    best_confidence = conf
-                    matched_text = t_text
-                    matched_id = str(t_id) if t_id else None
+            )
 
             return ProfileVerificationReport(
                 verified_live=match_found,

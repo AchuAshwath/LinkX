@@ -108,6 +108,49 @@ class SelectorCandidate(BaseModel):
         return data
 
 
+def _clean_diagnosis_dict(data: dict[str, Any]) -> None:
+    """Format nested diagnosis dict to string details and default page state."""
+    raw_diagnosis = data.get("diagnosis")
+    if isinstance(raw_diagnosis, dict):
+        parts = [
+            f"{k}: {v}"
+            for k, v in raw_diagnosis.items()
+            if isinstance(v, (str, int, float))
+        ]
+        data["diagnosis_detail"] = "; ".join(parts)
+        if not data.get("page_state"):
+            data["page_state"] = "authenticated"
+
+
+def _clean_single_candidate(item: Any) -> Any | None:
+    """Coerce string, dict, or model into valid candidate dict."""
+    if isinstance(item, SelectorCandidate):
+        return item
+    if isinstance(item, str):
+        return {"selector": item, "confidence": 0.9, "reasoning": "Proposed selector"}
+    if isinstance(item, dict):
+        sel = item.get("selector") or item.get("css_selector") or item.get("locator")
+        if sel:
+            return item
+    return None
+
+
+def _clean_candidates_list(data: dict[str, Any]) -> list[Any]:
+    """Coerce candidate list if passed under various names."""
+    raw = (
+        data.get("candidate_selectors")
+        or data.get("candidates")
+        or data.get("selectors")
+        or []
+    )
+    cleaned: list[Any] = []
+    for item in raw:
+        c = _clean_single_candidate(item)
+        if c is not None:
+            cleaned.append(c)
+    return cleaned
+
+
 class SelectorDiagnosisReport(BaseModel):
     """Diagnostic report produced by the vision agent when a Playwright selector fails."""
 
@@ -144,47 +187,8 @@ class SelectorDiagnosisReport(BaseModel):
     @classmethod
     def _coerce_report_fields(cls, data: Any) -> Any:
         if isinstance(data, dict):
-            # If LLM returned diagnosis as a dict (e.g. {"root_cause": "..."}), preserve it safely
-            raw_diagnosis = data.get("diagnosis")
-            if isinstance(raw_diagnosis, dict):
-                parts = [
-                    f"{k}: {v}"
-                    for k, v in raw_diagnosis.items()
-                    if isinstance(v, (str, int, float))
-                ]
-                data["diagnosis_detail"] = "; ".join(parts)
-                if not data.get("page_state"):
-                    data["page_state"] = "authenticated"
-
-            # Coerce candidate list if passed under various names
-            raw_candidates = (
-                data.get("candidate_selectors")
-                or data.get("candidates")
-                or data.get("selectors")
-                or []
-            )
-            cleaned_candidates: list[Any] = []
-            for item in raw_candidates:
-                if isinstance(item, SelectorCandidate):
-                    cleaned_candidates.append(item)
-                elif isinstance(item, str):
-                    cleaned_candidates.append(
-                        {
-                            "selector": item,
-                            "confidence": 0.9,
-                            "reasoning": "Proposed selector",
-                        }
-                    )
-                elif isinstance(item, dict):
-                    sel = (
-                        item.get("selector")
-                        or item.get("css_selector")
-                        or item.get("locator")
-                    )
-                    if sel:
-                        cleaned_candidates.append(item)
-
-            data["candidate_selectors"] = cleaned_candidates
+            _clean_diagnosis_dict(data)
+            data["candidate_selectors"] = _clean_candidates_list(data)
         return data
 
 

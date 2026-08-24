@@ -110,7 +110,7 @@ async def _expand_tweet(locator) -> None:
         if await fallback.count() > 0:
             await fallback.first.click(timeout=3000)
             await locator.page.wait_for_timeout(400)
-    except PlaywrightError:
+    except Exception:
         pass
 
 
@@ -131,30 +131,48 @@ async def extract_tweet_data(locator) -> dict | None:
         return None
 
 
-def parse_title_metadata(raw_title: str) -> dict:
+def _parse_prefixed_topic(
+    parts: list[str],
+) -> tuple[str, str | None, str | None, list[str]]:
+    """Parse topic blocks where first line contains category or trending marker."""
+    category = parts[0]
+    clean_title = parts[1]
+    post_count = parts[2] if len(parts) >= 3 else None
+    extra_lines = parts[3:] if len(parts) >= 4 else []
+    return clean_title, category, post_count, extra_lines
+
+
+def _parse_dot_separated_topic(
+    parts: list[str],
+) -> tuple[str, str | None, str | None, str | None, list[str]]:
+    """Parse topic blocks where second line contains dot-separated metadata."""
+    clean_title = parts[0]
+    meta_parts = [p.strip() for p in parts[1].split("·")]
+    time_ago = meta_parts[0] if len(meta_parts) >= 1 and meta_parts[0] else None
+    category = meta_parts[1] if len(meta_parts) >= 2 and meta_parts[1] else None
+    post_count = meta_parts[2] if len(meta_parts) >= 3 and meta_parts[2] else None
+    extra_lines = parts[2:]
+    return clean_title, category, post_count, time_ago, extra_lines
+
+
+def parse_title_metadata(raw_title: str) -> dict[str, Any]:
     """Parse the raw sidebar title block into structured fields."""
     parts = [p.strip() for p in raw_title.split("\n") if p.strip()]
     if not parts:
         return {"topic_title": raw_title, "raw_title_block": raw_title}
 
-    time_ago = None
-    category = None
-    post_count = None
-    clean_title = parts[0]
+    time_ago: str | None = None
+    category: str | None = None
+    post_count: str | None = None
+    clean_title: str = parts[0]
     extra_lines: list[str] = []
 
     if len(parts) >= 2 and ("·" in parts[0] or "trending" in parts[0].lower()):
-        category = parts[0]
-        clean_title = parts[1]
-        if len(parts) >= 3:
-            post_count = parts[2]
-            extra_lines = parts[3:]
+        clean_title, category, post_count, extra_lines = _parse_prefixed_topic(parts)
     elif len(parts) > 1:
-        meta_parts = [p.strip() for p in parts[1].split("·")]
-        time_ago = meta_parts[0] if len(meta_parts) >= 1 and meta_parts[0] else None
-        category = meta_parts[1] if len(meta_parts) >= 2 and meta_parts[1] else None
-        post_count = meta_parts[2] if len(meta_parts) >= 3 and meta_parts[2] else None
-        extra_lines = parts[2:]
+        clean_title, category, post_count, time_ago, extra_lines = (
+            _parse_dot_separated_topic(parts)
+        )
 
     return {
         "topic_title": clean_title,
@@ -644,6 +662,19 @@ async def navigate_to_trends(
     return post_state not in {"logged_out", "rate_limited", "captcha"}
 
 
+def _format_trend_url(identifier: str, *, is_url: bool, topic_title: str) -> str:
+    """Format full topic URL from identifier or topic title."""
+    if is_url:
+        return (
+            identifier
+            if identifier.startswith("http")
+            else f"https://x.com{identifier}"
+        )
+    import urllib.parse
+
+    return f"https://x.com/search?q={urllib.parse.quote(topic_title)}"
+
+
 async def extract_trending_sidebar(
     page: Any,
     *,
@@ -676,16 +707,7 @@ async def extract_trending_sidebar(
         raw_title = news_titles.get(identifier, "")
         meta = parse_title_metadata(raw_title)
         topic_title = meta.get("topic_title") or raw_title
-        if is_url:
-            full_url = (
-                identifier
-                if identifier.startswith("http")
-                else f"https://x.com{identifier}"
-            )
-        else:
-            import urllib.parse
-
-            full_url = f"https://x.com/search?q={urllib.parse.quote(topic_title)}"
+        full_url = _format_trend_url(identifier, is_url=is_url, topic_title=topic_title)
 
         topic = TrendingTopic(
             id=uuid.uuid4(),

@@ -20,6 +20,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 # Add backend directory to sys.path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -62,16 +63,11 @@ def sub_header(step: str, title: str) -> None:
     print(f"{DIM}{'-' * 70}{RESET}")
 
 
-async def run_live_real_session_attack() -> None:
-    banner("🔥 ADVERSARIAL STRESS-TEST: REAL X.com SESSION TO DATABASE", RED)
-
-    attack_config_path = Path("/tmp/live_attack_scrape_config.json")
-
-    # 1. Setup intentionally corrupted configuration
+def _setup_attack_config(attack_config_path: Path) -> dict[str, Any]:
+    """Create intentionally corrupted scraping config for attack stress test."""
     attack_config = {
         "max_topics_to_scrape": 3,
         "selectors": {
-            # BROKEN on purpose to force real live self-healing on production X.com
             "sidebar_container": "div[data-testid='totally_corrupted_sidebar_attack_v999']",
             "sidebar_link": "[data-testid='trend'], [data-testid^='news_sidebar_article'], a[href*='/search?q=']",
             "tweet_container": "[data-testid='tweet']",
@@ -83,100 +79,86 @@ async def run_live_real_session_attack() -> None:
     }
     with open(attack_config_path, "w", encoding="utf-8") as f:
         json.dump(attack_config, f, indent=2)
+    return attack_config
+
+
+async def _run_browser_healing_and_extraction(
+    page: Any,
+    selectors_dict: dict[str, Any],
+    attack_config_path: Path,
+) -> list[TrendingTopic]:
+    """Execute live selector miss, trigger supervisor, and extract trending topics."""
+    broken_sel = selectors_dict["selectors"]["sidebar_container"]
+    print(f"🔍 Probing broken selector '{broken_sel}' on LIVE X.com page...")
+
+    probe = await validate_selector_candidate(
+        page=page, selector=broken_sel, timeout_ms=800
+    )
+    if not probe["found"]:
+        print(f"❌ {RED}{BOLD}ELEMENT MISS DETECTED ON LIVE X.COM!{RESET}")
+        print(
+            f"🚨 {YELLOW}Invoking LangGraph Supervisor against 100% Real Live X.com DOM...{RESET}"
+        )
+
+    t_heal_0 = time.perf_counter()
+    await find_or_heal_element(
+        page=page,
+        selector_key="selectors.sidebar_container",
+        selectors_dict=selectors_dict,
+        config_path=attack_config_path,
+    )
+    t_heal = time.perf_counter() - t_heal_0
+    healed = selectors_dict["selectors"]["sidebar_container"]
+    print(
+        f"\n🎉 {GREEN}{BOLD}SELF-HEALING SUPERVISOR SUCCEEDED IN {t_heal:.2f}s!{RESET}"
+    )
+    print(f"   • {BOLD}Healed Selector (in-memory){RESET} : {GREEN}'{healed}'{RESET}")
+
+    print("📊 Extracting live trending topics with healed selector...")
+    topics = await extract_trending_sidebar(
+        page=page,
+        selectors=selectors_dict,
+        config_path=attack_config_path,
+    )
+    return topics
+
+
+async def run_live_real_session_attack() -> None:
+    banner("🔥 ADVERSARIAL STRESS-TEST: REAL X.com SESSION TO DATABASE", RED)
+    attack_config_path = Path("/tmp/live_attack_scrape_config.json")
+    attack_config = _setup_attack_config(attack_config_path)
 
     sub_header("ATTACK PHASE 1", "Session Discovery & Intentionally Corrupted Config")
     manager = BrowserManager()
     session_dir = manager.get_session_dir_path("x")
     print(f"📁 Real Session Directory : {BOLD}{session_dir}{RESET}")
     print(f"🔑 Session Exists (Cookies): {GREEN}{manager.session_exists('x')}{RESET}")
-    print(f"📄 Attack Config Path     : {BOLD}{attack_config_path}{RESET}")
-    print(
-        f"🔴 Corrupted Sidebar Sel  : {RED}{attack_config['selectors']['sidebar_container']}{RESET}"
-    )
 
     if not manager.session_exists("x"):
         print(
-            f"\n❌ {RED}{BOLD}ERROR: No session cookies found in {session_dir}. Please run headed_login first!{RESET}\n"
+            f"\n❌ {RED}{BOLD}ERROR: No session cookies found in {session_dir}.{RESET}\n"
         )
         return
 
     sub_header("ATTACK PHASE 2", "Launch Real Chrome & Navigate to Live X.com")
-    print("🌐 Launching Google Chrome with user's real authenticated profile...")
-
     async with manager.get_context("x", headless=True) as context:
         page = context.pages[0] if context.pages else await context.new_page()
         for p in context.pages[1:]:
             await p.close()
 
-        # Set standard desktop viewport to ensure X renders the right-hand trending sidebar
         await page.set_viewport_size({"width": 1280, "height": 900})
-
-        print("🧭 Navigating to https://x.com/explore/tabs/for-you...")
-        t0 = time.perf_counter()
         await page.goto(
             "https://x.com/explore/tabs/for-you",
             wait_until="domcontentloaded",
             timeout=25000,
         )
-        await asyncio.sleep(4)  # Allow live stream and sidebar hydration
-        nav_duration = time.perf_counter() - t0
-        print(
-            f"✅ Loaded live X.com in {BOLD}{nav_duration:.2f}s{RESET} (URL: {page.url})"
-        )
+        await asyncio.sleep(4)
 
         selectors_dict = json.loads(json.dumps(attack_config))
-
-        sub_header("ATTACK PHASE 3", "Trigger Scraper & Intercept Live Element Miss")
-        broken_sel = selectors_dict["selectors"]["sidebar_container"]
-        print(f"🔍 Probing broken selector '{broken_sel}' on LIVE X.com page...")
-
-        probe = await validate_selector_candidate(
-            page=page, selector=broken_sel, timeout_ms=800
-        )
-        if not probe["found"]:
-            print(f"❌ {RED}{BOLD}ELEMENT MISS DETECTED ON LIVE X.COM!{RESET}")
-            print(
-                f"🚨 {YELLOW}Invoking LangGraph Supervisor against 100% Real Live X.com DOM...{RESET}"
-            )
-        else:
-            print("⚠️ Warning: Broken selector unexpectedly matched something.")
-
-        sub_header("ATTACK PHASE 4", "Live AI Diagnosis & Live Candidate Probing")
-        t_heal_0 = time.perf_counter()
-
-        await find_or_heal_element(
-            page=page,
-            selector_key="selectors.sidebar_container",
-            selectors_dict=selectors_dict,
-            config_path=attack_config_path,
-        )
-        t_heal = time.perf_counter() - t_heal_0
-
-        healed_selector = selectors_dict["selectors"]["sidebar_container"]
-        print(
-            f"\n🎉 {GREEN}{BOLD}SELF-HEALING SUPERVISOR SUCCEEDED IN {t_heal:.2f}s!{RESET}"
-        )
-        print(
-            f"   • {BOLD}Healed Selector (in-memory){RESET} : {GREEN}'{healed_selector}'{RESET}"
+        topics = await _run_browser_healing_and_extraction(
+            page, selectors_dict, attack_config_path
         )
 
-        with open(attack_config_path, encoding="utf-8") as f:
-            persisted_config = json.load(f)
-        print(
-            f"   • {BOLD}Hot-Patched on Disk{RESET}        : {GREEN}'{persisted_config['selectors']['sidebar_container']}'{RESET}"
-        )
-
-        sub_header("ATTACK PHASE 5", "Live Data Extraction from Authenticated Feed")
-        print("📊 Extracting live trending topics with healed selector...")
-        topics = await extract_trending_sidebar(
-            page=page,
-            selectors=selectors_dict,
-            config_path=attack_config_path,
-        )
-
-        print(
-            f"\n✅ {GREEN}{BOLD}EXTRACTED {len(topics)} LIVE TRENDING TOPICS FROM YOUR REAL X FEED:{RESET}\n"
-        )
         for i, topic in enumerate(topics[:5], 1):
             print(
                 f"   📌 {BOLD}Live Topic {i}:{RESET} {CYAN}{topic.topic_title}{RESET}"

@@ -81,6 +81,21 @@ def schedule_post_in_db(
         return PostPublic.model_validate(db_post)
 
 
+def _construct_published_post_url(*, platform: str, ext_id: str | None) -> str | None:
+    """Format live post URL for X or LinkedIn from external ID."""
+    if not ext_id:
+        return None
+    if platform == "x" or "x:" in ext_id:
+        clean_id = ext_id.split("x:")[-1] if "x:" in ext_id else ext_id
+        return f"https://x.com/i/status/{clean_id}"
+    if platform == "linkedin" or "linkedin:" in ext_id:
+        clean_id = ext_id.split("linkedin:")[-1] if "linkedin:" in ext_id else ext_id
+        if clean_id.startswith("urn:li:"):
+            return f"https://www.linkedin.com/feed/update/{clean_id}"
+        return f"https://www.linkedin.com/feed/update/urn:li:share:{clean_id}"
+    return None
+
+
 async def publish_post_live(
     *,
     post_id: str,
@@ -128,25 +143,12 @@ async def publish_post_live(
                 error=result.payload.message,
             )
 
-        # Construct post URL
-        post_url = None
         ext_id = db_post.external_post_id or (
             result if isinstance(result, str) else None
         )
-        if ext_id:
-            if db_post.platform == "x" or "x:" in ext_id:
-                clean_id = ext_id.split("x:")[-1] if "x:" in ext_id else ext_id
-                post_url = f"https://x.com/i/status/{clean_id}"
-            elif db_post.platform == "linkedin" or "linkedin:" in ext_id:
-                clean_id = (
-                    ext_id.split("linkedin:")[-1] if "linkedin:" in ext_id else ext_id
-                )
-                if clean_id.startswith("urn:li:"):
-                    post_url = f"https://www.linkedin.com/feed/update/{clean_id}"
-                else:
-                    post_url = (
-                        f"https://www.linkedin.com/feed/update/urn:li:share:{clean_id}"
-                    )
+        post_url = _construct_published_post_url(
+            platform=db_post.platform, ext_id=ext_id
+        )
 
         return PublishResultReport(
             success=True,

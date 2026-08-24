@@ -69,7 +69,6 @@ async def probe_and_patch_broken_selector(
     user_id: str,
     selector_key: str,
     candidate_selector: str,
-    target_url: str = "https://x.com/home",
     config_path: str | None = None,
 ) -> dict[str, Any]:
     """Test a candidate CSS/XPath selector on live page; if valid and visible,
@@ -83,6 +82,7 @@ async def probe_and_patch_broken_selector(
         }
 
     cfg_path = config_path or DEFAULT_X_SELECTORS_PATH
+    target_url = "https://x.com/home"
 
     try:
         async with manager.get_context("x", headless=True) as context:
