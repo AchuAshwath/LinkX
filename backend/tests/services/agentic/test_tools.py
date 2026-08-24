@@ -12,6 +12,7 @@ from app.services.browser.tools import (
     patch_selector_config,
     validate_selector_candidate,
 )
+from tests.helpers.mock_browser import build_mock_locator
 
 
 @pytest.mark.anyio
@@ -47,11 +48,7 @@ async def test_get_dom_snippet_truncates_large_dom() -> None:
 
 @pytest.mark.anyio
 async def test_validate_selector_candidate_success() -> None:
-    mock_locator = AsyncMock()
-    mock_locator.count = AsyncMock(return_value=1)
-    mock_locator.first = mock_locator
-    mock_locator.is_visible = AsyncMock(return_value=True)
-
+    mock_locator = build_mock_locator(count=1, is_visible=True)
     mock_page = MagicMock()
     mock_page.locator = MagicMock(return_value=mock_locator)
 
@@ -67,11 +64,7 @@ async def test_validate_selector_candidate_success() -> None:
 
 @pytest.mark.anyio
 async def test_validate_selector_candidate_failure() -> None:
-    mock_locator = AsyncMock()
-    mock_locator.count = AsyncMock(return_value=0)
-    mock_locator.first = mock_locator
-    mock_locator.is_visible = AsyncMock(return_value=False)
-
+    mock_locator = build_mock_locator(count=0, is_visible=False)
     mock_page = MagicMock()
     mock_page.locator = MagicMock(return_value=mock_locator)
 

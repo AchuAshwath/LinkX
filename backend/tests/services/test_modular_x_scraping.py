@@ -18,6 +18,7 @@ from scripts.scrape_trending_topics import (
     navigate_to_trends,
     scrape_trending_topics,
 )
+from tests.helpers.mock_browser import build_mock_locator
 
 
 @pytest.mark.anyio
@@ -57,14 +58,10 @@ async def test_modular_extract_trending_sidebar() -> None:
         return_value="Technology · Trending\nLangGraph\n25.4K posts"
     )
 
-    mock_links_locator = MagicMock()
-    mock_links_locator.all = AsyncMock(return_value=[mock_link])
-
-    mock_sidebar = MagicMock()
-    mock_sidebar.count = AsyncMock(return_value=1)
-    mock_sidebar.first = mock_sidebar
-    mock_sidebar.is_visible = AsyncMock(return_value=True)
-    mock_sidebar.locator = MagicMock(return_value=mock_links_locator)
+    mock_sidebar = build_mock_locator(count=1, is_visible=True)
+    mock_sidebar.locator = MagicMock(
+        return_value=build_mock_locator(count=1, all_items=[mock_link])
+    )
 
     mock_page = MagicMock()
     mock_page.locator = MagicMock(return_value=mock_sidebar)
