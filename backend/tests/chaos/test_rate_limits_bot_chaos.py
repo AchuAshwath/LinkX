@@ -9,20 +9,7 @@ import pytest
 
 from app.services.browser.diagnostics import detect_page_state
 from scripts.scrape_trending_topics import scrape_trending_topics
-
-
-def _build_mock_locator(
-    *, count: int = 1, all_items: list[Any] | None = None
-) -> AsyncMock:
-    loc = AsyncMock()
-    loc.count = AsyncMock(return_value=count)
-    loc.first = AsyncMock()
-    loc.first.count = AsyncMock(return_value=count)
-    loc.all = AsyncMock(
-        return_value=all_items if all_items is not None else [AsyncMock()] * count
-    )
-    loc.is_visible = AsyncMock(return_value=True)
-    return loc
+from tests.helpers.mock_browser import build_mock_locator
 
 
 class TestRateLimitsAndBotChallenges:
@@ -35,8 +22,8 @@ class TestRateLimitsAndBotChallenges:
 
         def loc_rl(selector: str) -> Any:
             if selector == "text=Rate limit exceeded":
-                return _build_mock_locator(count=1)
-            return _build_mock_locator(count=0)
+                return build_mock_locator(count=1)
+            return build_mock_locator(count=0)
 
         page_rl.locator = MagicMock(side_effect=loc_rl)
         state = await detect_page_state(page_rl)
@@ -46,8 +33,8 @@ class TestRateLimitsAndBotChallenges:
 
         def loc_sww(selector: str) -> Any:
             if selector == "text=Something went wrong":
-                return _build_mock_locator(count=1)
-            return _build_mock_locator(count=0)
+                return build_mock_locator(count=1)
+            return build_mock_locator(count=0)
 
         page_sww.locator = MagicMock(side_effect=loc_sww)
         state = await detect_page_state(page_sww)
@@ -57,8 +44,8 @@ class TestRateLimitsAndBotChallenges:
 
         def loc_locked(selector: str) -> Any:
             if selector == "text=Your account has been locked":
-                return _build_mock_locator(count=1)
-            return _build_mock_locator(count=0)
+                return build_mock_locator(count=1)
+            return build_mock_locator(count=0)
 
         page_locked.locator = MagicMock(side_effect=loc_locked)
         state_locked = await detect_page_state(page_locked)
@@ -74,8 +61,8 @@ class TestRateLimitsAndBotChallenges:
 
         def loc_tracking(selector: str) -> Any:
             if selector == "iframe[src*='captcha']":
-                return _build_mock_locator(count=1, all_items=[mock_tracking_iframe])
-            return _build_mock_locator(count=0)
+                return build_mock_locator(count=1, all_items=[mock_tracking_iframe])
+            return build_mock_locator(count=0)
 
         page_tracking.locator = MagicMock(side_effect=loc_tracking)
         state_tracking = await detect_page_state(page_tracking)
@@ -90,8 +77,8 @@ class TestRateLimitsAndBotChallenges:
 
         def loc_captcha(selector: str) -> Any:
             if selector == "iframe[src*='captcha']":
-                return _build_mock_locator(count=1, all_items=[mock_captcha_iframe])
-            return _build_mock_locator(count=0)
+                return build_mock_locator(count=1, all_items=[mock_captcha_iframe])
+            return build_mock_locator(count=0)
 
         page_captcha.locator = MagicMock(side_effect=loc_captcha)
         state_captcha = await detect_page_state(page_captcha)
@@ -111,8 +98,8 @@ class TestRateLimitsAndBotChallenges:
 
         def loc_arkose(selector: str) -> Any:
             if "arkose" in selector or "arkoselabs" in selector:
-                return _build_mock_locator(count=1, all_items=[mock_arkose_iframe])
-            return _build_mock_locator(count=0)
+                return build_mock_locator(count=1, all_items=[mock_arkose_iframe])
+            return build_mock_locator(count=0)
 
         page_arkose.locator = MagicMock(side_effect=loc_arkose)
         state_arkose = await detect_page_state(page_arkose)
@@ -120,7 +107,7 @@ class TestRateLimitsAndBotChallenges:
 
         page_cf = AsyncMock(url="https://x.com")
         page_cf.title = AsyncMock(return_value="Just a moment...")
-        page_cf.locator = MagicMock(return_value=_build_mock_locator(count=0))
+        page_cf.locator = MagicMock(return_value=build_mock_locator(count=0))
         state_cf = await detect_page_state(page_cf)
         assert state_cf == "captcha"
 
@@ -133,8 +120,8 @@ class TestRateLimitsAndBotChallenges:
 
         def loc_fn(selector: str) -> Any:
             if selector == "text=Rate limit exceeded":
-                return _build_mock_locator(count=1)
-            return _build_mock_locator(count=0)
+                return build_mock_locator(count=1)
+            return build_mock_locator(count=0)
 
         mock_page.locator = MagicMock(side_effect=loc_fn)
 

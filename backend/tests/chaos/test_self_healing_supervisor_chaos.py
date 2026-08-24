@@ -16,6 +16,69 @@ from app.services.browser.tools import (
     find_or_heal_element,
     patch_selector_config,
 )
+from tests.helpers.mock_browser import build_mock_locator
+
+
+def _build_adversarial_diagnosis() -> SelectorDiagnosisReport:
+    """Build adversarial candidate diagnosis with invalid pseudo, detached, and hidden selectors."""
+    return SelectorDiagnosisReport(
+        broken_element_name="compose.post_input",
+        page_state="authenticated",
+        is_recoverable=True,
+        candidate_selectors=[
+            SelectorCandidate(
+                selector="div[[[malformed---pseudo",
+                confidence=0.99,
+                reasoning="Hallucinated",
+            ),
+            SelectorCandidate(
+                selector="div.detached",
+                confidence=0.95,
+                reasoning="Detached element",
+            ),
+            SelectorCandidate(
+                selector="div.hidden-input",
+                confidence=0.90,
+                reasoning="Hidden element",
+            ),
+            SelectorCandidate(
+                selector="div[data-testid='tweetTextarea_0']",
+                confidence=0.85,
+                reasoning="Valid match",
+            ),
+        ],
+    )
+
+
+def _build_adversarial_page() -> AsyncMock:
+    """Build mock page with dispatching locators simulating various DOM failure modes."""
+    mock_page = AsyncMock()
+    mock_page.evaluate = AsyncMock(
+        return_value="<div data-testid='tweetTextarea_0'>Valid Textarea</div>"
+    )
+    mock_valid_loc = build_mock_locator(count=1, is_visible=True)
+    mock_hidden_loc = build_mock_locator(count=1, is_visible=False)
+
+    def locator_dispatch(sel: str) -> Any:
+        if sel == "div[[[malformed---pseudo":
+            raise Exception("DOMException: Invalid selector")
+        if sel == "div.detached":
+            loc = MagicMock()
+            loc.count = AsyncMock(return_value=1)
+            loc.first = loc
+            loc.nth = MagicMock(return_value=loc)
+            loc.is_visible = AsyncMock(
+                side_effect=Exception("Element detached from DOM")
+            )
+            return loc
+        if sel == "div.hidden-input":
+            return mock_hidden_loc
+        if sel == "div[data-testid='tweetTextarea_0']":
+            return mock_valid_loc
+        return build_mock_locator(count=0, is_visible=False)
+
+    mock_page.locator = MagicMock(side_effect=locator_dispatch)
+    return mock_page
 
 
 class TestSelfHealingSupervisorChaos:
@@ -29,72 +92,8 @@ class TestSelfHealingSupervisorChaos:
         config_file = tmp_path / "selectors.json"
         config_file.write_text('{"compose": {"post_input": "broken_old"}}')
 
-        mock_page = AsyncMock()
-        mock_page.evaluate = AsyncMock(
-            return_value="<div data-testid='tweetTextarea_0'>Valid Textarea</div>"
-        )
-
-        mock_valid_loc = AsyncMock()
-        mock_valid_loc.count = AsyncMock(return_value=1)
-        mock_valid_loc.first = mock_valid_loc
-        mock_valid_loc.is_visible = AsyncMock(return_value=True)
-
-        mock_hidden_loc = AsyncMock()
-        mock_hidden_loc.count = AsyncMock(return_value=1)
-        mock_hidden_loc.first = mock_hidden_loc
-        mock_hidden_loc.is_visible = AsyncMock(return_value=False)
-
-        def locator_dispatch(sel: str) -> Any:
-            if sel == "div[[[malformed---pseudo":
-                raise Exception("DOMException: Invalid selector")
-            if sel == "div.detached":
-                loc = AsyncMock()
-                loc.count = AsyncMock(return_value=1)
-                loc.first = loc
-                loc.is_visible = AsyncMock(
-                    side_effect=Exception("Element detached from DOM")
-                )
-                return loc
-            if sel == "div.hidden-input":
-                return mock_hidden_loc
-            if sel == "div[data-testid='tweetTextarea_0']":
-                return mock_valid_loc
-            broken = AsyncMock()
-            broken.count = AsyncMock(return_value=0)
-            broken.first = broken
-            broken.is_visible = AsyncMock(return_value=False)
-            return broken
-
-        mock_page.locator = MagicMock(side_effect=locator_dispatch)
-
-        diagnosis = SelectorDiagnosisReport(
-            broken_element_name="compose.post_input",
-            page_state="authenticated",
-            is_recoverable=True,
-            candidate_selectors=[
-                SelectorCandidate(
-                    selector="div[[[malformed---pseudo",
-                    confidence=0.99,
-                    reasoning="Hallucinated",
-                ),
-                SelectorCandidate(
-                    selector="div.detached",
-                    confidence=0.95,
-                    reasoning="Detached element",
-                ),
-                SelectorCandidate(
-                    selector="div.hidden-input",
-                    confidence=0.90,
-                    reasoning="Hidden element",
-                ),
-                SelectorCandidate(
-                    selector="div[data-testid='tweetTextarea_0']",
-                    confidence=0.85,
-                    reasoning="Valid match",
-                ),
-            ],
-        )
-
+        mock_page = _build_adversarial_page()
+        diagnosis = _build_adversarial_diagnosis()
         mock_structured_model = AsyncMock(ainvoke=AsyncMock(return_value=diagnosis))
 
         with patch(

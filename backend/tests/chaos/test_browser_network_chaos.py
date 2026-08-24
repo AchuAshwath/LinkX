@@ -61,50 +61,7 @@ from scripts.scrape_trending_topics import (
     navigate_to_trends,
     scrape_trending_topics,
 )
-
-
-def _build_mock_locator(
-    *,
-    count: int = 0,
-    is_visible: bool = False,
-    inner_text: str = "",
-    attribute_val: str | None = None,
-    all_items: list[Any] | None = None,
-) -> MagicMock:
-    """Helper to construct Playwright-like async locators."""
-    loc = MagicMock()
-    loc.count = AsyncMock(return_value=count)
-    loc.is_visible = AsyncMock(return_value=is_visible)
-    loc.inner_text = AsyncMock(return_value=inner_text)
-    loc.get_attribute = AsyncMock(return_value=attribute_val)
-    loc.first = loc
-    loc.nth = MagicMock(return_value=loc)
-    loc.all = AsyncMock(return_value=all_items or [])
-    loc.filter = MagicMock(return_value=loc)
-    loc.click = AsyncMock()
-    loc.evaluate = AsyncMock()
-    return loc
-
-
-def _build_mock_tweet(text: str, raw: str) -> MagicMock:
-    """Helper to construct a tweet article locator with proper sub-locators."""
-    tweet = MagicMock()
-    tweet_text_loc = _build_mock_locator(count=1, inner_text=text)
-    show_more_loc = _build_mock_locator(count=0)
-    generic_empty = _build_mock_locator(count=0)
-
-    def loc_fn(selector: str) -> Any:
-        if "tweet-text-show-more-link" in selector:
-            return show_more_loc
-        if "tweetText" in selector:
-            return tweet_text_loc
-        return generic_empty
-
-    tweet.locator = MagicMock(side_effect=loc_fn)
-    tweet.inner_text = AsyncMock(return_value=raw)
-    tweet.page = AsyncMock()
-    return tweet
-
+from tests.helpers.mock_browser import build_mock_locator
 
 # ==============================================================================
 # 1. MID-SCRAPE SESSION INVALIDATION TESTS
@@ -120,7 +77,7 @@ class TestMidScrapeSessionInvalidation:
         mock_page = AsyncMock()
         mock_page.url = "https://x.com/i/flow/login"
 
-        mock_locator = _build_mock_locator(count=1, is_visible=True)
+        mock_locator = build_mock_locator(count=1, is_visible=True)
         mock_page.locator = MagicMock(return_value=mock_locator)
 
         # wait_for_selector times out waiting for tweets on the login page
@@ -154,7 +111,7 @@ class TestMidScrapeSessionInvalidation:
         mock_page = AsyncMock()
         mock_page.url = "https://x.com/login"
 
-        mock_locator = _build_mock_locator(count=1, is_visible=True)
+        mock_locator = build_mock_locator(count=1, is_visible=True)
         mock_page.locator = MagicMock(return_value=mock_locator)
         mock_page.wait_for_selector = AsyncMock()
 
@@ -195,8 +152,8 @@ class TestMidScrapeSessionInvalidation:
             return_value='<div role="main" data-testid="loginForm"><input name="username"/><button>Log in</button></div>'
         )
 
-        mock_broken = _build_mock_locator(count=0, is_visible=False)
-        mock_login_elem = _build_mock_locator(count=1, is_visible=True)
+        mock_broken = build_mock_locator(count=0, is_visible=False)
+        mock_login_elem = build_mock_locator(count=1, is_visible=True)
 
         def locator_side_effect(sel: str) -> Any:
             if sel == "div[data-testid='loginForm']":
@@ -264,8 +221,8 @@ class TestMidScrapeSessionInvalidation:
             return_value='<div role="main" data-testid="loginForm"><input name="username"/><button>Log in</button></div>'
         )
 
-        mock_broken = _build_mock_locator(count=0, is_visible=False)
-        mock_login_elem = _build_mock_locator(count=1, is_visible=True)
+        mock_broken = build_mock_locator(count=0, is_visible=False)
+        mock_login_elem = build_mock_locator(count=1, is_visible=True)
 
         def locator_side_effect(sel: str) -> Any:
             if sel == "div[data-testid='loginForm']":
@@ -323,7 +280,7 @@ class TestMidScrapeSessionInvalidation:
         mock_page.url = "https://x.com/home"
 
         def loc_fn(_sel: str) -> Any:
-            return _build_mock_locator(count=0, is_visible=False)
+            return build_mock_locator(count=0, is_visible=False)
 
         mock_page.locator = MagicMock(side_effect=loc_fn)
 
@@ -350,7 +307,7 @@ class TestMidScrapeSessionInvalidation:
         mock_page.goto = AsyncMock()
 
         def loc_fn(_sel: str) -> Any:
-            return _build_mock_locator(count=0, is_visible=False)
+            return build_mock_locator(count=0, is_visible=False)
 
         mock_page.locator = MagicMock(side_effect=loc_fn)
 
