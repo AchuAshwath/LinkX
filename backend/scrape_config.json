@@ -5,8 +5,8 @@
   "max_delay_between_topics": 7.0,
   "output_directory": "./data/scraped_trends",
   "selectors": {
-    "sidebar_container": "[data-testid='sidebarColumn']",
-    "sidebar_link": "[data-testid^='news_sidebar_article'], a[href*='/search?q=']",
+    "sidebar_container": "[data-testid='sidebarColumn'], [data-testid='primaryColumn']",
+    "sidebar_link": "[data-testid='trend'], [data-testid^='news_sidebar_article'], a[href*='/search?q=']",
     "tweet_container": "[data-testid='tweet']",
     "summary_selectors": [
       "xpath=//nav[@aria-label='Trend Timeline']/preceding-sibling::div[1]",

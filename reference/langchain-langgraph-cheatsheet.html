@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Reference: LangChain & LangGraph Architecture Cheat Sheet</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <span class="badge">Reference Cheat Sheet</span>
+      <h1>LangGraph & LangChain Quick Reference for LinkX</h1>
+    </header>
+
+    <h2>1. Defining State</h2>
+    <pre><code>from typing import TypedDict, Annotated
+from langgraph.graph.message import add_messages
+
+class AgentState(TypedDict):
+    task_id: str
+    target_selector: str
+    screenshot_b64: str | None
+    dom_snapshot: str | None
+    verified_selector: str | None
+    retry_count: int
+    status: str</code></pre>
+
+    <h2>2. Defining Nodes & Tools</h2>
+    <pre><code># Node function: receives state, returns dictionary of updates
+async def diagnose_node(state: AgentState) -> dict:
+    vision_model = get_vision_model()
+    # Call with structured schema
+    report = await vision_model.with_structured_output(SelectorDiagnosisReport).ainvoke(
+        [{"type": "image_url", "image_url": {"url": f"data:image/png;base64,{state['screenshot_b64']}"}}]
+    )
+    return {"verified_selector": report.candidate_selectors[0].selector}</code></pre>
+
+    <h2>3. Constructing the StateGraph</h2>
+    <pre><code>from langgraph.graph import StateGraph, START, END
+
+builder = StateGraph(AgentState)
+
+# Add Nodes
+builder.add_node("execute", execute_action_node)
+builder.add_node("diagnose", diagnose_node)
+builder.add_node("patch", patch_config_node)
+
+# Flow & Edges
+builder.add_edge(START, "execute")
+
+# Conditional Routing (Self-healing branch)
+def route_after_execution(state: AgentState) -> str:
+    if state["status"] == "success":
+        return END
+    if state["retry_count"] >= 3:
+        return END
+    return "diagnose"
+
+builder.add_conditional_edges("execute", route_after_execution)
+builder.add_edge("diagnose", "patch")
+builder.add_edge("patch", "execute") # Cycle back!
+
+# Compile
+graph = builder.compile()</code></pre>
+
+    <div class="footer">
+      <p>LinkX Reference Guide — Reusable Agentic Automation</p>
+    </div>
+  </div>
+</body>
+</html>

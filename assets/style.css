@@ -1,0 +1,199 @@
+:root {
+  --bg-color: #0f172a;
+  --card-bg: #1e293b;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --primary: #38bdf8;
+  --primary-hover: #0ea5e9;
+  --accent: #a855f7;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --border: #334155;
+  --code-bg: #090d16;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-main);
+  line-height: 1.7;
+  padding: 2.5rem 1.5rem;
+}
+
+.container {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+header {
+  margin-bottom: 2.5rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 1.5rem;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  background: rgba(56, 189, 248, 0.15);
+  color: var(--primary);
+  border-radius: 9999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+h1 {
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: #ffffff;
+  margin-bottom: 0.5rem;
+}
+
+h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin: 2rem 0 1rem 0;
+}
+
+h3 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin: 1.5rem 0 0.5rem 0;
+}
+
+p, ul, ol {
+  margin-bottom: 1.25rem;
+  color: #cbd5e1;
+}
+
+ul, ol {
+  padding-left: 1.5rem;
+}
+
+li {
+  margin-bottom: 0.5rem;
+}
+
+strong {
+  color: #ffffff;
+}
+
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+}
+
+.card.accent-border {
+  border-left: 4px solid var(--primary);
+}
+
+.card.success-border {
+  border-left: 4px solid var(--success);
+}
+
+.card.warning-border {
+  border-left: 4px solid var(--warning);
+}
+
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  overflow-x: auto;
+  font-family: "JetBrains Mono", Consolas, Monaco, "Courier New", monospace;
+  font-size: 0.9rem;
+  color: #38bdf8;
+  margin-bottom: 1.5rem;
+}
+
+code {
+  font-family: "JetBrains Mono", Consolas, Monaco, "Courier New", monospace;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.88rem;
+  color: #38bdf8;
+}
+
+.diagram-box {
+  background: #020617;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+  text-align: center;
+  font-family: monospace;
+  white-space: pre;
+  color: #a855f7;
+  line-height: 1.4;
+  overflow-x: auto;
+}
+
+.quiz-container {
+  background: #1e1b4b;
+  border: 1px solid #4338ca;
+  border-radius: 12px;
+  padding: 1.75rem;
+  margin: 2rem 0;
+}
+
+.quiz-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  padding: 0.85rem 1.25rem;
+  border-radius: 8px;
+  color: #f8fafc;
+  font-size: 0.95rem;
+  margin-bottom: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.quiz-option:hover {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: var(--primary);
+}
+
+.quiz-feedback {
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 8px;
+  display: none;
+  font-size: 0.95rem;
+}
+
+.quiz-feedback.correct {
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid var(--success);
+  color: #34d399;
+}
+
+.quiz-feedback.incorrect {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid var(--danger);
+  color: #f87171;
+}
+
+.footer {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}

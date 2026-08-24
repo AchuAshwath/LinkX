@@ -88,3 +88,23 @@ def test_with_structured_output_binding() -> None:
     model = get_chat_model()
     structured_model = model.with_structured_output(ExtractedTrendingTopic)
     assert structured_model is not None
+
+
+def test_selector_candidate_string_and_invalid_confidence_coercion() -> None:
+    """Test G14: non-numeric confidence fallback, string candidate coercion, and description alias."""
+    # 1. Plain string coercion
+    c_str = SelectorCandidate.model_validate("div.my-btn")
+    assert c_str.selector == "div.my-btn"
+    assert c_str.confidence == 0.85
+
+    # 2. Non-numeric confidence string 'high' -> ValueError caught -> fallback to 0.85
+    c_invalid = SelectorCandidate.model_validate(
+        {"selector": "button.submit", "confidence": "high"}
+    )
+    assert c_invalid.confidence == 0.85
+
+    # 3. Description field aliasing to reasoning
+    c_desc = SelectorCandidate.model_validate(
+        {"selector": "input#search", "description": "Search input box"}
+    )
+    assert c_desc.reasoning == "Search input box"

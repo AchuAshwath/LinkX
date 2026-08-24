@@ -123,6 +123,18 @@ async def detect_page_state(page: Any) -> str:
     if "/login" in url or "/i/flow/login" in url:
         return "logged_out"
 
+    # Check for challenge page titles (e.g. Cloudflare, Arkose)
+    try:
+        title = (await page.title()).lower() if hasattr(page, "title") else ""
+        if (
+            "just a moment" in title
+            or "attention required" in title
+            or "security check" in title
+        ):
+            return "captcha"
+    except Exception:
+        pass
+
     # Check for "Something went wrong" error banner
     try:
         error_count = await page.locator("text=Something went wrong").count()
@@ -139,19 +151,41 @@ async def detect_page_state(page: Any) -> str:
     except Exception:
         pass
 
-    # Check for CAPTCHA — only flag if visible and takes up real screen space.
+    # Check for CAPTCHA, Arkose Labs, and Cloudflare Turnstile challenges —
+    # only flag if visible and takes up real screen space (>100x100px).
     # X.com uses hidden iframe[src*='challenge'] for normal tracking; those
     # are NOT actual CAPTCHA walls and must not trigger a false positive.
     try:
-        captcha_locators = await page.locator("iframe[src*='captcha']").all()
-        for iframe in captcha_locators:
-            if await iframe.is_visible():
-                box = await iframe.bounding_box()
-                if box and box["width"] > 100 and box["height"] > 100:
-                    logger.warning(
-                        f"CAPTCHA iframe detected: {box['width']}x{box['height']}px"
-                    )
-                    return "captcha"
+        challenge_selectors = [
+            "iframe[src*='captcha']",
+            "iframe[src*='arkose']",
+            "iframe[src*='arkoselabs']",
+            "iframe[src*='turnstile']",
+            "iframe[src*='challenges.cloudflare.com']",
+            "iframe[title*='challenge']",
+            "iframe[title*='reCAPTCHA']",
+            "iframe[title*='Arkose']",
+        ]
+        for sel in challenge_selectors:
+            locators = await page.locator(sel).all()
+            for iframe in locators:
+                if await iframe.is_visible():
+                    box = await iframe.bounding_box()
+                    if box and box["width"] > 100 and box["height"] > 100:
+                        logger.warning(
+                            f"CAPTCHA/Challenge iframe detected ({sel}): {box['width']}x{box['height']}px"
+                        )
+                        return "captcha"
+    except Exception:
+        pass
+
+    # Check for Cloudflare challenge wrapper elements
+    try:
+        cf_challenge = await page.locator(
+            "#challenge-running, #challenge-stage, div.cf-turnstile-wrapper"
+        ).count()
+        if cf_challenge > 0:
+            return "captcha"
     except Exception:
         pass
 

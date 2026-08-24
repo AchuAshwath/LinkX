@@ -13,11 +13,13 @@ from rebrowser_playwright.async_api import TimeoutError as PlaywrightTimeoutErro
 
 from app.services.browser.actions import (
     EvasionMouse,
+    HumanTyper,
     PostButtonDisabledError,
     normalize_post_text,
     random_delay,
 )
 from app.services.browser.manager import BrowserManager
+from app.services.browser.tools import find_or_heal_element
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +29,7 @@ class XPostResult:
     success: bool = True
     post_id: str = ""
     post_url: str = ""
+    error: str | None = None
 
 
 class XPostError(HTTPException):
@@ -420,3 +423,131 @@ class XPostClient:
         await mouse.stop_idle()
         logger.info(f"✅ SUCCESSFULLY POSTED TO X (rest_id: {rest_id})")
         return str(rest_id)
+
+
+async def enter_compose_text(
+    page: Any,
+    *,
+    text: str,
+    selectors: dict[str, Any],
+    config_path: str | Path | None = None,
+) -> bool:
+    """Modular function to focus composer and type text using self-healing locator."""
+    cfg_path = config_path or (
+        Path(__file__).parent / "browser" / "selectors" / "x_selectors.json"
+    )
+    input_elem = await find_or_heal_element(
+        page=page,
+        selector_key="compose.post_input",
+        selectors_dict=selectors,
+        config_path=cfg_path,
+    )
+    await input_elem.click()
+    typer = HumanTyper()
+    await typer.type(input_elem, text)
+    return True
+
+
+async def attach_media_file(
+    page: Any,
+    *,
+    image_path: str,
+    selectors: dict[str, Any],
+    config_path: str | Path | None = None,
+) -> bool:
+    """Modular function to attach an image file into the X composer."""
+    path = Path(image_path)
+    if not path.exists():
+        logger.error(f"Media file not found: {image_path}")
+        return False
+
+    cfg_path = config_path or (
+        Path(__file__).parent / "browser" / "selectors" / "x_selectors.json"
+    )
+    file_input = await find_or_heal_element(
+        page=page,
+        selector_key="compose.file_input",
+        selectors_dict=selectors,
+        config_path=cfg_path,
+    )
+    await file_input.set_input_files(image_path)
+
+    attachments_sel = selectors.get("compose", {}).get(
+        "attachments_container", "[data-testid='attachments']"
+    )
+    try:
+        await page.wait_for_selector(attachments_sel, state="visible", timeout=15000)
+    except Exception:
+        pass
+
+    return True
+
+
+async def submit_and_verify_post(
+    page: Any,
+    *,
+    selectors: dict[str, Any],
+    config_path: str | Path | None = None,
+) -> XPostResult:
+    """Modular function to click the post button, intercept GraphQL, and extract tweet ID."""
+    cfg_path = config_path or (
+        Path(__file__).parent / "browser" / "selectors" / "x_selectors.json"
+    )
+    btn_elem = await find_or_heal_element(
+        page=page,
+        selector_key="compose.post_button",
+        selectors_dict=selectors,
+        config_path=cfg_path,
+    )
+
+    if not await btn_elem.is_enabled():
+        return XPostResult(
+            success=False,
+            error="Post button disabled or not clickable",
+        )
+
+    btn_sel = selectors.get("compose", {}).get(
+        "post_button", "button[data-testid='tweetButtonInline']"
+    )
+    mouse = EvasionMouse(page)
+    try:
+        async with page.expect_response(
+            lambda response: "graphql" in response.url
+            and ("CreateTweet" in response.url or "CreateNoteTweet" in response.url)
+            and response.request.method == "POST",
+            timeout=30000,
+        ) as response_info:
+            await mouse.human_click(selector=btn_sel)
+
+        response = await response_info.value
+        if response.status != 200:
+            return XPostResult(
+                success=False,
+                error=f"X.com returned HTTP {response.status}",
+            )
+
+        response_json = await response.json()
+        rest_id = None
+        try:
+            rest_id = response_json["data"]["create_tweet"]["tweet_results"]["result"][
+                "rest_id"
+            ]
+        except (KeyError, TypeError):
+            pass
+
+        if not rest_id:
+            return XPostResult(
+                success=False,
+                error="X.com did not return a tweet ID.",
+            )
+
+        return XPostResult(
+            success=True,
+            post_id=str(rest_id),
+            post_url=f"https://x.com/i/status/{rest_id}",
+        )
+    except Exception as e:
+        return XPostResult(
+            success=False,
+            error=str(e),
+        )

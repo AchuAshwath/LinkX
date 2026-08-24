@@ -27,10 +27,11 @@ from sqlmodel import Session, select
 from app import crud
 from app.core.config import settings
 from app.core.db import engine
-from app.models import User
+from app.models import TrendingTopic, TrendingTweet, User
 from app.services.browser.actions import EvasionMouse, random_delay
 from app.services.browser.diagnostics import detect_page_state, extract_grok_summary
 from app.services.browser.manager import BrowserManager
+from app.services.browser.tools import find_or_heal_element
 
 logging.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -132,18 +133,28 @@ async def extract_tweet_data(locator) -> dict | None:
 
 def parse_title_metadata(raw_title: str) -> dict:
     """Parse the raw sidebar title block into structured fields."""
-    parts = raw_title.split("\n") if "\n" in raw_title else [raw_title]
-    clean_title = parts[0].strip()
+    parts = [p.strip() for p in raw_title.split("\n") if p.strip()]
+    if not parts:
+        return {"topic_title": raw_title, "raw_title_block": raw_title}
+
     time_ago = None
     category = None
     post_count = None
-    extra_lines = [p.strip() for p in parts[2:] if p.strip()] if len(parts) > 2 else []
+    clean_title = parts[0]
+    extra_lines: list[str] = []
 
-    if len(parts) > 1:
+    if len(parts) >= 2 and ("·" in parts[0] or "trending" in parts[0].lower()):
+        category = parts[0]
+        clean_title = parts[1]
+        if len(parts) >= 3:
+            post_count = parts[2]
+            extra_lines = parts[3:]
+    elif len(parts) > 1:
         meta_parts = [p.strip() for p in parts[1].split("·")]
         time_ago = meta_parts[0] if len(meta_parts) >= 1 and meta_parts[0] else None
         category = meta_parts[1] if len(meta_parts) >= 2 and meta_parts[1] else None
         post_count = meta_parts[2] if len(meta_parts) >= 3 and meta_parts[2] else None
+        extra_lines = parts[2:]
 
     return {
         "topic_title": clean_title,
@@ -271,19 +282,20 @@ async def _extract_sidebar_links(
     news_urls: list[tuple[str, bool]] = []
     news_titles: dict[str, str] = {}
 
-    for link in all_links:
+    for i, link in enumerate(all_links):
         try:
             text = await link.inner_text()
+            if not text or not text.strip():
+                continue
             url = await link.get_attribute("href")
-            testid = await link.get_attribute("data-testid")
-            identifier = url or testid
+            first_line = text.split("\n")[0].strip()
+            identifier = url or (first_line if first_line else f"trend_{i}")
 
             if _should_skip_link(identifier, text, news_titles, heuristic):
                 continue
 
-            if identifier:
-                news_urls.append((identifier, bool(url)))
-                news_titles[identifier] = text
+            news_urls.append((identifier, bool(url)))
+            news_titles[identifier] = text
         except Exception:
             continue
 
@@ -526,6 +538,14 @@ async def _scrape_candidate_topics(ctx: CandidateScrapeContext) -> None:
             ctx.result.topics_scraped += 1
         if failure:
             ctx.result.topics_failed.append(failure)
+            if failure.reason == "page_state_error" and any(
+                st in str(failure.detail)
+                for st in ("logged_out", "rate_limited", "captcha")
+            ):
+                logger.warning(
+                    f"Aborting candidate loop early due to unrecoverable page state: {failure.detail}"
+                )
+                break
 
 
 async def scrape_trending_topics(
@@ -600,11 +620,7 @@ async def scrape_trending_topics(
             )
 
             await mouse.stop_idle()
-            result.status = (
-                "error"
-                if result.topics_scraped == 0
-                else ("partial" if result.topics_failed else "success")
-            )
+            result.status = "completed" if result.topics_scraped > 0 else "no_topics"
 
     except PlaywrightError as e:
         result.status = "aborted" if "closed" in str(e).lower() else "error"
@@ -614,6 +630,135 @@ async def scrape_trending_topics(
         result.errors.append(str(e))
 
     return result
+
+
+async def navigate_to_trends(
+    page: Any, *, target_url: str = "https://x.com/home"
+) -> bool:
+    """Navigate to X.com trends/home and verify authenticated page state."""
+    state = await detect_page_state(page)
+    if state in {"logged_out", "rate_limited", "captcha"}:
+        return False
+    await page.goto(target_url, wait_until="domcontentloaded")
+    post_state = await detect_page_state(page)
+    return post_state not in {"logged_out", "rate_limited", "captcha"}
+
+
+async def extract_trending_sidebar(
+    page: Any,
+    *,
+    selectors: dict[str, Any],
+    config_path: str | Path | None = None,
+) -> list[TrendingTopic]:
+    """Extract structured TrendingTopic models from the X.com sidebar."""
+    cfg_path = config_path or (Path(__file__).parent.parent / "scrape_config.json")
+    sidebar_link_sel = selectors.get("selectors", {}).get(
+        "sidebar_link", "a[href*='/search?q=']"
+    )
+    heuristic = selectors.get("link_heuristic", {})
+
+    sidebar = await find_or_heal_element(
+        page=page,
+        selector_key="selectors.sidebar_container",
+        selectors_dict=selectors,
+        config_path=cfg_path,
+    )
+
+    news_urls, news_titles = await _extract_sidebar_links(
+        sidebar, sidebar_link_sel, heuristic
+    )
+
+    topics: list[TrendingTopic] = []
+    dummy_user_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+
+    for identifier, is_url in news_urls:
+        raw_title = news_titles.get(identifier, "")
+        meta = parse_title_metadata(raw_title)
+        topic_title = meta.get("topic_title") or raw_title
+        if is_url:
+            full_url = (
+                identifier
+                if identifier.startswith("http")
+                else f"https://x.com{identifier}"
+            )
+        else:
+            import urllib.parse
+
+            full_url = f"https://x.com/search?q={urllib.parse.quote(topic_title)}"
+
+        topic = TrendingTopic(
+            id=uuid.uuid4(),
+            user_id=dummy_user_id,
+            topic_url=full_url,
+            topic_title=topic_title,
+            category=meta.get("category"),
+            post_count=parse_post_count(meta.get("post_count")),
+            scraped_at=now,
+        )
+        topics.append(topic)
+
+    return topics
+
+
+async def extract_topic_tweets(
+    page: Any,
+    *,
+    topic_url: str,
+    selectors: dict[str, Any],
+    _scrolls: int = 2,
+    _config_path: str | Path | None = None,
+) -> list[TrendingTweet]:
+    """Extract structured TrendingTweet models from a specific topic URL."""
+    if page.url != topic_url:
+        await page.goto(topic_url, wait_until="domcontentloaded")
+
+    tweet_sel = selectors.get("selectors", {}).get(
+        "tweet_container", "[data-testid='tweet']"
+    )
+
+    # Evaluate tweets on page
+    raw_tweets = await page.evaluate(
+        """(selector) => {
+            const tweetElements = document.querySelectorAll(selector);
+            const results = [];
+            for (const el of tweetElements) {
+                const textEl = el.querySelector('[data-testid="tweetText"]');
+                const text = textEl ? textEl.innerText : el.innerText;
+                const authorEl = el.querySelector('[data-testid="User-Name"]');
+                const author = authorEl ? authorEl.innerText.split('\\n')[0] : "unknown";
+                results.push({
+                    author_handle: author,
+                    text: text,
+                    replies: 0,
+                    retweets: 0,
+                    likes: 0,
+                    views: 0
+                });
+            }
+            return results;
+        }""",
+        tweet_sel,
+    )
+
+    tweets: list[TrendingTweet] = []
+    dummy_topic_id = uuid.uuid4()
+
+    if isinstance(raw_tweets, list):
+        for raw in raw_tweets:
+            tweet = TrendingTweet(
+                id=uuid.uuid4(),
+                topic_id=dummy_topic_id,
+                author_handle=raw.get("author_handle", "unknown"),
+                text=raw.get("text", ""),
+                replies=raw.get("replies"),
+                retweets=raw.get("retweets"),
+                likes=raw.get("likes"),
+                views=raw.get("views"),
+            )
+            tweets.append(tweet)
+
+    return tweets
 
 
 async def main() -> None:
