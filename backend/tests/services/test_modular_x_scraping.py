@@ -50,13 +50,50 @@ async def test_modular_navigate_to_trends_logged_out() -> None:
         assert success is False
 
 
+SIDEBAR_CASES = [
+    (
+        "/search?q=LangGraph",
+        "Technology · Trending\nLangGraph\n25.4K posts",
+        {
+            "selectors": {
+                "sidebar_container": "[data-testid='sidebarColumn']",
+                "sidebar_link": "a[href*='/search?q=']",
+            },
+            "link_heuristic": {"exclude_texts": ["Show more"]},
+        },
+        "LangGraph",
+        "/search?q=LangGraph",
+    ),
+    (
+        None,
+        "Sports · Trending\nReal Madrid & Barcelona\n120K posts",
+        {
+            "selectors": {
+                "sidebar_container": "[data-testid='sidebarColumn']",
+                "sidebar_link": "[data-testid='trend']",
+            },
+            "link_heuristic": {"must_contain_newline": False},
+        },
+        "Real Madrid & Barcelona",
+        "https://x.com/search?q=Real%20Madrid%20%26%20Barcelona",
+    ),
+]
+
+
 @pytest.mark.anyio
-async def test_modular_extract_trending_sidebar() -> None:
+@pytest.mark.parametrize(
+    "href, inner_text, selectors, exp_title, exp_url", SIDEBAR_CASES
+)
+async def test_modular_extract_trending_sidebar_variants(
+    href: str | None,
+    inner_text: str,
+    selectors: dict,
+    exp_title: str,
+    exp_url: str,
+) -> None:
     mock_link = AsyncMock()
-    mock_link.get_attribute = AsyncMock(return_value="/search?q=LangGraph")
-    mock_link.inner_text = AsyncMock(
-        return_value="Technology · Trending\nLangGraph\n25.4K posts"
-    )
+    mock_link.get_attribute = AsyncMock(return_value=href)
+    mock_link.inner_text = AsyncMock(return_value=inner_text)
 
     mock_sidebar = build_mock_locator(count=1, is_visible=True)
     mock_sidebar.locator = MagicMock(
@@ -66,18 +103,11 @@ async def test_modular_extract_trending_sidebar() -> None:
     mock_page = MagicMock()
     mock_page.locator = MagicMock(return_value=mock_sidebar)
 
-    selectors = {
-        "selectors": {
-            "sidebar_container": "[data-testid='sidebarColumn']",
-            "sidebar_link": "a[href*='/search?q=']",
-        },
-        "link_heuristic": {"exclude_texts": ["Show more"]},
-    }
-
     topics = await extract_trending_sidebar(page=mock_page, selectors=selectors)
     assert len(topics) == 1
     assert isinstance(topics[0], TrendingTopic)
-    assert "LangGraph" in topics[0].topic_title
+    assert exp_title in topics[0].topic_title
+    assert exp_url in topics[0].topic_url
 
 
 @pytest.mark.anyio
@@ -109,42 +139,6 @@ async def test_modular_extract_topic_tweets() -> None:
     assert isinstance(tweets[0], TrendingTweet)
     assert tweets[0].author_handle == "@agent_builder"
     assert tweets[0].text == "Self-healing selectors work!"
-
-
-@pytest.mark.anyio
-async def test_modular_extract_trending_sidebar_non_href_url_synthesis() -> None:
-    mock_link = AsyncMock()
-    mock_link.get_attribute = AsyncMock(return_value=None)
-    mock_link.inner_text = AsyncMock(
-        return_value="Sports · Trending\nReal Madrid & Barcelona\n120K posts"
-    )
-
-    mock_links_locator = MagicMock()
-    mock_links_locator.all = AsyncMock(return_value=[mock_link])
-
-    mock_sidebar = MagicMock()
-    mock_sidebar.count = AsyncMock(return_value=1)
-    mock_sidebar.first = mock_sidebar
-    mock_sidebar.is_visible = AsyncMock(return_value=True)
-    mock_sidebar.locator = MagicMock(return_value=mock_links_locator)
-
-    mock_page = MagicMock()
-    mock_page.locator = MagicMock(return_value=mock_sidebar)
-
-    selectors = {
-        "selectors": {
-            "sidebar_container": "[data-testid='sidebarColumn']",
-            "sidebar_link": "[data-testid='trend']",
-        },
-        "link_heuristic": {"must_contain_newline": False},
-    }
-
-    topics = await extract_trending_sidebar(page=mock_page, selectors=selectors)
-    assert len(topics) == 1
-    assert topics[0].topic_title == "Real Madrid & Barcelona"
-    assert (
-        "https://x.com/search?q=Real%20Madrid%20%26%20Barcelona" == topics[0].topic_url
-    )
 
 
 def test_resolve_target_user_fallback_hierarchy() -> None:
@@ -190,9 +184,7 @@ async def test_extract_candidate_summary_grok_and_fallback_selectors() -> None:
         )
         assert "AI revolution" in summary
 
-    mock_fallback_elem = AsyncMock()
-    mock_fallback_elem.count = AsyncMock(return_value=1)
-    mock_fallback_elem.first = mock_fallback_elem
+    mock_fallback_elem = build_mock_locator(count=1, is_visible=True)
     mock_fallback_elem.inner_text = AsyncMock(
         return_value="Detailed event breakdown summary explaining the current market moves."
     )

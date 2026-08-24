@@ -91,46 +91,44 @@ def _create_broken_symlink(tmp_path: Path) -> Path:
     return link
 
 
+PATH_TEST_CASES = [
+    ('{"a": "foo"}', "a.b.c", "bar", {"a": {"b": {"c": "bar"}}}),
+    ('{"a": {"b": {"c": "bar"}}}', "a", "flat_string", {"a": "flat_string"}),
+    (
+        '{"actions": ["click"]}',
+        "actions.btn",
+        "button#submit",
+        {"actions": {"btn": "button#submit"}},
+    ),
+    ("{}", "", "empty_root", {"": "empty_root"}),
+    ("{}", "a..b", "consecutive_val", {"a": {"": {"b": "consecutive_val"}}}),
+    ("{}", ".leading", "leading_val", {"": {"leading": "leading_val"}}),
+    ("{}", "trailing.", "trailing_val", {"trailing": {"": "trailing_val"}}),
+    (
+        "{}",
+        "auth.login button#1",
+        "button.submit",
+        {"auth": {"login button#1": "button.submit"}},
+    ),
+    (
+        "{}",
+        "unicode.セレクタ.ボタン",
+        "div.jp-btn",
+        {"unicode": {"セレクタ": {"ボタン": "div.jp-btn"}}},
+    ),
+]
+
+
 class TestDeepKeyPathOverwrites:
     """Attacks targeting nested dictionary manipulation, type collisions, and path splitting."""
 
-    @pytest.mark.parametrize(
-        "initial_json, key_path, new_selector, expected_data",
-        [
-            ('{"a": "foo"}', "a.b.c", "bar", {"a": {"b": {"c": "bar"}}}),
-            ('{"a": {"b": {"c": "bar"}}}', "a", "flat_string", {"a": "flat_string"}),
-            (
-                '{"actions": ["click"]}',
-                "actions.btn",
-                "button#submit",
-                {"actions": {"btn": "button#submit"}},
-            ),
-            ("{}", "", "empty_root", {"": "empty_root"}),
-            ("{}", "a..b", "consecutive_val", {"a": {"": {"b": "consecutive_val"}}}),
-            ("{}", ".leading", "leading_val", {"": {"leading": "leading_val"}}),
-            ("{}", "trailing.", "trailing_val", {"trailing": {"": "trailing_val"}}),
-            (
-                "{}",
-                "auth.login button#1",
-                "button.submit",
-                {"auth": {"login button#1": "button.submit"}},
-            ),
-            (
-                "{}",
-                "unicode.セレクタ.ボタン",
-                "div.jp-btn",
-                {"unicode": {"セレクタ": {"ボタン": "div.jp-btn"}}},
-            ),
-        ],
-    )
+    @pytest.mark.parametrize("case", PATH_TEST_CASES)
     def test_patch_selector_config_path_variants(
         self,
         tmp_path: Path,
-        initial_json: str,
-        key_path: str,
-        new_selector: str,
-        expected_data: dict[str, Any],
+        case: tuple[str, str, str, dict[str, Any]],
     ) -> None:
+        initial_json, key_path, new_selector, expected_data = case
         config_file = tmp_path / "config.json"
         config_file.write_text(initial_json, encoding="utf-8")
 
