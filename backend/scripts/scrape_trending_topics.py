@@ -155,6 +155,11 @@ def _parse_dot_separated_topic(
     return clean_title, category, post_count, time_ago, extra_lines
 
 
+def _is_prefixed_topic_header(header: str) -> bool:
+    """Check if header line represents a category prefix or trending marker."""
+    return "·" in header or "trending" in header.lower()
+
+
 def parse_title_metadata(raw_title: str) -> dict[str, Any]:
     """Parse the raw sidebar title block into structured fields."""
     parts = [p.strip() for p in raw_title.split("\n") if p.strip()]
@@ -167,12 +172,15 @@ def parse_title_metadata(raw_title: str) -> dict[str, Any]:
     clean_title: str = parts[0]
     extra_lines: list[str] = []
 
-    if len(parts) >= 2 and ("·" in parts[0] or "trending" in parts[0].lower()):
-        clean_title, category, post_count, extra_lines = _parse_prefixed_topic(parts)
-    elif len(parts) > 1:
-        clean_title, category, post_count, time_ago, extra_lines = (
-            _parse_dot_separated_topic(parts)
-        )
+    if len(parts) >= 2:
+        if _is_prefixed_topic_header(parts[0]):
+            clean_title, category, post_count, extra_lines = _parse_prefixed_topic(
+                parts
+            )
+        else:
+            clean_title, category, post_count, time_ago, extra_lines = (
+                _parse_dot_separated_topic(parts)
+            )
 
     return {
         "topic_title": clean_title,

@@ -81,18 +81,25 @@ def schedule_post_in_db(
         return PostPublic.model_validate(db_post)
 
 
+def _format_x_url(ext_id: str) -> str:
+    clean_id = ext_id.split("x:")[-1] if "x:" in ext_id else ext_id
+    return f"https://x.com/i/status/{clean_id}"
+
+
+def _format_linkedin_url(ext_id: str) -> str:
+    clean_id = ext_id.split("linkedin:")[-1] if "linkedin:" in ext_id else ext_id
+    urn = clean_id if clean_id.startswith("urn:li:") else f"urn:li:share:{clean_id}"
+    return f"https://www.linkedin.com/feed/update/{urn}"
+
+
 def _construct_published_post_url(*, platform: str, ext_id: str | None) -> str | None:
     """Format live post URL for X or LinkedIn from external ID."""
     if not ext_id:
         return None
     if platform == "x" or "x:" in ext_id:
-        clean_id = ext_id.split("x:")[-1] if "x:" in ext_id else ext_id
-        return f"https://x.com/i/status/{clean_id}"
+        return _format_x_url(ext_id)
     if platform == "linkedin" or "linkedin:" in ext_id:
-        clean_id = ext_id.split("linkedin:")[-1] if "linkedin:" in ext_id else ext_id
-        if clean_id.startswith("urn:li:"):
-            return f"https://www.linkedin.com/feed/update/{clean_id}"
-        return f"https://www.linkedin.com/feed/update/urn:li:share:{clean_id}"
+        return _format_linkedin_url(ext_id)
     return None
 
 

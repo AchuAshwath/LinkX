@@ -153,6 +153,32 @@ async def validate_selector_candidate(
         }
 
 
+def _load_config_dict(path: Path) -> dict[str, Any] | None:
+    """Read and validate JSON configuration file dictionary."""
+    if not path.exists() or not os.access(path, os.W_OK):
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            content = f.read().strip()
+            if not content:
+                return None
+            data = json.loads(content)
+            return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def _write_config_atomically(path: Path, data: dict[str, Any]) -> None:
+    """Atomically write JSON data to path using temporary file replace."""
+    parent_dir = path.parent
+    with tempfile.NamedTemporaryFile(
+        "w", dir=parent_dir, delete=False, encoding="utf-8"
+    ) as tf:
+        json.dump(data, tf, indent=2)
+        temp_name = tf.name
+    os.replace(temp_name, path)
+
+
 def patch_selector_config(
     *,
     config_path: str | Path,
@@ -161,43 +187,14 @@ def patch_selector_config(
 ) -> bool:
     """Patch a selector in a JSON configuration file on disk atomically."""
     path = Path(config_path)
-    if not path.exists():
-        logger.error(f"Config file does not exist: {path}")
-        return False
-
-    if not os.access(path, os.W_OK):
-        logger.error(f"Config path {path} is not writable (permission denied)")
+    data = _load_config_dict(path)
+    if data is None:
+        logger.error(f"Failed to load valid writable config at {path}")
         return False
 
     try:
-        with open(path, encoding="utf-8") as f:
-            content = f.read().strip()
-            if not content:
-                logger.error(f"Config path {path} is empty (0 bytes)")
-                return False
-            data = json.loads(content)
-            if not isinstance(data, dict):
-                logger.error(f"Config in {path} root is not a dictionary")
-                return False
-
-        keys = key_path.split(".")
-        current = data
-        for k in keys[:-1]:
-            if k not in current or not isinstance(current[k], dict):
-                current[k] = {}
-            current = current[k]
-
-        current[keys[-1]] = new_selector
-
-        # Atomic file write using a temporary file in the same directory
-        parent_dir = path.parent
-        with tempfile.NamedTemporaryFile(
-            "w", dir=parent_dir, delete=False, encoding="utf-8"
-        ) as tf:
-            json.dump(data, tf, indent=2)
-            temp_name = tf.name
-
-        os.replace(temp_name, path)
+        _set_nested_selector(data, key_path, new_selector)
+        _write_config_atomically(path, data)
         logger.info(f"Successfully patched {key_path} -> '{new_selector}' in {path}")
         return True
     except Exception as e:

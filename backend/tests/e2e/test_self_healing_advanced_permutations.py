@@ -213,53 +213,38 @@ async def test_e2e_permutation_in_memory_fast_path_cache_hit(tmp_path: Path) -> 
         assert mock_structured_model.ainvoke.await_count == 1
 
 
-@pytest.mark.anyio
-async def test_e2e_permutation_multi_step_publishing_healing_cascade(
-    tmp_path: Path,
-) -> None:
-    """Case 5B: Full multi-step compose + publish flow with broken textarea AND broken post button."""
-    config_file = tmp_path / "selectors.json"
-    config_file.write_text(
-        json.dumps(
-            {
-                "compose": {
-                    "post_input": "broken_input",
-                    "post_button": "broken_button",
-                }
-            }
-        )
-    )
-
+def _build_cascade_mock_page() -> tuple[AsyncMock, dict[str, Any]]:
+    """Build mock page with simulated broken/healed element locators."""
     mock_page = AsyncMock()
     mock_page.evaluate = AsyncMock(
         return_value='<div data-testid="tweetTextarea_0"></div><button data-testid="tweetButtonInline">Post</button>'
     )
 
-    mock_input_loc = AsyncMock()
-    mock_input_loc.count = AsyncMock(return_value=1)
+    mock_input_loc = AsyncMock(
+        count=AsyncMock(return_value=1), is_visible=AsyncMock(return_value=True)
+    )
     mock_input_loc.first = mock_input_loc
-    mock_input_loc.is_visible = AsyncMock(return_value=True)
     mock_input_loc.click = AsyncMock()
 
-    mock_btn_loc = AsyncMock()
-    mock_btn_loc.count = AsyncMock(return_value=1)
+    mock_btn_loc = AsyncMock(
+        count=AsyncMock(return_value=1),
+        is_visible=AsyncMock(return_value=True),
+        is_enabled=AsyncMock(return_value=True),
+    )
     mock_btn_loc.first = mock_btn_loc
-    mock_btn_loc.is_visible = AsyncMock(return_value=True)
-    mock_btn_loc.is_enabled = AsyncMock(return_value=True)
 
     def locator_side_effect(sel: str) -> Any:
         if sel == "div[data-testid='tweetTextarea_0']":
             return mock_input_loc
         if sel == "button[data-testid='tweetButtonInline']":
             return mock_btn_loc
-        broken = AsyncMock()
-        broken.count = AsyncMock(return_value=0)
+        broken = AsyncMock(
+            count=AsyncMock(return_value=0), is_visible=AsyncMock(return_value=False)
+        )
         broken.first = broken
-        broken.is_visible = AsyncMock(return_value=False)
         return broken
 
     mock_page.locator = MagicMock(side_effect=locator_side_effect)
-
     mock_response = AsyncMock(
         status=200,
         json=AsyncMock(
@@ -282,13 +267,14 @@ async def test_e2e_permutation_multi_step_publishing_healing_cascade(
         yield val
 
     mock_page.expect_response = mock_expect_response
-
     selectors_dict = {
-        "compose": {
-            "post_input": "broken_input",
-            "post_button": "broken_button",
-        }
+        "compose": {"post_input": "broken_input", "post_button": "broken_button"}
     }
+    return mock_page, selectors_dict
+
+
+def _build_cascade_model_mock() -> MagicMock:
+    """Build structured LLM model mock returning appropriate healing reports."""
 
     def model_ainvoke_side_effect(messages: list[Any]) -> Any:
         content = messages[1]["content"] if len(messages) > 1 else ""
@@ -321,11 +307,31 @@ async def test_e2e_permutation_multi_step_publishing_healing_cascade(
     mock_structured_model = AsyncMock(
         ainvoke=AsyncMock(side_effect=model_ainvoke_side_effect)
     )
+    return MagicMock(
+        with_structured_output=MagicMock(return_value=mock_structured_model)
+    )
+
+
+@pytest.mark.anyio
+async def test_e2e_permutation_multi_step_publishing_healing_cascade(
+    tmp_path: Path,
+) -> None:
+    """Case 5B: Full multi-step compose + publish flow with broken textarea AND broken post button."""
+    config_file = tmp_path / "selectors.json"
+    config_file.write_text(
+        json.dumps(
+            {"compose": {"post_input": "broken_input", "post_button": "broken_button"}}
+        )
+    )
+
+    mock_page, selectors_dict = _build_cascade_mock_page()
+    mock_model = _build_cascade_model_mock()
 
     with (
         patch(
-            "app.services.agentic.self_healing_graph.get_chat_model"
-        ) as mock_get_model,
+            "app.services.agentic.self_healing_graph.get_chat_model",
+            return_value=mock_model,
+        ),
         patch(
             "app.services.x_posts.HumanTyper.type", new_callable=AsyncMock
         ) as mock_type,
@@ -334,11 +340,6 @@ async def test_e2e_permutation_multi_step_publishing_healing_cascade(
             new_callable=AsyncMock,
         ) as mock_click,
     ):
-        mock_model = MagicMock(
-            with_structured_output=MagicMock(return_value=mock_structured_model)
-        )
-        mock_get_model.return_value = mock_model
-
         success_type = await enter_compose_text(
             page=mock_page,
             text="Autonomous multi-step test",

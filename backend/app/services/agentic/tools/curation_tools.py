@@ -16,7 +16,6 @@ async def draft_social_post(
     *,
     topic_title: str,
     topic_summary: str | None = None,
-    sample_tweets: list[str] | None = None,
     platform: str = "linkx",
     tone: str | None = None,
 ) -> str:
@@ -24,8 +23,6 @@ async def draft_social_post(
     context_parts = [topic_title]
     if topic_summary:
         context_parts.append(f"Summary: {topic_summary}")
-    if sample_tweets:
-        context_parts.append("Key Tweets: " + " | ".join(sample_tweets[:3]))
 
     prompt = "\n".join(context_parts)
     try:

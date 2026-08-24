@@ -114,15 +114,17 @@ async def apply_patch_node(state: SelfHealingState) -> dict[str, Any]:
     config_path = state.get("target_config_path")
     failed_key = state.get("failed_selector_key")
 
-    if working_selector and config_path and failed_key:
-        patched = patch_selector_config(
-            config_path=config_path,
-            key_path=failed_key,
-            new_selector=working_selector,
-        )
-        return {"status": "healed" if patched else "patch_failed"}
+    if not working_selector:
+        return {"status": "failed"}
+    if not config_path or not failed_key:
+        return {"status": "failed"}
 
-    return {"status": "failed"}
+    patched = patch_selector_config(
+        config_path=config_path,
+        key_path=failed_key,
+        new_selector=working_selector,
+    )
+    return {"status": "healed" if patched else "patch_failed"}
 
 
 UNRECOVERABLE_PAGE_STATES = {

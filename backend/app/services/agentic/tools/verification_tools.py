@@ -118,6 +118,72 @@ def _match_timeline_tweets(
     return best_confidence > 0.0, matched_text, matched_id, best_confidence
 
 
+def _get_expected_post_data(
+    *,
+    session: Session | None,
+    user_uuid: uuid.UUID,
+    expected_post_id: str | None,
+) -> tuple[str | None, str | None]:
+    """Fetch expected post content and external ID from database."""
+    with resolve_session(session=session) as s:
+        if expected_post_id:
+            try:
+                db_p = crud.get_post(session=s, post_id=uuid.UUID(expected_post_id))
+            except Exception:
+                db_p = None
+        else:
+            db_p = crud.get_latest_published_post(
+                session=s, user_id=user_uuid, platform="x"
+            )
+
+        if db_p:
+            return db_p.content, db_p.external_post_id
+        return None, None
+
+
+async def _verify_live_browser_feed(
+    *,
+    manager: BrowserManager,
+    profile_url: str,
+    expected_content: str,
+    expected_ext_id: str | None,
+    max_tweets_to_check: int,
+) -> ProfileVerificationReport:
+    """Navigate to profile and perform timeline match."""
+    try:
+        async with manager.get_context("x", headless=True) as context:
+            page = await get_active_page(context=context)
+            await page.goto(profile_url, wait_until="domcontentloaded", timeout=20000)
+            timeline_tweets = await _extract_profile_timeline_tweets(
+                page=page, limit=max_tweets_to_check
+            )
+            match_found, matched_text, matched_id, best_confidence = (
+                _match_timeline_tweets(
+                    timeline_tweets=timeline_tweets,
+                    expected_content=expected_content,
+                    expected_ext_id=expected_ext_id,
+                )
+            )
+            return ProfileVerificationReport(
+                verified_live=match_found,
+                expected_content=expected_content,
+                profile_url=profile_url,
+                latest_live_tweets=timeline_tweets,
+                match_found=match_found,
+                matched_tweet_text=matched_text,
+                matched_tweet_id=matched_id,
+                match_confidence=best_confidence,
+            )
+    except Exception as e:
+        logger.error(f"Error during live profile verification: {e}")
+        return ProfileVerificationReport(
+            verified_live=False,
+            profile_url=profile_url,
+            expected_content=expected_content,
+            error=str(e),
+        )
+
+
 async def verify_post_on_live_profile(
     *,
     user_id: str,
@@ -136,25 +202,11 @@ async def verify_post_on_live_profile(
             error=f"Invalid user_id: {user_id}",
         )
 
-    # 1. Fetch expected post from DB
-    expected_content: str | None = None
-    expected_ext_id: str | None = None
-
-    with resolve_session(session=session) as s:
-        if expected_post_id:
-            try:
-                db_p = crud.get_post(session=s, post_id=uuid.UUID(expected_post_id))
-            except Exception:
-                db_p = None
-        else:
-            db_p = crud.get_latest_published_post(
-                session=s, user_id=user_uuid, platform="x"
-            )
-
-        if db_p:
-            expected_content = db_p.content
-            expected_ext_id = db_p.external_post_id
-
+    expected_content, expected_ext_id = _get_expected_post_data(
+        session=session,
+        user_uuid=user_uuid,
+        expected_post_id=expected_post_id,
+    )
     if not expected_content:
         return ProfileVerificationReport(
             verified_live=False,
@@ -162,7 +214,6 @@ async def verify_post_on_live_profile(
             error="No published post found in database to verify.",
         )
 
-    # 2. Resolve username from session metadata
     manager = BrowserManager(user_id=user_id)
     if not manager.session_exists("x"):
         return ProfileVerificationReport(
@@ -176,42 +227,13 @@ async def verify_post_on_live_profile(
     username = meta.get("username")
     profile_url = f"https://x.com/{username}" if username else "https://x.com/home"
 
-    # 3. Launch browser & scrape live timeline
-    try:
-        async with manager.get_context("x", headless=True) as context:
-            page = await get_active_page(context=context)
-
-            await page.goto(profile_url, wait_until="domcontentloaded", timeout=20000)
-            timeline_tweets = await _extract_profile_timeline_tweets(
-                page=page, limit=max_tweets_to_check
-            )
-
-            match_found, matched_text, matched_id, best_confidence = (
-                _match_timeline_tweets(
-                    timeline_tweets=timeline_tweets,
-                    expected_content=expected_content,
-                    expected_ext_id=expected_ext_id,
-                )
-            )
-
-            return ProfileVerificationReport(
-                verified_live=match_found,
-                expected_content=expected_content,
-                profile_url=profile_url,
-                latest_live_tweets=timeline_tweets,
-                match_found=match_found,
-                matched_tweet_text=matched_text,
-                matched_tweet_id=matched_id,
-                match_confidence=best_confidence,
-            )
-    except Exception as e:
-        logger.error(f"Error during profile verification: {e}")
-        return ProfileVerificationReport(
-            verified_live=False,
-            expected_content=expected_content,
-            profile_url=profile_url,
-            error=str(e),
-        )
+    return await _verify_live_browser_feed(
+        manager=manager,
+        profile_url=profile_url,
+        expected_content=expected_content,
+        expected_ext_id=expected_ext_id,
+        max_tweets_to_check=max_tweets_to_check,
+    )
 
 
 async def verify_post_url_status(
