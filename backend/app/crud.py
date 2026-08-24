@@ -12,6 +12,7 @@ from app.models import (
     Post,
     PostCreate,
     PostUpdate,
+    SocialAccount,
     TrendingTopic,
     TrendingTweet,
     User,
@@ -240,3 +241,48 @@ def get_latest_trending_topics(
     )
 
     return list(session.exec(stmt).all())
+
+
+def get_trending_tweets_for_topic(
+    *, session: Session, topic_id: uuid.UUID, limit: int = 10
+) -> list[TrendingTweet]:
+    """Get extracted tweets for a specific trending topic."""
+    stmt = (
+        select(TrendingTweet)
+        .where(TrendingTweet.topic_id == topic_id)
+        .order_by(
+            col(TrendingTweet.likes).desc().nulls_last(),
+            col(TrendingTweet.created_at).desc(),
+        )
+        .limit(limit)
+    )
+    return list(session.exec(stmt).all())
+
+
+def get_latest_published_post(
+    *, session: Session, user_id: uuid.UUID, platform: str | None = None
+) -> Post | None:
+    """Get the most recently published post for a user."""
+    stmt = select(Post).where(
+        Post.owner_id == user_id,
+        Post.status == "published",
+    )
+    if platform:
+        if platform == "linkx":
+            stmt = stmt.where(col(Post.platform).in_(["linkx", "all", "x", "linkedin"]))
+        else:
+            stmt = stmt.where(Post.platform == platform)
+
+    stmt = stmt.order_by(col(Post.published_at).desc().nulls_last())
+    return session.exec(stmt).first()
+
+
+def get_social_account(
+    *, session: Session, user_id: uuid.UUID, platform: str
+) -> SocialAccount | None:
+    """Get a connected social account record for a user."""
+    stmt = select(SocialAccount).where(
+        SocialAccount.user_id == user_id,
+        SocialAccount.platform == platform,
+    )
+    return session.exec(stmt).first()

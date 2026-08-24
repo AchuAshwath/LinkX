@@ -217,3 +217,77 @@ class VisionDraftAnalysis(BaseModel):
         validation_alias=AliasChoices("suggested_tags", "hashtags", "tags"),
         description="Relevant hashtags for distribution (e.g. ['#AI', '#Engineering'])",
     )
+
+
+# --- Tool Return & Context Schemas ---
+
+
+class TopicDetailContext(BaseModel):
+    """Detailed topic context including summary and sample extracted tweets."""
+
+    topic_id: str
+    topic_title: str
+    category: str | None = None
+    post_count: int | None = None
+    summary: str | None = None
+    topic_url: str
+    sample_tweets: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class AccountStatusReport(BaseModel):
+    """Connection and session health status for user's social accounts."""
+
+    user_id: str
+    x_connected: bool = False
+    x_username: str | None = None
+    x_is_premium: bool = False
+    x_max_characters: int = 280
+    linkedin_connected: bool = False
+    linkedin_email: str | None = None
+    linkedin_display_name: str | None = None
+
+
+class ProfileVerificationReport(BaseModel):
+    """Ground truth verification report comparing DB post against live profile timeline."""
+
+    verified_live: bool
+    expected_content: str | None = None
+    profile_url: str
+    latest_live_tweets: list[dict[str, Any]] = Field(default_factory=list)
+    match_found: bool = False
+    matched_tweet_text: str | None = None
+    matched_tweet_id: str | None = None
+    match_confidence: float = 0.0
+    error: str | None = None
+
+
+class PostUrlStatusReport(BaseModel):
+    """Verification status of a specific post URL."""
+
+    post_url: str
+    is_live: bool
+    status_code: int = 200
+    metrics: dict[str, int | None] = Field(default_factory=dict)
+    error: str | None = None
+
+
+class ComplianceReport(BaseModel):
+    """Validation report checking character length, hashtags, and format."""
+
+    is_compliant: bool
+    char_count: int
+    max_limit: int
+    platform: str
+    violations: list[str] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
+
+
+class PublishResultReport(BaseModel):
+    """Execution result of publishing a post live."""
+
+    success: bool
+    post_id: str
+    external_post_id: str | None = None
+    post_url: str | None = None
+    platform: str
+    error: str | None = None
