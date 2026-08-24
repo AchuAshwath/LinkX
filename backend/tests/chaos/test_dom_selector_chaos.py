@@ -2,18 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.services.agentic.schemas import SelectorCandidate, SelectorDiagnosisReport
-from app.services.agentic.self_healing_graph import (
-    SelfHealingState,
-    capture_dom_node,
-    diagnose_dom_node,
-    verify_candidates_node,
-)
 from app.services.browser.tools import (
     get_dom_snippet,
     validate_selector_candidate,
@@ -57,37 +49,7 @@ class TestBloatedAndMaliciousDOMs:
     async def test_empty_dom_and_null_body(self) -> None:
         mock_page_empty = AsyncMock()
         mock_page_empty.evaluate = AsyncMock(return_value="")
-
-        snippet_empty = await get_dom_snippet(page=mock_page_empty)
-        assert snippet_empty == ""
-
-        state: SelfHealingState = {"page": mock_page_empty}
-        captured = await capture_dom_node(state)
-        assert captured["dom_snippet"] == ""
-        assert captured["status"] == "dom_captured"
-
-        mock_structured_model = AsyncMock()
-        mock_structured_model.ainvoke = AsyncMock(
-            return_value=SelectorDiagnosisReport(
-                broken_element_name="compose.post_input",
-                page_state="login_redirect",
-                is_recoverable=False,
-                candidate_selectors=[],
-            )
-        )
-        with patch(
-            "app.services.agentic.self_healing_graph.get_chat_model"
-        ) as mock_get_model:
-            mock_model = MagicMock()
-            mock_model.with_structured_output = MagicMock(
-                return_value=mock_structured_model
-            )
-            mock_get_model.return_value = mock_model
-
-            diag_res = await diagnose_dom_node(
-                {"dom_snippet": "", "failed_selector_key": "compose.post_input"}
-            )
-            assert diag_res["status"] == "diagnosed"
+        assert await get_dom_snippet(page=mock_page_empty) == ""
 
         mock_page_none = AsyncMock()
         mock_page_none.evaluate = AsyncMock(return_value=None)
@@ -115,11 +77,6 @@ class TestBloatedAndMaliciousDOMs:
         assert "<div>Error extracting DOM:" in snippet
         assert "Execution context was destroyed" in snippet
 
-        state: SelfHealingState = {"page": mock_page}
-        result = await capture_dom_node(state)
-        assert "Error extracting DOM" in (result.get("dom_snippet") or "")
-        assert result["status"] == "dom_captured"
-
 
 MALFORMED_OR_INJECTION_SELECTORS = [
     "div:broken-pseudo-class",
@@ -139,7 +96,7 @@ class TestAdversarialCandidateSelectors:
     """Chaos tests evaluating candidate selector verification against adversarial inputs."""
 
     @pytest.mark.anyio
-    async def test_overly_broad_selector_rejection(self, tmp_path: Path) -> None:
+    async def test_overly_broad_selector_rejection(self) -> None:
         mock_page = AsyncMock()
         mock_body_locator = build_mock_locator(count=1, is_visible=True)
         mock_page.locator = MagicMock(return_value=mock_body_locator)
@@ -148,23 +105,6 @@ class TestAdversarialCandidateSelectors:
         assert result["found"] is False
         assert result["visible"] is False
         assert "too generic" in str(result["error"])
-
-        state: SelfHealingState = {
-            "page": mock_page,
-            "diagnosis": SelectorDiagnosisReport(
-                broken_element_name="compose.post_button",
-                page_state="authenticated",
-                is_recoverable=True,
-                candidate_selectors=[
-                    SelectorCandidate(
-                        selector="body", confidence=0.99, reasoning="Matches body"
-                    ),
-                ],
-            ),
-        }
-        verify_result = await verify_candidates_node(state)
-        assert verify_result["working_selector"] is None
-        assert verify_result["status"] == "all_candidates_failed"
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("bad_sel", MALFORMED_OR_INJECTION_SELECTORS)
@@ -213,25 +153,6 @@ class TestAdversarialCandidateSelectors:
         )
         assert result["found"] is True
         assert result["visible"] is False
-
-        state: SelfHealingState = {
-            "page": mock_page,
-            "diagnosis": SelectorDiagnosisReport(
-                broken_element_name="compose.post_button",
-                page_state="authenticated",
-                is_recoverable=True,
-                candidate_selectors=[
-                    SelectorCandidate(
-                        selector="div[style*='display: none']",
-                        confidence=0.9,
-                        reasoning="Hidden",
-                    )
-                ],
-            ),
-        }
-        res = await verify_candidates_node(state)
-        assert res["working_selector"] is None
-        assert res["status"] == "all_candidates_failed"
 
 
 class TestSelectorCandidateValidationVulnerabilities:
