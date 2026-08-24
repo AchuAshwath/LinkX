@@ -95,6 +95,37 @@ def _is_id_match(expected_ext_id: str | None, actual_id: Any) -> bool:
     return expected_ext_id in str_actual or str_actual in expected_ext_id
 
 
+def _find_id_match(
+    timeline_tweets: list[dict[str, Any]], expected_ext_id: str | None
+) -> tuple[str, str] | None:
+    """Find immediate match by external tweet status ID."""
+    if not expected_ext_id:
+        return None
+    for t in timeline_tweets:
+        t_id = t.get("status_id")
+        if _is_id_match(expected_ext_id, t_id):
+            return t.get("text", ""), str(t_id)
+    return None
+
+
+def _find_best_fuzzy_match(
+    timeline_tweets: list[dict[str, Any]], expected_content: str
+) -> tuple[str | None, str | None, float]:
+    """Score timeline tweets by text similarity and return highest confidence match."""
+    best_conf = 0.0
+    matched_text: str | None = None
+    matched_id: str | None = None
+    for t in timeline_tweets:
+        t_text = t.get("text", "")
+        t_id = t.get("status_id")
+        is_match, conf = _fuzzy_text_match(expected=expected_content, actual=t_text)
+        if is_match and conf > best_conf:
+            best_conf = conf
+            matched_text = t_text
+            matched_id = str(t_id) if t_id else None
+    return matched_text, matched_id, best_conf
+
+
 def _match_timeline_tweets(
     *,
     timeline_tweets: list[dict[str, Any]],
@@ -102,24 +133,14 @@ def _match_timeline_tweets(
     expected_ext_id: str | None,
 ) -> tuple[bool, str | None, str | None, float]:
     """Find best matching tweet on live timeline by external ID or fuzzy text."""
-    best_confidence = 0.0
-    matched_text: str | None = None
-    matched_id: str | None = None
+    id_match = _find_id_match(timeline_tweets, expected_ext_id)
+    if id_match:
+        return True, id_match[0], id_match[1], 1.0
 
-    for t in timeline_tweets:
-        t_text = t.get("text", "")
-        t_id = t.get("status_id")
-
-        if _is_id_match(expected_ext_id, t_id):
-            return True, t_text, str(t_id), 1.0
-
-        is_match, conf = _fuzzy_text_match(expected=expected_content, actual=t_text)
-        if is_match and conf > best_confidence:
-            best_confidence = conf
-            matched_text = t_text
-            matched_id = str(t_id) if t_id else None
-
-    return best_confidence > 0.0, matched_text, matched_id, best_confidence
+    matched_text, matched_id, conf = _find_best_fuzzy_match(
+        timeline_tweets, expected_content
+    )
+    return conf > 0.0, matched_text, matched_id, conf
 
 
 def _get_expected_post_data(

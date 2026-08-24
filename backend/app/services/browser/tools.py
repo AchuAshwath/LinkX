@@ -236,6 +236,21 @@ def _set_nested_selector(
     current[keys[-1]] = new_selector
 
 
+async def _probe_current_selector(
+    page: Any, current_selector: str | None, timeout_ms: int
+) -> Any:
+    """Probe existing selector; return locator if visible."""
+    if not current_selector:
+        return None
+    probe = await validate_selector_candidate(
+        page=page, selector=current_selector, timeout_ms=timeout_ms
+    )
+    if probe["found"] and probe["visible"]:
+        loc = page.locator(current_selector)
+        return getattr(loc, "first", loc)
+    return None
+
+
 async def find_or_heal_element(
     page: Any,
     *,
@@ -248,14 +263,9 @@ async def find_or_heal_element(
     import app.services.agentic.self_healing_graph as shg
 
     current_selector = _get_nested_selector(selectors_dict, selector_key)
-
-    if current_selector:
-        probe = await validate_selector_candidate(
-            page=page, selector=current_selector, timeout_ms=timeout_ms
-        )
-        if probe["found"] and probe["visible"]:
-            loc = page.locator(current_selector)
-            return loc.first if hasattr(loc, "first") else loc
+    existing_loc = await _probe_current_selector(page, current_selector, timeout_ms)
+    if existing_loc is not None:
+        return existing_loc
 
     logger.warning(
         f"Selector '{selector_key}' ('{current_selector}') failed or missing. Triggering self-healing..."
@@ -271,7 +281,7 @@ async def find_or_heal_element(
     if healed_selector:
         _set_nested_selector(selectors_dict, selector_key, healed_selector)
         loc = page.locator(healed_selector)
-        return loc.first if hasattr(loc, "first") else loc
+        return getattr(loc, "first", loc)
 
     raise SelectorHealingError(
         f"Unable to resolve or heal selector '{selector_key}' on page {getattr(page, 'url', 'unknown')}"

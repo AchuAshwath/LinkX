@@ -563,29 +563,38 @@ def _should_abort_candidate_loop(failure: TopicFailure | None) -> bool:
     return any(st in detail for st in ("logged_out", "rate_limited", "captcha"))
 
 
+async def _handle_candidate_topic(
+    ctx: CandidateScrapeContext, target_id: str, is_href: bool
+) -> bool:
+    """Process a single candidate topic and update scrape results. Returns True if loop should abort."""
+    proc_ctx = TopicProcessContext(
+        page=ctx.page,
+        mouse=ctx.mouse,
+        target_id=target_id,
+        target_title=ctx.news_titles[target_id],
+        is_href=is_href,
+        db_user_id=ctx.db_user_id,
+        config=ctx.config,
+    )
+    scraped, failure = await _process_single_topic(proc_ctx)
+    if scraped:
+        ctx.result.topics_scraped += 1
+    if failure:
+        ctx.result.topics_failed.append(failure)
+        if _should_abort_candidate_loop(failure):
+            logger.warning(f"Aborting candidate loop early: {failure.detail}")
+            return True
+    return False
+
+
 async def _scrape_candidate_topics(ctx: CandidateScrapeContext) -> None:
     """Iterate through candidate topic URLs until max_topics are successfully scraped."""
     for target_id, is_href in ctx.news_urls:
         if ctx.result.topics_scraped >= ctx.max_topics:
             break
-
-        proc_ctx = TopicProcessContext(
-            page=ctx.page,
-            mouse=ctx.mouse,
-            target_id=target_id,
-            target_title=ctx.news_titles[target_id],
-            is_href=is_href,
-            db_user_id=ctx.db_user_id,
-            config=ctx.config,
-        )
-        scraped, failure = await _process_single_topic(proc_ctx)
-        if scraped:
-            ctx.result.topics_scraped += 1
-        if failure:
-            ctx.result.topics_failed.append(failure)
-            if _should_abort_candidate_loop(failure):
-                logger.warning(f"Aborting candidate loop early: {failure.detail}")
-                break
+        should_abort = await _handle_candidate_topic(ctx, target_id, is_href)
+        if should_abort:
+            break
 
 
 async def scrape_trending_topics(
@@ -750,8 +759,6 @@ async def extract_topic_tweets(
     *,
     topic_url: str,
     selectors: dict[str, Any],
-    _scrolls: int = 2,
-    _config_path: str | Path | None = None,
 ) -> list[TrendingTweet]:
     """Extract structured TrendingTweet models from a specific topic URL."""
     if page.url != topic_url:
