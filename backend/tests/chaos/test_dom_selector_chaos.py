@@ -1,8 +1,10 @@
-"""Chaos and adversarial testing suite for browser DOM extraction and selector validation."""
+"""Chaos and adversarial testing suite for browser DOM extraction, selector validation, and self-healing."""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,9 +14,12 @@ from app.services.agentic.self_healing_graph import (
     SelfHealingState,
     capture_dom_node,
     diagnose_dom_node,
+    heal_selector,
     verify_candidates_node,
 )
 from app.services.browser.tools import (
+    SelectorHealingError,
+    find_or_heal_element,
     get_dom_snippet,
     validate_selector_candidate,
 )
@@ -292,3 +297,143 @@ class TestSelectorCandidateValidationVulnerabilities:
         assert result["found"] is False
         assert result["visible"] is False
         assert "timed out" in str(result["error"])
+
+
+def _build_adversarial_diagnosis() -> SelectorDiagnosisReport:
+    """Build adversarial candidate diagnosis with invalid pseudo, detached, and hidden selectors."""
+    return SelectorDiagnosisReport(
+        broken_element_name="compose.post_input",
+        page_state="authenticated",
+        is_recoverable=True,
+        candidate_selectors=[
+            SelectorCandidate(
+                selector="div[[[malformed---pseudo",
+                confidence=0.99,
+                reasoning="Hallucinated",
+            ),
+            SelectorCandidate(
+                selector="div.detached", confidence=0.95, reasoning="Detached"
+            ),
+            SelectorCandidate(
+                selector="div.hidden-input", confidence=0.90, reasoning="Hidden"
+            ),
+            SelectorCandidate(
+                selector="div[data-testid='tweetTextarea_0']",
+                confidence=0.85,
+                reasoning="Valid match",
+            ),
+        ],
+    )
+
+
+def _build_adversarial_page() -> AsyncMock:
+    """Build mock page with dispatching locators simulating various DOM failure modes."""
+    mock_page = AsyncMock()
+    mock_page.evaluate = AsyncMock(
+        return_value="<div data-testid='tweetTextarea_0'>Valid Textarea</div>"
+    )
+    mock_valid_loc = build_mock_locator(count=1, is_visible=True)
+    mock_hidden_loc = build_mock_locator(count=1, is_visible=False)
+
+    def locator_dispatch(sel: str) -> Any:
+        if sel == "div[[[malformed---pseudo":
+            raise Exception("DOMException: Invalid selector")
+        if sel == "div.detached":
+            loc = MagicMock()
+            loc.count = AsyncMock(return_value=1)
+            loc.first = loc
+            loc.nth = MagicMock(return_value=loc)
+            loc.is_visible = AsyncMock(
+                side_effect=Exception("Element detached from DOM")
+            )
+            return loc
+        if sel == "div.hidden-input":
+            return mock_hidden_loc
+        if sel == "div[data-testid='tweetTextarea_0']":
+            return mock_valid_loc
+        return build_mock_locator(count=0, is_visible=False)
+
+    mock_page.locator = MagicMock(side_effect=locator_dispatch)
+    return mock_page
+
+
+class TestSelfHealingSupervisorChaos:
+    """End-to-end chaos tests for StateGraph supervisor and configuration persistence."""
+
+    @pytest.mark.anyio
+    async def test_supervisor_mixed_adversarial_candidate_stream_recovers_to_valid(
+        self, tmp_path: Path
+    ) -> None:
+        config_file = tmp_path / "selectors.json"
+        config_file.write_text('{"compose": {"post_input": "broken_old"}}')
+
+        mock_page = _build_adversarial_page()
+        diagnosis = _build_adversarial_diagnosis()
+        mock_structured_model = AsyncMock(ainvoke=AsyncMock(return_value=diagnosis))
+
+        with patch(
+            "app.services.agentic.self_healing_graph.get_chat_model"
+        ) as mock_get_model:
+            mock_model = MagicMock()
+            mock_model.with_structured_output = MagicMock(
+                return_value=mock_structured_model
+            )
+            mock_get_model.return_value = mock_model
+
+            healed_selector = await heal_selector(
+                page=mock_page,
+                failed_selector_key="compose.post_input",
+                config_path=config_file,
+            )
+
+            assert healed_selector == "div[data-testid='tweetTextarea_0']"
+            with open(config_file) as f:
+                saved = json.load(f)
+            assert (
+                saved["compose"]["post_input"] == "div[data-testid='tweetTextarea_0']"
+            )
+
+    @pytest.mark.anyio
+    async def test_supervisor_empty_unrecoverable_diagnosis_raises_error(
+        self, tmp_path: Path
+    ) -> None:
+        config_file = tmp_path / "selectors.json"
+        initial_content = {"compose": {"post_input": "broken_old"}}
+        config_file.write_text(json.dumps(initial_content))
+
+        mock_page = AsyncMock()
+        mock_page.evaluate = AsyncMock(return_value="<div>Login Form</div>")
+        mock_page.locator = MagicMock(
+            return_value=build_mock_locator(count=0, is_visible=False)
+        )
+
+        diagnosis = SelectorDiagnosisReport(
+            broken_element_name="compose.post_input",
+            page_state="login_redirect",
+            is_recoverable=False,
+            candidate_selectors=[],
+            reasoning="Page redirected to login; cannot heal.",
+        )
+        mock_structured_model = AsyncMock(ainvoke=AsyncMock(return_value=diagnosis))
+
+        with patch(
+            "app.services.agentic.self_healing_graph.get_chat_model"
+        ) as mock_get_model:
+            mock_model = MagicMock()
+            mock_model.with_structured_output = MagicMock(
+                return_value=mock_structured_model
+            )
+            mock_get_model.return_value = mock_model
+
+            with pytest.raises(SelectorHealingError) as exc_info:
+                await find_or_heal_element(
+                    page=mock_page,
+                    selector_key="compose.post_input",
+                    selectors_dict={"compose": {"post_input": "broken_old"}},
+                    config_path=config_file,
+                )
+
+            assert "compose.post_input" in str(exc_info.value)
+            with open(config_file) as f:
+                disk_data = json.load(f)
+            assert disk_data == initial_content
