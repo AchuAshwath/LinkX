@@ -10,9 +10,9 @@ from typing import Any
 from sqlmodel import Session
 
 from app import crud
-from app.core.db import engine
 from app.models import PostCreate, PostPublic, PostUpdate
 from app.services.agentic.schemas import PublishResultReport
+from app.services.agentic.tools.common import resolve_session
 from app.services.publishing import PublishFailure, publish_post
 
 logger = logging.getLogger(__name__)
@@ -42,30 +42,9 @@ def save_draft_post(
         image_url=image_url,
     )
 
-    def _exec(s: Session) -> PostPublic:
+    with resolve_session(session=session) as s:
         db_post = crud.create_post(session=s, post_in=post_in, owner_id=user_uuid)
-        return PostPublic(
-            id=db_post.id,
-            owner_id=db_post.owner_id,
-            content=db_post.content,
-            image_url=db_post.image_url,
-            platform=db_post.platform,
-            method=db_post.method,
-            status=db_post.status,
-            scheduled_at=db_post.scheduled_at,
-            published_at=db_post.published_at,
-            likes=db_post.likes,
-            reposts=db_post.reposts,
-            comments=db_post.comments,
-            created_at=db_post.created_at,
-            updated_at=db_post.updated_at,
-            external_post_id=db_post.external_post_id,
-        )
-
-    if session is not None:
-        return _exec(session)
-    with Session(engine) as s:
-        return _exec(s)
+        return PostPublic.model_validate(db_post)
 
 
 def schedule_post_in_db(
@@ -97,30 +76,9 @@ def schedule_post_in_db(
         image_url=image_url,
     )
 
-    def _exec(s: Session) -> PostPublic:
+    with resolve_session(session=session) as s:
         db_post = crud.create_post(session=s, post_in=post_in, owner_id=user_uuid)
-        return PostPublic(
-            id=db_post.id,
-            owner_id=db_post.owner_id,
-            content=db_post.content,
-            image_url=db_post.image_url,
-            platform=db_post.platform,
-            method=db_post.method,
-            status=db_post.status,
-            scheduled_at=db_post.scheduled_at,
-            published_at=db_post.published_at,
-            likes=db_post.likes,
-            reposts=db_post.reposts,
-            comments=db_post.comments,
-            created_at=db_post.created_at,
-            updated_at=db_post.updated_at,
-            external_post_id=db_post.external_post_id,
-        )
-
-    if session is not None:
-        return _exec(session)
-    with Session(engine) as s:
-        return _exec(s)
+        return PostPublic.model_validate(db_post)
 
 
 async def publish_post_live(
@@ -141,7 +99,7 @@ async def publish_post_live(
             error="Invalid post_id or user_id",
         )
 
-    async def _exec(s: Session) -> PublishResultReport:
+    with resolve_session(session=session) as s:
         db_post = crud.get_post(session=s, post_id=post_uuid)
         if not db_post:
             return PublishResultReport(
@@ -172,26 +130,31 @@ async def publish_post_live(
 
         # Construct post URL
         post_url = None
-        if db_post.external_post_id:
-            ext_id = db_post.external_post_id
+        ext_id = db_post.external_post_id or (
+            result if isinstance(result, str) else None
+        )
+        if ext_id:
             if db_post.platform == "x" or "x:" in ext_id:
                 clean_id = ext_id.split("x:")[-1] if "x:" in ext_id else ext_id
                 post_url = f"https://x.com/i/status/{clean_id}"
             elif db_post.platform == "linkedin" or "linkedin:" in ext_id:
-                post_url = "https://www.linkedin.com/feed/"
+                clean_id = (
+                    ext_id.split("linkedin:")[-1] if "linkedin:" in ext_id else ext_id
+                )
+                if clean_id.startswith("urn:li:"):
+                    post_url = f"https://www.linkedin.com/feed/update/{clean_id}"
+                else:
+                    post_url = (
+                        f"https://www.linkedin.com/feed/update/urn:li:share:{clean_id}"
+                    )
 
         return PublishResultReport(
             success=True,
             post_id=post_id,
-            external_post_id=db_post.external_post_id,
+            external_post_id=ext_id,
             post_url=post_url,
             platform=db_post.platform,
         )
-
-    if session is not None:
-        return await _exec(session)
-    with Session(engine) as s:
-        return await _exec(s)
 
 
 def update_post_in_db(
@@ -209,7 +172,7 @@ def update_post_in_db(
     except (ValueError, TypeError):
         return None
 
-    def _exec(s: Session) -> PostPublic | None:
+    with resolve_session(session=session) as s:
         db_post = crud.get_post(session=s, post_id=post_uuid)
         if not db_post or db_post.owner_id != user_uuid:
             return None
@@ -222,28 +185,7 @@ def update_post_in_db(
 
         post_in = PostUpdate(**update_dict)
         updated = crud.update_post(session=s, db_post=db_post, post_in=post_in)
-        return PostPublic(
-            id=updated.id,
-            owner_id=updated.owner_id,
-            content=updated.content,
-            image_url=updated.image_url,
-            platform=updated.platform,
-            method=updated.method,
-            status=updated.status,
-            scheduled_at=updated.scheduled_at,
-            published_at=updated.published_at,
-            likes=updated.likes,
-            reposts=updated.reposts,
-            comments=updated.comments,
-            created_at=updated.created_at,
-            updated_at=updated.updated_at,
-            external_post_id=updated.external_post_id,
-        )
-
-    if session is not None:
-        return _exec(session)
-    with Session(engine) as s:
-        return _exec(s)
+        return PostPublic.model_validate(updated)
 
 
 def delete_post_from_db(
@@ -259,15 +201,10 @@ def delete_post_from_db(
     except (ValueError, TypeError):
         return False
 
-    def _exec(s: Session) -> bool:
+    with resolve_session(session=session) as s:
         db_post = crud.get_post(session=s, post_id=post_uuid)
         if not db_post or db_post.owner_id != user_uuid:
             return False
 
         crud.delete_post(session=s, post_id=post_uuid)
         return True
-
-    if session is not None:
-        return _exec(session)
-    with Session(engine) as s:
-        return _exec(s)

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from app.services.agentic.self_healing_graph import heal_selector
+from app.services.agentic.tools.common import get_active_page
 from app.services.browser.diagnostics import detect_page_state
 from app.services.browser.manager import BrowserManager
 from app.services.browser.tools import (
@@ -37,9 +38,7 @@ async def inspect_dom_snippet(
 
     try:
         async with manager.get_context("x", headless=True) as context:
-            page = context.pages[0] if context.pages else await context.new_page()
-            for p in context.pages[1:]:
-                await p.close()
+            page = await get_active_page(context=context)
 
             await page.goto(target_url, wait_until="domcontentloaded", timeout=20000)
             page_state = await detect_page_state(page)
@@ -88,9 +87,7 @@ async def probe_and_patch_broken_selector(
 
     try:
         async with manager.get_context("x", headless=True) as context:
-            page = context.pages[0] if context.pages else await context.new_page()
-            for p in context.pages[1:]:
-                await p.close()
+            page = await get_active_page(context=context)
 
             await page.goto(target_url, wait_until="domcontentloaded", timeout=20000)
             validation = await validate_selector_candidate(
@@ -154,9 +151,7 @@ async def trigger_autonomous_selector_healing(
 
     try:
         async with manager.get_context("x", headless=True) as context:
-            page = context.pages[0] if context.pages else await context.new_page()
-            for p in context.pages[1:]:
-                await p.close()
+            page = await get_active_page(context=context)
 
             await page.goto(target_url, wait_until="domcontentloaded", timeout=20000)
             healed = await heal_selector(

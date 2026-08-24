@@ -8,10 +8,10 @@ import uuid
 from sqlmodel import Session, col, select
 
 from app import crud
-from app.core.db import engine
 from app.core.redis import get_redis
 from app.models import Post, PostPublic, TrendingTopic, TrendingTopicPublic
 from app.services.agentic.schemas import AccountStatusReport, TopicDetailContext
+from app.services.agentic.tools.common import resolve_session
 from app.services.browser.manager import BrowserManager
 from app.services.linkedin_posts import linkedin_token_redis_key
 
@@ -31,28 +31,11 @@ def get_latest_scraped_trends(
         logger.error(f"Invalid user_id: {user_id}")
         return []
 
-    def _query(s: Session) -> list[TrendingTopicPublic]:
+    with resolve_session(session=session) as s:
         topics = crud.get_latest_trending_topics(
             session=s, user_id=user_uuid, limit=limit
         )
-        return [
-            TrendingTopicPublic(
-                id=t.id,
-                topic_title=t.topic_title,
-                category=t.category,
-                post_count=t.post_count,
-                topic_url=t.topic_url,
-                first_seen_at=t.first_seen_at,
-                last_seen_at=t.last_seen_at,
-                scraped_at=t.scraped_at,
-            )
-            for t in topics
-        ]
-
-    if session is not None:
-        return _query(session)
-    with Session(engine) as s:
-        return _query(s)
+        return [TrendingTopicPublic.model_validate(t) for t in topics]
 
 
 def get_topic_tweets_and_summary(
@@ -68,7 +51,7 @@ def get_topic_tweets_and_summary(
         logger.error(f"Invalid topic_id: {topic_id}")
         return None
 
-    def _query(s: Session) -> TopicDetailContext | None:
+    with resolve_session(session=session) as s:
         topic = s.get(TrendingTopic, topic_uuid)
         if not topic:
             return None
@@ -98,11 +81,6 @@ def get_topic_tweets_and_summary(
             sample_tweets=sample_tweets,
         )
 
-    if session is not None:
-        return _query(session)
-    with Session(engine) as s:
-        return _query(s)
-
 
 def get_latest_published_post(
     *,
@@ -117,35 +95,13 @@ def get_latest_published_post(
         logger.error(f"Invalid user_id: {user_id}")
         return None
 
-    def _query(s: Session) -> PostPublic | None:
+    with resolve_session(session=session) as s:
         post = crud.get_latest_published_post(
             session=s, user_id=user_uuid, platform=platform
         )
         if not post:
             return None
-
-        return PostPublic(
-            id=post.id,
-            owner_id=post.owner_id,
-            content=post.content,
-            image_url=post.image_url,
-            platform=post.platform,
-            method=post.method,
-            status=post.status,
-            scheduled_at=post.scheduled_at,
-            published_at=post.published_at,
-            likes=post.likes,
-            reposts=post.reposts,
-            comments=post.comments,
-            created_at=post.created_at,
-            updated_at=post.updated_at,
-            external_post_id=post.external_post_id,
-        )
-
-    if session is not None:
-        return _query(session)
-    with Session(engine) as s:
-        return _query(s)
+        return PostPublic.model_validate(post)
 
 
 def get_recent_post_history(
@@ -163,7 +119,7 @@ def get_recent_post_history(
         logger.error(f"Invalid user_id: {user_id}")
         return []
 
-    def _query(s: Session) -> list[PostPublic]:
+    with resolve_session(session=session) as s:
         statement = select(Post).where(Post.owner_id == user_uuid)
         if platform and platform != "all":
             statement = statement.where(Post.platform == platform)
@@ -172,32 +128,7 @@ def get_recent_post_history(
 
         statement = statement.order_by(col(Post.created_at).desc()).limit(limit)
         posts = s.exec(statement).all()
-
-        return [
-            PostPublic(
-                id=p.id,
-                owner_id=p.owner_id,
-                content=p.content,
-                image_url=p.image_url,
-                platform=p.platform,
-                method=p.method,
-                status=p.status,
-                scheduled_at=p.scheduled_at,
-                published_at=p.published_at,
-                likes=p.likes,
-                reposts=p.reposts,
-                comments=p.comments,
-                created_at=p.created_at,
-                updated_at=p.updated_at,
-                external_post_id=p.external_post_id,
-            )
-            for p in posts
-        ]
-
-    if session is not None:
-        return _query(session)
-    with Session(engine) as s:
-        return _query(s)
+        return [PostPublic.model_validate(p) for p in posts]
 
 
 def get_social_account_status(
@@ -229,19 +160,13 @@ def get_social_account_status(
     except Exception:
         linkedin_connected = False
 
-    def _query(s: Session) -> tuple[str | None, str | None]:
+    with resolve_session(session=session) as s:
         li_account = crud.get_social_account(
             session=s, user_id=user_uuid, platform="linkedin"
         )
         if li_account:
-            return li_account.email, li_account.display_name
-        return None, None
-
-    if session is not None:
-        linkedin_email, linkedin_display_name = _query(session)
-    else:
-        with Session(engine) as s:
-            linkedin_email, linkedin_display_name = _query(s)
+            linkedin_email = li_account.email
+            linkedin_display_name = li_account.display_name
 
     return AccountStatusReport(
         user_id=user_id,

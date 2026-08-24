@@ -10,18 +10,18 @@ from typing import Any
 from sqlmodel import Session
 
 from app import crud
-from app.core.db import engine
 from app.services.agentic.schemas import (
     PostUrlStatusReport,
     ProfileVerificationReport,
 )
+from app.services.agentic.tools.common import get_active_page, resolve_session
 from app.services.browser.actions import normalize_post_text
 from app.services.browser.manager import BrowserManager
 
 logger = logging.getLogger(__name__)
 
 
-def _fuzzy_text_match(expected: str, actual: str) -> tuple[bool, float]:
+def _fuzzy_text_match(*, expected: str, actual: str) -> tuple[bool, float]:
     """Perform sanitized substring and token overlap matching between expected and actual text."""
     exp_norm = normalize_post_text(expected).lower().strip()
     act_norm = normalize_post_text(actual).lower().strip()
@@ -50,7 +50,9 @@ def _fuzzy_text_match(expected: str, actual: str) -> tuple[bool, float]:
 
 
 async def _extract_profile_timeline_tweets(
-    page: Any, limit: int = 5
+    *,
+    page: Any,
+    limit: int = 5,
 ) -> list[dict[str, Any]]:
     """Extract top tweet cards from a live profile timeline."""
     try:
@@ -107,7 +109,7 @@ async def verify_post_on_live_profile(
     expected_content: str | None = None
     expected_ext_id: str | None = None
 
-    def _query(s: Session) -> tuple[str | None, str | None]:
+    with resolve_session(session=session) as s:
         if expected_post_id:
             try:
                 db_p = crud.get_post(session=s, post_id=uuid.UUID(expected_post_id))
@@ -119,14 +121,8 @@ async def verify_post_on_live_profile(
             )
 
         if db_p:
-            return db_p.content, db_p.external_post_id
-        return None, None
-
-    if session is not None:
-        expected_content, expected_ext_id = _query(session)
-    else:
-        with Session(engine) as s:
-            expected_content, expected_ext_id = _query(s)
+            expected_content = db_p.content
+            expected_ext_id = db_p.external_post_id
 
     if not expected_content:
         return ProfileVerificationReport(
@@ -152,13 +148,11 @@ async def verify_post_on_live_profile(
     # 3. Launch browser & scrape live timeline
     try:
         async with manager.get_context("x", headless=True) as context:
-            page = context.pages[0] if context.pages else await context.new_page()
-            for p in context.pages[1:]:
-                await p.close()
+            page = await get_active_page(context=context)
 
             await page.goto(profile_url, wait_until="domcontentloaded", timeout=20000)
             timeline_tweets = await _extract_profile_timeline_tweets(
-                page, limit=max_tweets_to_check
+                page=page, limit=max_tweets_to_check
             )
 
             # 4. Match against live tweets
@@ -184,7 +178,9 @@ async def verify_post_on_live_profile(
                     break
 
                 # Fuzzy text matching
-                is_match, conf = _fuzzy_text_match(expected_content, t_text)
+                is_match, conf = _fuzzy_text_match(
+                    expected=expected_content, actual=t_text
+                )
                 if is_match and conf > best_confidence:
                     match_found = True
                     best_confidence = conf
@@ -227,9 +223,7 @@ async def verify_post_url_status(
 
     try:
         async with manager.get_context("x", headless=True) as context:
-            page = context.pages[0] if context.pages else await context.new_page()
-            for p in context.pages[1:]:
-                await p.close()
+            page = await get_active_page(context=context)
 
             resp = await page.goto(
                 post_url, wait_until="domcontentloaded", timeout=20000

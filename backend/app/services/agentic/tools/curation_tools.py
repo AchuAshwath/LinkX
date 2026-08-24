@@ -28,11 +28,15 @@ async def draft_social_post(
         context_parts.append("Key Tweets: " + " | ".join(sample_tweets[:3]))
 
     prompt = "\n".join(context_parts)
-    return await generate_ai_post_draft(
-        prompt=prompt,
-        platform=platform,
-        tone=tone,
-    )
+    try:
+        return await generate_ai_post_draft(
+            prompt=prompt,
+            platform=platform,
+            tone=tone,
+        )
+    except Exception as e:
+        logger.error(f"Error drafting social post: {e}")
+        return f"Trending: {topic_title}. {topic_summary or ''}".strip()
 
 
 def validate_post_constraints(
@@ -101,7 +105,11 @@ async def refine_post_draft(
         f"Refinement Instructions:\n{instructions}\n\n"
         f"Rewrite this post specifically for {platform} adhering to all guidelines."
     )
-    return await generate_ai_post_draft(
-        prompt=refinement_prompt,
-        platform=platform,
-    )
+    try:
+        return await generate_ai_post_draft(
+            prompt=refinement_prompt,
+            platform=platform,
+        )
+    except Exception as e:
+        logger.error(f"Error refining post draft: {e}")
+        return content

@@ -58,7 +58,7 @@ async def main() -> None:
     print("\n[TOOL 3] Ground Truth Timeline Fuzzy Match Demonstration...")
     expected = "Just deployed the new autonomous agentic toolbelt for LinkX!"
     actual_timeline_tweet = "Just deployed the new autonomous agentic toolbelt for LinkX! Link: https://t.co/test"
-    is_match, conf = _fuzzy_text_match(expected, actual_timeline_tweet)
+    is_match, conf = _fuzzy_text_match(expected=expected, actual=actual_timeline_tweet)
     print(f'  • Expected DB Text : "{expected}"')
     print(f'  • Live Tweet Text  : "{actual_timeline_tweet}"')
     print(f"  • Match Found      : {is_match}")

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from app.services.agentic.tools.common import get_active_page
 from app.services.browser.diagnostics import extract_grok_summary
 from app.services.browser.manager import BrowserManager
 from scripts.scrape_trending_topics import extract_topic_tweets, scrape_trending_topics
@@ -20,17 +21,26 @@ async def scrape_live_explore_trends(
 ) -> dict[str, Any]:
     """Execute live stealth scraping on X.com Explore, auto-heal broken selectors,
     and persist trending topics + Grok summaries to PostgreSQL."""
-    result = await scrape_trending_topics(
-        user_id=user_id,
-        max_topics=max_topics,
-        headless=headless,
-    )
-    return {
-        "status": result.status,
-        "topics_found": result.topics_found,
-        "topics_scraped": result.topics_scraped,
-        "errors": result.errors,
-    }
+    try:
+        result = await scrape_trending_topics(
+            user_id=user_id,
+            max_topics=max_topics,
+            headless=headless,
+        )
+        return {
+            "status": result.status,
+            "topics_found": result.topics_found,
+            "topics_scraped": result.topics_scraped,
+            "errors": result.errors,
+        }
+    except Exception as e:
+        logger.error(f"Error during scrape_live_explore_trends: {e}")
+        return {
+            "status": "error",
+            "topics_found": 0,
+            "topics_scraped": 0,
+            "errors": [str(e)],
+        }
 
 
 async def scrape_topic_timeline(
@@ -51,9 +61,7 @@ async def scrape_topic_timeline(
 
     try:
         async with manager.get_context("x", headless=True) as context:
-            page = context.pages[0] if context.pages else await context.new_page()
-            for p in context.pages[1:]:
-                await p.close()
+            page = await get_active_page(context=context)
 
             await page.goto(topic_url, wait_until="domcontentloaded", timeout=20000)
             summary = await extract_grok_summary(page)
@@ -99,6 +107,15 @@ async def inspect_page_session_state(
     platform: str = "x",
 ) -> dict[str, Any]:
     """Inspect active browser session against live sentinel elements to classify page state."""
-    manager = BrowserManager(user_id=user_id)
-    session_report = await manager.verify_session(platform_name=platform)
-    return session_report
+    try:
+        manager = BrowserManager(user_id=user_id)
+        session_report = await manager.verify_session(platform_name=platform)
+        return session_report
+    except Exception as e:
+        logger.error(f"Error inspecting page session state for {user_id}: {e}")
+        return {
+            "connected": False,
+            "authenticated": False,
+            "page_state": "error",
+            "error": str(e),
+        }

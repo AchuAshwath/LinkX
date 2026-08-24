@@ -25,6 +25,12 @@ from app.services.agentic.tools.curation_tools import (
 from app.services.agentic.tools.diagnostics_tools import (
     inspect_dom_snippet,
     probe_and_patch_broken_selector,
+    trigger_autonomous_selector_healing,
+)
+from app.services.agentic.tools.perception_tools import (
+    inspect_page_session_state,
+    scrape_live_explore_trends,
+    scrape_topic_timeline,
 )
 from app.services.agentic.tools.persistence_tools import (
     delete_post_from_db,
@@ -163,6 +169,128 @@ class TestContextTools:
             assert report.x_max_characters == 25000
 
 
+class TestPerceptionTools:
+    @pytest.mark.anyio
+    async def test_scrape_live_explore_trends_success(self) -> None:
+        mock_result = MagicMock()
+        mock_result.status = "success"
+        mock_result.topics_found = 5
+        mock_result.topics_scraped = 3
+        mock_result.errors = []
+
+        with patch(
+            "app.services.agentic.tools.perception_tools.scrape_trending_topics",
+            return_value=mock_result,
+        ):
+            res = await scrape_live_explore_trends(user_id="user-123", max_topics=3)
+            assert res["status"] == "success"
+            assert res["topics_scraped"] == 3
+            assert res["errors"] == []
+
+    @pytest.mark.anyio
+    async def test_scrape_live_explore_trends_exception_handling(self) -> None:
+        with patch(
+            "app.services.agentic.tools.perception_tools.scrape_trending_topics",
+            side_effect=RuntimeError("Browser crashed"),
+        ):
+            res = await scrape_live_explore_trends(user_id="user-123", max_topics=3)
+            assert res["status"] == "error"
+            assert "Browser crashed" in res["errors"][0]
+
+    @pytest.mark.anyio
+    async def test_scrape_topic_timeline_success(self) -> None:
+        mock_page = AsyncMock()
+        mock_context = AsyncMock()
+        mock_context.pages = [mock_page]
+
+        mock_tweet = MagicMock()
+        mock_tweet.author_handle = "@engineer"
+        mock_tweet.text = "Exploring new AI architectures"
+        mock_tweet.likes = 42
+        mock_tweet.retweets = 10
+        mock_tweet.replies = 2
+        mock_tweet.views = 1000
+
+        with (
+            patch(
+                "app.services.agentic.tools.perception_tools.BrowserManager"
+            ) as mock_bm_cls,
+            patch(
+                "app.services.agentic.tools.perception_tools.extract_grok_summary",
+                return_value="Grok summary of tech trend",
+            ),
+            patch(
+                "app.services.agentic.tools.perception_tools.extract_topic_tweets",
+                return_value=[mock_tweet],
+            ),
+        ):
+            mock_bm = MagicMock()
+            mock_bm.session_exists.return_value = True
+            mock_bm.get_context.return_value.__aenter__.return_value = mock_context
+            mock_bm_cls.return_value = mock_bm
+
+            res = await scrape_topic_timeline(
+                topic_url="https://x.com/search?q=AI",
+                user_id="user-123",
+                max_tweets=5,
+            )
+            assert res["success"] is True
+            assert res["grok_summary"] == "Grok summary of tech trend"
+            assert len(res["tweets"]) == 1
+            assert res["tweets"][0]["author"] == "@engineer"
+
+    @pytest.mark.anyio
+    async def test_scrape_topic_timeline_no_session(self) -> None:
+        with patch(
+            "app.services.agentic.tools.perception_tools.BrowserManager"
+        ) as mock_bm_cls:
+            mock_bm = MagicMock()
+            mock_bm.session_exists.return_value = False
+            mock_bm_cls.return_value = mock_bm
+
+            res = await scrape_topic_timeline(
+                topic_url="https://x.com/search?q=AI",
+                user_id="user-123",
+            )
+            assert res["success"] is False
+            assert "X session not connected" in res["error"]
+
+    @pytest.mark.anyio
+    async def test_inspect_page_session_state(self) -> None:
+        with patch(
+            "app.services.agentic.tools.perception_tools.BrowserManager"
+        ) as mock_bm_cls:
+            mock_bm = MagicMock()
+            mock_bm.verify_session = AsyncMock(
+                return_value={
+                    "connected": True,
+                    "authenticated": True,
+                    "page_state": "ok",
+                }
+            )
+            mock_bm_cls.return_value = mock_bm
+
+            res = await inspect_page_session_state(user_id="user-123", platform="x")
+            assert res["connected"] is True
+            assert res["page_state"] == "ok"
+
+    @pytest.mark.anyio
+    async def test_inspect_page_session_state_error_handling(self) -> None:
+        with patch(
+            "app.services.agentic.tools.perception_tools.BrowserManager"
+        ) as mock_bm_cls:
+            mock_bm = MagicMock()
+            mock_bm.verify_session = AsyncMock(
+                side_effect=RuntimeError("Browser launch failure")
+            )
+            mock_bm_cls.return_value = mock_bm
+
+            res = await inspect_page_session_state(user_id="user-123", platform="x")
+            assert res["connected"] is False
+            assert res["page_state"] == "error"
+            assert "Browser launch failure" in res["error"]
+
+
 class TestCurationTools:
     @pytest.mark.anyio
     async def test_draft_social_post(self) -> None:
@@ -283,26 +411,54 @@ class TestPersistenceTools:
             )
             assert res.success is True
             assert res.post_id == post_id
+            assert res.post_url == "https://x.com/i/status/182938192"
+
+    @pytest.mark.anyio
+    async def test_publish_post_live_linkedin_url(self, db: Session) -> None:
+        user = _make_user(db)
+        p = Post(
+            owner_id=user.id,
+            content="Ready to publish on LinkedIn",
+            platform="linkedin",
+            status="draft",
+        )
+        db.add(p)
+        db.commit()
+        db.refresh(p)
+        post_id = str(p.id)
+
+        with patch(
+            "app.services.agentic.tools.persistence_tools.publish_post",
+            return_value="linkedin:urn:li:share:12345678",
+        ):
+            res = await publish_post_live(
+                post_id=post_id, user_id=str(user.id), session=db
+            )
+            assert res.success is True
+            assert res.post_id == post_id
+            assert "feed/update/urn:li:share:12345678" in str(res.post_url)
 
 
 class TestVerificationTools:
     def test_fuzzy_text_match(self) -> None:
         # Exact match
-        ok, conf = _fuzzy_text_match("Hello world from LinkX", "Hello world from LinkX")
+        ok, conf = _fuzzy_text_match(
+            expected="Hello world from LinkX", actual="Hello world from LinkX"
+        )
         assert ok is True
         assert conf >= 0.95
 
         # Substring prefix match
         ok, conf = _fuzzy_text_match(
-            "Announcing our new open-source agentic tools for social media!",
-            "Announcing our new open-source agentic tools for social media! Link: https://t.co/xyz",
+            expected="Announcing our new open-source agentic tools for social media!",
+            actual="Announcing our new open-source agentic tools for social media! Link: https://t.co/xyz",
         )
         assert ok is True
         assert conf >= 0.9
 
         # Total mismatch
         ok, conf = _fuzzy_text_match(
-            "Crypto market crashes today", "Recipe for chocolate cake"
+            expected="Crypto market crashes today", actual="Recipe for chocolate cake"
         )
         assert ok is False
         assert conf < 0.3
@@ -444,3 +600,46 @@ class TestDiagnosticsTools:
             assert res["success"] is True
             assert res["patched"] is True
             assert res["new_selector"] == "div[data-testid='tweetTextarea_0']"
+
+    @pytest.mark.anyio
+    async def test_trigger_autonomous_selector_healing_success(self) -> None:
+        mock_page = AsyncMock()
+        mock_context = AsyncMock()
+        mock_context.pages = [mock_page]
+
+        with (
+            patch(
+                "app.services.agentic.tools.diagnostics_tools.BrowserManager"
+            ) as mock_bm_cls,
+            patch(
+                "app.services.agentic.tools.diagnostics_tools.heal_selector",
+                return_value="div[data-testid='healedSelector']",
+            ),
+        ):
+            mock_bm = MagicMock()
+            mock_bm.session_exists.return_value = True
+            mock_bm.get_context.return_value.__aenter__.return_value = mock_context
+            mock_bm_cls.return_value = mock_bm
+
+            res = await trigger_autonomous_selector_healing(
+                user_id="user-123",
+                failed_selector_key="compose.post_input",
+            )
+            assert res["success"] is True
+            assert res["healed_selector"] == "div[data-testid='healedSelector']"
+
+    @pytest.mark.anyio
+    async def test_trigger_autonomous_selector_healing_no_session(self) -> None:
+        with patch(
+            "app.services.agentic.tools.diagnostics_tools.BrowserManager"
+        ) as mock_bm_cls:
+            mock_bm = MagicMock()
+            mock_bm.session_exists.return_value = False
+            mock_bm_cls.return_value = mock_bm
+
+            res = await trigger_autonomous_selector_healing(
+                user_id="user-123",
+                failed_selector_key="compose.post_input",
+            )
+            assert res["success"] is False
+            assert "X session not connected" in res["error"]
