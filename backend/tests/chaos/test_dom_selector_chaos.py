@@ -42,6 +42,7 @@ from app.services.browser.tools import (
     get_dom_snippet,
     validate_selector_candidate,
 )
+from tests.helpers.mock_browser import build_mock_locator
 
 # ==============================================================================
 # 1. BLOATED / MALICIOUS DOM EXTRACTION TESTS
@@ -208,12 +209,7 @@ class TestAdversarialCandidateSelectors:
             return_value="<body><div id='app'><button>Real Post</button></div></body>"
         )
 
-        # Mock broad selector matching the <body> or <html> element
-        mock_body_locator = AsyncMock()
-        mock_body_locator.count = AsyncMock(return_value=1)
-        mock_body_locator.first = mock_body_locator
-        mock_body_locator.is_visible = AsyncMock(return_value=True)
-
+        mock_body_locator = build_mock_locator(count=1, is_visible=True)
         mock_page.locator = MagicMock(return_value=mock_body_locator)
 
         # 1. Direct validation check: 'body' or '*' is rejected by DISALLOWED_GENERIC_SELECTORS
@@ -299,11 +295,7 @@ class TestAdversarialCandidateSelectors:
     async def test_candidate_targeting_hidden_zero_opacity_display_none(self) -> None:
         """Attack Vector 2D: Elements with display:none, visibility:hidden, or zero size are rejected."""
         # Case 1: display: none
-        mock_hidden_loc = AsyncMock()
-        mock_hidden_loc.count = AsyncMock(return_value=1)
-        mock_hidden_loc.first = mock_hidden_loc
-        mock_hidden_loc.is_visible = AsyncMock(return_value=False)
-
+        mock_hidden_loc = build_mock_locator(count=1, is_visible=False)
         mock_page = MagicMock()
         mock_page.locator = MagicMock(return_value=mock_hidden_loc)
 
@@ -369,11 +361,7 @@ class TestSelectorCandidateValidationVulnerabilities:
     @pytest.mark.anyio
     async def test_validation_all_matching_elements_hidden(self) -> None:
         """Attack Vector 3A: count > 0 (e.g. 5 hidden elements) correctly reports visible=False."""
-        mock_locator = AsyncMock()
-        mock_locator.count = AsyncMock(return_value=5)
-        mock_locator.first = mock_locator
-        mock_locator.is_visible = AsyncMock(return_value=False)
-
+        mock_locator = build_mock_locator(count=5, is_visible=False)
         mock_page = MagicMock()
         mock_page.locator = MagicMock(return_value=mock_locator)
 
