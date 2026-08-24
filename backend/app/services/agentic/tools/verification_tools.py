@@ -87,6 +87,14 @@ async def _extract_profile_timeline_tweets(
     return list(raw_tweets) if isinstance(raw_tweets, list) else []
 
 
+def _is_id_match(expected_ext_id: str | None, actual_id: Any) -> bool:
+    """Check if actual external ID matches expected ID."""
+    if not expected_ext_id or not actual_id:
+        return False
+    str_actual = str(actual_id)
+    return expected_ext_id in str_actual or str_actual in expected_ext_id
+
+
 def _match_timeline_tweets(
     *,
     timeline_tweets: list[dict[str, Any]],
@@ -102,11 +110,7 @@ def _match_timeline_tweets(
         t_text = t.get("text", "")
         t_id = t.get("status_id")
 
-        if (
-            expected_ext_id
-            and t_id
-            and (expected_ext_id in str(t_id) or str(t_id) in expected_ext_id)
-        ):
+        if _is_id_match(expected_ext_id, t_id):
             return True, t_text, str(t_id), 1.0
 
         is_match, conf = _fuzzy_text_match(expected=expected_content, actual=t_text)

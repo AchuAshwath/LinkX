@@ -491,13 +491,40 @@ async def _navigate_and_verify_topic(
     return True, None
 
 
+def _save_topic_safely(
+    ctx: TopicProcessContext,
+    title_data: dict[str, Any],
+    summary_text: str | None,
+    conversations: list[dict[str, Any]],
+) -> None:
+    """Safely persist topic record and associated tweets to PostgreSQL."""
+    try:
+        _save_topic_record(
+            TopicRecordPayload(
+                db_user_id=ctx.db_user_id,
+                topic_url=ctx.page.url,
+                title_data=title_data,
+                summary_text=summary_text,
+                conversations=conversations,
+                scraped_at=datetime.now(timezone.utc),
+            )
+        )
+    except Exception as e:
+        logger.error(f"DB save error: {e}")
+
+
+async def _delay_between_topics(config: dict[str, Any]) -> None:
+    """Introduce humanized jitter delay between topic scrapes."""
+    min_d = config.get("min_delay_between_topics", 4.0)
+    max_d = config.get("max_delay_between_topics", 7.0)
+    delay = random.uniform(min_d, max_d)
+    await random_delay(min_sec=delay, max_sec=delay)
+
+
 async def _process_single_topic(
     ctx: TopicProcessContext,
 ) -> tuple[bool, TopicFailure | None]:
-    """Process a single topic navigation, scraping, and persistence."""
-    logger.info(f"Targeting topic: {ctx.target_id}")
-    await random_delay(min_sec=1.0, max_sec=3.0)
-
+    """Process a single topic link: navigate, scrape tweets, and persist to DB."""
     selectors = ctx.config.get("selectors", {})
     tweet_selector = selectors.get("tweet_container", "[data-testid='tweet']")
     summary_selectors = selectors.get("summary_selectors", [])
@@ -513,25 +540,10 @@ async def _process_single_topic(
     conversations = await _scrape_topic_tweets(ctx, tweet_selector)
     title_data = parse_title_metadata(ctx.target_title)
 
-    try:
-        _save_topic_record(
-            TopicRecordPayload(
-                db_user_id=ctx.db_user_id,
-                topic_url=ctx.page.url,
-                title_data=title_data,
-                summary_text=summary_text,
-                conversations=conversations,
-                scraped_at=datetime.now(timezone.utc),
-            )
-        )
-    except Exception as e:
-        logger.error(f"DB save error: {e}")
+    _save_topic_safely(ctx, title_data, summary_text, conversations)
 
     await ctx.page.goto("https://x.com/home", wait_until="domcontentloaded")
-    min_d = ctx.config.get("min_delay_between_topics", 4.0)
-    max_d = ctx.config.get("max_delay_between_topics", 7.0)
-    delay = random.uniform(min_d, max_d)
-    await random_delay(min_sec=delay, max_sec=delay)
+    await _delay_between_topics(ctx.config)
 
     if len(conversations) == 0:
         return True, TopicFailure(

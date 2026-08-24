@@ -164,7 +164,6 @@ def update_post_in_db(
     post_id: str,
     user_id: str,
     content: str | None = None,
-    status: str | None = None,
     session: Session | None = None,
 ) -> PostPublic | None:
     """Update post fields in PostgreSQL with state machine validation."""
@@ -182,8 +181,6 @@ def update_post_in_db(
         update_dict: dict[str, Any] = {}
         if content is not None:
             update_dict["content"] = content
-        if status is not None:
-            update_dict["status"] = status
 
         post_in = PostUpdate(**update_dict)
         updated = crud.update_post(session=s, db_post=db_post, post_in=post_in)
