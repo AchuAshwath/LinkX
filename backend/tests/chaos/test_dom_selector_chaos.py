@@ -91,6 +91,20 @@ MALFORMED_OR_INJECTION_SELECTORS = [
     "A" * 1000,
 ]
 
+LOCATOR_EXCEPTION_CASES = [
+    (
+        Exception("Target element is not attached to the DOM"),
+        "div.detached-item",
+        "not attached to the DOM",
+    ),
+    (TimeoutError("Playwright locator timed out"), "div.slow", "timed out"),
+]
+
+HIDDEN_ELEMENT_CASES = [
+    (1, "div[style*='display: none']"),
+    (5, "input[type='hidden']"),
+]
+
 
 class TestAdversarialCandidateSelectors:
     """Chaos tests evaluating candidate selector verification against adversarial inputs."""
@@ -124,52 +138,40 @@ class TestAdversarialCandidateSelectors:
         assert result["error"] is not None
 
     @pytest.mark.anyio
-    async def test_candidate_targeting_detached_subtree_element(self) -> None:
+    @pytest.mark.parametrize("case", LOCATOR_EXCEPTION_CASES)
+    async def test_locator_exceptions_handled_gracefully(
+        self, case: tuple[Exception, str, str]
+    ) -> None:
+        exc, selector, expected_err = case
         mock_locator = AsyncMock()
         mock_locator.count = AsyncMock(return_value=1)
         mock_locator.first = mock_locator
-        mock_locator.is_visible = AsyncMock(
-            side_effect=Exception("Target element is not attached to the DOM")
-        )
+        mock_locator.is_visible = AsyncMock(side_effect=exc)
 
         mock_page = MagicMock()
         mock_page.locator = MagicMock(return_value=mock_locator)
 
         result = await validate_selector_candidate(
-            page=mock_page, selector="div.detached-item"
+            page=mock_page, selector=selector, timeout_ms=500
         )
         assert result["found"] is False
         assert result["visible"] is False
-        assert "not attached to the DOM" in str(result["error"])
+        assert expected_err in str(result["error"])
 
     @pytest.mark.anyio
-    async def test_candidate_targeting_hidden_element(self) -> None:
-        mock_hidden_loc = build_mock_locator(count=1, is_visible=False)
+    @pytest.mark.parametrize("case", HIDDEN_ELEMENT_CASES)
+    async def test_candidate_targeting_hidden_elements(
+        self, case: tuple[int, str]
+    ) -> None:
+        count, selector = case
+        mock_hidden_loc = build_mock_locator(count=count, is_visible=False)
         mock_page = MagicMock()
         mock_page.locator = MagicMock(return_value=mock_hidden_loc)
 
-        result = await validate_selector_candidate(
-            page=mock_page, selector="div[style*='display: none']"
-        )
+        result = await validate_selector_candidate(page=mock_page, selector=selector)
         assert result["found"] is True
         assert result["visible"] is False
-
-
-class TestSelectorCandidateValidationVulnerabilities:
-    """In-depth tests for edge cases and logic blindspots in validate_selector_candidate."""
-
-    @pytest.mark.anyio
-    async def test_validation_all_matching_elements_hidden(self) -> None:
-        mock_locator = build_mock_locator(count=5, is_visible=False)
-        mock_page = MagicMock()
-        mock_page.locator = MagicMock(return_value=mock_locator)
-
-        result = await validate_selector_candidate(
-            page=mock_page, selector="input[type='hidden']"
-        )
-        assert result["found"] is True
-        assert result["visible"] is False
-        assert result["count"] == 5
+        assert result["count"] == count
 
     @pytest.mark.anyio
     async def test_validation_first_hidden_second_visible(self) -> None:
@@ -194,22 +196,3 @@ class TestSelectorCandidateValidationVulnerabilities:
         assert result["found"] is True
         assert result["visible"] is True
         assert result["count"] == 2
-
-    @pytest.mark.anyio
-    async def test_validation_timeout_resilience(self) -> None:
-        mock_locator = AsyncMock()
-        mock_locator.count = AsyncMock(return_value=1)
-        mock_locator.first = mock_locator
-        mock_locator.is_visible = AsyncMock(
-            side_effect=TimeoutError("Playwright locator timed out")
-        )
-
-        mock_page = MagicMock()
-        mock_page.locator = MagicMock(return_value=mock_locator)
-
-        result = await validate_selector_candidate(
-            page=mock_page, selector="div.slow", timeout_ms=500
-        )
-        assert result["found"] is False
-        assert result["visible"] is False
-        assert "timed out" in str(result["error"])
