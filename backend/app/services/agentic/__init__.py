@@ -9,6 +9,11 @@ from app.services.agentic.schemas import (
     TrendingScrapeBatch,
     VisionDraftAnalysis,
 )
+from app.services.agentic.self_healing_graph import (
+    SelfHealingState,
+    build_self_healing_graph,
+    heal_selector,
+)
 
 __all__ = [
     "get_chat_model",
@@ -19,4 +24,7 @@ __all__ = [
     "SelectorCandidate",
     "SelectorDiagnosisReport",
     "VisionDraftAnalysis",
+    "SelfHealingState",
+    "build_self_healing_graph",
+    "heal_selector",
 ]

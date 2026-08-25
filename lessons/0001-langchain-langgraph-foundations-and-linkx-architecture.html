@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lesson 0001: LangChain & LangGraph Architecture for LinkX</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <span class="badge">Lesson 0001</span>
+      <h1>LangChain & LangGraph Foundations for LinkX</h1>
+      <p style="color: var(--text-muted);">How stateful graphs, rich input payloads, and modular tools replace brittle automation scripts.</p>
+    </header>
+
+    <div class="card accent-border">
+      <h3>🎯 The Core Mission</h3>
+      <p>Transition LinkX from running hardcoded, disconnected automation scripts into an <strong>orchestrated, reusable, and self-healing agentic system</strong>.</p>
+    </div>
+
+    <h2>1. The Mental Model: LangChain vs. LangGraph</h2>
+    <p>Many developers confuse LangChain and LangGraph. Here is the clean boundary:</p>
+
+    <div class="card">
+      <table style="width: 100%; border-collapse: collapse; text-align: left;">
+        <thead>
+          <tr style="border-bottom: 1px solid var(--border); color: var(--primary);">
+            <th style="padding: 0.75rem;">Component</th>
+            <th style="padding: 0.75rem;">What it Does</th>
+            <th style="padding: 0.75rem;">LinkX Example</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom: 1px solid var(--border);">
+            <td style="padding: 0.75rem;"><strong>LangChain</strong></td>
+            <td style="padding: 0.75rem;">Building blocks: Model wrappers, typed structured output (<code>with_structured_output</code>), and <code>@tool</code> definitions.</td>
+            <td style="padding: 0.75rem;"><code>get_chat_model()</code>, <code>ExtractedTrendingTopic</code> schema, <code>@tool def take_screenshot()</code>.</td>
+          </tr>
+          <tr>
+            <td style="padding: 0.75rem;"><strong>LangGraph</strong></td>
+            <td style="padding: 0.75rem;">The <strong>orchestration engine</strong>. Controls state, loops, conditional decisions (if/else), retries, and multi-step agent flows.</td>
+            <td style="padding: 0.75rem;">Self-healing supervisor that detects selector misses, diagnoses DOM, hot-patches JSON, and retries.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>2. Does LangGraph Only Accept Text as Input?</h2>
+    <div class="card success-border">
+      <h3>💡 The Answer: No! LangGraph receives Rich Typed State</h3>
+      <p>A LangGraph workflow does <strong>not</strong> operate solely on text strings. Every graph is initialized with a <strong>Typed State schema</strong> (a Pydantic model or TypedDict). The input can be any structured payload you want.</p>
+    </div>
+
+    <p>For example, when a user clicks the <strong>"Draft" button</strong> near a scraped topic in the LinkX UI, the frontend doesn't just send text. It sends a structured request that populates the Graph's State:</p>
+
+    <pre><code># The State schema shared across all nodes in the Graph
+class CurationState(TypedDict):
+    user_id: str
+    topic_title: str
+    topic_url: str | None
+    scraped_tweets: list[dict]
+    screenshot_b64: str | None
+    detected_insights: list[str]
+    linkedin_draft: str | None
+    x_draft: str | None
+    status: str
+
+# Invoking the graph from FastAPI with rich structured data:
+initial_state = {
+    "user_id": current_user.id,
+    "topic_title": "Autonomous AI Agents",
+    "topic_url": "https://x.com/search?q=AI",
+    "scraped_tweets": topic.tweets,
+    "screenshot_b64": None,
+    "status": "pending",
+}
+
+# The graph receives this full object at START
+result = await curation_graph.ainvoke(initial_state)</code></pre>
+
+    <p>This means your frontend components and buttons have <strong>full context awareness</strong> — they can trigger the graph with topic IDs, user preferences, tone flags, or image attachments.</p>
+
+    <h2>3. Turning Automation Scripts into Modular Tools</h2>
+    <p>Previously, LinkX had standalone scripts like <code>scrape_trending_topics.py</code> and <code>x_posts.py</code>. In an agentic architecture, we convert these into <strong>modular tools</strong> that either:</p>
+    <ol>
+      <li><strong>Run as deterministic graph nodes</strong> (e.g. <code>ScrapeNode</code>).</li>
+      <li><strong>Are callable by an LLM reasoning agent</strong> via LangChain's <code>@tool</code> decorator.</li>
+    </ol>
+
+    <pre><code>from langchain_core.tools import tool
+
+@tool
+async def scrape_trending_topics_tool(max_topics: int = 3) -> list[dict]:
+    """Scrapes top trending topics from X using stealth Playwright automation."""
+    result = await scrape_trending_topics(max_topics=max_topics)
+    return [t.model_dump() for t in result.topics]
+
+@tool
+async def test_selector_tool(selector: str) -> dict:
+    """Tests if a candidate CSS selector exists and is visible on the current page."""
+    return await test_selector_candidate(page, selector=selector)
+
+@tool
+async def patch_config_tool(config_key: str, new_selector: str) -> bool:
+    """Updates scrape_config.json or x_selectors.json with a verified working selector."""
+    return patch_selector_config(key_path=config_key, new_selector=new_selector)</code></pre>
+
+    <h2>4. The Self-Healing State Graph</h2>
+    <p>Here is how LangGraph handles cycles (loops with exit conditions) to achieve self-healing:</p>
+
+    <div class="diagram-box">
+[START]
+   │
+   ▼
+[Execute Action Node] ──(Check Selector)──► [Selector Valid?]
+                                                    │
+                   ┌────────────────────────────────┴────────────────────────────────┐
+                   ▼                                                                 ▼
+           [Yes: Success]                                                    [No: Element Miss]
+                   │                                                                 │
+                   ▼                                                                 ▼
+                 [END]                                                   [Diagnose Failure Node]
+                                                                         (Captures Screenshot + DOM)
+                                                                                     │
+                                                                                     ▼
+                                                                         [Verify Candidates Node]
+                                                                         (Tests selectors on live page)
+                                                                                     │
+                                                                                     ▼
+                                                                         [Patch Config Node]
+                                                                         (Updates JSON file)
+                                                                                     │
+                                                                                     ▼
+                                                                        (Loop back to Execute Node)
+    </div>
+
+    <h2>5. Check Your Understanding</h2>
+    <div class="quiz-container">
+      <h3 style="color: #ffffff; margin-bottom: 1rem;">Question: How does LangGraph pass data between different nodes in LinkX?</h3>
+
+      <button class="quiz-option" onclick="checkAnswer(1)">A) Nodes communicate by writing temporary text files to the local file system.</button>
+      <button class="quiz-option" onclick="checkAnswer(2)">B) Nodes communicate by converting all arguments into one single prompt string.</button>
+      <button class="quiz-option" onclick="checkAnswer(3)">C) Nodes read and return partial updates to a shared, typed State dictionary/Pydantic model.</button>
+      <button class="quiz-option" onclick="checkAnswer(4)">D) Nodes communicate exclusively through Redis pub/sub channels.</button>
+
+      <div id="quiz-feedback" class="quiz-feedback"></div>
+    </div>
+
+    <div class="card">
+      <h3>📚 Primary Source Recommendation</h3>
+      <p>Read the official <a href="https://langchain-ai.github.io/langgraph/concepts/high_level/" target="_blank" style="color: var(--primary);">LangGraph High-Level Concepts</a> guide to see how <code>StateGraph</code> compiles into an async executable runner.</p>
+    </div>
+
+    <div class="footer">
+      <p>💡 Ask your AI pairing agent any followup questions to clarify how this applies to Issue #86 and #87!</p>
+    </div>
+  </div>
+
+  <script>
+    function checkAnswer(selected) {
+      const feedback = document.getElementById("quiz-feedback");
+      feedback.style.display = "block";
+      if (selected === 3) {
+        feedback.className = "quiz-feedback correct";
+        feedback.innerHTML = "<strong>Correct!</strong> In LangGraph, every node receives the current State object and returns a dictionary of keys to update. The graph automatically merges updates into the centralized state.";
+      } else {
+        feedback.className = "quiz-feedback incorrect";
+        feedback.innerHTML = "<strong>Not quite.</strong> LangGraph uses a centralized, typed State object (TypedDict or Pydantic). Each node receives the current state and returns updates.";
+      }
+    }
+  </script>
+</body>
+</html>

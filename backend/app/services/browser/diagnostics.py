@@ -106,64 +106,100 @@ async def extract_structural_map(
     return structure_data  # type: ignore
 
 
-async def detect_page_state(page: Any) -> str:
-    """Detect the current state of the X.com page.
+CHALLENGE_SELECTORS = (
+    "iframe[src*='captcha']",
+    "iframe[src*='arkose']",
+    "iframe[src*='arkoselabs']",
+    "iframe[src*='turnstile']",
+    "iframe[src*='challenges.cloudflare.com']",
+    "iframe[title*='challenge']",
+    "iframe[title*='reCAPTCHA']",
+    "iframe[title*='Arkose']",
+)
 
-    Returns one of:
-        'ok'           — Normal page, ready for scraping.
-        'logged_out'   — Session expired, redirected to login.
-        'rate_limited' — Hit a rate limit or "Something went wrong" error.
-        'captcha'      — CAPTCHA challenge detected.
-        'empty'        — Page loaded but no meaningful content found.
-        'unknown'      — Unrecognized state.
-    """
-    url = page.url
 
-    # Check for login redirect
+async def _check_url_and_title(page: Any) -> str | None:
+    """Check for login redirects or anti-bot challenge titles."""
+    url = getattr(page, "url", "")
     if "/login" in url or "/i/flow/login" in url:
         return "logged_out"
 
-    # Check for "Something went wrong" error banner
     try:
-        error_count = await page.locator("text=Something went wrong").count()
-        if error_count > 0:
-            return "rate_limited"
+        title = (await page.title()).lower() if hasattr(page, "title") else ""
+        if any(
+            h in title
+            for h in ("just a moment", "attention required", "security check")
+        ):
+            return "captcha"
     except Exception:
         pass
+    return None
 
-    # Check for rate limit page (HTTP 429-style pages)
+
+async def _check_error_banners(page: Any) -> str | None:
+    """Check for rate limit or generic error text banners."""
+    for text_sel in (
+        "text=Something went wrong",
+        "text=Rate limit exceeded",
+        "text=Your account has been locked",
+    ):
+        try:
+            if await page.locator(text_sel).count() > 0:
+                return "rate_limited"
+        except Exception:
+            pass
+    return None
+
+
+async def _is_challenge_box(iframe: Any) -> bool:
+    """Check if iframe has visible bounding dimensions characteristic of a CAPTCHA."""
     try:
-        rate_limit_count = await page.locator("text=Rate limit exceeded").count()
-        if rate_limit_count > 0:
-            return "rate_limited"
+        if not await iframe.is_visible():
+            return False
+        box = await iframe.bounding_box()
+        return bool(box and box["width"] > 100 and box["height"] > 100)
     except Exception:
-        pass
+        return False
 
-    # Check for CAPTCHA — only flag if visible and takes up real screen space.
-    # X.com uses hidden iframe[src*='challenge'] for normal tracking; those
-    # are NOT actual CAPTCHA walls and must not trigger a false positive.
-    try:
-        captcha_locators = await page.locator("iframe[src*='captcha']").all()
-        for iframe in captcha_locators:
-            if await iframe.is_visible():
-                box = await iframe.bounding_box()
-                if box and box["width"] > 100 and box["height"] > 100:
-                    logger.warning(
-                        f"CAPTCHA iframe detected: {box['width']}x{box['height']}px"
-                    )
+
+async def _check_challenge_iframes(page: Any) -> str | None:
+    """Check for visible, non-tracking CAPTCHA or challenge iframes/wrappers."""
+    for sel in CHALLENGE_SELECTORS:
+        try:
+            locators = await page.locator(sel).all()
+            for iframe in locators:
+                if await _is_challenge_box(iframe):
                     return "captcha"
-    except Exception:
-        pass
+        except Exception:
+            pass
 
-    # Check for suspended/locked account
     try:
-        suspended_count = await page.locator(
-            "text=Your account has been locked"
+        cf_count = await page.locator(
+            "#challenge-running, #challenge-stage, div.cf-turnstile-wrapper"
         ).count()
-        if suspended_count > 0:
-            return "rate_limited"
+        if cf_count > 0:
+            return "captcha"
     except Exception:
         pass
+    return None
+
+
+async def detect_page_state(page: Any) -> str:
+    """Classify the current page into a sentinel state.
+
+    Returns one of: 'ok', 'logged_out', 'rate_limited', 'captcha', 'error'.
+    """
+    url_state = await _check_url_and_title(page)
+    if url_state:
+        return url_state
+
+    banner_state = await _check_error_banners(page)
+    if banner_state:
+        return banner_state
+
+    challenge_state = await _check_challenge_iframes(page)
+    if challenge_state:
+        return challenge_state
 
     return "ok"
 
