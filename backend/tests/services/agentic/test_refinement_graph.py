@@ -46,59 +46,35 @@ class TestDraftRefinementGraphSlices:
 
     @pytest.mark.anyio
     @pytest.mark.parametrize(
-        (
-            "initial_content",
-            "mock_result",
-            "expected_compliant",
-            "expected_attempts",
-            "expected_status",
-            "expected_content",
-        ),
+        ("test_case", "expected"),
         [
             (
-                "A" * 320,
-                "Polished short tweet #AI",
-                True,
-                1,
-                "compliant",
-                "Polished short tweet #AI",
+                ("A" * 320, "Polished short tweet #AI"),
+                (True, 1, "compliant", "Polished short tweet #AI"),
             ),
             (
-                "B" * 400,
-                ["B" * 300, "Final tweet #LinkX"],
-                True,
-                2,
-                "compliant",
-                "Final tweet #LinkX",
+                ("B" * 400, ["B" * 300, "Final tweet #LinkX"]),
+                (True, 2, "compliant", "Final tweet #LinkX"),
             ),
             (
-                "C" * 400,
-                "C" * 350,
-                False,
-                2,
-                "best_effort",
-                "C" * 350,
+                ("C" * 400, "C" * 350),
+                (False, 2, "best_effort", "C" * 350),
             ),
             (
-                "D" * 350,
-                RuntimeError("LLM API rate limit exceeded"),
-                False,
-                1,
-                "error",
-                "D" * 350,
+                ("D" * 350, RuntimeError("LLM API rate limit exceeded")),
+                (False, 1, "error", "D" * 350),
             ),
         ],
     )
     async def test_slices_refinement_feedback_loop(
         self,
-        initial_content: str,
-        mock_result: Any,
-        expected_compliant: bool,
-        expected_attempts: int,
-        expected_status: str,
-        expected_content: str,
+        test_case: tuple[str, Any],
+        expected: tuple[bool, int, str, str],
     ) -> None:
         """Slices 2-5: Test single-attempt, multi-attempt, attempt exhaustion, and error resilience."""
+        initial_content, mock_result = test_case
+        exp_compliant, exp_attempts, exp_status, exp_content = expected
+
         with patch(
             "app.services.agentic.refinement_graph.refine_post_draft",
             new_callable=AsyncMock,
@@ -115,44 +91,41 @@ class TestDraftRefinementGraphSlices:
                 max_attempts=2,
             )
 
-            assert report.is_compliant is expected_compliant
-            assert report.attempts == expected_attempts
-            assert report.status == expected_status
-            assert report.refined_content == expected_content
+            assert report.is_compliant is exp_compliant
+            assert report.attempts == exp_attempts
+            assert report.status == exp_status
+            assert report.refined_content == exp_content
 
     @pytest.mark.parametrize(
-        ("platform", "content_len", "is_premium", "expected_compliant"),
+        ("platform_case", "expected_compliant"),
         [
-            ("linkedin", 500, False, True),  # 500 chars is within LinkedIn 3000 limit
-            ("linkedin", 3500, False, False),  # 3500 exceeds LinkedIn limit
-            ("x", 500, True, True),  # X Premium has 25000 char limit
-            ("x", 500, False, False),  # Standard X limit is 280
-            ("linkx", 150, False, True),  # Standard linkx limit 280
+            (("linkedin", 500, False), True),
+            (("linkedin", 3500, False), False),
+            (("x", 500, True), True),
+            (("x", 500, False), False),
+            (("linkx", 150, False), True),
         ],
     )
     @pytest.mark.anyio
     async def test_slice_6_platform_and_premium_constraints(
         self,
-        platform: str,
-        content_len: int,
-        is_premium: bool,
+        platform_case: tuple[str, int, bool],
         expected_compliant: bool,
     ) -> None:
         """Slice 6: Platform-specific constraints (LinkedIn 3000 limit, X Premium 25000 limit)."""
+        platform, content_len, is_premium = platform_case
         test_content = "E" * content_len
         report = await refine_draft_with_graph(
             content=test_content,
             platform=platform,
             is_premium=is_premium,
-            max_attempts=0,  # 0 attempts to test deterministic validation immediately
+            max_attempts=0,
         )
 
         assert report.is_compliant is expected_compliant
         assert report.attempts == 0
-        if expected_compliant:
-            assert report.status == "compliant"
-        else:
-            assert report.status == "best_effort"
+        expected_status = "compliant" if expected_compliant else "best_effort"
+        assert report.status == expected_status
 
     @pytest.mark.anyio
     async def test_slice_7_tone_and_explicit_violated_constraints(self) -> None:
