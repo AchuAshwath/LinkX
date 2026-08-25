@@ -122,13 +122,15 @@ async def _safe_click(*, page: Any, selector: str, timeout_ms: int = 3000) -> bo
 async def diagnose_page_state_node(state: SessionRecoveryState) -> dict[str, Any]:
     """Diagnose page sentinel state and inspect for known modal overlays."""
     page = state.get("page")
-    if page is None:
+    if page is None or not (
+        hasattr(page, "locator") or hasattr(page, "url") or hasattr(page, "title")
+    ):
         return {
             "page_state": "error",
             "overlay_type": None,
             "recovered": False,
             "status": "failed",
-            "error": "No page instance provided in state",
+            "error": "Invalid or missing page instance provided in state",
         }
 
     try:
@@ -165,7 +167,7 @@ async def diagnose_page_state_node(state: SessionRecoveryState) -> dict[str, Any
     overlay = await _detect_overlay(page=page)
     if overlay:
         return {
-            "page_state": "modal_overlay" if overlay != "error_banner" else "error",
+            "page_state": ("modal_overlay" if overlay != "error_banner" else "error"),
             "overlay_type": overlay,
             "recovered": False,
             "status": "diagnosed",
@@ -388,6 +390,17 @@ async def recover_page_session(
             recovery_action=final_state.get("recovery_action"),
             status=final_state.get("status", "completed"),
             error=final_state.get("error"),
+        )
+    except (asyncio.TimeoutError, TimeoutError):
+        logger.warning(f"Session recovery timed out after {timeout_ms}ms")
+        return SessionRecoveryReport(
+            recovered=False,
+            page_state="error",
+            overlay_type=None,
+            dismiss_attempted=False,
+            recovery_action=None,
+            status="timeout",
+            error=f"Session recovery timed out after {timeout_ms}ms",
         )
     except Exception as e:
         logger.error(f"Session recovery workflow failed: {e}")

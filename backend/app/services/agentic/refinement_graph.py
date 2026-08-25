@@ -117,9 +117,9 @@ async def _execute_refinement_step(
         platform=platform,
         instructions=instructions,
     )
-    if not new_content or not new_content.strip():
+    if new_content is None or not str(new_content).strip():
         return content
-    return new_content
+    return str(new_content).strip()
 
 
 async def refine_draft_with_feedback_node(
@@ -260,13 +260,17 @@ async def refine_draft_with_graph(
     **options: Any,
 ) -> RefinedDraftReport:
     """Run iterative draft refinement supervisor to produce a compliant post draft."""
+    norm_platform = (platform or "x").lower().strip()
+    clean_violations = [str(v) for v in (violated_constraints or []) if v is not None]
+    max_attempts = max(0, min(int(options.get("max_attempts", 2)), 10))
+
     initial_state: DraftRefinementState = {
-        "content": content,
-        "platform": platform,
+        "content": str(content or ""),
+        "platform": norm_platform,
         "is_premium": bool(options.get("is_premium", False)),
-        "violated_constraints": list(violated_constraints or []),
+        "violated_constraints": clean_violations,
         "target_tone": options.get("target_tone"),
-        "max_attempts": int(options.get("max_attempts", 2)),
+        "max_attempts": max_attempts,
         "attempt": 0,
         "refined_content": None,
         "is_compliant": False,
