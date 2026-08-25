@@ -17,7 +17,13 @@ def anyio_backend() -> str:
 
 
 @pytest.mark.anyio
-async def test_validate_content_length_exceeded(tmp_path: Path) -> None:
+async def test_validate_content_length_exceeded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.browser.manager.BrowserManager.session_exists",
+        lambda _self, _platform: True,
+    )
     client = XPostClient()
     dummy_file = tmp_path / "test.png"
     dummy_file.write_bytes(b"test")
@@ -72,7 +78,13 @@ async def test_validate_content_length_premium_allowed(
 
 
 @pytest.mark.anyio
-async def test_create_media_post_missing_image_file() -> None:
+async def test_create_media_post_missing_image_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.services.browser.manager.BrowserManager.session_exists",
+        lambda _self, _platform: True,
+    )
     client = XPostClient()
     with pytest.raises(XPostError) as exc_info:
         await client.create_media_post(

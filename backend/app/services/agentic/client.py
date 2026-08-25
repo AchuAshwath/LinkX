@@ -21,7 +21,7 @@ def get_chat_model(
     return ChatOpenAI(
         model=clean_model,
         base_url=settings.OPENAI_API_COMPATIBLE_BASE_URL,
-        api_key=settings.OPENAI_API_COMPATIBLE_API_KEY,  # type: ignore[arg-type]
+        api_key=(settings.OPENAI_API_COMPATIBLE_API_KEY or "dummy-key"),  # type: ignore[arg-type]
         temperature=temperature,
         max_completion_tokens=max_tokens,
     )
@@ -40,7 +40,7 @@ def get_vision_model(
     return ChatOpenAI(
         model=clean_model,
         base_url=settings.OPENAI_API_COMPATIBLE_BASE_URL,
-        api_key=settings.OPENAI_API_COMPATIBLE_API_KEY,  # type: ignore[arg-type]
+        api_key=(settings.OPENAI_API_COMPATIBLE_API_KEY or "dummy-key"),  # type: ignore[arg-type]
         temperature=temperature,
         max_completion_tokens=max_tokens,
     )

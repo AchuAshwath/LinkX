@@ -304,3 +304,80 @@ class PublishResultReport(BaseModel):
     post_url: str | None = None
     platform: str
     error: str | None = None
+
+
+class RefinedDraftReport(BaseModel):
+    """Structured report returned after running iterative draft refinement graph."""
+
+    refined_content: str = Field(
+        description="The final refined post copy (guaranteed non-empty, falls back to original content)"
+    )
+    is_compliant: bool = Field(
+        description="Whether the refined post satisfies all platform constraints"
+    )
+    platform: str = Field(
+        default="x",
+        description="Target social media platform (e.g. 'x', 'linkedin')",
+    )
+    attempts: int = Field(
+        default=0,
+        description="Number of refinement attempts performed",
+    )
+    status: str = Field(
+        default="compliant",
+        description="Final graph status: 'compliant', 'best_effort', 'error'",
+    )
+    violated_constraints: list[str] = Field(
+        default_factory=list,
+        description="List of remaining constraint violations if non-compliant",
+    )
+    compliance_report: dict[str, Any] | None = Field(
+        default=None,
+        description="Detailed final compliance report breakdown",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message if an exception occurred during refinement",
+    )
+
+
+class SessionRecoveryReport(BaseModel):
+    """Execution report from session recovery diagnosing and clearing UI overlays."""
+
+    recovered: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("recovered", "is_recovered", "success"),
+        description="Whether the page session was recovered and returned to healthy state",
+    )
+    page_state: str = Field(
+        default="ok",
+        validation_alias=AliasChoices("page_state", "state", "status_state"),
+        description="Current or final diagnosed page state ('ok', 'logged_out', 'captcha', 'rate_limited', 'error', 'modal_overlay')",
+    )
+    overlay_type: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("overlay_type", "overlay", "modal_type"),
+        description="Type of overlay or blocking modal detected ('notification_prompt', 'premium_upsell', 'cookie_consent', 'error_banner', 'auth_redirect', 'captcha')",
+    )
+    dismiss_attempted: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "dismiss_attempted", "attempted", "dismissal_attempted"
+        ),
+        description="Whether a dismissal or recovery interaction was attempted on the page",
+    )
+    recovery_action: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("recovery_action", "action", "action_taken"),
+        description="Specific recovery action performed ('click_not_now', 'click_close', 'press_escape', 'click_dismiss', 'soft_reload')",
+    )
+    status: str = Field(
+        default="completed",
+        validation_alias=AliasChoices("status", "recovery_status"),
+        description="Graph execution status ('healthy', 'recovered', 'unrecovered', 'unrecoverable', 'completed', 'failed')",
+    )
+    error: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("error", "error_message"),
+        description="Error detail if recovery failed or encountered an exception",
+    )
