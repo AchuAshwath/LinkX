@@ -16,5 +16,12 @@
   "feed": {
     "news_trends": "[data-testid=\"trend\"]",
     "timeline_post": "[data-testid=\"tweet\"]"
+  },
+  "overlays": {
+    "sheet_dialog": "[data-testid=\"sheetDialog\"]",
+    "app_bar_close": "[data-testid=\"app-bar-close\"]",
+    "bottom_bar": "[data-testid=\"BottomBar\"]",
+    "not_now_button": "[role=\"button\"]:has-text(\"Not now\"), button:has-text(\"Not now\"), [role=\"button\"]:has-text(\"Maybe later\"), button:has-text(\"Maybe later\")",
+    "dismiss_button": "[role=\"button\"]:has-text(\"Dismiss\"), button:has-text(\"Dismiss\"), [role=\"button\"]:has-text(\"Close\"), button:has-text(\"Close\")"
   }
 }
