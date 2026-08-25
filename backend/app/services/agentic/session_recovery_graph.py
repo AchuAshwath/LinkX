@@ -45,7 +45,7 @@ class SessionRecoveryState(TypedDict, total=False):
 
 
 async def _is_locator_visible(
-    page: Any, selector: str, *, timeout_ms: int = 1500
+    *, page: Any, selector: str, timeout_ms: int = 1500
 ) -> bool:
     """Check if an element matching selector is present and visible on page."""
     try:
@@ -66,21 +66,29 @@ async def _is_locator_visible(
         return False
 
 
-async def _detect_overlay(page: Any) -> str | None:
+async def _detect_overlay(*, page: Any) -> str | None:
     """Inspect page DOM for known overlays and blocking UI modals."""
     try:
         # 1. Notification prompt (sheetDialog with not_now or not_now_button visible)
-        if await _is_locator_visible(page, DEFAULT_OVERLAY_SELECTORS["not_now_button"]):
+        if await _is_locator_visible(
+            page=page, selector=DEFAULT_OVERLAY_SELECTORS["not_now_button"]
+        ):
             return "notification_prompt"
 
         # 2. Premium upsell (sheetDialog or app_bar_close visible)
-        if await _is_locator_visible(page, DEFAULT_OVERLAY_SELECTORS["app_bar_close"]):
+        if await _is_locator_visible(
+            page=page, selector=DEFAULT_OVERLAY_SELECTORS["app_bar_close"]
+        ):
             return "premium_upsell"
 
         # 3. Cookie consent banner / bottom bar
-        if await _is_locator_visible(page, DEFAULT_OVERLAY_SELECTORS["bottom_bar"]):
+        if await _is_locator_visible(
+            page=page, selector=DEFAULT_OVERLAY_SELECTORS["bottom_bar"]
+        ):
             return "cookie_consent"
-        if await _is_locator_visible(page, DEFAULT_OVERLAY_SELECTORS["dismiss_button"]):
+        if await _is_locator_visible(
+            page=page, selector=DEFAULT_OVERLAY_SELECTORS["dismiss_button"]
+        ):
             return "cookie_consent"
 
         # 4. In-page error banner
@@ -89,7 +97,7 @@ async def _detect_overlay(page: Any) -> str | None:
             "text=Try again",
             "[data-testid='error-detail']",
         ):
-            if await _is_locator_visible(page, err_sel):
+            if await _is_locator_visible(page=page, selector=err_sel):
                 return "error_banner"
 
         return None
@@ -98,7 +106,7 @@ async def _detect_overlay(page: Any) -> str | None:
         return None
 
 
-async def _safe_click(page: Any, selector: str, *, timeout_ms: int = 3000) -> bool:
+async def _safe_click(*, page: Any, selector: str, timeout_ms: int = 3000) -> bool:
     """Click the first matching locator safely."""
     try:
         loc = page.locator(selector)
@@ -154,7 +162,7 @@ async def diagnose_page_state_node(state: SessionRecoveryState) -> dict[str, Any
         }
 
     # Inspect for active modal overlays
-    overlay = await _detect_overlay(page)
+    overlay = await _detect_overlay(page=page)
     if overlay:
         return {
             "page_state": "modal_overlay" if overlay != "error_banner" else "error",
@@ -172,39 +180,45 @@ async def diagnose_page_state_node(state: SessionRecoveryState) -> dict[str, Any
     }
 
 
-async def _dismiss_notification_prompt(page: Any) -> str:
-    clicked = await _safe_click(page, DEFAULT_OVERLAY_SELECTORS["not_now_button"])
+async def _dismiss_notification_prompt(*, page: Any) -> str:
+    clicked = await _safe_click(
+        page=page, selector=DEFAULT_OVERLAY_SELECTORS["not_now_button"]
+    )
     if not clicked and hasattr(page, "keyboard"):
         await page.keyboard.press("Escape")
     return "click_not_now"
 
 
-async def _dismiss_premium_upsell(page: Any) -> str:
-    clicked = await _safe_click(page, DEFAULT_OVERLAY_SELECTORS["app_bar_close"])
+async def _dismiss_premium_upsell(*, page: Any) -> str:
+    clicked = await _safe_click(
+        page=page, selector=DEFAULT_OVERLAY_SELECTORS["app_bar_close"]
+    )
     if not clicked and hasattr(page, "keyboard"):
         await page.keyboard.press("Escape")
         return "press_escape"
     return "click_close"
 
 
-async def _dismiss_cookie_consent(page: Any) -> str:
-    clicked = await _safe_click(page, DEFAULT_OVERLAY_SELECTORS["dismiss_button"])
+async def _dismiss_cookie_consent(*, page: Any) -> str:
+    clicked = await _safe_click(
+        page=page, selector=DEFAULT_OVERLAY_SELECTORS["dismiss_button"]
+    )
     if not clicked:
         bottom_bar_btn = (
             f"{DEFAULT_OVERLAY_SELECTORS['bottom_bar']} button, "
             f"{DEFAULT_OVERLAY_SELECTORS['bottom_bar']} [role='button']"
         )
-        await _safe_click(page, bottom_bar_btn)
+        await _safe_click(page=page, selector=bottom_bar_btn)
     return "click_dismiss"
 
 
-async def _reload_error_banner(page: Any) -> str:
+async def _reload_error_banner(*, page: Any) -> str:
     if hasattr(page, "reload"):
         await page.reload(wait_until="domcontentloaded", timeout=15000)
     return "soft_reload"
 
 
-async def _dismiss_fallback(page: Any) -> str:
+async def _dismiss_fallback(*, page: Any) -> str:
     if hasattr(page, "keyboard"):
         await page.keyboard.press("Escape")
         return "press_escape"
@@ -219,12 +233,14 @@ DISMISSAL_DISPATCH: dict[str, Any] = {
 }
 
 
-async def _execute_dismissal_action(page: Any, overlay_type: str | None) -> str | None:
+async def _execute_dismissal_action(
+    *, page: Any, overlay_type: str | None
+) -> str | None:
     """Execute specialized dismissal handler for diagnosed overlay type."""
     if overlay_type in ("auth_redirect", "captcha"):
         return None
     handler = DISMISSAL_DISPATCH.get(overlay_type or "", _dismiss_fallback)
-    return str(await handler(page))
+    return str(await handler(page=page))
 
 
 async def attempt_dismissal_node(state: SessionRecoveryState) -> dict[str, Any]:
@@ -241,7 +257,7 @@ async def attempt_dismissal_node(state: SessionRecoveryState) -> dict[str, Any]:
         }
 
     try:
-        action = await _execute_dismissal_action(page, overlay_type)
+        action = await _execute_dismissal_action(page=page, overlay_type=overlay_type)
         return {
             "dismiss_attempted": True,
             "recovery_action": action,
@@ -271,7 +287,7 @@ async def reverify_page_state_node(state: SessionRecoveryState) -> dict[str, Any
 
     try:
         page_state = await detect_page_state(page)
-        overlay = await _detect_overlay(page)
+        overlay = await _detect_overlay(page=page)
 
         if page_state == "ok" and overlay is None:
             return {
