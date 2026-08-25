@@ -31,44 +31,55 @@ class DraftRefinementState(TypedDict, total=False):
     error: str | None
 
 
+def _evaluate_post_compliance(
+    *,
+    content: str,
+    platform: str,
+    is_premium: bool,
+    external_violations: list[str] | None = None,
+) -> tuple[bool, list[str], dict[str, Any]]:
+    """Deterministically evaluate constraints and merge optional external violations."""
+    report = validate_post_constraints(
+        content=content,
+        platform=platform,
+        is_premium=is_premium,
+    )
+    all_violations = list(report.violations)
+    if external_violations:
+        for v in external_violations:
+            if v not in all_violations:
+                all_violations.append(v)
+
+    is_compliant = len(all_violations) == 0
+    compliance_dict = report.model_dump()
+    compliance_dict["violations"] = all_violations
+    compliance_dict["is_compliant"] = is_compliant
+    return is_compliant, all_violations, compliance_dict
+
+
 async def validate_current_draft_node(
     state: DraftRefinementState,
 ) -> dict[str, Any]:
     """Validate initial post draft constraints deterministically."""
     try:
         content = state.get("refined_content") or state.get("content", "")
-        platform = state.get("platform", "x")
-        is_premium = state.get("is_premium", False)
-        external_violations = list(state.get("violated_constraints") or [])
-
-        report = validate_post_constraints(
+        is_compliant, violations, comp_dict = _evaluate_post_compliance(
             content=content,
-            platform=platform,
-            is_premium=is_premium,
+            platform=state.get("platform", "x"),
+            is_premium=state.get("is_premium", False),
+            external_violations=list(state.get("violated_constraints") or []),
         )
-
-        all_violations = list(report.violations)
-        for v in external_violations:
-            if v not in all_violations:
-                all_violations.append(v)
-
-        is_compliant = len(all_violations) == 0
-        compliance_dict = report.model_dump()
-        compliance_dict["violations"] = all_violations
-        compliance_dict["is_compliant"] = is_compliant
-
         return {
             "refined_content": content,
             "is_compliant": is_compliant,
-            "violated_constraints": all_violations,
-            "compliance_report": compliance_dict,
+            "violated_constraints": violations,
+            "compliance_report": comp_dict,
             "status": "compliant" if is_compliant else "non_compliant",
         }
     except Exception as e:
         logger.error(f"Error in validate_current_draft_node: {e}")
-        fallback_content = state.get("content", "")
         return {
-            "refined_content": fallback_content,
+            "refined_content": state.get("content", ""),
             "is_compliant": False,
             "status": "error",
             "error": str(e),
@@ -152,36 +163,24 @@ async def revalidate_refined_draft_node(
 ) -> dict[str, Any]:
     """Re-check constraints on the newly refined post draft."""
     if state.get("status") == "error":
-        return {
-            "is_compliant": False,
-            "status": "error",
-        }
+        return {"is_compliant": False, "status": "error"}
 
     try:
         content = state.get("refined_content") or state.get("content", "")
-        platform = state.get("platform", "x")
-        is_premium = state.get("is_premium", False)
-
-        report = validate_post_constraints(
+        is_compliant, violations, comp_dict = _evaluate_post_compliance(
             content=content,
-            platform=platform,
-            is_premium=is_premium,
+            platform=state.get("platform", "x"),
+            is_premium=state.get("is_premium", False),
         )
-        compliance_dict = report.model_dump()
-
         return {
-            "is_compliant": report.is_compliant,
-            "violated_constraints": list(report.violations),
-            "compliance_report": compliance_dict,
-            "status": "compliant" if report.is_compliant else "non_compliant",
+            "is_compliant": is_compliant,
+            "violated_constraints": violations,
+            "compliance_report": comp_dict,
+            "status": "compliant" if is_compliant else "non_compliant",
         }
     except Exception as e:
         logger.error(f"Error in revalidate_refined_draft_node: {e}")
-        return {
-            "is_compliant": False,
-            "status": "error",
-            "error": str(e),
-        }
+        return {"is_compliant": False, "status": "error", "error": str(e)}
 
 
 def _route_after_validation(state: DraftRefinementState) -> str:
@@ -194,11 +193,7 @@ def _route_after_validation(state: DraftRefinementState) -> str:
 
     attempt = state.get("attempt", 0)
     max_attempts = state.get("max_attempts", 2)
-
-    if attempt < max_attempts:
-        return "refine_draft"
-
-    return END
+    return "refine_draft" if attempt < max_attempts else END
 
 
 def _route_after_refinement(state: DraftRefinementState) -> str:
@@ -227,6 +222,36 @@ def build_draft_refinement_graph() -> Any:
 _draft_refinement_graph = build_draft_refinement_graph()
 
 
+def _resolve_report_status(
+    *, is_compliant: bool, error: str | None, state_status: str | None
+) -> str:
+    if error or state_status == "error":
+        return "error"
+    return "compliant" if is_compliant else "best_effort"
+
+
+def _build_final_report(
+    *, content: str, platform: str, final_state: dict[str, Any]
+) -> RefinedDraftReport:
+    is_compliant = bool(final_state.get("is_compliant", False))
+    error = final_state.get("error")
+    status = _resolve_report_status(
+        is_compliant=is_compliant,
+        error=error,
+        state_status=final_state.get("status"),
+    )
+    return RefinedDraftReport(
+        refined_content=final_state.get("refined_content") or content,
+        is_compliant=is_compliant,
+        platform=platform,
+        attempts=int(final_state.get("attempt", 0)),
+        status=status,
+        violated_constraints=list(final_state.get("violated_constraints") or []),
+        compliance_report=final_state.get("compliance_report"),
+        error=error,
+    )
+
+
 async def refine_draft_with_graph(
     *,
     content: str,
@@ -241,9 +266,7 @@ async def refine_draft_with_graph(
         "content": content,
         "platform": platform,
         "is_premium": is_premium,
-        "violated_constraints": (
-            list(violated_constraints) if violated_constraints else []
-        ),
+        "violated_constraints": list(violated_constraints or []),
         "target_tone": target_tone,
         "max_attempts": max_attempts,
         "attempt": 0,
@@ -256,31 +279,10 @@ async def refine_draft_with_graph(
 
     try:
         final_state = await _draft_refinement_graph.ainvoke(initial_state)
-
-        refined_content = final_state.get("refined_content") or content
-        is_compliant = bool(final_state.get("is_compliant", False))
-        attempt_count = int(final_state.get("attempt", 0))
-        error = final_state.get("error")
-
-        if error or final_state.get("status") == "error":
-            status = "error"
-        elif is_compliant:
-            status = "compliant"
-        else:
-            status = "best_effort"
-
-        violations = list(final_state.get("violated_constraints") or [])
-        compliance_report = final_state.get("compliance_report")
-
-        return RefinedDraftReport(
-            refined_content=refined_content,
-            is_compliant=is_compliant,
+        return _build_final_report(
+            content=content,
             platform=platform,
-            attempts=attempt_count,
-            status=status,
-            violated_constraints=violations,
-            compliance_report=compliance_report,
-            error=error,
+            final_state=final_state,
         )
     except Exception as e:
         logger.error(f"Error during draft refinement graph execution: {e}")
@@ -290,9 +292,7 @@ async def refine_draft_with_graph(
             platform=platform,
             attempts=0,
             status="error",
-            violated_constraints=(
-                list(violated_constraints) if violated_constraints else []
-            ),
+            violated_constraints=list(violated_constraints or []),
             compliance_report=None,
             error=str(e),
         )

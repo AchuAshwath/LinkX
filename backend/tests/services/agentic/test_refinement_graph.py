@@ -21,41 +21,6 @@ from app.services.agentic.refinement_graph import (
 from app.services.agentic.schemas import RefinedDraftReport
 
 
-async def _assert_refinement_behavior(
-    *,
-    initial_content: str,
-    mock_result: Any,
-    expected_compliant: bool,
-    expected_attempts: int,
-    expected_status: str,
-    expected_content: str,
-    platform: str = "x",
-    is_premium: bool = False,
-    max_attempts: int = 2,
-) -> RefinedDraftReport:
-    with patch(
-        "app.services.agentic.refinement_graph.refine_post_draft",
-        new_callable=AsyncMock,
-    ) as mock_refine:
-        if isinstance(mock_result, list) or isinstance(mock_result, Exception):
-            mock_refine.side_effect = mock_result
-        else:
-            mock_refine.return_value = mock_result
-
-        report = await refine_draft_with_graph(
-            content=initial_content,
-            platform=platform,
-            is_premium=is_premium,
-            max_attempts=max_attempts,
-        )
-
-        assert report.is_compliant is expected_compliant
-        assert report.attempts == expected_attempts
-        assert report.status == expected_status
-        assert report.refined_content == expected_content
-        return report
-
-
 class TestDraftRefinementGraphSlices:
     """Comprehensive test suite for all vertical slices of DraftRefinementGraph."""
 
@@ -80,59 +45,80 @@ class TestDraftRefinementGraphSlices:
         assert report.error is None
 
     @pytest.mark.anyio
-    async def test_slice_2_single_attempt_successful_refinement(self) -> None:
-        """Slice 2: Single-attempt successful refinement when draft exceeds limit."""
-        refined_text = "This is a polished concise post within limits. #AI"
-        report = await _assert_refinement_behavior(
-            initial_content="A" * 320,
-            mock_result=refined_text,
-            expected_compliant=True,
-            expected_attempts=1,
-            expected_status="compliant",
-            expected_content=refined_text,
-        )
-        assert len(report.violated_constraints) == 0
+    @pytest.mark.parametrize(
+        (
+            "initial_content",
+            "mock_result",
+            "expected_compliant",
+            "expected_attempts",
+            "expected_status",
+            "expected_content",
+        ),
+        [
+            (
+                "A" * 320,
+                "Polished short tweet #AI",
+                True,
+                1,
+                "compliant",
+                "Polished short tweet #AI",
+            ),
+            (
+                "B" * 400,
+                ["B" * 300, "Final tweet #LinkX"],
+                True,
+                2,
+                "compliant",
+                "Final tweet #LinkX",
+            ),
+            (
+                "C" * 400,
+                "C" * 350,
+                False,
+                2,
+                "best_effort",
+                "C" * 350,
+            ),
+            (
+                "D" * 350,
+                RuntimeError("LLM API rate limit exceeded"),
+                False,
+                1,
+                "error",
+                "D" * 350,
+            ),
+        ],
+    )
+    async def test_slices_refinement_feedback_loop(
+        self,
+        initial_content: str,
+        mock_result: Any,
+        expected_compliant: bool,
+        expected_attempts: int,
+        expected_status: str,
+        expected_content: str,
+    ) -> None:
+        """Slices 2-5: Test single-attempt, multi-attempt, attempt exhaustion, and error resilience."""
+        with patch(
+            "app.services.agentic.refinement_graph.refine_post_draft",
+            new_callable=AsyncMock,
+        ) as mock_refine:
+            if isinstance(mock_result, list) or isinstance(mock_result, Exception):
+                mock_refine.side_effect = mock_result
+            else:
+                mock_refine.return_value = mock_result
 
-    @pytest.mark.anyio
-    async def test_slice_3_multi_attempt_feedback_convergence(self) -> None:
-        """Slice 3: Multi-attempt feedback convergence (attempt 1 fails -> attempt 2 succeeds)."""
-        attempt_2_output = "Final concise tweet under 280 chars. #LinkX"
-        await _assert_refinement_behavior(
-            initial_content="B" * 400,
-            mock_result=["B" * 300, attempt_2_output],
-            expected_compliant=True,
-            expected_attempts=2,
-            expected_status="compliant",
-            expected_content=attempt_2_output,
-        )
+            report = await refine_draft_with_graph(
+                content=initial_content,
+                platform="x",
+                is_premium=False,
+                max_attempts=2,
+            )
 
-    @pytest.mark.anyio
-    async def test_slice_4_max_attempts_exhausted_best_effort(self) -> None:
-        """Slice 4: Max attempts exhausted -> best-effort return, compliant=False, status='best_effort'."""
-        still_long_output = "C" * 350
-        report = await _assert_refinement_behavior(
-            initial_content="C" * 400,
-            mock_result=still_long_output,
-            expected_compliant=False,
-            expected_attempts=2,
-            expected_status="best_effort",
-            expected_content=still_long_output,
-        )
-        assert len(report.violated_constraints) > 0
-
-    @pytest.mark.anyio
-    async def test_slice_5_llm_exception_resilience(self) -> None:
-        """Slice 5: LLM exception resilience -> returns original text, compliant=False, status='error'."""
-        initial_text = "D" * 350
-        report = await _assert_refinement_behavior(
-            initial_content=initial_text,
-            mock_result=RuntimeError("LLM API rate limit exceeded"),
-            expected_compliant=False,
-            expected_attempts=1,
-            expected_status="error",
-            expected_content=initial_text,
-        )
-        assert "LLM API rate limit exceeded" in (report.error or "")
+            assert report.is_compliant is expected_compliant
+            assert report.attempts == expected_attempts
+            assert report.status == expected_status
+            assert report.refined_content == expected_content
 
     @pytest.mark.parametrize(
         ("platform", "content_len", "is_premium", "expected_compliant"),

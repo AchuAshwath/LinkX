@@ -30,15 +30,13 @@ class MockPlaywrightPage:
         title: str = "Home / X",
         initial_visible_selectors: list[str] | None = None,
         clear_on_action: bool = True,
-        click_exception: Exception | None = None,
-        reload_exception: Exception | None = None,
     ) -> None:
         self.url = url
         self._title = title
         self.visible_selectors = set(initial_visible_selectors or [])
         self.clear_on_action = clear_on_action
-        self.click_exception = click_exception
-        self.reload_exception = reload_exception
+        self.click_exception: Exception | None = None
+        self.reload_exception: Exception | None = None
         self.clicked_selectors: list[str] = []
         self.reloaded = False
         self.keyboard = AsyncMock()
@@ -238,8 +236,8 @@ async def test_slice_8_dismissal_click_throws_exception() -> None:
     page = MockPlaywrightPage(
         initial_visible_selectors=[DEFAULT_OVERLAY_SELECTORS["not_now_button"]],
         clear_on_action=False,
-        click_exception=RuntimeError("Element not interactable or obscured"),
     )
+    page.click_exception = RuntimeError("Element not interactable or obscured")
 
     report = await recover_page_session(page=page)
 
