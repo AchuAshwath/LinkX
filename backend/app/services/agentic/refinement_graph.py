@@ -75,6 +75,42 @@ async def validate_current_draft_node(
         }
 
 
+def _format_refinement_instructions(
+    *,
+    violations: list[str],
+    suggestions: list[str],
+    target_tone: str | None,
+) -> str:
+    """Format structured refinement prompt instructions."""
+    parts: list[str] = []
+    if violations:
+        parts.append("Fix the following constraint violations:")
+        parts.extend(f"- {v}" for v in violations)
+    if suggestions:
+        parts.append("Follow these suggestions:")
+        parts.extend(f"- {s}" for s in suggestions)
+    if target_tone:
+        parts.append(f"Ensure the post adopts a '{target_tone}' tone.")
+    return "\n".join(parts) if parts else "Refine and polish this post draft."
+
+
+async def _execute_refinement_step(
+    *,
+    content: str,
+    platform: str,
+    instructions: str,
+) -> str:
+    """Execute LLM refinement call and enforce non-empty return invariant."""
+    new_content = await refine_post_draft(
+        content=content,
+        platform=platform,
+        instructions=instructions,
+    )
+    if not new_content or not new_content.strip():
+        return content
+    return new_content
+
+
 async def refine_draft_with_feedback_node(
     state: DraftRefinementState,
 ) -> dict[str, Any]:
@@ -82,40 +118,20 @@ async def refine_draft_with_feedback_node(
     current_attempt = state.get("attempt", 0) + 1
     fallback_content = state.get("refined_content") or state.get("content", "")
     platform = state.get("platform", "x")
-    violations = state.get("violated_constraints", [])
     compliance_report = state.get("compliance_report", {})
-    suggestions = compliance_report.get("suggestions", [])
-    target_tone = state.get("target_tone")
 
-    instruction_parts: list[str] = []
-    if violations:
-        instruction_parts.append("Fix the following constraint violations:")
-        for v in violations:
-            instruction_parts.append(f"- {v}")
-    if suggestions:
-        instruction_parts.append("Follow these suggestions:")
-        for s in suggestions:
-            instruction_parts.append(f"- {s}")
-    if target_tone:
-        instruction_parts.append(f"Ensure the post adopts a '{target_tone}' tone.")
-
-    instructions = (
-        "\n".join(instruction_parts)
-        if instruction_parts
-        else "Refine and polish this post draft."
+    instructions = _format_refinement_instructions(
+        violations=state.get("violated_constraints", []),
+        suggestions=compliance_report.get("suggestions", []),
+        target_tone=state.get("target_tone"),
     )
 
     try:
-        new_content = await refine_post_draft(
+        new_content = await _execute_refinement_step(
             content=fallback_content,
             platform=platform,
             instructions=instructions,
         )
-
-        # Invariant: refined_content is NEVER empty/None
-        if not new_content or not new_content.strip():
-            new_content = fallback_content
-
         return {
             "attempt": current_attempt,
             "refined_content": new_content,

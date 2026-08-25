@@ -100,20 +100,24 @@ async def _detect_overlay(page: Any) -> str | None:
 
 async def _safe_click(page: Any, selector: str, *, timeout_ms: int = 3000) -> bool:
     """Click the first matching locator safely."""
-    if not hasattr(page, "locator"):
+    try:
+        if not hasattr(page, "locator"):
+            return False
+        loc = page.locator(selector)
+        count = await loc.count() if hasattr(loc, "count") else 0
+        if count == 0:
+            return False
+        target = getattr(loc, "first", loc)
+        if hasattr(target, "click"):
+            try:
+                await target.click(timeout=timeout_ms)
+            except TypeError:
+                await target.click()
+            return True
         return False
-    loc = page.locator(selector)
-    count = await loc.count() if hasattr(loc, "count") else 0
-    if count == 0:
+    except Exception as e:
+        logger.debug(f"Safe click failed on {selector}: {e}")
         return False
-    target = getattr(loc, "first", loc)
-    if hasattr(target, "click"):
-        try:
-            await target.click(timeout=timeout_ms)
-        except TypeError:
-            await target.click()
-        return True
-    return False
 
 
 async def diagnose_page_state_node(state: SessionRecoveryState) -> dict[str, Any]:
@@ -177,6 +181,61 @@ async def diagnose_page_state_node(state: SessionRecoveryState) -> dict[str, Any
     }
 
 
+async def _dismiss_notification_prompt(page: Any) -> str:
+    clicked = await _safe_click(page, DEFAULT_OVERLAY_SELECTORS["not_now_button"])
+    if not clicked and hasattr(page, "keyboard"):
+        await page.keyboard.press("Escape")
+    return "click_not_now"
+
+
+async def _dismiss_premium_upsell(page: Any) -> str:
+    clicked = await _safe_click(page, DEFAULT_OVERLAY_SELECTORS["app_bar_close"])
+    if not clicked and hasattr(page, "keyboard"):
+        await page.keyboard.press("Escape")
+        return "press_escape"
+    return "click_close"
+
+
+async def _dismiss_cookie_consent(page: Any) -> str:
+    clicked = await _safe_click(page, DEFAULT_OVERLAY_SELECTORS["dismiss_button"])
+    if not clicked:
+        bottom_bar_btn = (
+            f"{DEFAULT_OVERLAY_SELECTORS['bottom_bar']} button, "
+            f"{DEFAULT_OVERLAY_SELECTORS['bottom_bar']} [role='button']"
+        )
+        await _safe_click(page, bottom_bar_btn)
+    return "click_dismiss"
+
+
+async def _reload_error_banner(page: Any) -> str:
+    if hasattr(page, "reload"):
+        await page.reload(wait_until="domcontentloaded", timeout=15000)
+    return "soft_reload"
+
+
+async def _dismiss_fallback(page: Any) -> str:
+    if hasattr(page, "keyboard"):
+        await page.keyboard.press("Escape")
+        return "press_escape"
+    return "none"
+
+
+DISMISSAL_DISPATCH: dict[str, Any] = {
+    "notification_prompt": _dismiss_notification_prompt,
+    "premium_upsell": _dismiss_premium_upsell,
+    "cookie_consent": _dismiss_cookie_consent,
+    "error_banner": _reload_error_banner,
+}
+
+
+async def _execute_dismissal_action(page: Any, overlay_type: str | None) -> str | None:
+    """Execute specialized dismissal handler for diagnosed overlay type."""
+    if overlay_type in ("auth_redirect", "captcha"):
+        return None
+    handler = DISMISSAL_DISPATCH.get(overlay_type or "", _dismiss_fallback)
+    return str(await handler(page))
+
+
 async def attempt_dismissal_node(state: SessionRecoveryState) -> dict[str, Any]:
     """Dispatch targeted dismissal action based on diagnosed overlay type."""
     page = state.get("page")
@@ -190,56 +249,22 @@ async def attempt_dismissal_node(state: SessionRecoveryState) -> dict[str, Any]:
             "error": "No page instance available for dismissal",
         }
 
-    recovery_action: str | None = None
-    action_error: str | None = None
-
     try:
-        if overlay_type == "notification_prompt":
-            recovery_action = "click_not_now"
-            clicked = await _safe_click(
-                page, DEFAULT_OVERLAY_SELECTORS["not_now_button"]
-            )
-            if not clicked and hasattr(page, "keyboard"):
-                await page.keyboard.press("Escape")
-        elif overlay_type == "premium_upsell":
-            recovery_action = "click_close"
-            clicked = await _safe_click(
-                page, DEFAULT_OVERLAY_SELECTORS["app_bar_close"]
-            )
-            if not clicked and hasattr(page, "keyboard"):
-                await page.keyboard.press("Escape")
-                recovery_action = "press_escape"
-        elif overlay_type == "cookie_consent":
-            recovery_action = "click_dismiss"
-            clicked = await _safe_click(
-                page, DEFAULT_OVERLAY_SELECTORS["dismiss_button"]
-            )
-            if not clicked:
-                bottom_bar_btn = (
-                    f"{DEFAULT_OVERLAY_SELECTORS['bottom_bar']} button, "
-                    f"{DEFAULT_OVERLAY_SELECTORS['bottom_bar']} [role='button']"
-                )
-                await _safe_click(page, bottom_bar_btn)
-        elif overlay_type == "error_banner":
-            recovery_action = "soft_reload"
-            if hasattr(page, "reload"):
-                await page.reload(wait_until="domcontentloaded", timeout=15000)
-        elif overlay_type in ("auth_redirect", "captcha"):
-            recovery_action = None
-        else:
-            if hasattr(page, "keyboard"):
-                await page.keyboard.press("Escape")
-                recovery_action = "press_escape"
+        action = await _execute_dismissal_action(page, overlay_type)
+        return {
+            "dismiss_attempted": True,
+            "recovery_action": action,
+            "status": "dismissed",
+            "error": None,
+        }
     except Exception as e:
         logger.warning(f"Dismissal action failed for '{overlay_type}': {e}")
-        action_error = str(e)
-
-    return {
-        "dismiss_attempted": True,
-        "recovery_action": recovery_action,
-        "status": "dismissed",
-        "error": action_error,
-    }
+        return {
+            "dismiss_attempted": True,
+            "recovery_action": None,
+            "status": "dismissed",
+            "error": str(e),
+        }
 
 
 async def reverify_page_state_node(state: SessionRecoveryState) -> dict[str, Any]:

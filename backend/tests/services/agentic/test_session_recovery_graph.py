@@ -106,66 +106,48 @@ async def test_slice_1_clean_page_healthy() -> None:
     assert page.reloaded is False
 
 
-# --- Slice 2: Notification Modal Dismissal ---
-
-
-@pytest.mark.anyio
-async def test_slice_2_notification_modal_dismissal() -> None:
-    """Slice 2: Notification modal dismissal -> clicks 'Not now' -> recovered=True."""
-    page = MockPlaywrightPage(
-        initial_visible_selectors=[DEFAULT_OVERLAY_SELECTORS["not_now_button"]],
-        clear_on_action=True,
-    )
-
-    report = await recover_page_session(page=page)
-
-    assert report.recovered is True
-    assert report.page_state == "ok"
-    assert report.overlay_type == "notification_prompt"
-    assert report.dismiss_attempted is True
-    assert report.recovery_action == "click_not_now"
-    assert report.status == "recovered"
-    assert report.error is None
-    assert len(page.clicked_selectors) == 1
-
-
-# --- Slice 3: Premium Upsell Dismissal ---
-
-
-@pytest.mark.anyio
-async def test_slice_3_premium_upsell_dismissal() -> None:
-    """Slice 3: Premium upsell dismissal -> clicks close / Escape -> recovered=True."""
-    page = MockPlaywrightPage(
-        initial_visible_selectors=[DEFAULT_OVERLAY_SELECTORS["app_bar_close"]],
-        clear_on_action=True,
-    )
-
-    report = await recover_page_session(page=page)
-
-    assert report.recovered is True
-    assert report.page_state == "ok"
-    assert report.overlay_type == "premium_upsell"
-    assert report.dismiss_attempted is True
-    assert report.recovery_action == "click_close"
-    assert report.status == "recovered"
-    assert report.error is None
-
-
-# --- Slice 4: Cookie Banner Dismissal ---
+# --- Slices 2-5: Parametrized Overlay Recovery Verification ---
 
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    "cookie_selector",
+    ("overlay_selector", "expected_overlay", "expected_action"),
     [
-        DEFAULT_OVERLAY_SELECTORS["bottom_bar"],
-        DEFAULT_OVERLAY_SELECTORS["dismiss_button"],
+        (
+            DEFAULT_OVERLAY_SELECTORS["not_now_button"],
+            "notification_prompt",
+            "click_not_now",
+        ),
+        (
+            DEFAULT_OVERLAY_SELECTORS["app_bar_close"],
+            "premium_upsell",
+            "click_close",
+        ),
+        (
+            DEFAULT_OVERLAY_SELECTORS["bottom_bar"],
+            "cookie_consent",
+            "click_dismiss",
+        ),
+        (
+            DEFAULT_OVERLAY_SELECTORS["dismiss_button"],
+            "cookie_consent",
+            "click_dismiss",
+        ),
+        (
+            "text=Something went wrong",
+            "error_banner",
+            "soft_reload",
+        ),
     ],
 )
-async def test_slice_4_cookie_banner_dismissal(cookie_selector: str) -> None:
-    """Slice 4: Cookie banner dismissal -> clicks dismiss -> recovered=True."""
+async def test_slices_overlay_recovery_success(
+    overlay_selector: str,
+    expected_overlay: str,
+    expected_action: str,
+) -> None:
+    """Slices 2-5: Verify all standard overlays are diagnosed, dismissed, and recovered."""
     page = MockPlaywrightPage(
-        initial_visible_selectors=[cookie_selector],
+        initial_visible_selectors=[overlay_selector],
         clear_on_action=True,
     )
 
@@ -173,33 +155,11 @@ async def test_slice_4_cookie_banner_dismissal(cookie_selector: str) -> None:
 
     assert report.recovered is True
     assert report.page_state == "ok"
-    assert report.overlay_type == "cookie_consent"
+    assert report.overlay_type == expected_overlay
     assert report.dismiss_attempted is True
-    assert report.recovery_action == "click_dismiss"
+    assert report.recovery_action == expected_action
     assert report.status == "recovered"
     assert report.error is None
-
-
-# --- Slice 5: Error Banner Soft Reload ---
-
-
-@pytest.mark.anyio
-async def test_slice_5_error_banner_soft_reload() -> None:
-    """Slice 5: Error banner soft reload -> calls page.reload -> recovered=True."""
-    page = MockPlaywrightPage(
-        initial_visible_selectors=["text=Something went wrong"],
-        clear_on_action=True,
-    )
-
-    report = await recover_page_session(page=page)
-
-    assert report.recovered is True
-    assert report.page_state == "ok"
-    assert report.overlay_type == "error_banner"
-    assert report.dismiss_attempted is True
-    assert report.recovery_action == "soft_reload"
-    assert report.status == "recovered"
-    assert page.reloaded is True
 
 
 # --- Slice 6: Auth Redirect ---
@@ -308,59 +268,6 @@ async def test_slice_9_soft_reload_fails_to_recover() -> None:
     assert report.recovery_action == "soft_reload"
     assert report.status == "unrecovered"
     assert page.reloaded is True
-
-
-# --- Parametrized Overlay Recovery Verification ---
-
-
-@pytest.mark.anyio
-@pytest.mark.parametrize(
-    "overlay_selector,expected_overlay,expected_action",
-    [
-        (
-            DEFAULT_OVERLAY_SELECTORS["not_now_button"],
-            "notification_prompt",
-            "click_not_now",
-        ),
-        (
-            DEFAULT_OVERLAY_SELECTORS["app_bar_close"],
-            "premium_upsell",
-            "click_close",
-        ),
-        (
-            DEFAULT_OVERLAY_SELECTORS["bottom_bar"],
-            "cookie_consent",
-            "click_dismiss",
-        ),
-        (
-            DEFAULT_OVERLAY_SELECTORS["dismiss_button"],
-            "cookie_consent",
-            "click_dismiss",
-        ),
-        (
-            "text=Something went wrong",
-            "error_banner",
-            "soft_reload",
-        ),
-    ],
-)
-async def test_parametrized_overlay_recoveries(
-    overlay_selector: str,
-    expected_overlay: str,
-    expected_action: str,
-) -> None:
-    """Verify all standard overlays are diagnosed, dismissed, and recovered."""
-    page = MockPlaywrightPage(
-        initial_visible_selectors=[overlay_selector],
-        clear_on_action=True,
-    )
-
-    report = await recover_page_session(page=page)
-
-    assert report.recovered is True
-    assert report.overlay_type == expected_overlay
-    assert report.recovery_action == expected_action
-    assert report.dismiss_attempted is True
 
 
 # --- Node-level Unit Tests ---
