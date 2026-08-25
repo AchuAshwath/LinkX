@@ -443,8 +443,9 @@ async def enter_compose_text(
         config_path=cfg_path,
     )
     await input_elem.click()
+    normalized_text = normalize_post_text(text)
     typer = HumanTyper()
-    await typer.type(input_elem, text)
+    await typer.type(input_elem, normalized_text)
     return True
 
 
