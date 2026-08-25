@@ -257,18 +257,16 @@ async def refine_draft_with_graph(
     content: str,
     platform: str = "x",
     violated_constraints: list[str] | None = None,
-    target_tone: str | None = None,
-    is_premium: bool = False,
-    max_attempts: int = 2,
+    **options: Any,
 ) -> RefinedDraftReport:
     """Run iterative draft refinement supervisor to produce a compliant post draft."""
     initial_state: DraftRefinementState = {
         "content": content,
         "platform": platform,
-        "is_premium": is_premium,
+        "is_premium": bool(options.get("is_premium", False)),
         "violated_constraints": list(violated_constraints or []),
-        "target_tone": target_tone,
-        "max_attempts": max_attempts,
+        "target_tone": options.get("target_tone"),
+        "max_attempts": int(options.get("max_attempts", 2)),
         "attempt": 0,
         "refined_content": None,
         "is_compliant": False,

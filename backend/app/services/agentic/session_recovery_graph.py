@@ -101,23 +101,14 @@ async def _detect_overlay(page: Any) -> str | None:
 async def _safe_click(page: Any, selector: str, *, timeout_ms: int = 3000) -> bool:
     """Click the first matching locator safely."""
     try:
-        if not hasattr(page, "locator"):
-            return False
         loc = page.locator(selector)
         count = await loc.count() if hasattr(loc, "count") else 0
-        if count == 0:
-            return False
-        target = getattr(loc, "first", loc)
-        if hasattr(target, "click"):
-            try:
-                await target.click(timeout=timeout_ms)
-            except TypeError:
-                await target.click()
+        if count > 0:
+            await loc.first.click(timeout=timeout_ms)
             return True
-        return False
     except Exception as e:
         logger.debug(f"Safe click failed on {selector}: {e}")
-        return False
+    return False
 
 
 async def diagnose_page_state_node(state: SessionRecoveryState) -> dict[str, Any]:

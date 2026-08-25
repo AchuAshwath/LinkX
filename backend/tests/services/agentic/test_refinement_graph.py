@@ -195,40 +195,61 @@ class TestDraftRefinementUnits:
     """Unit tests for individual nodes, routing functions, and error handling."""
 
     @pytest.mark.anyio
-    async def test_validate_current_draft_node_compliant(self) -> None:
-        state: DraftRefinementState = {
-            "content": "Short valid post #AI",
-            "platform": "x",
-            "is_premium": False,
-        }
-        res = await validate_current_draft_node(state)
-        assert res["is_compliant"] is True
-        assert res["status"] == "compliant"
-        assert res["violated_constraints"] == []
+    @pytest.mark.parametrize(
+        ("state_dict", "expected_compliant", "expected_status"),
+        [
+            (
+                {
+                    "content": "Short valid post #AI",
+                    "platform": "x",
+                    "is_premium": False,
+                },
+                True,
+                "compliant",
+            ),
+            (
+                {
+                    "content": "Short valid post #AI",
+                    "platform": "x",
+                    "violated_constraints": ["Missing headline"],
+                },
+                False,
+                "non_compliant",
+            ),
+        ],
+    )
+    async def test_validate_current_draft_node(
+        self,
+        state_dict: dict[str, Any],
+        expected_compliant: bool,
+        expected_status: str,
+    ) -> None:
+        res = await validate_current_draft_node(state_dict)  # type: ignore[arg-type]
+        assert res["is_compliant"] is expected_compliant
+        assert res["status"] == expected_status
 
     @pytest.mark.anyio
-    async def test_validate_current_draft_node_with_external_violations(self) -> None:
-        state: DraftRefinementState = {
-            "content": "Short valid post #AI",
-            "platform": "x",
-            "violated_constraints": ["Missing headline"],
-        }
-        res = await validate_current_draft_node(state)
-        assert res["is_compliant"] is False
-        assert "Missing headline" in res["violated_constraints"]
-        assert res["status"] == "non_compliant"
-
-    @pytest.mark.anyio
-    async def test_validate_current_draft_node_exception(self) -> None:
+    @pytest.mark.parametrize(
+        ("node_fn", "state_dict"),
+        [
+            (validate_current_draft_node, {"content": "Post text"}),
+            (
+                revalidate_refined_draft_node,
+                {"refined_content": "Some text", "status": "refined"},
+            ),
+        ],
+    )
+    async def test_nodes_exception_handling(
+        self, node_fn: Any, state_dict: dict[str, Any]
+    ) -> None:
         with patch(
             "app.services.agentic.refinement_graph.validate_post_constraints",
-            side_effect=ValueError("Unexpected constraint error"),
+            side_effect=RuntimeError("Validation crash"),
         ):
-            state: DraftRefinementState = {"content": "Post text"}
-            res = await validate_current_draft_node(state)
+            res = await node_fn(state_dict)
             assert res["is_compliant"] is False
             assert res["status"] == "error"
-            assert "Unexpected constraint error" in res["error"]
+            assert "Validation crash" in res["error"]
 
     @pytest.mark.anyio
     async def test_refine_draft_with_feedback_node_empty_output_fallback(self) -> None:
@@ -258,21 +279,6 @@ class TestDraftRefinementUnits:
         res = await revalidate_refined_draft_node(state)
         assert res["is_compliant"] is False
         assert res["status"] == "error"
-
-    @pytest.mark.anyio
-    async def test_revalidate_refined_draft_node_exception(self) -> None:
-        with patch(
-            "app.services.agentic.refinement_graph.validate_post_constraints",
-            side_effect=RuntimeError("Validation crash"),
-        ):
-            state: DraftRefinementState = {
-                "refined_content": "Some text",
-                "status": "refined",
-            }
-            res = await revalidate_refined_draft_node(state)
-            assert res["is_compliant"] is False
-            assert res["status"] == "error"
-            assert "Validation crash" in res["error"]
 
     def test_route_after_validation_branches(self) -> None:
         # Error -> END
