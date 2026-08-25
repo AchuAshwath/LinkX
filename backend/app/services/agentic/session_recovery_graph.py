@@ -119,12 +119,43 @@ async def _safe_click(*, page: Any, selector: str, timeout_ms: int = 3000) -> bo
     return False
 
 
+def _is_valid_page(page: Any) -> bool:
+    """Check if page object has basic Playwright attributes."""
+    if page is None:
+        return False
+    return hasattr(page, "locator") or hasattr(page, "url") or hasattr(page, "title")
+
+
+def _classify_sentinel_state(page_state: str) -> dict[str, Any] | None:
+    """Map unrecoverable or error sentinel states."""
+    if page_state == "logged_out":
+        return {
+            "page_state": "logged_out",
+            "overlay_type": "auth_redirect",
+            "recovered": False,
+            "status": "unrecoverable",
+        }
+    if page_state == "captcha":
+        return {
+            "page_state": "captcha",
+            "overlay_type": "captcha",
+            "recovered": False,
+            "status": "unrecoverable",
+        }
+    if page_state in ("rate_limited", "error"):
+        return {
+            "page_state": page_state,
+            "overlay_type": "error_banner",
+            "recovered": False,
+            "status": "diagnosed",
+        }
+    return None
+
+
 async def diagnose_page_state_node(state: SessionRecoveryState) -> dict[str, Any]:
     """Diagnose page sentinel state and inspect for known modal overlays."""
     page = state.get("page")
-    if page is None or not (
-        hasattr(page, "locator") or hasattr(page, "url") or hasattr(page, "title")
-    ):
+    if not _is_valid_page(page):
         return {
             "page_state": "error",
             "overlay_type": None,
@@ -139,29 +170,9 @@ async def diagnose_page_state_node(state: SessionRecoveryState) -> dict[str, Any
         logger.warning(f"Page state detection failed: {e}")
         page_state = "error"
 
-    if page_state == "logged_out":
-        return {
-            "page_state": "logged_out",
-            "overlay_type": "auth_redirect",
-            "recovered": False,
-            "status": "unrecoverable",
-        }
-
-    if page_state == "captcha":
-        return {
-            "page_state": "captcha",
-            "overlay_type": "captcha",
-            "recovered": False,
-            "status": "unrecoverable",
-        }
-
-    if page_state in ("rate_limited", "error"):
-        return {
-            "page_state": page_state,
-            "overlay_type": "error_banner",
-            "recovered": False,
-            "status": "diagnosed",
-        }
+    sentinel_result = _classify_sentinel_state(page_state)
+    if sentinel_result is not None:
+        return sentinel_result
 
     # Inspect for active modal overlays
     overlay = await _detect_overlay(page=page)

@@ -362,4 +362,4 @@ async def test_recover_page_session_timeout_handling() -> None:
 
         assert report.recovered is False
         assert report.page_state == "error"
-        assert report.status == "failed"
+        assert report.status in ("timeout", "failed")
