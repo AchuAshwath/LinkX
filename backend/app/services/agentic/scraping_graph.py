@@ -153,13 +153,27 @@ async def _diagnose_page_health(page: Any) -> tuple[str, bool]:
     return page_state, has_overlay
 
 
+def _is_valid_page(page: Any) -> bool:
+    """Check if page object is a valid Playwright page instance."""
+    return page is not None and (hasattr(page, "goto") or hasattr(page, "locator"))
+
+
+def _validate_user_session(user_id: str) -> tuple[str, str, None, str | None] | None:
+    """Check if user session credentials exist on disk."""
+    has_session, session_err = _verify_session_exists(user_id=user_id)
+    if not has_session:
+        state = "logged_out" if "No stored" in (session_err or "") else "error"
+        return state, "unrecoverable", None, session_err
+    return None
+
+
 async def _check_session_and_page_state(
     *,
     user_id: str,
     page: Any,
 ) -> tuple[str, str, dict[str, Any] | None, str | None]:
     """Check browser session existence, diagnose sentinel state, and auto-recover overlays."""
-    if page is None or (not hasattr(page, "goto") and not hasattr(page, "locator")):
+    if not _is_valid_page(page):
         return (
             "error",
             "unrecoverable",
@@ -167,10 +181,9 @@ async def _check_session_and_page_state(
             "No active browser page instance provided in state",
         )
 
-    has_session, session_err = _verify_session_exists(user_id=user_id)
-    if not has_session:
-        state = "logged_out" if "No stored" in (session_err or "") else "error"
-        return state, "unrecoverable", None, session_err
+    session_abort = _validate_user_session(user_id)
+    if session_abort:
+        return session_abort
 
     page_state, has_overlay = await _diagnose_page_health(page)
     if page_state in ("logged_out", "captcha"):

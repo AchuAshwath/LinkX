@@ -119,14 +119,15 @@ def _persist_single_topic_record(
 
 
 def persist_scraped_batch_records(
-    *,
-    user_id_raw: Any,
-    session_arg: Any,
-    scraped_topics: list[dict[str, Any]],
-    topic_tweets_map: dict[str, list[dict[str, Any]]],
-    topic_summaries: dict[str, str],
+    **kwargs: Any,
 ) -> tuple[int, int, list[str]]:
     """Persist scraped topics and tweets into PostgreSQL via CRUD upsert."""
+    user_id_raw = kwargs.get("user_id_raw")
+    session_arg = kwargs.get("session_arg")
+    scraped_topics = kwargs.get("scraped_topics") or []
+    topic_tweets_map = kwargs.get("topic_tweets_map") or {}
+    topic_summaries = kwargs.get("topic_summaries") or {}
+
     persisted_topics = 0
     persisted_tweets = 0
     errors: list[str] = []
