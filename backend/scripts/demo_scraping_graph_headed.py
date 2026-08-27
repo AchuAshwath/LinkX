@@ -8,9 +8,9 @@ Usage:
     cd backend && uv run python scripts/demo_scraping_graph_headed.py
 """
 
-from __future__ import annotations
-
 import asyncio
+import platform
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -20,6 +20,19 @@ from typing import Any
 sys.path.append(str(Path(__file__).parent.parent))
 
 from app.services.agentic import scrape_trends_with_graph
+
+
+def _focus_chrome_on_macos() -> None:
+    """Bring Chrome to the front on macOS."""
+    if platform.system() == "Darwin":
+        try:
+            subprocess.run(
+                ["osascript", "-e", 'tell application "Google Chrome" to activate'],
+                capture_output=True,
+                check=False,
+            )
+        except Exception:
+            pass
 
 
 def _print_header() -> None:
@@ -90,11 +103,19 @@ async def main() -> None:
 
     start_time = time.time()
     try:
+        # Give Chrome 1 second to start, then bring it to the front
+        async def _delayed_focus() -> None:
+            await asyncio.sleep(1.2)
+            _focus_chrome_on_macos()
+
+        asyncio.create_task(_delayed_focus())
+
         report = await scrape_trends_with_graph(
             user_id=user_id,
             max_topics=max_topics,
             headless=False,
         )
+
         duration = round(time.time() - start_time, 2)
         _print_metrics(report=report, duration=duration)
         _print_topics(report=report)

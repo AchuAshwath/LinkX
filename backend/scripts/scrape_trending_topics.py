@@ -28,7 +28,7 @@ from app import crud
 from app.core.config import settings
 from app.core.db import engine
 from app.models import TrendingTopic, TrendingTweet, User
-from app.services.browser.actions import EvasionMouse, random_delay
+from app.services.browser.actions import EvasionMouse, human_navigation, random_delay
 from app.services.browser.diagnostics import detect_page_state, extract_grok_summary
 from app.services.browser.manager import BrowserManager
 from app.services.browser.tools import find_or_heal_element
@@ -682,13 +682,16 @@ async def scrape_trending_topics(
 
 
 async def navigate_to_trends(
-    page: Any, *, target_url: str = "https://x.com/home"
+    page: Any, *, target_url: str = "https://x.com/explore/tabs/trend"
 ) -> bool:
-    """Navigate to X.com trends/home and verify authenticated page state."""
+    """Navigate to X.com trends/explore and verify authenticated page state."""
     state = await detect_page_state(page)
     if state in {"logged_out", "rate_limited", "captcha"}:
         return False
-    await page.goto(target_url, wait_until="domcontentloaded")
+    try:
+        await human_navigation(page=page, url=target_url)
+    except Exception:
+        await page.goto(target_url, wait_until="domcontentloaded")
     post_state = await detect_page_state(page)
     return post_state not in {"logged_out", "rate_limited", "captcha"}
 
@@ -761,12 +764,23 @@ async def extract_topic_tweets(
     selectors: dict[str, Any],
 ) -> list[TrendingTweet]:
     """Extract structured TrendingTweet models from a specific topic URL."""
-    if page.url != topic_url:
-        await page.goto(topic_url, wait_until="domcontentloaded")
+    if hasattr(page, "url") and page.url != topic_url and hasattr(page, "goto"):
+        try:
+            await human_navigation(page=page, url=topic_url)
+        except Exception:
+            await page.goto(topic_url, wait_until="domcontentloaded")
 
     tweet_sel = selectors.get("selectors", {}).get(
         "tweet_container", "[data-testid='tweet']"
     )
+
+    try:
+        if hasattr(page, "wait_for_selector"):
+            await page.wait_for_selector(tweet_sel, timeout=4000)
+    except Exception:
+        pass
+
+    await random_delay(min_sec=0.5, max_sec=1.5)
 
     # Evaluate tweets on page
     raw_tweets = await page.evaluate(

@@ -19,6 +19,7 @@ from app.services.agentic.session_recovery_graph import (
     recover_page_session,
 )
 from app.services.agentic.tools.common import get_active_page
+from app.services.browser.actions import EvasionMouse, human_navigation, random_delay
 from app.services.browser.diagnostics import detect_page_state, extract_grok_summary
 from app.services.browser.manager import BrowserManager
 from scripts.scrape_trending_topics import (
@@ -69,12 +70,14 @@ def _load_selectors() -> dict[str, Any]:
             logger.warning(f"Failed to load x_selectors.json: {e}")
     if "selectors" not in selectors:
         selectors["selectors"] = {
-            "sidebar_container": selectors.get("feed", {}).get(
-                "news_trends",
-                "[data-testid='sidebarColumn'], [data-testid='primaryColumn']",
+            "sidebar_container": (
+                "[data-testid='sidebarColumn'], [data-testid='primaryColumn'], main[role='main']"
             ),
-            "sidebar_link": selectors.get("feed", {}).get(
-                "news_trends", "[data-testid='trend'], a[href*='/search?q=']"
+            "sidebar_link": (
+                selectors.get("feed", {}).get(
+                    "news_trends",
+                    "[data-testid='trend'], a[href*='/search?q='], [data-testid^='news_sidebar_article']",
+                )
             ),
             "tweet_container": selectors.get("feed", {}).get(
                 "timeline_post", "[data-testid='tweet']"
@@ -353,13 +356,16 @@ def _parse_single_tweet(t: Any) -> dict[str, Any] | None:
 
 
 async def _ensure_topic_page_navigation(page: Any, topic_url: str) -> None:
-    """Navigate to topic URL if not already on it."""
+    """Navigate to topic URL if not already on it using stealth human_navigation."""
     page_url = getattr(page, "url", None)
     if page_url == topic_url:
         return
-    goto_fn = getattr(page, "goto", None)
-    if callable(goto_fn):
-        await goto_fn(topic_url, wait_until="domcontentloaded")
+    try:
+        await human_navigation(page=page, url=topic_url)
+    except Exception:
+        goto_fn = getattr(page, "goto", None)
+        if callable(goto_fn):
+            await goto_fn(topic_url, wait_until="domcontentloaded")
 
 
 async def _extract_single_topic_timeline(
@@ -458,7 +464,9 @@ async def extract_topic_timelines_node(state: ScrapingGraphState) -> dict[str, A
         }
 
     selectors = _load_selectors()
-    for topic in scraped_topics[:max_topics]:
+    for idx, topic in enumerate(scraped_topics[:max_topics]):
+        if idx > 0:
+            await random_delay(min_sec=1.5, max_sec=3.0)
         await _process_single_topic_extraction(
             page=page,
             topic=topic,
@@ -640,6 +648,14 @@ async def scrape_trends_with_graph(
     try:
         async with manager.get_context("x", headless=headless) as context:
             page = await get_active_page(context=context)
+            mouse = None
+            if hasattr(page, "mouse") and hasattr(page, "viewport_size"):
+                try:
+                    mouse = EvasionMouse(page)
+                    await mouse.start_idle()
+                except Exception as m_err:
+                    logger.debug(f"Could not start idle mouse: {m_err}")
+
             initial_state: ScrapingGraphState = {
                 "user_id": sanitized_user_id,
                 "max_topics": clamped_max_topics,
@@ -659,10 +675,19 @@ async def scrape_trends_with_graph(
                 "error": None,
             }
 
-            final_state = await _scraping_graph.ainvoke(
-                initial_state, config=run_config if run_config else None
-            )
+            try:
+                final_state = await _scraping_graph.ainvoke(
+                    initial_state, config=run_config if run_config else None
+                )
+            finally:
+                if mouse is not None:
+                    try:
+                        await mouse.stop_idle()
+                    except Exception:
+                        pass
+
             return _format_scraped_batch_report(final_state=final_state)
+
     except Exception as e:
         logger.error(f"Error during scrape_trends_with_graph execution: {e}")
         return _make_abort_scraped_batch_report(page_state="error", error=str(e))

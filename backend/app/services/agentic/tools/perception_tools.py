@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from app.services.agentic.tools.common import get_active_page
+from app.services.browser.actions import human_navigation, random_delay
 from app.services.browser.diagnostics import extract_grok_summary
 from app.services.browser.manager import BrowserManager
 from scripts.scrape_trending_topics import extract_topic_tweets, scrape_trending_topics
@@ -63,13 +64,20 @@ async def scrape_topic_timeline(
         async with manager.get_context("x", headless=True) as context:
             page = await get_active_page(context=context)
 
-            await page.goto(topic_url, wait_until="domcontentloaded", timeout=20000)
+            try:
+                await human_navigation(page=page, url=topic_url)
+            except Exception:
+                await page.goto(topic_url, wait_until="domcontentloaded", timeout=20000)
+
+            await random_delay(min_sec=1.0, max_sec=2.0)
             summary = await extract_grok_summary(page)
 
-            # Use modular extractor
+            # Use modular extractor — pass page.url to avoid re-navigation
+            # since human_navigation already landed us on the topic page
+            # (X.com may redirect to a slightly different final URL)
             raw_tweets = await extract_topic_tweets(
                 page=page,
-                topic_url=topic_url,
+                topic_url=page.url,
                 selectors={},
             )
 

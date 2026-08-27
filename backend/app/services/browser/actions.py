@@ -30,6 +30,7 @@ __all__ = [
     "PostButtonDisabledError",
     "random_delay",
     "normalize_post_text",
+    "human_navigation",
 ]
 
 

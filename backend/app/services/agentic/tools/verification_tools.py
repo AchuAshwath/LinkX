@@ -15,7 +15,11 @@ from app.services.agentic.schemas import (
     ProfileVerificationReport,
 )
 from app.services.agentic.tools.common import get_active_page, resolve_session
-from app.services.browser.actions import normalize_post_text
+from app.services.browser.actions import (
+    human_navigation,
+    normalize_post_text,
+    random_delay,
+)
 from app.services.browser.manager import BrowserManager
 
 logger = logging.getLogger(__name__)
@@ -184,9 +188,13 @@ async def _verify_live_browser_feed(
     try:
         async with manager.get_context("x", headless=True) as context:
             page = await get_active_page(context=context)
-            await page.goto(
-                target.profile_url, wait_until="domcontentloaded", timeout=20000
-            )
+            try:
+                await human_navigation(page=page, url=target.profile_url)
+            except Exception:
+                await page.goto(
+                    target.profile_url, wait_until="domcontentloaded", timeout=20000
+                )
+            await random_delay(min_sec=1.0, max_sec=2.0)
             timeline_tweets = await _extract_profile_timeline_tweets(
                 page=page, limit=target.max_tweets_to_check
             )
@@ -287,15 +295,19 @@ async def verify_post_url_status(
         async with manager.get_context("x", headless=True) as context:
             page = await get_active_page(context=context)
 
+            # Use manual pre/post delays instead of human_navigation
+            # because we need the Response object for status_code
+            await random_delay(min_sec=0.5, max_sec=1.5)
             resp = await page.goto(
                 post_url, wait_until="domcontentloaded", timeout=20000
             )
             status_code = resp.status if resp else 200
+            await random_delay(min_sec=0.5, max_sec=1.5)
 
             body_text = await page.inner_text("body")
             is_deleted = (
                 "This Tweet is unavailable" in body_text
-                or "Hmm...this page doesn’t exist" in body_text
+                or "Hmm...this page doesn't exist" in body_text
             )
             is_live = (status_code == 200) and not is_deleted
 
