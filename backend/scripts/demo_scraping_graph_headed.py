@@ -210,8 +210,14 @@ async def main() -> None:
     """Main execution flow for headed ScrapingGraph demonstration."""
     _print_banner()
 
-    user_id_arg = sys.argv[1] if len(sys.argv) > 1 else None
-    max_topics_arg = int(sys.argv[2]) if len(sys.argv) > 2 else 2
+    user_id_arg = (
+        sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].isdigit() else None
+    )
+    max_topics_arg = (
+        int(sys.argv[2])
+        if len(sys.argv) > 2
+        else (int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 2)
+    )
 
     with Session(db_engine) as session:
         first_user = session.exec(select(User)).first()
