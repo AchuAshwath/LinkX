@@ -90,6 +90,36 @@ def _display_session_recovery_telemetry(*, report: Any) -> None:
         print(" • Session Recovery:   Clean Page State (No modal overlays detected) ✅")
 
 
+def _display_single_topic_block(
+    *, idx: int, topic: dict[str, Any], report: Any
+) -> None:
+    """Print details and sample tweets for a single extracted topic."""
+    title = topic.get("topic_title") or topic.get("title", "Untitled")
+    url = topic.get("topic_url") or topic.get("url", "")
+    cat = topic.get("category", "Trending")
+    summary = report.topic_summaries.get(url) or "No Grok summary extracted"
+    tweets = report.topic_tweets_map.get(url, [])
+
+    print(f"\n    [{idx}] {title} ({cat})")
+    print(f"        • URL:     {url}")
+    print(f"        • Tweets:  {len(tweets)} sample tweets extracted")
+    if summary and summary != "No Grok summary extracted":
+        clean_sum = summary.replace("\n", " ")[:140]
+        print(f"        • Grok Summary: {clean_sum}...")
+
+    if tweets:
+        print("        💬 Top Timeline Tweets:")
+        for t_idx, tw in enumerate(tweets[:5], 1):
+            author = tw.get("author_handle", "unknown")
+            txt = (tw.get("text") or "").replace("\n", " ")
+            short_txt = txt[:80] + "..." if len(txt) > 80 else txt
+            likes = tw.get("likes") or 0
+            retweets = tw.get("retweets") or 0
+            print(
+                f'           {t_idx}. {author}: "{short_txt}" ({likes:,} likes, {retweets:,} reposts)'
+            )
+
+
 def _display_extracted_timeline_topics(
     *, report: Any, duration: float, max_topics: int
 ) -> None:
@@ -113,30 +143,7 @@ def _display_extracted_timeline_topics(
     if extracted:
         print("\n 📌 Extracted Timeline Topics & Grok Summaries:")
         for idx, topic in enumerate(extracted, 1):
-            title = topic.get("topic_title") or topic.get("title", "Untitled")
-            url = topic.get("topic_url") or topic.get("url", "")
-            cat = topic.get("category", "Trending")
-            summary = report.topic_summaries.get(url) or "No Grok summary extracted"
-            tweets = report.topic_tweets_map.get(url, [])
-
-            print(f"\n    [{idx}] {title} ({cat})")
-            print(f"        • URL:     {url}")
-            print(f"        • Tweets:  {len(tweets)} sample tweets extracted")
-            if summary and summary != "No Grok summary extracted":
-                clean_sum = summary.replace("\n", " ")[:140]
-                print(f"        • Grok Summary: {clean_sum}...")
-
-            if tweets:
-                print("        💬 Top Timeline Tweets:")
-                for t_idx, tw in enumerate(tweets[:5], 1):
-                    author = tw.get("author_handle", "unknown")
-                    txt = (tw.get("text") or "").replace("\n", " ")
-                    short_txt = txt[:80] + "..." if len(txt) > 80 else txt
-                    likes = tw.get("likes") or 0
-                    retweets = tw.get("retweets") or 0
-                    print(
-                        f'           {t_idx}. {author}: "{short_txt}" ({likes:,} likes, {retweets:,} reposts)'
-                    )
+            _display_single_topic_block(idx=idx, topic=topic, report=report)
 
 
 def _verify_and_display_db_records(*, max_topics: int) -> None:

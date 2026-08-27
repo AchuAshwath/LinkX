@@ -214,37 +214,44 @@ async def _click_locator_safe(*, locator: Any, mouse: Any | None = None) -> None
             await click_res
 
 
+async def _try_click_navigation_locator(
+    *, page: Any, selector: str, mouse: Any | None = None
+) -> bool:
+    """Find selector, check if present, click with mouse/direct, and delay."""
+    if not hasattr(page, "locator"):
+        return False
+    try:
+        loc_res = page.locator(selector)
+        if inspect.isawaitable(loc_res):
+            loc_res = await loc_res
+        elem = getattr(loc_res, "first", loc_res)
+        if hasattr(elem, "count"):
+            c = elem.count()
+            if inspect.isawaitable(c):
+                c = await c
+            if c > 0:
+                await _click_locator_safe(locator=elem, mouse=mouse)
+                await random_delay(min_sec=1.5, max_sec=2.5)
+                return True
+    except Exception:
+        pass
+    return False
+
+
 async def _navigate_back_to_explore(*, page: Any, mouse: Any | None = None) -> None:
     """Return to Explore feed using Back button, Explore sidebar tab, or page history."""
     try:
-        if hasattr(page, "locator"):
-            loc_result = page.locator("[data-testid='app-bar-back']")
-            if inspect.isawaitable(loc_result):
-                loc_result = await loc_result
-            back_btn = getattr(loc_result, "first", loc_result)
-            if hasattr(back_btn, "count"):
-                c = back_btn.count()
-                if inspect.isawaitable(c):
-                    c = await c
-                if c > 0:
-                    await _click_locator_safe(locator=back_btn, mouse=mouse)
-                    await random_delay(min_sec=1.5, max_sec=2.5)
-                    return
+        if await _try_click_navigation_locator(
+            page=page, selector="[data-testid='app-bar-back']", mouse=mouse
+        ):
+            return
 
-            exp_result = page.locator(
-                "[data-testid='AppTabBar_Explore_Link'], a[href='/explore']"
-            )
-            if inspect.isawaitable(exp_result):
-                exp_result = await exp_result
-            explore_tab = getattr(exp_result, "first", exp_result)
-            if hasattr(explore_tab, "count"):
-                c = explore_tab.count()
-                if inspect.isawaitable(c):
-                    c = await c
-                if c > 0:
-                    await _click_locator_safe(locator=explore_tab, mouse=mouse)
-                    await random_delay(min_sec=1.5, max_sec=2.5)
-                    return
+        if await _try_click_navigation_locator(
+            page=page,
+            selector="[data-testid='AppTabBar_Explore_Link'], a[href='/explore']",
+            mouse=mouse,
+        ):
+            return
 
         if hasattr(page, "go_back"):
             back_res = page.go_back()

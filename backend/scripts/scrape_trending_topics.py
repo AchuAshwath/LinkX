@@ -28,7 +28,7 @@ from app import crud
 from app.core.config import settings
 from app.core.db import engine
 from app.models import TrendingTopic, TrendingTweet, User
-from app.services.browser.actions import EvasionMouse, human_navigation, random_delay
+from app.services.browser.actions import EvasionMouse, random_delay
 from app.services.browser.diagnostics import detect_page_state, extract_grok_summary
 from app.services.browser.manager import BrowserManager
 from app.services.browser.tools import find_or_heal_element
@@ -682,16 +682,13 @@ async def scrape_trending_topics(
 
 
 async def navigate_to_trends(
-    page: Any, *, target_url: str = "https://x.com/explore/tabs/trend"
+    page: Any, *, target_url: str = "https://x.com/home"
 ) -> bool:
-    """Navigate to X.com trends/explore and verify authenticated page state."""
+    """Navigate to X.com trends/home and verify authenticated page state."""
     state = await detect_page_state(page)
     if state in {"logged_out", "rate_limited", "captcha"}:
         return False
-    try:
-        await human_navigation(page=page, url=target_url)
-    except Exception:
-        await page.goto(target_url, wait_until="domcontentloaded")
+    await page.goto(target_url, wait_until="domcontentloaded")
     post_state = await detect_page_state(page)
     return post_state not in {"logged_out", "rate_limited", "captcha"}
 
@@ -757,87 +754,6 @@ async def extract_trending_sidebar(
     return topics
 
 
-TWEET_METRICS_EXTRACT_JS = """(selector) => {
-    function parseNum(str) {
-        if (!str) return 0;
-        const match = str.match(/(\\d[\\d,\\.]*\\s*[kKmM]?)/);
-        if (!match) return 0;
-        const clean = match[1].toLowerCase().replace(/,/g, '').trim();
-        if (clean.includes('k')) return Math.round(parseFloat(clean.replace('k', '')) * 1000);
-        if (clean.includes('m')) return Math.round(parseFloat(clean.replace('m', '')) * 1000000);
-        const parsed = parseInt(clean, 10);
-        return isNaN(parsed) ? 0 : parsed;
-    }
-
-    const tweetElements = document.querySelectorAll(selector);
-    const results = [];
-    for (const el of tweetElements) {
-        const textEl = el.querySelector('[data-testid="tweetText"]');
-        const text = textEl ? textEl.innerText : el.innerText;
-        if (!text || text.trim().length === 0) continue;
-
-        const authorEl = el.querySelector('[data-testid="User-Name"]');
-        let author = "unknown";
-        if (authorEl) {
-            const lines = authorEl.innerText.split('\\n');
-            const handleLine = lines.find(l => l.startsWith('@'));
-            author = handleLine || lines[0] || "unknown";
-        }
-
-        const replyBtn = el.querySelector('[data-testid="reply"]');
-        const retweetBtn = el.querySelector('[data-testid="retweet"]');
-        const likeBtn = el.querySelector('[data-testid="like"]');
-        const viewLink = el.querySelector('a[href*="/analytics"]') || el.querySelector('[data-testid="app-text-transition-container"]');
-
-        const replies = parseNum(replyBtn ? replyBtn.innerText || replyBtn.getAttribute('aria-label') : '0');
-        const retweets = parseNum(retweetBtn ? retweetBtn.innerText || retweetBtn.getAttribute('aria-label') : '0');
-        const likes = parseNum(likeBtn ? likeBtn.innerText || likeBtn.getAttribute('aria-label') : '0');
-        const views = parseNum(viewLink ? viewLink.innerText || viewLink.getAttribute('aria-label') : '0');
-
-        results.push({
-            author_handle: author,
-            text: text,
-            replies: replies,
-            retweets: retweets,
-            likes: likes,
-            views: views,
-        });
-    }
-    return results;
-}"""
-
-
-def _parse_evaluated_raw_tweets(
-    *, raw_list: Any, dummy_topic_id: uuid.UUID, seen_sigs: set[tuple[str, str]]
-) -> list[TrendingTweet]:
-    """Parse raw JS-evaluated tweet dictionaries into TrendingTweet models."""
-    parsed: list[TrendingTweet] = []
-    if not isinstance(raw_list, list):
-        return parsed
-    for raw in raw_list:
-        if not isinstance(raw, dict):
-            continue
-        handle = str(raw.get("author_handle", "unknown"))
-        txt = str(raw.get("text", ""))
-        sig = (handle, txt)
-        if sig in seen_sigs:
-            continue
-        seen_sigs.add(sig)
-        parsed.append(
-            TrendingTweet(
-                id=uuid.uuid4(),
-                topic_id=dummy_topic_id,
-                author_handle=handle,
-                text=txt,
-                replies=raw.get("replies"),
-                retweets=raw.get("retweets"),
-                likes=raw.get("likes"),
-                views=raw.get("views"),
-            )
-        )
-    return parsed
-
-
 async def extract_topic_tweets(
     page: Any,
     *,
@@ -845,48 +761,53 @@ async def extract_topic_tweets(
     selectors: dict[str, Any],
 ) -> list[TrendingTweet]:
     """Extract structured TrendingTweet models from a specific topic URL."""
-    if hasattr(page, "url") and page.url != topic_url and hasattr(page, "goto"):
-        try:
-            await human_navigation(page=page, url=topic_url)
-        except Exception:
-            await page.goto(topic_url, wait_until="domcontentloaded")
+    if page.url != topic_url:
+        await page.goto(topic_url, wait_until="domcontentloaded")
 
     tweet_sel = selectors.get("selectors", {}).get(
         "tweet_container", "[data-testid='tweet']"
     )
 
-    try:
-        if hasattr(page, "wait_for_selector"):
-            await page.wait_for_selector(tweet_sel, timeout=4000)
-    except Exception:
-        pass
-
-    await random_delay(min_sec=0.5, max_sec=1.5)
-
-    raw_tweets = await page.evaluate(TWEET_METRICS_EXTRACT_JS, tweet_sel)
-    dummy_topic_id = uuid.uuid4()
-    seen_sigs: set[tuple[str, str]] = set()
-
-    tweets = _parse_evaluated_raw_tweets(
-        raw_list=raw_tweets,
-        dummy_topic_id=dummy_topic_id,
-        seen_sigs=seen_sigs,
+    # Evaluate tweets on page
+    raw_tweets = await page.evaluate(
+        """(selector) => {
+            const tweetElements = document.querySelectorAll(selector);
+            const results = [];
+            for (const el of tweetElements) {
+                const textEl = el.querySelector('[data-testid="tweetText"]');
+                const text = textEl ? textEl.innerText : el.innerText;
+                const authorEl = el.querySelector('[data-testid="User-Name"]');
+                const author = authorEl ? authorEl.innerText.split('\\n')[0] : "unknown";
+                results.push({
+                    author_handle: author,
+                    text: text,
+                    replies: 0,
+                    retweets: 0,
+                    likes: 0,
+                    views: 0
+                });
+            }
+            return results;
+        }""",
+        tweet_sel,
     )
 
-    if len(tweets) < 5 and hasattr(page, "mouse") and hasattr(page.mouse, "wheel"):
-        try:
-            await page.mouse.wheel(delta_x=0, delta_y=700)
-            await random_delay(min_sec=1.0, max_sec=2.0)
-            more_raw = await page.evaluate(TWEET_METRICS_EXTRACT_JS, tweet_sel)
-            tweets.extend(
-                _parse_evaluated_raw_tweets(
-                    raw_list=more_raw,
-                    dummy_topic_id=dummy_topic_id,
-                    seen_sigs=seen_sigs,
-                )
+    tweets: list[TrendingTweet] = []
+    dummy_topic_id = uuid.uuid4()
+
+    if isinstance(raw_tweets, list):
+        for raw in raw_tweets:
+            tweet = TrendingTweet(
+                id=uuid.uuid4(),
+                topic_id=dummy_topic_id,
+                author_handle=raw.get("author_handle", "unknown"),
+                text=raw.get("text", ""),
+                replies=raw.get("replies"),
+                retweets=raw.get("retweets"),
+                likes=raw.get("likes"),
+                views=raw.get("views"),
             )
-        except Exception:
-            pass
+            tweets.append(tweet)
 
     return tweets
 

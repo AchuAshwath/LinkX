@@ -107,6 +107,36 @@ class ScrapingGraphState(TypedDict, total=False):
     error: str | None
 
 
+async def _perform_session_recovery(
+    *, page: Any, mouse: Any | None = None
+) -> tuple[str, str, dict[str, Any] | None, str | None]:
+    """Execute session recovery using module-scoped recover_page_session."""
+    try:
+        recovery = await recover_page_session(
+            page=page, expected_state="home", mouse=mouse
+        )
+        rec_dict = recovery.model_dump() if hasattr(recovery, "model_dump") else {}
+        if not getattr(recovery, "recovered", False):
+            err = (
+                getattr(recovery, "error", None)
+                or f"Session recovery failed: {getattr(recovery, 'status', 'failed')}"
+            )
+            return (
+                getattr(recovery, "page_state", "error"),
+                "unrecoverable",
+                rec_dict,
+                err,
+            )
+        return "ok", "session_ready", rec_dict, None
+    except Exception as rec_err:
+        return (
+            "error",
+            "unrecoverable",
+            {"recovered": False, "error": str(rec_err)},
+            f"Session recovery encountered exception: {rec_err}",
+        )
+
+
 async def _check_session_and_page_state(
     *,
     user_id: str,
@@ -122,10 +152,9 @@ async def _check_session_and_page_state(
             "No active browser page instance provided in state",
         )
 
-    has_session, session_err = _verify_session_exists(user_id=user_id)
-    if not has_session:
-        st = "logged_out" if "No stored" in (session_err or "") else "error"
-        return st, "unrecoverable", None, session_err
+    session_abort = _validate_user_session(user_id=user_id)
+    if session_abort:
+        return session_abort
 
     try:
         page_state = await detect_page_state(page)
@@ -143,30 +172,7 @@ async def _check_session_and_page_state(
         logger.debug(f"Overlay check error: {overlay_err}")
 
     if page_state != "ok" or has_overlay:
-        try:
-            recovery = await recover_page_session(
-                page=page, expected_state="home", mouse=mouse
-            )
-            rec_dict = recovery.model_dump() if hasattr(recovery, "model_dump") else {}
-            if not getattr(recovery, "recovered", False):
-                err = (
-                    getattr(recovery, "error", None)
-                    or f"Session recovery failed: {getattr(recovery, 'status', 'failed')}"
-                )
-                return (
-                    getattr(recovery, "page_state", "error"),
-                    "unrecoverable",
-                    rec_dict,
-                    err,
-                )
-            return "ok", "session_ready", rec_dict, None
-        except Exception as rec_err:
-            return (
-                "error",
-                "unrecoverable",
-                {"recovered": False, "error": str(rec_err)},
-                f"Session recovery encountered exception: {rec_err}",
-            )
+        return await _perform_session_recovery(page=page, mouse=mouse)
 
     return "ok", "session_ready", None, None
 

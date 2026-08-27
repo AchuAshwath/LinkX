@@ -336,18 +336,102 @@ def _persist_and_display_demo_topics(
                 )
 
 
+def _resolve_demo_user_id(*, user_id_arg: str | None) -> str:
+    """Resolve demo user ID from args or database."""
+    if user_id_arg:
+        return user_id_arg
+    with Session(db_engine) as session:
+        first_user = session.exec(select(User)).first()
+        return (
+            str(first_user.id) if first_user else "93c0700a-423f-42eb-8c91-0b90f300ca11"
+        )
+
+
+async def _run_demo_session(
+    *,
+    manager: BrowserManager,
+    broken_config: dict[str, Any],
+    fake_broken_selector: str,
+    temp_config_path: Path,
+    max_topics_arg: int,
+) -> float:
+    """Execute the headed self-healing session."""
+    start_time = time.time()
+    async with manager.get_context("x", headless=False) as context:
+        page = context.pages[0] if context.pages else await context.new_page()
+        for p in context.pages[1:]:
+            await p.close()
+
+        await install_visual_cursor(page)
+        mouse = EvasionMouse(page)
+        await mouse.start_idle()
+
+        print("┌" + "─" * 76 + "┐")
+        print(
+            "│ STEP 2: SESSION RECOVERY & OVERLAY DIAGNOSIS (SESSIONRECOVERYGRAPH)        │"
+        )
+        print("└" + "─" * 76 + "┘")
+        await human_navigation(page=page, url="https://x.com/explore")
+        await random_delay(min_sec=1.5, max_sec=2.5)
+
+        rec = await recover_page_session(page=page, expected_state="home", mouse=mouse)
+        print(f" • Page State:        {rec.page_state}")
+        print(f" • Overlays Diagnosed:{rec.overlay_type or 'None (Clean Page)'}")
+        print(f" • Recovery Action:   {rec.recovery_action or 'None required'} ✅")
+
+        healed_selector = await _diagnose_and_heal_initial_selector(
+            page=page,
+            temp_config_path=temp_config_path,
+            broken_config=broken_config,
+            fake_broken_selector=fake_broken_selector,
+        )
+
+        if not healed_selector:
+            print("❌ AI Self-Healing failed to find a valid selector.")
+            return 0.0
+
+        print("\n┌" + "─" * 76 + "┐")
+        print(
+            "│ STEP 4: AUTONOMOUS HEADED SCRAPING CONTINUES WITH HEALED SELECTOR          │"
+        )
+        print("└" + "─" * 76 + "┘")
+
+        trend_locators = page.locator("[data-testid='trend']")
+        total_trends = await trend_locators.count()
+        topics_to_process = min(max_topics_arg, max(1, total_trends))
+
+        selected_topics: list[dict[str, Any]] = []
+        topic_tweets_map: dict[str, list[dict[str, Any]]] = {}
+        topic_summaries: dict[str, str] = {}
+
+        for idx in range(topics_to_process):
+            t_info, t_tweets, t_sum = await _scrape_single_trend_item(
+                page=page,
+                mouse=mouse,
+                idx=idx,
+                total_trends=topics_to_process,
+                broken_config=broken_config,
+            )
+            selected_topics.append(t_info)
+            topic_tweets_map[t_info["topic_url"]] = t_tweets
+            if t_sum:
+                topic_summaries[t_info["topic_url"]] = t_sum
+
+        _persist_and_display_demo_topics(
+            selected_topics=selected_topics, topic_tweets_map=topic_tweets_map
+        )
+
+        await mouse.stop_idle()
+        return round(time.time() - start_time, 2)
+
+
 async def main() -> None:
     """Main execution flow for headed self-healing scraping demonstration."""
     _print_banner()
 
     user_id_arg = sys.argv[1] if len(sys.argv) > 1 else None
     max_topics_arg = int(sys.argv[2]) if len(sys.argv) > 2 else 3
-
-    with Session(db_engine) as session:
-        first_user = session.exec(select(User)).first()
-        user_id = user_id_arg or (
-            str(first_user.id) if first_user else "93c0700a-423f-42eb-8c91-0b90f300ca11"
-        )
+    user_id = _resolve_demo_user_id(user_id_arg=user_id_arg)
 
     print("┌" + "─" * 76 + "┐")
     print(
@@ -378,84 +462,17 @@ async def main() -> None:
         print("❌ No authenticated X.com session found. Please authenticate first.")
         return
 
-    start_time = time.time()
-    try:
-        async with manager.get_context("x", headless=False) as context:
-            page = context.pages[0] if context.pages else await context.new_page()
-            for p in context.pages[1:]:
-                await p.close()
+    duration = await _run_demo_session(
+        manager=manager,
+        broken_config=broken_config,
+        fake_broken_selector=fake_broken_selector,
+        temp_config_path=temp_config_path,
+        max_topics_arg=max_topics_arg,
+    )
 
-            await install_visual_cursor(page)
-            mouse = EvasionMouse(page)
-            await mouse.start_idle()
-
-            print("┌" + "─" * 76 + "┐")
-            print(
-                "│ STEP 2: SESSION RECOVERY & OVERLAY DIAGNOSIS (SESSIONRECOVERYGRAPH)        │"
-            )
-            print("└" + "─" * 76 + "┘")
-            await human_navigation(page=page, url="https://x.com/explore")
-            await random_delay(min_sec=1.5, max_sec=2.5)
-
-            rec = await recover_page_session(
-                page=page, expected_state="home", mouse=mouse
-            )
-            print(f" • Page State:        {rec.page_state}")
-            print(f" • Overlays Diagnosed:{rec.overlay_type or 'None (Clean Page)'}")
-            print(f" • Recovery Action:   {rec.recovery_action or 'None required'} ✅")
-
-            healed_selector = await _diagnose_and_heal_initial_selector(
-                page=page,
-                temp_config_path=temp_config_path,
-                broken_config=broken_config,
-                fake_broken_selector=fake_broken_selector,
-            )
-
-            if not healed_selector:
-                print("❌ AI Self-Healing failed to find a valid selector.")
-                return
-
-            print("\n┌" + "─" * 76 + "┐")
-            print(
-                "│ STEP 4: AUTONOMOUS HEADED SCRAPING CONTINUES WITH HEALED SELECTOR          │"
-            )
-            print("└" + "─" * 76 + "┘")
-
-            trend_locators = page.locator("[data-testid='trend']")
-            total_trends = await trend_locators.count()
-            topics_to_process = min(max_topics_arg, max(1, total_trends))
-
-            selected_topics: list[dict[str, Any]] = []
-            topic_tweets_map: dict[str, list[dict[str, Any]]] = {}
-            topic_summaries: dict[str, str] = {}
-
-            for idx in range(topics_to_process):
-                t_info, t_tweets, t_sum = await _scrape_single_trend_item(
-                    page=page,
-                    mouse=mouse,
-                    idx=idx,
-                    total_trends=topics_to_process,
-                    broken_config=broken_config,
-                )
-                selected_topics.append(t_info)
-                topic_tweets_map[t_info["topic_url"]] = t_tweets
-                if t_sum:
-                    topic_summaries[t_info["topic_url"]] = t_sum
-
-            _persist_and_display_demo_topics(
-                selected_topics=selected_topics, topic_tweets_map=topic_tweets_map
-            )
-
-            await mouse.stop_idle()
-            duration = round(time.time() - start_time, 2)
-            print("\n" + "═" * 78)
-            print(
-                f" 🎉 DEMONSTRATION COMPLETE ({duration}s): BROKEN SELECTOR SELF-HEALED & SCRAPED"
-            )
-            print("═" * 78 + "\n")
-
-    except Exception as exc:
-        print(f"\n❌ Self-healing demo encountered error: {exc}")
+    print(
+        f"\n🏁 Headed Self-Healing Scraping Complete in {duration}s! All systems operational. 🚀"
+    )
 
 
 if __name__ == "__main__":

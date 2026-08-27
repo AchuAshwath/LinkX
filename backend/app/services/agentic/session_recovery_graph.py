@@ -174,6 +174,18 @@ def _classify_sentinel_state(page_state: str) -> dict[str, Any] | None:
     return None
 
 
+def _resolve_diagnose_mouse(*, page: Any, state_mouse: Any) -> Any:
+    """Resolve or construct EvasionMouse instance from page."""
+    if state_mouse is not None:
+        return state_mouse
+    if hasattr(page, "mouse") and hasattr(page, "viewport_size"):
+        try:
+            return EvasionMouse(page)
+        except Exception as m_err:
+            logger.debug(f"Could not initialize EvasionMouse in diagnose node: {m_err}")
+    return None
+
+
 async def diagnose_page_state_node(state: SessionRecoveryState) -> dict[str, Any]:
     """Diagnose page sentinel state and inspect for known modal overlays."""
     page = state.get("page")
@@ -186,12 +198,7 @@ async def diagnose_page_state_node(state: SessionRecoveryState) -> dict[str, Any
             "error": "Invalid or missing page instance provided in state",
         }
 
-    mouse = state.get("mouse")
-    if mouse is None and hasattr(page, "mouse") and hasattr(page, "viewport_size"):
-        try:
-            mouse = EvasionMouse(page)  # type: ignore[arg-type]
-        except Exception as m_err:
-            logger.debug(f"Could not initialize EvasionMouse in diagnose node: {m_err}")
+    mouse = _resolve_diagnose_mouse(page=page, state_mouse=state.get("mouse"))
 
     try:
         page_state = await detect_page_state(page)
