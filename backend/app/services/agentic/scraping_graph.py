@@ -352,6 +352,16 @@ def _parse_single_tweet(t: Any) -> dict[str, Any] | None:
     }
 
 
+async def _ensure_topic_page_navigation(page: Any, topic_url: str) -> None:
+    """Navigate to topic URL if not already on it."""
+    page_url = getattr(page, "url", None)
+    if page_url == topic_url:
+        return
+    goto_fn = getattr(page, "goto", None)
+    if callable(goto_fn):
+        await goto_fn(topic_url, wait_until="domcontentloaded")
+
+
 async def _extract_single_topic_timeline(
     *,
     page: Any,
@@ -359,13 +369,7 @@ async def _extract_single_topic_timeline(
     selectors: dict[str, Any],
 ) -> tuple[str | None, list[dict[str, Any]]]:
     """Navigate to topic URL and extract Grok summary + top tweets."""
-    try:
-        page_url = getattr(page, "url", None)
-    except Exception:
-        page_url = None
-
-    if page_url != topic_url and hasattr(page, "goto") and callable(page.goto):
-        await page.goto(topic_url, wait_until="domcontentloaded")
+    await _ensure_topic_page_navigation(page, topic_url)
 
     summary = None
     try:
