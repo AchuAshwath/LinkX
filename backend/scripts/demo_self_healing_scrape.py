@@ -364,12 +364,19 @@ def _resolve_demo_user_id(*, user_id_arg: str | None) -> str:
         )
 
 
+from typing import NamedTuple
+
+
+class DemoSetup(NamedTuple):
+    broken_config: dict[str, Any]
+    fake_broken_selector: str
+    temp_config_path: Path
+
+
 async def _run_demo_session(
     *,
     manager: BrowserManager,
-    broken_config: dict[str, Any],
-    fake_broken_selector: str,
-    temp_config_path: Path,
+    setup: DemoSetup,
     max_topics_arg: int,
 ) -> float:
     """Execute the headed self-healing session."""
@@ -398,9 +405,9 @@ async def _run_demo_session(
 
         healed_selector = await _diagnose_and_heal_initial_selector(
             page=page,
-            temp_config_path=temp_config_path,
-            broken_config=broken_config,
-            fake_broken_selector=fake_broken_selector,
+            temp_config_path=setup.temp_config_path,
+            broken_config=setup.broken_config,
+            fake_broken_selector=setup.fake_broken_selector,
         )
 
         if not healed_selector:
@@ -426,7 +433,7 @@ async def _run_demo_session(
                 page=page,
                 mouse=mouse,
                 idx=idx,
-                config=broken_config,
+                config=setup.broken_config,
             )
             selected_topics.append(t_info)
             topic_tweets_map[t_info["topic_url"]] = t_tweets
@@ -478,11 +485,15 @@ async def main() -> None:
         print("❌ No authenticated X.com session found. Please authenticate first.")
         return
 
-    duration = await _run_demo_session(
-        manager=manager,
+    setup = DemoSetup(
         broken_config=broken_config,
         fake_broken_selector=fake_broken_selector,
         temp_config_path=temp_config_path,
+    )
+
+    duration = await _run_demo_session(
+        manager=manager,
+        setup=setup,
         max_topics_arg=max_topics_arg,
     )
 

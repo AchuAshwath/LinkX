@@ -268,11 +268,12 @@ async def _navigate_back_to_explore(*, page: Any, mouse: Any | None = None) -> N
 
 async def _scroll_timeline_safely(*, mouse: Any | None) -> None:
     """Perform smooth human reading scroll if mouse is available."""
-    if mouse and hasattr(mouse, "human_scroll"):
-        try:
-            await mouse.human_scroll(scrolls=2)
-        except Exception as scroll_err:
-            logger.debug(f"Timeline scroll error: {scroll_err}")
+    if not (mouse and hasattr(mouse, "human_scroll")):
+        return
+    try:
+        await mouse.human_scroll(scrolls=2)
+    except Exception as scroll_err:
+        logger.debug(f"Timeline scroll error: {scroll_err}")
 
 
 async def _extract_safe_grok_summary(*, page: Any, topic_url: str) -> str | None:
