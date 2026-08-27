@@ -12,12 +12,14 @@ import pytest
 from app.services.agentic.scraping_graph import (
     ScrapingGraphState,
     _parse_clamped_max_topics,
-    _resolve_user_id,
-    _safe_int,
     extract_topic_timelines_node,
     init_and_recover_session_node,
     persist_scraped_batch_node,
     scrape_explore_trends_node,
+)
+from app.services.agentic.scraping_persistence import (
+    _resolve_user_id,
+    _safe_int,
 )
 
 
@@ -235,14 +237,15 @@ class TestScrapingGraphChaosDisasters:
         mock_topic.id = uuid.uuid4()
 
         with (
-            patch("app.services.agentic.scraping_graph.resolve_session") as p_res,
+            patch("app.services.agentic.scraping_persistence.resolve_session") as p_res,
             patch(
-                "app.services.agentic.scraping_graph.crud.upsert_trending_topic",
+                "app.services.agentic.scraping_persistence.crud.upsert_trending_topic",
                 side_effect=[Exception("DB Unique Violation"), mock_topic],
             ),
         ):
             mock_session = MagicMock()
             p_res.return_value.__enter__.return_value = mock_session
+
             out = await persist_scraped_batch_node(state)
             assert out["status"] == "persisted"
             assert out["persisted_topic_count"] == 1

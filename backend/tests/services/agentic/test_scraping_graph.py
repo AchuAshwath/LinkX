@@ -14,7 +14,6 @@ from app.models import TrendingTopic, TrendingTweet
 from app.services.agentic.schemas import ScrapedBatchReport, SessionRecoveryReport
 from app.services.agentic.scraping_graph import (
     _load_selectors,
-    _resolve_user_id,
     _route_after_session_check,
     build_scraping_graph,
     init_and_recover_session_node,
@@ -96,7 +95,11 @@ def _make_default_tweets() -> list[TrendingTweet]:
 
 
 @contextmanager
-def _patch_browser_layer(mock_mgr: Any, mock_page: Any, page_state: str, nav_ok: bool):
+def _patch_browser_layer(**kwargs: Any):
+    mock_mgr = kwargs.get("mock_mgr")
+    mock_page = kwargs.get("mock_page")
+    page_state = kwargs.get("page_state", "ok")
+    nav_ok = kwargs.get("nav_ok", True)
     with (
         patch(
             "app.services.agentic.scraping_graph.BrowserManager", return_value=mock_mgr
@@ -126,13 +129,13 @@ def _patch_browser_layer(mock_mgr: Any, mock_page: Any, page_state: str, nav_ok:
 
 
 @contextmanager
-def _patch_scraping_extractors(
-    mock_topics: Any,
-    grok_summary: Any,
-    mock_tweets: Any,
-    recovery_report: Any,
-    detect_overlay_return: Any,
-):
+def _patch_scraping_extractors(**kwargs: Any):
+    mock_topics = kwargs.get("mock_topics")
+    grok_summary = kwargs.get("grok_summary")
+    mock_tweets = kwargs.get("mock_tweets")
+    recovery_report = kwargs.get("recovery_report")
+    detect_overlay_return = kwargs.get("detect_overlay_return")
+
     with (
         patch(
             "app.services.agentic.scraping_graph.extract_trending_sidebar",
@@ -160,11 +163,11 @@ def _patch_scraping_extractors(
             return_value=detect_overlay_return,
         ) as p_over,
         patch(
-            "app.services.agentic.scraping_graph.crud.upsert_trending_topic",
+            "app.services.agentic.scraping_persistence.crud.upsert_trending_topic",
             return_value=mock_topics[0] if mock_topics else None,
         ) as p_upsert,
         patch(
-            "app.services.agentic.scraping_graph.crud.replace_trending_tweets",
+            "app.services.agentic.scraping_persistence.crud.replace_trending_tweets",
             return_value=None,
         ) as p_replace,
     ):
@@ -207,14 +210,17 @@ def patch_scraping_pipeline(**kwargs: Any):
 
     with (
         _patch_browser_layer(
-            mock_mgr, mock_page, page_state, nav_trends_return
+            mock_mgr=mock_mgr,
+            mock_page=mock_page,
+            page_state=page_state,
+            nav_ok=nav_trends_return,
         ) as b_patches,
         _patch_scraping_extractors(
-            mock_topics,
-            grok_summary,
-            mock_tweets,
-            recovery_report,
-            detect_overlay_return,
+            mock_topics=mock_topics,
+            grok_summary=grok_summary,
+            mock_tweets=mock_tweets,
+            recovery_report=recovery_report,
+            detect_overlay_return=detect_overlay_return,
         ) as e_patches,
     ):
         yield {**b_patches, **e_patches}
@@ -417,7 +423,7 @@ class TestScrapingGraphNodeUnits:
     @pytest.mark.anyio
     async def test_persist_scraped_batch_node_db_error(self) -> None:
         with patch(
-            "app.services.agentic.scraping_graph.resolve_session",
+            "app.services.agentic.scraping_persistence.resolve_session",
             side_effect=Exception("DB Connection Refused"),
         ):
             out = await persist_scraped_batch_node(
@@ -435,6 +441,8 @@ class TestScrapingGraphNodeUnits:
         )
 
     def test_resolve_user_id_fallback(self) -> None:
+        from app.services.agentic.scraping_persistence import _resolve_user_id
+
         mock_session = MagicMock()
         mock_session.exec.return_value.first.return_value = None
         resolved = _resolve_user_id(
