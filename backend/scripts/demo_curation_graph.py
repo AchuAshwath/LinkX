@@ -27,6 +27,8 @@ logging.basicConfig(level=logging.WARNING, force=True)
 logging.getLogger().setLevel(logging.WARNING)
 
 
+from typing import Any
+
 import litellm
 
 litellm.suppress_debug_info = True
@@ -104,6 +106,93 @@ def _get_target_topic(topic_arg: str | None) -> TrendingTopic | None:
         ).first()
 
 
+def _display_topic_context(
+    *, topic: TrendingTopic, tweets: list[TrendingTweet]
+) -> None:
+    """Display topic context and sample tweet records."""
+    print("┌" + "─" * 76 + "┐")
+    print(
+        "│ STEP 1: TRENDING TOPIC & TWEET CONTEXT (FROM POSTGRESQL)                   │"
+    )
+    print("└" + "─" * 76 + "┘")
+    print(f" • Topic Title:   {topic.topic_title}")
+    print(f" • Topic ID:      {topic.id}")
+    print(f" • Category:      {topic.category or 'N/A'}")
+    print(f" • Post Count:    {topic.post_count or 0:,}")
+    print(f" • Scraped At:    {topic.scraped_at}")
+    print(f" • Grok Summary:  {topic.summary or 'None'}")
+    print(f" • Sample Tweets: {len(tweets)} tweets loaded from database")
+
+    if tweets:
+        print("\n 💬 Sample Timeline Tweet Data:")
+        for idx, tw in enumerate(tweets[:3], 1):
+            likes_str = f"{tw.likes or 0:,} likes"
+            clean_text = tw.text.replace("\n", " ")[:90]
+            print(f'    {idx}. {tw.author_handle}: "{clean_text}..." ({likes_str})')
+
+
+def _display_constraints(*, user_id: str, is_premium: bool, char_limit: int) -> None:
+    """Display user and platform drafting constraints."""
+    print("\n┌" + "─" * 76 + "┐")
+    print(
+        "│ STEP 2: CONTEXT GATHERING & CONSTRAINTS                                    │"
+    )
+    print("└" + "─" * 76 + "┘")
+    print(f" • User ID:           {user_id}")
+    print(" • Target Platform:   X (Twitter)")
+    print(
+        f" • Account Tier:      {'X Premium (Long-form)' if is_premium else 'X Standard (280 char limit)'}"
+    )
+    print(f" • Strict Char Limit: {char_limit} characters")
+    print(" • Target Tone:       engaging, punchy, insightful")
+
+
+def _display_curation_report(*, report: Any, duration: float, char_limit: int) -> None:
+    """Display execution output and length checks."""
+    print(f" ✅ Finished in {duration}s | Status: {report.status}")
+    print(f" • Constraint Compliant: {report.is_compliant}")
+    print(f" • Refinement Attempts:  {report.refinement_attempts}")
+
+    print("\n 📝 Raw AI Draft (Initial Generation):")
+    print("    " + report.draft_content.replace("\n", "\n    "))
+
+    print("\n ✨ Final Refined Copy (Platform Compliant & Polished):")
+    print("    " + report.refined_content.replace("\n", "\n    "))
+
+    char_len = len(report.refined_content)
+    print(
+        f"\n 📏 Length Check: {char_len} / {char_limit} chars ({'PASS ✅' if char_len <= char_limit else 'FAIL ❌'})"
+    )
+
+
+def _display_database_persistence(*, post_id: str | None) -> None:
+    """Verify saved post in PostgreSQL."""
+    print("\n┌" + "─" * 76 + "┐")
+    print(
+        "│ STEP 5: POSTGRESQL PERSISTENCE & HUMAN-IN-THE-LOOP (HITL) GATE             │"
+    )
+    print("└" + "─" * 76 + "┘")
+
+    if post_id:
+        with Session(db_engine) as session:
+            post = session.get(Post, post_id)
+            if post:
+                print(f" • Post ID:        {post.id}")
+                print(
+                    f" • Status:         {post.status.upper()} (Awaiting user review in LinkX dashboard)"
+                )
+                print(f" • Creation Method:{post.method}")
+                print(f" • Platform:       {post.platform}")
+                print(f" • Scheduled At:   {post.scheduled_at or 'Unscheduled'}")
+                print(" • Database State: Verified in 'post' table ✅")
+    else:
+        print(" ⚠️ Draft persistence failed or skipped.")
+
+    print("\n" + "═" * 78)
+    print(" 🎉 DEMONSTRATION COMPLETE: POST DRAFT IS READY FOR REVIEW")
+    print("═" * 78 + "\n")
+
+
 async def main() -> None:
     """Main execution flow for CurationGraph."""
     _print_banner()
@@ -127,46 +216,18 @@ async def main() -> None:
             select(TrendingTweet).where(TrendingTweet.topic_id == topic.id)
         ).all()
 
-    # Step 1: Trending Topic Discovery
-    print("┌" + "─" * 76 + "┐")
-    print(
-        "│ STEP 1: TRENDING TOPIC & TWEET CONTEXT (FROM POSTGRESQL)                   │"
-    )
-    print("└" + "─" * 76 + "┘")
-    print(f" • Topic Title:   {topic.topic_title}")
-    print(f" • Topic ID:      {topic.id}")
-    print(f" • Category:      {topic.category or 'N/A'}")
-    print(f" • Post Count:    {topic.post_count or 0:,}")
-    print(f" • Scraped At:    {topic.scraped_at}")
-    print(f" • Grok Summary:  {topic.summary or 'None'}")
-    print(f" • Sample Tweets: {len(tweets)} tweets loaded from database")
+    _display_topic_context(topic=topic, tweets=tweets)
 
-    if tweets:
-        print("\n 💬 Sample Timeline Tweet Data:")
-        for idx, tw in enumerate(tweets[:3], 1):
-            likes_str = f"{tw.likes or 0:,} likes"
-            clean_text = tw.text.replace("\n", " ")[:90]
-            print(f'    {idx}. {tw.author_handle}: "{clean_text}..." ({likes_str})')
-
-    # Step 2: User Context & Platform Constraints
     with Session(db_engine) as session:
         account_status = get_social_account_status(user_id=user_id, session=session)
     char_limit = 25000 if account_status.x_is_premium else 280
 
-    print("\n┌" + "─" * 76 + "┐")
-    print(
-        "│ STEP 2: CONTEXT GATHERING & CONSTRAINTS                                    │"
+    _display_constraints(
+        user_id=user_id,
+        is_premium=bool(account_status.x_is_premium),
+        char_limit=char_limit,
     )
-    print("└" + "─" * 76 + "┘")
-    print(f" • User ID:           {user_id}")
-    print(" • Target Platform:   X (Twitter)")
-    print(
-        f" • Account Tier:      {'X Premium (Long-form)' if account_status.x_is_premium else 'X Standard (280 char limit)'}"
-    )
-    print(f" • Strict Char Limit: {char_limit} characters")
-    print(" • Target Tone:       engaging, punchy, insightful")
 
-    # Step 3 & 4: Execution of CurationGraph
     print("\n┌" + "─" * 76 + "┐")
     print(
         "│ STEP 3 & 4: RUNNING CURATIONGRAPH & DRAFTREFINEMENTGRAPH                   │"
@@ -189,53 +250,12 @@ async def main() -> None:
                 session=session,
             )
         duration = round(time.time() - start_time, 2)
-
-        print(f" ✅ Finished in {duration}s | Status: {report.status}")
-        print(f" • Constraint Compliant: {report.is_compliant}")
-        print(f" • Refinement Attempts:  {report.refinement_attempts}")
-
-        print("\n 📝 Raw AI Draft (Initial Generation):")
-        print("    " + report.draft_content.replace("\n", "\n    "))
-
-        print("\n ✨ Final Refined Copy (Platform Compliant & Polished):")
-        print("    " + report.refined_content.replace("\n", "\n    "))
-
-        char_len = len(report.refined_content)
-        print(
-            f"\n 📏 Length Check: {char_len} / {char_limit} chars ({'PASS ✅' if char_len <= char_limit else 'FAIL ❌'})"
+        _display_curation_report(
+            report=report, duration=duration, char_limit=char_limit
         )
-
-        # Step 5: PostgreSQL Database Persistence Verification
-        print("\n┌" + "─" * 76 + "┐")
-        print(
-            "│ STEP 5: POSTGRESQL PERSISTENCE & HUMAN-IN-THE-LOOP (HITL) GATE             │"
-        )
-        print("└" + "─" * 76 + "┘")
-
-        if report.persisted_post_id:
-            with Session(db_engine) as session:
-                post = session.get(Post, report.persisted_post_id)
-                if post:
-                    print(f" • Post ID:        {post.id}")
-                    print(
-                        f" • Status:         {post.status.upper()} (Awaiting user review in LinkX dashboard)"
-                    )
-                    print(f" • Creation Method:{post.method}")
-                    print(f" • Platform:       {post.platform}")
-                    print(f" • Scheduled At:   {post.scheduled_at or 'Unscheduled'}")
-                    print(" • Database State: Verified in 'post' table ✅")
-        else:
-            print(" ⚠️ Draft persistence failed or skipped.")
-
-        print("\n" + "═" * 78)
-        print(" 🎉 DEMONSTRATION COMPLETE: POST DRAFT IS READY FOR REVIEW")
-        print("═" * 78 + "\n")
-
+        _display_database_persistence(post_id=report.persisted_post_id)
     except Exception as exc:
         print(f"\n❌ CurationGraph failed with exception: {exc}")
-        import traceback
-
-        traceback.print_exc()
 
 
 if __name__ == "__main__":

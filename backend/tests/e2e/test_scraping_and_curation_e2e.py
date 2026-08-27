@@ -37,28 +37,22 @@ def test_user(db: Session) -> User:
     return user
 
 
-@pytest.mark.anyio
-async def test_e2e_scraping_to_curation_pipeline(
-    db: Session,
-    test_user: User,
-) -> None:
-    """Validate full end-to-end pipeline from ScrapingGraph to CurationGraph."""
-    user_id_str = str(test_user.id)
-
-    # 1. Mock Browser Environment for ScrapingGraph
-    mock_sidebar_topic = TrendingTopic(
+def _build_mock_topic_and_tweets(
+    *, user_id: uuid.UUID
+) -> tuple[TrendingTopic, list[TrendingTweet]]:
+    """Build mock TrendingTopic and attached tweets for scraping mock."""
+    mock_topic = TrendingTopic(
         id=uuid.uuid4(),
-        user_id=test_user.id,
+        user_id=user_id,
         topic_url="https://x.com/search?q=Autonomous%20AI%20Agents",
         topic_title="Autonomous AI Agents",
         category="Technology",
         post_count=45000,
     )
-
-    mock_raw_tweets = [
+    mock_tweets = [
         TrendingTweet(
             id=uuid.uuid4(),
-            topic_id=mock_sidebar_topic.id,
+            topic_id=mock_topic.id,
             author_handle="@tech_insider",
             text="Autonomous AI agents with cognitive self-healing and stealth browsing are transforming automation.",
             likes=1200,
@@ -68,7 +62,7 @@ async def test_e2e_scraping_to_curation_pipeline(
         ),
         TrendingTweet(
             id=uuid.uuid4(),
-            topic_id=mock_sidebar_topic.id,
+            topic_id=mock_topic.id,
             author_handle="@ai_researcher",
             text="Deterministic stealth evasion combined with LangGraph state machines sets a new bar for reliability.",
             likes=850,
@@ -77,6 +71,55 @@ async def test_e2e_scraping_to_curation_pipeline(
             views=15000,
         ),
     ]
+    return mock_topic, mock_tweets
+
+
+def _verify_scraping_db_persistence(
+    *, db: Session, user_id: uuid.UUID
+) -> TrendingTopic:
+    """Verify topic and tweet records are correctly stored in PostgreSQL."""
+    persisted_topic = db.exec(
+        select(TrendingTopic).where(TrendingTopic.topic_title == "Autonomous AI Agents")
+    ).first()
+    assert persisted_topic is not None
+    assert persisted_topic.user_id == user_id
+
+    persisted_tweets = db.exec(
+        select(TrendingTweet).where(TrendingTweet.topic_id == persisted_topic.id)
+    ).all()
+    assert len(persisted_tweets) == 2
+    assert persisted_tweets[0].author_handle in ("@tech_insider", "@ai_researcher")
+    return persisted_topic
+
+
+def _verify_curation_db_persistence(
+    *,
+    db: Session,
+    post_id_str: str,
+    user_id: uuid.UUID,
+    expected_content: str,
+) -> None:
+    """Verify curated Post entity is correctly stored in PostgreSQL."""
+    persisted_post = db.exec(
+        select(Post).where(Post.id == uuid.UUID(post_id_str))
+    ).first()
+    assert persisted_post is not None
+    assert persisted_post.owner_id == user_id
+    assert persisted_post.status == "draft"
+    assert persisted_post.platform == "x"
+    assert persisted_post.content == expected_content
+
+
+@pytest.mark.anyio
+async def test_e2e_scraping_to_curation_pipeline(
+    db: Session,
+    test_user: User,
+) -> None:
+    """Validate full end-to-end pipeline from ScrapingGraph to CurationGraph."""
+    user_id_str = str(test_user.id)
+    mock_sidebar_topic, mock_raw_tweets = _build_mock_topic_and_tweets(
+        user_id=test_user.id
+    )
 
     mock_page = AsyncMock()
     mock_page.url = "https://x.com/home"
@@ -86,7 +129,7 @@ async def test_e2e_scraping_to_curation_pipeline(
     mock_context = AsyncMock()
     mock_context.pages = [mock_page]
 
-    # Run ScrapingGraph with patched browser operations
+    # 1. Run ScrapingGraph with patched browser operations
     with (
         patch(
             "app.services.agentic.scraping_graph.BrowserManager.session_exists",
@@ -134,23 +177,12 @@ async def test_e2e_scraping_to_curation_pipeline(
             session=db,
         )
 
-    # Verify Scraping Report
     assert scraping_report.status == "persisted"
     assert scraping_report.persisted_topic_count >= 1
     assert scraping_report.persisted_tweet_count >= 2
 
-    # 2. Verify PostgreSQL Database State
-    persisted_topic = db.exec(
-        select(TrendingTopic).where(TrendingTopic.topic_title == "Autonomous AI Agents")
-    ).first()
-    assert persisted_topic is not None
-    assert persisted_topic.user_id == test_user.id
-
-    persisted_tweets = db.exec(
-        select(TrendingTweet).where(TrendingTweet.topic_id == persisted_topic.id)
-    ).all()
-    assert len(persisted_tweets) == 2
-    assert persisted_tweets[0].author_handle in ("@tech_insider", "@ai_researcher")
+    # 2. Verify PostgreSQL Database State for Topics & Tweets
+    persisted_topic = _verify_scraping_db_persistence(db=db, user_id=test_user.id)
 
     # 3. Run CurationGraph on the Persisted Topic
     mock_refinement_report = RefinedDraftReport(
@@ -183,18 +215,15 @@ async def test_e2e_scraping_to_curation_pipeline(
             session=db,
         )
 
-    # Verify Curation Report
     assert curation_report.status == "persisted"
     assert curation_report.is_compliant is True
     assert curation_report.persisted_post_id is not None
     assert "Autonomous AI agents" in curation_report.refined_content
 
     # 4. Verify Final Post Persisted in PostgreSQL with status="draft"
-    persisted_post = db.exec(
-        select(Post).where(Post.id == uuid.UUID(curation_report.persisted_post_id))
-    ).first()
-    assert persisted_post is not None
-    assert persisted_post.owner_id == test_user.id
-    assert persisted_post.status == "draft"
-    assert persisted_post.platform == "x"
-    assert persisted_post.content == curation_report.refined_content
+    _verify_curation_db_persistence(
+        db=db,
+        post_id_str=curation_report.persisted_post_id,
+        user_id=test_user.id,
+        expected_content=curation_report.refined_content,
+    )

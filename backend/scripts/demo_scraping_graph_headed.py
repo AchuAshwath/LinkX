@@ -27,6 +27,8 @@ os.environ["LITELLM_LOG"] = "ERROR"
 # Add backend directory to sys.path
 sys.path.append(str(Path(__file__).parent.parent))
 
+from typing import Any
+
 from sqlmodel import Session, create_engine, select  # noqa: E402
 
 from app.core.config import settings  # noqa: E402
@@ -68,6 +70,120 @@ def _print_banner() -> None:
     print(" Engine: ScrapingGraph + SessionRecoveryGraph + EvasionMouse + PostgreSQL\n")
 
 
+def _display_session_recovery_telemetry(*, report: Any) -> None:
+    """Display session recovery telemetry."""
+    print("┌" + "─" * 76 + "┐")
+    print(
+        "│ STEP 2: SESSION RECOVERY & OVERLAY DIAGNOSIS (SESSIONRECOVERYGRAPH)        │"
+    )
+    print("└" + "─" * 76 + "┘")
+    print(f" • Initial Page State: {report.page_state}")
+
+    if report.session_recovery:
+        rec = report.session_recovery
+        print(
+            f" • Overlay Diagnosed:  {rec.get('overlay_type') or 'None (Clean Page)'}"
+        )
+        print(f" • Recovery Action:    {rec.get('recovery_action') or 'None required'}")
+        print(f" • Session Recovered:  {'YES ✅' if rec.get('recovered') else 'NO ⚠️'}")
+    else:
+        print(" • Session Recovery:   Clean Page State (No modal overlays detected) ✅")
+
+
+def _display_extracted_timeline_topics(
+    *, report: Any, duration: float, max_topics: int
+) -> None:
+    """Display scraped topics and sample tweets."""
+    print("\n┌" + "─" * 76 + "┐")
+    print(
+        "│ STEP 3 & 4: STEALTH SCRAPING & TOPIC TIMELINE EXTRACTION                   │"
+    )
+    print("└" + "─" * 76 + "┘")
+    print(f" ✅ ScrapingGraph completed in {duration}s | Status: {report.status}")
+    print(f" • Scraped Topics:     {len(report.scraped_topics)}")
+    print(f" • Topics Persisted:   {report.persisted_topic_count}")
+    print(f" • Tweets Persisted:   {report.persisted_tweet_count}")
+
+    extracted = [
+        t
+        for t in report.scraped_topics
+        if (t.get("topic_url") or t.get("url", "")) in report.topic_tweets_map
+    ] or report.scraped_topics[:max_topics]
+
+    if extracted:
+        print("\n 📌 Extracted Timeline Topics & Grok Summaries:")
+        for idx, topic in enumerate(extracted, 1):
+            title = topic.get("topic_title") or topic.get("title", "Untitled")
+            url = topic.get("topic_url") or topic.get("url", "")
+            cat = topic.get("category", "Trending")
+            summary = report.topic_summaries.get(url) or "No Grok summary extracted"
+            tweets = report.topic_tweets_map.get(url, [])
+
+            print(f"\n    [{idx}] {title} ({cat})")
+            print(f"        • URL:     {url}")
+            print(f"        • Tweets:  {len(tweets)} sample tweets extracted")
+            if summary and summary != "No Grok summary extracted":
+                clean_sum = summary.replace("\n", " ")[:140]
+                print(f"        • Grok Summary: {clean_sum}...")
+
+            if tweets:
+                print("        💬 Top Timeline Tweets:")
+                for t_idx, tw in enumerate(tweets[:5], 1):
+                    author = tw.get("author_handle", "unknown")
+                    txt = (tw.get("text") or "").replace("\n", " ")
+                    short_txt = txt[:80] + "..." if len(txt) > 80 else txt
+                    likes = tw.get("likes") or 0
+                    retweets = tw.get("retweets") or 0
+                    print(
+                        f'           {t_idx}. {author}: "{short_txt}" ({likes:,} likes, {retweets:,} reposts)'
+                    )
+
+
+def _verify_and_display_db_records(*, max_topics: int) -> None:
+    """Verify saved topic records in PostgreSQL."""
+    print("\n┌" + "─" * 76 + "┐")
+    print(
+        "│ STEP 5: POSTGRESQL PERSISTENCE & RELATIONAL INTEGRITY VERIFICATION        │"
+    )
+    print("└" + "─" * 76 + "┘")
+
+    with Session(db_engine) as session:
+        recent_topics = session.exec(
+            select(TrendingTopic)
+            .order_by(TrendingTopic.scraped_at.desc())  # type: ignore[attr-defined]
+            .limit(8)
+        ).all()
+
+        topics_with_tweets = []
+        for t in recent_topics:
+            attached_tweets = session.exec(
+                select(TrendingTweet).where(TrendingTweet.topic_id == t.id)
+            ).all()
+            if attached_tweets:
+                topics_with_tweets.append((t, attached_tweets))
+
+        if topics_with_tweets:
+            for t, attached_tweets in topics_with_tweets[:max_topics]:
+                print(f" • Topic '{t.topic_title}':")
+                print(f"    - ID:        {t.id}")
+                print(f"    - Category:  {t.category or 'Trending'}")
+                print(f"    - Post Count:{t.post_count or 0:,}")
+                print(
+                    f"    - Tweets DB: {len(attached_tweets)} attached tweets in 'trending_tweet' ✅"
+                )
+                for i, tw in enumerate(attached_tweets[:3], 1):
+                    short_body = (tw.text or "").replace("\n", " ")[:70]
+                    print(
+                        f'       [{i}] {tw.author_handle}: "{short_body}..." ({tw.likes or 0:,} likes, {tw.retweets or 0:,} reposts)'
+                    )
+        else:
+            print(" ⚠️ No topic records with attached tweets found in database.")
+
+    print("\n" + "═" * 78)
+    print(" 🎉 DEMONSTRATION COMPLETE: REAL HEADED SCRAPE COMPLETED SUCCESSFULLY")
+    print("═" * 78 + "\n")
+
+
 async def main() -> None:
     """Main execution flow for headed ScrapingGraph demonstration."""
     _print_banner()
@@ -81,7 +197,6 @@ async def main() -> None:
             str(first_user.id) if first_user else "93c0700a-423f-42eb-8c91-0b90f300ca11"
         )
 
-    # Step 1: Headed Browser Launch & Configuration
     print("┌" + "─" * 76 + "┐")
     print(
         "│ STEP 1: INITIALIZING AUTHENTICATED HEADED BROWSER & STEALTH ENGINE         │"
@@ -94,7 +209,6 @@ async def main() -> None:
         " • Stealth Engine: EvasionMouse (Bézier trajectories + human typing & jitter)\n"
     )
 
-    # Delayed Chrome focus on macOS
     async def _delayed_focus() -> None:
         await asyncio.sleep(1.5)
         _focus_chrome_on_macos()
@@ -111,126 +225,13 @@ async def main() -> None:
                 session=session,
             )
         duration = round(time.time() - start_time, 2)
-
-        # Step 2: Session Recovery Telemetry
-        print("┌" + "─" * 76 + "┐")
-        print(
-            "│ STEP 2: SESSION RECOVERY & OVERLAY DIAGNOSIS (SESSIONRECOVERYGRAPH)        │"
+        _display_session_recovery_telemetry(report=report)
+        _display_extracted_timeline_topics(
+            report=report, duration=duration, max_topics=max_topics_arg
         )
-        print("└" + "─" * 76 + "┘")
-        print(f" • Initial Page State: {report.page_state}")
-
-        if report.session_recovery:
-            rec = report.session_recovery
-            print(
-                f" • Overlay Diagnosed:  {rec.get('overlay_type') or 'None (Clean Page)'}"
-            )
-            print(
-                f" • Recovery Action:    {rec.get('recovery_action') or 'None required'}"
-            )
-            print(
-                f" • Session Recovered:  {'YES ✅' if rec.get('recovered') else 'NO ⚠️'}"
-            )
-        else:
-            print(
-                " • Session Recovery:   Clean Page State (No modal overlays detected) ✅"
-            )
-
-        # Step 3: Explore & Trending Topics
-        print("\n┌" + "─" * 76 + "┐")
-        print(
-            "│ STEP 3 & 4: STEALTH SCRAPING & TOPIC TIMELINE EXTRACTION                   │"
-        )
-        print("└" + "─" * 76 + "┘")
-        print(f" ✅ ScrapingGraph completed in {duration}s | Status: {report.status}")
-        print(f" • Scraped Topics:     {len(report.scraped_topics)}")
-        print(f" • Topics Persisted:   {report.persisted_topic_count}")
-        print(f" • Tweets Persisted:   {report.persisted_tweet_count}")
-
-        extracted_topics = [
-            t
-            for t in report.scraped_topics
-            if (t.get("topic_url") or t.get("url", "")) in report.topic_tweets_map
-        ]
-        if not extracted_topics:
-            extracted_topics = report.scraped_topics[:max_topics_arg]
-
-        if extracted_topics:
-            print("\n 📌 Extracted Timeline Topics & Grok Summaries:")
-            for idx, topic in enumerate(extracted_topics, 1):
-                title = topic.get("topic_title") or topic.get("title", "Untitled")
-                url = topic.get("topic_url") or topic.get("url", "")
-                cat = topic.get("category", "Trending")
-                summary = report.topic_summaries.get(url) or "No Grok summary extracted"
-                tweets = report.topic_tweets_map.get(url, [])
-
-                print(f"\n    [{idx}] {title} ({cat})")
-                print(f"        • URL:     {url}")
-                print(f"        • Tweets:  {len(tweets)} sample tweets extracted")
-                if summary and summary != "No Grok summary extracted":
-                    clean_summary = summary.replace("\n", " ")[:140]
-                    print(f"        • Grok Summary: {clean_summary}...")
-
-                if tweets:
-                    print("        💬 Top Timeline Tweets:")
-                    for t_idx, tw in enumerate(tweets[:5], 1):
-                        author = tw.get("author_handle", "unknown")
-                        txt = (tw.get("text") or "").replace("\n", " ")
-                        short_txt = txt[:80] + "..." if len(txt) > 80 else txt
-                        likes = tw.get("likes") or 0
-                        retweets = tw.get("retweets") or 0
-                        print(
-                            f'           {t_idx}. {author}: "{short_txt}" ({likes:,} likes, {retweets:,} reposts)'
-                        )
-
-        # Step 5: PostgreSQL Database Verification
-        print("\n┌" + "─" * 76 + "┐")
-        print(
-            "│ STEP 5: POSTGRESQL PERSISTENCE & RELATIONAL INTEGRITY VERIFICATION        │"
-        )
-        print("└" + "─" * 76 + "┘")
-
-        with Session(db_engine) as session:
-            recent_topics = session.exec(
-                select(TrendingTopic)
-                .order_by(TrendingTopic.scraped_at.desc())  # type: ignore[attr-defined]
-                .limit(8)
-            ).all()
-
-            topics_with_tweets = []
-            for t in recent_topics:
-                attached_tweets = session.exec(
-                    select(TrendingTweet).where(TrendingTweet.topic_id == t.id)
-                ).all()
-                if attached_tweets:
-                    topics_with_tweets.append((t, attached_tweets))
-
-            if topics_with_tweets:
-                for t, attached_tweets in topics_with_tweets[:max_topics_arg]:
-                    print(f" • Topic '{t.topic_title}':")
-                    print(f"    - ID:        {t.id}")
-                    print(f"    - Category:  {t.category or 'Trending'}")
-                    print(f"    - Post Count:{t.post_count or 0:,}")
-                    print(
-                        f"    - Tweets DB: {len(attached_tweets)} attached tweets in 'trending_tweet' ✅"
-                    )
-                    for i, tw in enumerate(attached_tweets[:3], 1):
-                        short_body = (tw.text or "").replace("\n", " ")[:70]
-                        print(
-                            f'       [{i}] {tw.author_handle}: "{short_body}..." ({tw.likes or 0:,} likes, {tw.retweets or 0:,} reposts)'
-                        )
-            else:
-                print(" ⚠️ No topic records with attached tweets found in database.")
-
-        print("\n" + "═" * 78)
-        print(" 🎉 DEMONSTRATION COMPLETE: REAL HEADED SCRAPE COMPLETED SUCCESSFULLY")
-        print("═" * 78 + "\n")
-
+        _verify_and_display_db_records(max_topics=max_topics_arg)
     except Exception as exc:
         print(f"\n❌ ScrapingGraph failed with exception: {exc}")
-        import traceback
-
-        traceback.print_exc()
 
 
 if __name__ == "__main__":

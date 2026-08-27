@@ -757,6 +757,37 @@ async def extract_trending_sidebar(
     return topics
 
 
+def _parse_evaluated_raw_tweets(
+    *, raw_list: Any, dummy_topic_id: uuid.UUID, seen_sigs: set[tuple[str, str]]
+) -> list[TrendingTweet]:
+    """Parse raw JS-evaluated tweet dictionaries into TrendingTweet models."""
+    parsed: list[TrendingTweet] = []
+    if not isinstance(raw_list, list):
+        return parsed
+    for raw in raw_list:
+        if not isinstance(raw, dict):
+            continue
+        handle = str(raw.get("author_handle", "unknown"))
+        txt = str(raw.get("text", ""))
+        sig = (handle, txt)
+        if sig in seen_sigs:
+            continue
+        seen_sigs.add(sig)
+        parsed.append(
+            TrendingTweet(
+                id=uuid.uuid4(),
+                topic_id=dummy_topic_id,
+                author_handle=handle,
+                text=txt,
+                replies=raw.get("replies"),
+                retweets=raw.get("retweets"),
+                likes=raw.get("likes"),
+                views=raw.get("views"),
+            )
+        )
+    return parsed
+
+
 async def extract_topic_tweets(
     page: Any,
     *,
@@ -832,28 +863,14 @@ async def extract_topic_tweets(
     }"""
 
     raw_tweets = await page.evaluate(extract_js, tweet_sel)
-
-    tweets: list[TrendingTweet] = []
     dummy_topic_id = uuid.uuid4()
     seen_sigs: set[tuple[str, str]] = set()
 
-    if isinstance(raw_tweets, list):
-        for raw in raw_tweets:
-            handle = str(raw.get("author_handle", "unknown"))
-            txt = str(raw.get("text", ""))
-            seen_sigs.add((handle, txt))
-            tweets.append(
-                TrendingTweet(
-                    id=uuid.uuid4(),
-                    topic_id=dummy_topic_id,
-                    author_handle=handle,
-                    text=txt,
-                    replies=raw.get("replies"),
-                    retweets=raw.get("retweets"),
-                    likes=raw.get("likes"),
-                    views=raw.get("views"),
-                )
-            )
+    tweets = _parse_evaluated_raw_tweets(
+        raw_list=raw_tweets,
+        dummy_topic_id=dummy_topic_id,
+        seen_sigs=seen_sigs,
+    )
 
     # If fewer than 5 tweets, scroll down smoothly to load more
     if len(tweets) < 5 and hasattr(page, "mouse") and hasattr(page.mouse, "wheel"):
@@ -861,26 +878,13 @@ async def extract_topic_tweets(
             await page.mouse.wheel(delta_x=0, delta_y=700)
             await random_delay(min_sec=1.0, max_sec=2.0)
             more_raw = await page.evaluate(extract_js, tweet_sel)
-            if isinstance(more_raw, list):
-                for raw in more_raw:
-                    handle = str(raw.get("author_handle", "unknown"))
-                    txt = str(raw.get("text", ""))
-                    sig = (handle, txt)
-                    if sig in seen_sigs:
-                        continue
-                    seen_sigs.add(sig)
-                    tweets.append(
-                        TrendingTweet(
-                            id=uuid.uuid4(),
-                            topic_id=dummy_topic_id,
-                            author_handle=handle,
-                            text=txt,
-                            replies=raw.get("replies"),
-                            retweets=raw.get("retweets"),
-                            likes=raw.get("likes"),
-                            views=raw.get("views"),
-                        )
-                    )
+            tweets.extend(
+                _parse_evaluated_raw_tweets(
+                    raw_list=more_raw,
+                    dummy_topic_id=dummy_topic_id,
+                    seen_sigs=seen_sigs,
+                )
+            )
         except Exception:
             pass
 
