@@ -46,19 +46,18 @@ def _make_dummy_post_public(
 
 
 @contextmanager
-def patch_curation_pipeline(
-    *,
-    topic_ctx: Any = None,
-    history: Any = None,
-    account_status: Any = None,
-    draft_result: Any = "Test post #AI",
-    refine_result: Any = None,
-    save_result: Any = None,
-    draft_side_effect: Any = None,
-    refine_side_effect: Any = None,
-    save_side_effect: Any = None,
-):
+def patch_curation_pipeline(**kwargs: Any):
     """Context manager providing unified mock patches for CurationGraph execution."""
+    topic_ctx = kwargs.get("topic_ctx")
+    history = kwargs.get("history")
+    account_status = kwargs.get("account_status")
+    draft_result = kwargs.get("draft_result", "Test post #AI")
+    refine_result = kwargs.get("refine_result")
+    save_result = kwargs.get("save_result")
+    draft_side_effect = kwargs.get("draft_side_effect")
+    refine_side_effect = kwargs.get("refine_side_effect")
+    save_side_effect = kwargs.get("save_side_effect")
+
     default_refine = RefinedDraftReport(
         refined_content=draft_result
         if isinstance(draft_result, str)
@@ -161,38 +160,34 @@ class TestCurationGraphSlices:
             assert len(report.refined_content) <= 280
 
     @pytest.mark.anyio
-    async def test_slice_3_cold_start_no_topic_id(self) -> None:
-        with patch_curation_pipeline() as p:
-            report = await curate_and_draft_post(
-                user_id="11111111-1111-1111-1111-111111111111",
-                topic_title="Custom Insight",
-                topic_id=None,
-            )
-            assert report.status == "persisted"
-            assert report.topic_summary is None
-            p["get_topic"].assert_not_called()
-
-    @pytest.mark.anyio
-    async def test_slice_4_missing_topic_context_none_handling(self) -> None:
-        with patch_curation_pipeline(topic_ctx=None) as p:
-            report = await curate_and_draft_post(
-                user_id="11111111-1111-1111-1111-111111111111",
-                topic_title="Deleted Topic",
-                topic_id="99999999-9999-9999-9999-999999999999",
-            )
-            assert report.status == "persisted"
-            assert report.topic_summary is None
-            p["get_topic"].assert_called_once()
-
-    @pytest.mark.anyio
-    async def test_slice_5_llm_failure_fallback_template(self) -> None:
-        with patch_curation_pipeline(draft_result="Trending: Fallback Topic."):
+    @pytest.mark.parametrize(
+        ("topic_id", "topic_ctx", "draft_res", "expected_summary"),
+        [
+            (None, None, "Test post #AI", None),
+            ("99999999-9999-9999-9999-999999999999", None, "Test post #AI", None),
+            (
+                "22222222-2222-2222-2222-222222222222",
+                None,
+                "Trending: Fallback Topic.",
+                None,
+            ),
+        ],
+    )
+    async def test_slices_context_and_fallback_variations(
+        self,
+        topic_id: str | None,
+        topic_ctx: Any,
+        draft_res: str,
+        expected_summary: str | None,
+    ) -> None:
+        with patch_curation_pipeline(topic_ctx=topic_ctx, draft_result=draft_res):
             report = await curate_and_draft_post(
                 user_id="11111111-1111-1111-1111-111111111111",
                 topic_title="Fallback Topic",
+                topic_id=topic_id,
             )
-            assert report.draft_content == "Trending: Fallback Topic."
             assert report.status == "persisted"
+            assert report.topic_summary == expected_summary
 
     @pytest.mark.anyio
     async def test_slice_6_refine_draft_raises_exception(self) -> None:

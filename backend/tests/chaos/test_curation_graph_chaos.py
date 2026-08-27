@@ -40,19 +40,18 @@ def _make_dummy_post_public(
 
 
 @contextmanager
-def patch_chaos_curation(
-    *,
-    topic_ctx: Any = None,
-    history: Any = None,
-    account_status: Any = None,
-    draft_result: Any = "Valid draft #AI",
-    refine_result: Any = None,
-    save_result: Any = None,
-    draft_side_effect: Any = None,
-    refine_side_effect: Any = None,
-    save_side_effect: Any = None,
-):
+def patch_chaos_curation(**kwargs: Any):
     """Unified mock context manager for CurationGraph chaos testing."""
+    topic_ctx = kwargs.get("topic_ctx")
+    history = kwargs.get("history")
+    account_status = kwargs.get("account_status")
+    draft_result = kwargs.get("draft_result", "Valid draft #AI")
+    refine_result = kwargs.get("refine_result")
+    save_result = kwargs.get("save_result")
+    draft_side_effect = kwargs.get("draft_side_effect")
+    refine_side_effect = kwargs.get("refine_side_effect")
+    save_side_effect = kwargs.get("save_side_effect")
+
     default_refine = RefinedDraftReport(
         refined_content=draft_result
         if isinstance(draft_result, str) and draft_result.strip()

@@ -69,26 +69,8 @@ class MockContext:
         pass
 
 
-@contextmanager
-def patch_scraping_pipeline(
-    *,
-    page: MockPage | None = None,
-    session_exists: bool = True,
-    page_state: str = "ok",
-    nav_trends_return: bool = True,
-    sidebar_topics: list[Any] | None = None,
-    grok_summary: str = "AI Revolution is trending.",
-    tweets_return: list[Any] | None = None,
-    recovery_report: Any = None,
-    detect_overlay_return: str | None = None,
-):
-    """Unified mock context manager for ScrapingGraph testing."""
-    mock_page = page or MockPage(page_state=page_state)
-    mock_mgr = MagicMock()
-    mock_mgr.session_exists.return_value = session_exists
-    mock_mgr.get_context.return_value = MockContext(mock_page)
-
-    default_topics = [
+def _make_default_topics() -> list[TrendingTopic]:
+    return [
         TrendingTopic(
             id=uuid.uuid4(),
             user_id=uuid.uuid4(),
@@ -99,18 +81,41 @@ def patch_scraping_pipeline(
         )
         for i in range(1, 4)
     ]
-    mock_topics = sidebar_topics if sidebar_topics is not None else default_topics
 
-    default_tweets = [
-        TrendingTweet(
-            topic_id=uuid.uuid4(),
-            author_handle="@sama",
-            text="Autonomous agents will revolutionize social pipelines.",
-            likes=100,
-            views=1000,
-        )
-    ]
-    mock_tweets = tweets_return if tweets_return is not None else default_tweets
+
+@contextmanager
+def patch_scraping_pipeline(**kwargs: Any):
+    """Unified mock context manager for ScrapingGraph testing."""
+    page_state = kwargs.get("page_state", "ok")
+    mock_page = kwargs.get("page") or MockPage(page_state=page_state)
+    mock_mgr = MagicMock()
+    mock_mgr.session_exists.return_value = kwargs.get("session_exists", True)
+    mock_mgr.get_context.return_value = MockContext(mock_page)
+
+    mock_topics = (
+        kwargs.get("sidebar_topics")
+        if kwargs.get("sidebar_topics") is not None
+        else _make_default_topics()
+    )
+    mock_tweets = (
+        kwargs.get("tweets_return")
+        if kwargs.get("tweets_return") is not None
+        else [
+            TrendingTweet(
+                topic_id=uuid.uuid4(),
+                author_handle="@sama",
+                text="Autonomous agents will revolutionize social pipelines.",
+                likes=100,
+                views=1000,
+            )
+        ]
+    )
+    grok_summary = kwargs.get("grok_summary", "AI Revolution is trending.")
+    recovery_report = kwargs.get("recovery_report") or SessionRecoveryReport(
+        recovered=True
+    )
+    detect_overlay_return = kwargs.get("detect_overlay_return")
+    nav_trends_return = kwargs.get("nav_trends_return", True)
 
     with (
         patch(
@@ -158,7 +163,7 @@ def patch_scraping_pipeline(
         ) as p_over,
         patch(
             "app.services.agentic.scraping_graph.crud.upsert_trending_topic",
-            return_value=default_topics[0],
+            return_value=mock_topics[0] if mock_topics else None,
         ) as p_upsert,
         patch(
             "app.services.agentic.scraping_graph.crud.replace_trending_tweets",

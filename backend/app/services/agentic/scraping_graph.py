@@ -138,6 +138,48 @@ def _resolve_user_id(*, user_id: Any, session: Session) -> uuid.UUID:
     return uuid.uuid4()
 
 
+def _verify_session_exists(*, user_id: str) -> tuple[bool, str | None]:
+    """Verify if user has stored session credentials."""
+    try:
+        manager = BrowserManager(user_id=user_id)
+        if not manager.session_exists("x"):
+            return False, "No stored X.com session found"
+        return True, None
+    except Exception as e:
+        logger.warning(f"BrowserManager session check error: {e}")
+        return False, f"Failed checking session: {e}"
+
+
+async def _diagnose_and_recover_overlay(
+    *, page: Any
+) -> tuple[str, str, dict[str, Any] | None, str | None]:
+    """Recover session when overlays or transient errors are diagnosed."""
+
+    try:
+        recovery = await recover_page_session(page=page, expected_state="home")
+        rec_dict = recovery.model_dump() if hasattr(recovery, "model_dump") else {}
+        if not getattr(recovery, "recovered", False):
+            err = (
+                getattr(recovery, "error", None)
+                or f"Session recovery failed: {getattr(recovery, 'status', 'failed')}"
+            )
+            return (
+                getattr(recovery, "page_state", "error"),
+                "unrecoverable",
+                rec_dict,
+                err,
+            )
+        return "ok", "session_ready", rec_dict, None
+    except Exception as rec_err:
+        logger.warning(f"Exception during session recovery: {rec_err}")
+        return (
+            "error",
+            "unrecoverable",
+            {"recovered": False, "error": str(rec_err)},
+            f"Session recovery encountered exception: {rec_err}",
+        )
+
+
 async def _check_session_and_page_state(
     *,
     user_id: str,
@@ -152,13 +194,10 @@ async def _check_session_and_page_state(
             "No active browser page instance provided in state",
         )
 
-    try:
-        manager = BrowserManager(user_id=user_id)
-        if not manager.session_exists("x"):
-            return "logged_out", "unrecoverable", None, "No stored X.com session found"
-    except Exception as e:
-        logger.warning(f"BrowserManager session check error: {e}")
-        return "error", "unrecoverable", None, f"Failed checking session: {e}"
+    has_session, session_err = _verify_session_exists(user_id=user_id)
+    if not has_session:
+        state = "logged_out" if "No stored" in (session_err or "") else "error"
+        return state, "unrecoverable", None, session_err
 
     try:
         page_state = await detect_page_state(page)
@@ -176,29 +215,7 @@ async def _check_session_and_page_state(
         pass
 
     if page_state != "ok" or has_overlay:
-        try:
-            recovery = await recover_page_session(page=page, expected_state="home")
-            rec_dict = recovery.model_dump() if hasattr(recovery, "model_dump") else {}
-            if not getattr(recovery, "recovered", False):
-                err = (
-                    getattr(recovery, "error", None)
-                    or f"Session recovery failed: {getattr(recovery, 'status', 'failed')}"
-                )
-                return (
-                    getattr(recovery, "page_state", "error"),
-                    "unrecoverable",
-                    rec_dict,
-                    err,
-                )
-            return "ok", "session_ready", rec_dict, None
-        except Exception as rec_err:
-            logger.warning(f"Exception during session recovery: {rec_err}")
-            return (
-                "error",
-                "unrecoverable",
-                {"recovered": False, "error": str(rec_err)},
-                f"Session recovery encountered exception: {rec_err}",
-            )
+        return await _diagnose_and_recover_overlay(page=page)
 
     return "ok", "session_ready", None, None
 
@@ -598,6 +615,40 @@ def build_scraping_graph() -> Any:
 _scraping_graph = build_scraping_graph()
 
 
+def _make_abort_scraped_batch_report(
+    *, page_state: str, error: str
+) -> ScrapedBatchReport:
+    """Construct an unrecoverable or error report when browser setup fails."""
+    return ScrapedBatchReport(
+        scraped_topics=[],
+        topic_tweets_map={},
+        topic_summaries={},
+        failed_topics=[],
+        persisted_topic_count=0,
+        persisted_tweet_count=0,
+        page_state=page_state,
+        session_recovery=None,
+        status="unrecoverable" if page_state in ("logged_out", "captcha") else "error",
+        error=error,
+    )
+
+
+def _format_scraped_batch_report(*, final_state: dict[str, Any]) -> ScrapedBatchReport:
+    """Format and validate final ScrapedBatchReport from completed graph state."""
+    return ScrapedBatchReport(
+        scraped_topics=final_state.get("scraped_topics", []),
+        topic_tweets_map=final_state.get("topic_tweets_map", {}),
+        topic_summaries=final_state.get("topic_summaries", {}),
+        failed_topics=final_state.get("failed_topics", []),
+        persisted_topic_count=int(final_state.get("persisted_topic_count", 0)),
+        persisted_tweet_count=int(final_state.get("persisted_tweet_count", 0)),
+        page_state=final_state.get("page_state", "ok"),
+        session_recovery=final_state.get("session_recovery"),
+        status=final_state.get("status", "persisted"),
+        error=final_state.get("error"),
+    )
+
+
 async def scrape_trends_with_graph(
     *,
     user_id: str,
@@ -620,31 +671,13 @@ async def scrape_trends_with_graph(
     try:
         manager = BrowserManager(user_id=sanitized_user_id)
         if not manager.session_exists("x"):
-            return ScrapedBatchReport(
-                scraped_topics=[],
-                topic_tweets_map={},
-                topic_summaries={},
-                failed_topics=[],
-                persisted_topic_count=0,
-                persisted_tweet_count=0,
-                page_state="logged_out",
-                session_recovery=None,
-                status="unrecoverable",
-                error="No stored X.com session found",
+            return _make_abort_scraped_batch_report(
+                page_state="logged_out", error="No stored X.com session found"
             )
     except Exception as e:
         logger.warning(f"BrowserManager initialization error: {e}")
-        return ScrapedBatchReport(
-            scraped_topics=[],
-            topic_tweets_map={},
-            topic_summaries={},
-            failed_topics=[],
-            persisted_topic_count=0,
-            persisted_tweet_count=0,
-            page_state="error",
-            session_recovery=None,
-            status="unrecoverable",
-            error=f"Browser session check failed: {e}",
+        return _make_abort_scraped_batch_report(
+            page_state="error", error=f"Browser session check failed: {e}"
         )
 
     try:
@@ -672,30 +705,7 @@ async def scrape_trends_with_graph(
             final_state = await _scraping_graph.ainvoke(
                 initial_state, config=run_config if run_config else None
             )
-
-            return ScrapedBatchReport(
-                scraped_topics=final_state.get("scraped_topics", []),
-                topic_tweets_map=final_state.get("topic_tweets_map", {}),
-                topic_summaries=final_state.get("topic_summaries", {}),
-                failed_topics=final_state.get("failed_topics", []),
-                persisted_topic_count=int(final_state.get("persisted_topic_count", 0)),
-                persisted_tweet_count=int(final_state.get("persisted_tweet_count", 0)),
-                page_state=final_state.get("page_state", "ok"),
-                session_recovery=final_state.get("session_recovery"),
-                status=final_state.get("status", "persisted"),
-                error=final_state.get("error"),
-            )
+            return _format_scraped_batch_report(final_state=final_state)
     except Exception as e:
         logger.error(f"Error during scrape_trends_with_graph execution: {e}")
-        return ScrapedBatchReport(
-            scraped_topics=[],
-            topic_tweets_map={},
-            topic_summaries={},
-            failed_topics=[],
-            persisted_topic_count=0,
-            persisted_tweet_count=0,
-            page_state="error",
-            session_recovery=None,
-            status="error",
-            error=str(e),
-        )
+        return _make_abort_scraped_batch_report(page_state="error", error=str(e))

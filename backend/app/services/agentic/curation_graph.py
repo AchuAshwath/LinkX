@@ -339,18 +339,16 @@ def build_curation_graph() -> Any:
 _curation_graph = build_curation_graph()
 
 
-async def curate_and_draft_post(
+def _build_curation_initial_state(
     *,
     user_id: str,
     topic_title: str,
-    topic_id: str | None = None,
-    platform: str = "x",
-    target_tone: str | None = None,
-    thread_id: str | None = None,
-    session: Any = None,
-    config: dict[str, Any] | None = None,
-) -> CuratedDraftReport:
-    """Run the CurationGraph to produce, refine, and persist a platform-optimized social draft."""
+    topic_id: str | None,
+    platform: str,
+    target_tone: str | None,
+    session: Any,
+) -> tuple[CurationGraphState, str, str, str]:
+    """Sanitize inputs and initialize CurationGraph state."""
     clean_user_id = _sanitize_string(user_id, max_length=128)
     clean_topic_title = _sanitize_string(
         topic_title, max_length=5000, default="Trending Topic"
@@ -370,7 +368,7 @@ async def curate_and_draft_post(
     if clean_target_tone == "":
         clean_target_tone = None
 
-    initial_state: CurationGraphState = {
+    state: CurationGraphState = {
         "user_id": clean_user_id,
         "topic_id": clean_topic_id,
         "topic_title": clean_topic_title,
@@ -390,46 +388,81 @@ async def curate_and_draft_post(
         "status": "pending",
         "error": None,
     }
+    fallback_content = f"Trending: {clean_topic_title}"
+    return state, clean_topic_title, norm_platform, fallback_content
 
-    # Deep copy config to prevent race conditions across concurrent executions
+
+def _format_curation_report(
+    *,
+    final_state: dict[str, Any],
+    clean_topic_title: str,
+    norm_platform: str,
+    fallback_content: str,
+) -> CuratedDraftReport:
+    """Construct validated CuratedDraftReport from completed graph state."""
+    raw_draft = final_state.get("draft_content")
+    draft_content = _sanitize_string(raw_draft, default=fallback_content)
+
+    raw_refined = final_state.get("refined_content")
+    refined_content = _sanitize_string(raw_refined, default=draft_content)
+
+    return CuratedDraftReport(
+        draft_content=draft_content,
+        refined_content=refined_content,
+        is_compliant=bool(final_state.get("is_compliant", False)),
+        platform=norm_platform,
+        topic_title=clean_topic_title,
+        topic_summary=final_state.get("topic_summary"),
+        refinement_attempts=int(final_state.get("refinement_attempts", 0)),
+        persisted_post_id=final_state.get("persisted_post_id"),
+        compliance_report=final_state.get("compliance_report"),
+        status=final_state.get("status", "persisted"),
+        error=final_state.get("error"),
+    )
+
+
+async def curate_and_draft_post(
+    *,
+    user_id: str,
+    topic_title: str,
+    topic_id: str | None = None,
+    platform: str = "x",
+    target_tone: str | None = None,
+    thread_id: str | None = None,
+    session: Any = None,
+    config: dict[str, Any] | None = None,
+) -> CuratedDraftReport:
+    """Run the CurationGraph to produce, refine, and persist a platform-optimized social draft."""
+    (
+        initial_state,
+        clean_topic_title,
+        norm_platform,
+        fallback_content,
+    ) = _build_curation_initial_state(
+        user_id=user_id,
+        topic_title=topic_title,
+        topic_id=topic_id,
+        platform=platform,
+        target_tone=target_tone,
+        session=session,
+    )
+
     run_config: dict[str, Any] = copy.deepcopy(config) if config else {}
     if thread_id is not None:
         configurable = dict(run_config.get("configurable") or {})
         configurable["thread_id"] = str(thread_id)
         run_config["configurable"] = configurable
 
-    fallback_content = f"Trending: {clean_topic_title}"
-
     try:
         final_state = await _curation_graph.ainvoke(
             initial_state,
             config=run_config if run_config else None,
         )
-        raw_draft = final_state.get("draft_content")
-        draft_content = _sanitize_string(raw_draft, default=fallback_content)
-
-        raw_refined = final_state.get("refined_content")
-        refined_content = _sanitize_string(raw_refined, default=draft_content)
-
-        is_compliant = bool(final_state.get("is_compliant", False))
-        refinement_attempts = int(final_state.get("refinement_attempts", 0))
-        persisted_post_id = final_state.get("persisted_post_id")
-        compliance_report = final_state.get("compliance_report")
-        status = final_state.get("status", "persisted")
-        error = final_state.get("error")
-
-        return CuratedDraftReport(
-            draft_content=draft_content,
-            refined_content=refined_content,
-            is_compliant=is_compliant,
-            platform=norm_platform,
-            topic_title=clean_topic_title,
-            topic_summary=final_state.get("topic_summary"),
-            refinement_attempts=refinement_attempts,
-            persisted_post_id=persisted_post_id,
-            compliance_report=compliance_report,
-            status=status,
-            error=error,
+        return _format_curation_report(
+            final_state=final_state,
+            clean_topic_title=clean_topic_title,
+            norm_platform=norm_platform,
+            fallback_content=fallback_content,
         )
     except Exception as e:
         logger.error(f"Error during CurationGraph execution: {e}")
