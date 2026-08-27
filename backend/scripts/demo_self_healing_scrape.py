@@ -264,12 +264,14 @@ def _persist_single_topic_with_tweets(
     target_user_id: Any,
     top: dict[str, Any],
     tweets: list[dict[str, Any]],
-    now: Any,
 ) -> tuple[Any, list[Any]]:
     """Upsert topic and insert corresponding tweets into DB."""
+    from datetime import datetime, timezone
+
     from app.models import TrendingTopic as TTModel
     from app.models import TrendingTweet as TTwModel
 
+    now = datetime.now(timezone.utc)
     t_url = top["topic_url"]
     existing = session.exec(select(TTModel).where(TTModel.topic_url == t_url)).first()
 
@@ -336,11 +338,8 @@ def _persist_and_display_demo_topics(
     print("└" + "─" * 76 + "┘")
 
     with Session(db_engine) as session:
-        from datetime import datetime, timezone
-
         db_user = session.exec(select(User)).first()
         target_user_id = db_user.id if db_user else None
-        now = datetime.now(timezone.utc)
 
         for top in selected_topics:
             t_url = top["topic_url"]
@@ -350,7 +349,6 @@ def _persist_and_display_demo_topics(
                 target_user_id=target_user_id,
                 top=top,
                 tweets=tweets,
-                now=now,
             )
             _display_saved_topic_verification(existing=existing, attached=attached)
 

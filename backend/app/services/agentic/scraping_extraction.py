@@ -266,6 +266,40 @@ async def _navigate_back_to_explore(*, page: Any, mouse: Any | None = None) -> N
         logger.debug(f"Back navigation attempt caught exception: {back_err}")
 
 
+async def _scroll_timeline_safely(*, mouse: Any | None) -> None:
+    """Perform smooth human reading scroll if mouse is available."""
+    if mouse and hasattr(mouse, "human_scroll"):
+        try:
+            await mouse.human_scroll(scrolls=2)
+        except Exception as scroll_err:
+            logger.debug(f"Timeline scroll error: {scroll_err}")
+
+
+async def _extract_safe_grok_summary(*, page: Any, topic_url: str) -> str | None:
+    """Extract Grok summary safely without raising exceptions."""
+    try:
+        return await extract_grok_summary(page)
+    except Exception as sum_err:
+        logger.debug(
+            f"Grok summary extraction skipped/failed for {topic_url}: {sum_err}"
+        )
+        return None
+
+
+async def _extract_and_parse_tweets(
+    *, page: Any, topic_url: str, selectors: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Extract tweets from topic timeline and sanitize into dict format."""
+    raw_tweets = await extract_topic_tweets(
+        page=page, topic_url=topic_url, selectors=selectors
+    )
+    return [
+        parsed
+        for t in (raw_tweets or [])
+        if (parsed := _parse_single_tweet(tweet=t)) is not None
+    ]
+
+
 async def _extract_single_topic_timeline(
     *,
     page: Any,
@@ -276,30 +310,12 @@ async def _extract_single_topic_timeline(
     """Navigate to topic URL, human scroll, and extract Grok summary + top tweets."""
     await _ensure_topic_page_navigation(page=page, topic_url=topic_url, mouse=mouse)
     await random_delay(min_sec=1.5, max_sec=3.0)
+    await _scroll_timeline_safely(mouse=mouse)
 
-    if mouse and hasattr(mouse, "human_scroll"):
-        try:
-            await mouse.human_scroll(scrolls=2)
-        except Exception as scroll_err:
-            logger.debug(f"Timeline scroll error: {scroll_err}")
-
-    summary = None
-    try:
-        summary = await extract_grok_summary(page)
-    except Exception as sum_err:
-        logger.debug(
-            f"Grok summary extraction skipped/failed for {topic_url}: {sum_err}"
-        )
-
-    raw_tweets = await extract_topic_tweets(
+    summary = await _extract_safe_grok_summary(page=page, topic_url=topic_url)
+    tweets_data = await _extract_and_parse_tweets(
         page=page, topic_url=topic_url, selectors=selectors
     )
-
-    tweets_data = [
-        parsed
-        for t in (raw_tweets or [])
-        if (parsed := _parse_single_tweet(tweet=t)) is not None
-    ]
 
     await _navigate_back_to_explore(page=page, mouse=mouse)
     return summary, tweets_data
