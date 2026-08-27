@@ -138,88 +138,89 @@ def _resolve_user_id(*, user_id: Any, session: Session) -> uuid.UUID:
     return uuid.uuid4()
 
 
+async def _check_session_and_page_state(
+    *,
+    user_id: str,
+    page: Any,
+) -> tuple[str, str, dict[str, Any] | None, str | None]:
+    """Check browser session existence, diagnose sentinel state, and auto-recover overlays."""
+    if page is None or (not hasattr(page, "goto") and not hasattr(page, "locator")):
+        return (
+            "error",
+            "unrecoverable",
+            None,
+            "No active browser page instance provided in state",
+        )
+
+    try:
+        manager = BrowserManager(user_id=user_id)
+        if not manager.session_exists("x"):
+            return "logged_out", "unrecoverable", None, "No stored X.com session found"
+    except Exception as e:
+        logger.warning(f"BrowserManager session check error: {e}")
+        return "error", "unrecoverable", None, f"Failed checking session: {e}"
+
+    try:
+        page_state = await detect_page_state(page)
+    except Exception as e:
+        logger.warning(f"Failed to detect page state: {e}")
+        page_state = "error"
+
+    if page_state in ("logged_out", "captcha"):
+        return page_state, "unrecoverable", None, f"Unrecoverable state: {page_state}"
+
+    has_overlay = False
+    try:
+        has_overlay = bool(await _detect_overlay(page=page))
+    except Exception:
+        pass
+
+    if page_state != "ok" or has_overlay:
+        try:
+            recovery = await recover_page_session(page=page, expected_state="home")
+            rec_dict = recovery.model_dump() if hasattr(recovery, "model_dump") else {}
+            if not getattr(recovery, "recovered", False):
+                err = (
+                    getattr(recovery, "error", None)
+                    or f"Session recovery failed: {getattr(recovery, 'status', 'failed')}"
+                )
+                return (
+                    getattr(recovery, "page_state", "error"),
+                    "unrecoverable",
+                    rec_dict,
+                    err,
+                )
+            return "ok", "session_ready", rec_dict, None
+        except Exception as rec_err:
+            logger.warning(f"Exception during session recovery: {rec_err}")
+            return (
+                "error",
+                "unrecoverable",
+                {"recovered": False, "error": str(rec_err)},
+                f"Session recovery encountered exception: {rec_err}",
+            )
+
+    return "ok", "session_ready", None, None
+
+
 async def init_and_recover_session_node(state: ScrapingGraphState) -> dict[str, Any]:
     """Verify stored session exists, detect page state, and auto-recover overlays."""
+    raw_user_id = state.get("user_id")
+    user_id = str(raw_user_id).strip() if raw_user_id else "default"
+    page = state.get("page")
+
     try:
-        raw_user_id = state.get("user_id")
-        user_id = str(raw_user_id).strip() if raw_user_id else "default"
-        if not user_id:
-            user_id = "default"
-
-        try:
-            manager = BrowserManager(user_id=user_id)
-            if not manager.session_exists("x"):
-                return {
-                    "page_state": "logged_out",
-                    "status": "unrecoverable",
-                    "error": "No stored X.com session found",
-                }
-        except Exception as e:
-            logger.warning(f"BrowserManager session check error: {e}")
-            return {
-                "page_state": "error",
-                "status": "unrecoverable",
-                "error": f"Failed checking session: {e}",
-            }
-
-        page = state.get("page")
-        if page is None:
-            return {
-                "page_state": "error",
-                "status": "unrecoverable",
-                "error": "No active browser page instance provided in state",
-            }
-
-        try:
-            page_state = await detect_page_state(page)
-        except Exception as e:
-            logger.warning(f"Failed to detect page state: {e}")
-            page_state = "error"
-
-        if page_state in ("logged_out", "captcha"):
-            return {
-                "page_state": page_state,
-                "status": "unrecoverable",
-                "error": f"Unrecoverable state: {page_state}",
-            }
-
-        has_overlay = False
-        try:
-            has_overlay = bool(await _detect_overlay(page=page))
-        except Exception:
-            pass
-
-        if page_state != "ok" or has_overlay:
-            try:
-                recovery = await recover_page_session(page=page, expected_state="home")
-                rec_dict = (
-                    recovery.model_dump() if hasattr(recovery, "model_dump") else {}
-                )
-                if not getattr(recovery, "recovered", False):
-                    return {
-                        "page_state": getattr(recovery, "page_state", "error"),
-                        "session_recovery": rec_dict,
-                        "status": "unrecoverable",
-                        "error": getattr(recovery, "error", None)
-                        or f"Session recovery failed: {getattr(recovery, 'status', 'failed')}",
-                    }
-                return {
-                    "page_state": "ok",
-                    "session_recovery": rec_dict,
-                    "status": "session_ready",
-                }
-            except Exception as rec_err:
-                logger.warning(f"Exception during session recovery: {rec_err}")
-                return {
-                    "page_state": "error",
-                    "session_recovery": {"recovered": False, "error": str(rec_err)},
-                    "status": "unrecoverable",
-                    "error": f"Session recovery encountered exception: {rec_err}",
-                }
-
+        (
+            page_state,
+            status,
+            session_recovery,
+            error,
+        ) = await _check_session_and_page_state(user_id=user_id or "default", page=page)
         return {
-            "page_state": "ok",
-            "status": "session_ready",
+            "page_state": page_state,
+            "session_recovery": session_recovery,
+            "status": status,
+            "error": error,
         }
     except Exception as e:
         logger.error(f"Unexpected error in init_and_recover_session_node: {e}")
@@ -228,6 +229,36 @@ async def init_and_recover_session_node(state: ScrapingGraphState) -> dict[str, 
             "status": "unrecoverable",
             "error": str(e),
         }
+
+
+def _format_single_topic(t: Any) -> dict[str, Any] | None:
+    """Format and sanitize a single raw topic dictionary or model."""
+    if not t:
+        return None
+    if isinstance(t, dict):
+        raw_title = t.get("topic_title") or t.get("title")
+        raw_url = t.get("topic_url") or t.get("url")
+        category = t.get("category")
+        post_count = t.get("post_count")
+        summary = t.get("summary")
+    else:
+        raw_title = getattr(t, "topic_title", None) or getattr(t, "title", None)
+        raw_url = getattr(t, "topic_url", None) or getattr(t, "url", None)
+        category = getattr(t, "category", None)
+        post_count = getattr(t, "post_count", None)
+        summary = getattr(t, "summary", None)
+
+    title = str(raw_title).strip() if raw_title is not None else ""
+    url = str(raw_url).strip() if raw_url is not None else ""
+    return {
+        "topic_title": title,
+        "title": title,
+        "topic_url": url,
+        "url": url,
+        "category": str(category) if category is not None else None,
+        "post_count": post_count,
+        "summary": str(summary) if summary is not None else None,
+    }
 
 
 async def scrape_explore_trends_node(state: ScrapingGraphState) -> dict[str, Any]:
@@ -255,69 +286,20 @@ async def scrape_explore_trends_node(state: ScrapingGraphState) -> dict[str, Any
             return {
                 "scraped_topics": [],
                 "page_state": page_state,
-                "status": (
-                    "error"
-                    if page_state not in ("logged_out", "captcha")
-                    else "unrecoverable"
-                ),
+                "status": "error"
+                if page_state not in ("logged_out", "captcha")
+                else "unrecoverable",
                 "error": f"Failed to navigate to trends: page state is {page_state}",
             }
 
         selectors = _load_selectors()
         raw_topics = await extract_trending_sidebar(page, selectors=selectors)
 
-        formatted_topics: list[dict[str, Any]] = []
-        for t in raw_topics or []:
-            if not t:
-                continue
-            if isinstance(t, dict):
-                raw_title = t.get("topic_title") or t.get("title")
-                raw_url = t.get("topic_url") or t.get("url")
-                title = str(raw_title).strip() if raw_title is not None else ""
-                url = str(raw_url).strip() if raw_url is not None else ""
-                formatted_topics.append(
-                    {
-                        "topic_title": title,
-                        "title": title,
-                        "topic_url": url,
-                        "url": url,
-                        "category": (
-                            str(t.get("category"))
-                            if t.get("category") is not None
-                            else None
-                        ),
-                        "post_count": t.get("post_count"),
-                        "summary": (
-                            str(t.get("summary"))
-                            if t.get("summary") is not None
-                            else None
-                        ),
-                    }
-                )
-            else:
-                raw_title = getattr(t, "topic_title", None) or getattr(t, "title", None)
-                raw_url = getattr(t, "topic_url", None) or getattr(t, "url", None)
-                title = str(raw_title).strip() if raw_title is not None else ""
-                url = str(raw_url).strip() if raw_url is not None else ""
-                formatted_topics.append(
-                    {
-                        "topic_title": title,
-                        "title": title,
-                        "topic_url": url,
-                        "url": url,
-                        "category": (
-                            str(getattr(t, "category", None))
-                            if getattr(t, "category", None) is not None
-                            else None
-                        ),
-                        "post_count": getattr(t, "post_count", None),
-                        "summary": (
-                            str(getattr(t, "summary", None))
-                            if getattr(t, "summary", None) is not None
-                            else None
-                        ),
-                    }
-                )
+        formatted_topics = [
+            fmt
+            for t in (raw_topics or [])
+            if (fmt := _format_single_topic(t)) is not None
+        ]
 
         return {
             "scraped_topics": formatted_topics,
@@ -330,6 +312,75 @@ async def scrape_explore_trends_node(state: ScrapingGraphState) -> dict[str, Any
             "status": "error",
             "error": str(e),
         }
+
+
+def _parse_single_tweet(t: Any) -> dict[str, Any] | None:
+    """Parse and sanitize a raw tweet model or dictionary."""
+    if not t:
+        return None
+    if isinstance(t, dict):
+        raw_author = t.get("author_handle") or t.get("author")
+        raw_text = t.get("text")
+        replies = t.get("replies")
+        retweets = t.get("retweets")
+        likes = t.get("likes")
+        views = t.get("views")
+    else:
+        raw_author = getattr(t, "author_handle", None) or getattr(t, "author", None)
+        raw_text = getattr(t, "text", "")
+        replies = getattr(t, "replies", None)
+        retweets = getattr(t, "retweets", None)
+        likes = getattr(t, "likes", None)
+        views = getattr(t, "views", None)
+
+    author_handle = str(raw_author).strip() if raw_author else "unknown"
+    if not author_handle:
+        author_handle = "unknown"
+    text_val = str(raw_text) if raw_text is not None else ""
+
+    return {
+        "author_handle": author_handle[:255],
+        "text": text_val,
+        "replies": _safe_int(replies),
+        "retweets": _safe_int(retweets),
+        "likes": _safe_int(likes),
+        "views": _safe_int(views),
+    }
+
+
+async def _extract_single_topic_timeline(
+    *,
+    page: Any,
+    topic_url: str,
+    selectors: dict[str, Any],
+) -> tuple[str | None, list[dict[str, Any]]]:
+    """Navigate to topic URL and extract Grok summary + top tweets."""
+    try:
+        page_url = getattr(page, "url", None)
+    except Exception:
+        page_url = None
+
+    if page_url != topic_url and hasattr(page, "goto") and callable(page.goto):
+        await page.goto(topic_url, wait_until="domcontentloaded")
+
+    summary = None
+    try:
+        summary = await extract_grok_summary(page)
+    except Exception as sum_err:
+        logger.debug(
+            f"Grok summary extraction skipped/failed for {topic_url}: {sum_err}"
+        )
+
+    raw_tweets = await extract_topic_tweets(
+        page=page, topic_url=topic_url, selectors=selectors
+    )
+
+    tweets_data = [
+        parsed
+        for t in (raw_tweets or [])
+        if (parsed := _parse_single_tweet(t)) is not None
+    ]
+    return summary, tweets_data
 
 
 async def extract_topic_timelines_node(state: ScrapingGraphState) -> dict[str, Any]:
@@ -357,86 +408,22 @@ async def extract_topic_timelines_node(state: ScrapingGraphState) -> dict[str, A
     for topic in topics_to_process:
         if not topic:
             continue
-        if isinstance(topic, dict):
-            raw_url = topic.get("topic_url") or topic.get("url")
-        else:
-            raw_url = getattr(topic, "topic_url", None) or getattr(topic, "url", None)
-
+        raw_url = (
+            topic.get("topic_url") or topic.get("url")
+            if isinstance(topic, dict)
+            else getattr(topic, "topic_url", None)
+        )
         topic_url = str(raw_url).strip() if raw_url is not None else ""
         if not topic_url or not topic_url.startswith(("http://", "https://")):
             continue
 
         try:
-            try:
-                page_url = getattr(page, "url", None)
-            except Exception:
-                page_url = None
-
-            if page_url != topic_url:
-                if hasattr(page, "goto") and callable(page.goto):
-                    await page.goto(topic_url, wait_until="domcontentloaded")
-
-            summary = None
-            try:
-                summary = await extract_grok_summary(page)
-            except Exception as sum_err:
-                logger.debug(
-                    f"Grok summary extraction skipped/failed for {topic_url}: {sum_err}"
-                )
-
+            summary, tweets = await _extract_single_topic_timeline(
+                page=page, topic_url=topic_url, selectors=selectors
+            )
             if summary:
                 topic_summaries[topic_url] = str(summary)
-
-            raw_tweets = await extract_topic_tweets(
-                page=page,
-                topic_url=topic_url,
-                selectors=selectors,
-            )
-
-            tweets_data: list[dict[str, Any]] = []
-            for t in raw_tweets or []:
-                if not t:
-                    continue
-                if isinstance(t, dict):
-                    raw_author = t.get("author_handle") or t.get("author")
-                    author_handle = str(raw_author).strip() if raw_author else "unknown"
-                    if not author_handle:
-                        author_handle = "unknown"
-                    raw_text = t.get("text")
-                    text_val = str(raw_text) if raw_text is not None else ""
-
-                    tweets_data.append(
-                        {
-                            "author_handle": author_handle[:255],
-                            "text": text_val,
-                            "replies": _safe_int(t.get("replies")),
-                            "retweets": _safe_int(t.get("retweets")),
-                            "likes": _safe_int(t.get("likes")),
-                            "views": _safe_int(t.get("views")),
-                        }
-                    )
-                else:
-                    raw_author = getattr(t, "author_handle", None) or getattr(
-                        t, "author", None
-                    )
-                    author_handle = str(raw_author).strip() if raw_author else "unknown"
-                    if not author_handle:
-                        author_handle = "unknown"
-                    raw_text = getattr(t, "text", "")
-                    text_val = str(raw_text) if raw_text is not None else ""
-
-                    tweets_data.append(
-                        {
-                            "author_handle": author_handle[:255],
-                            "text": text_val,
-                            "replies": _safe_int(getattr(t, "replies", None)),
-                            "retweets": _safe_int(getattr(t, "retweets", None)),
-                            "likes": _safe_int(getattr(t, "likes", None)),
-                            "views": _safe_int(getattr(t, "views", None)),
-                        }
-                    )
-
-            topic_tweets_map[topic_url] = tweets_data
+            topic_tweets_map[topic_url] = tweets
         except Exception as e:
             logger.warning(f"Error extracting timeline for topic {topic_url}: {e}")
             failed_topics.append({"topic_url": topic_url, "reason": str(e)})
@@ -449,20 +436,70 @@ async def extract_topic_timelines_node(state: ScrapingGraphState) -> dict[str, A
     }
 
 
+def _persist_single_topic_record(
+    *,
+    session: Session,
+    resolved_user_id: uuid.UUID,
+    topic: dict[str, Any],
+    tweets_map: dict[str, list[dict[str, Any]]],
+    summaries: dict[str, str],
+    now: datetime,
+) -> tuple[int, int]:
+    """Persist a single topic and its associated tweets to the database."""
+    url = str(topic.get("topic_url") or topic.get("url", "")).strip()
+    if not url:
+        return 0, 0
+
+    title = str(topic.get("topic_title") or topic.get("title", "")).strip()
+    category = topic.get("category")
+    post_count_val = topic.get("post_count")
+    if isinstance(post_count_val, str):
+        post_count_val = parse_post_count(post_count_val)
+    elif isinstance(post_count_val, (int, float)):
+        post_count_val = int(post_count_val)
+    else:
+        post_count_val = None
+
+    summary_val = summaries.get(url) or topic.get("summary")
+    summary_str = str(summary_val) if summary_val is not None else None
+
+    topic_data = {
+        "user_id": resolved_user_id,
+        "topic_url": url[:512],
+        "topic_title": title[:500],
+        "category": str(category)[:100] if category is not None else None,
+        "post_count": post_count_val,
+        "summary": summary_str,
+        "last_seen_at": now,
+        "scraped_at": now,
+    }
+
+    topic_record = crud.upsert_trending_topic(session=session, topic_data=topic_data)
+    tweets = tweets_map.get(url, [])
+    persisted_tweets = 0
+    if tweets and isinstance(tweets, list):
+        crud.replace_trending_tweets(
+            session=session, topic_id=topic_record.id, tweets_data=tweets
+        )
+        persisted_tweets = len(tweets)
+    return 1, persisted_tweets
+
+
 async def persist_scraped_batch_node(state: ScrapingGraphState) -> dict[str, Any]:
     """Persist scraped topics and tweets into PostgreSQL via CRUD upsert."""
     scraped_topics_raw = state.get("scraped_topics", [])
     scraped_topics = scraped_topics_raw if isinstance(scraped_topics_raw, list) else []
-    topic_tweets_map = state.get("topic_tweets_map", {})
-    if not isinstance(topic_tweets_map, dict):
-        topic_tweets_map = {}
-    topic_summaries = state.get("topic_summaries", {})
-    if not isinstance(topic_summaries, dict):
-        topic_summaries = {}
+    topic_tweets_map = (
+        state.get("topic_tweets_map", {})
+        if isinstance(state.get("topic_tweets_map"), dict)
+        else {}
+    )
+    topic_summaries = (
+        state.get("topic_summaries", {})
+        if isinstance(state.get("topic_summaries"), dict)
+        else {}
+    )
     user_id_raw = state.get("user_id")
-
-    persisted_topics = 0
-    persisted_tweets = 0
 
     if not scraped_topics:
         return {
@@ -471,74 +508,31 @@ async def persist_scraped_batch_node(state: ScrapingGraphState) -> dict[str, Any
             "status": "persisted",
         }
 
+    persisted_topics = 0
+    persisted_tweets = 0
+
     try:
         with resolve_session(session=state.get("session")) as session:
             resolved_user_id = _resolve_user_id(user_id=user_id_raw, session=session)
             now = datetime.now(timezone.utc)
-
             errors: list[str] = []
+
             for topic in scraped_topics:
                 if not topic:
                     continue
-                if isinstance(topic, dict):
-                    raw_url = topic.get("topic_url") or topic.get("url")
-                    raw_title = topic.get("topic_title") or topic.get("title", "")
-                    category = topic.get("category")
-                    post_count_val = topic.get("post_count")
-                    summary_raw = topic.get("summary")
-                else:
-                    raw_url = getattr(topic, "topic_url", None) or getattr(
-                        topic, "url", None
-                    )
-                    raw_title = getattr(topic, "topic_title", None) or getattr(
-                        topic, "title", ""
-                    )
-                    category = getattr(topic, "category", None)
-                    post_count_val = getattr(topic, "post_count", None)
-                    summary_raw = getattr(topic, "summary", None)
-
-                url = str(raw_url).strip() if raw_url is not None else ""
-                if not url:
-                    continue
-
-                title = str(raw_title).strip() if raw_title is not None else ""
-                if isinstance(post_count_val, str):
-                    post_count_val = parse_post_count(post_count_val)
-                elif isinstance(post_count_val, (int, float)):
-                    post_count_val = int(post_count_val)
-                else:
-                    post_count_val = None
-
-                summary_val = topic_summaries.get(url) or summary_raw
-                summary_str = str(summary_val) if summary_val is not None else None
-
-                topic_data = {
-                    "user_id": resolved_user_id,
-                    "topic_url": url[:512],
-                    "topic_title": title[:500],
-                    "category": str(category)[:100] if category is not None else None,
-                    "post_count": post_count_val,
-                    "summary": summary_str,
-                    "last_seen_at": now,
-                    "scraped_at": now,
-                }
-
                 try:
-                    topic_record = crud.upsert_trending_topic(
-                        session=session, topic_data=topic_data
+                    t_count, tw_count = _persist_single_topic_record(
+                        session=session,
+                        resolved_user_id=resolved_user_id,
+                        topic=topic if isinstance(topic, dict) else {},
+                        tweets_map=topic_tweets_map,
+                        summaries=topic_summaries,
+                        now=now,
                     )
-                    persisted_topics += 1
-
-                    tweets = topic_tweets_map.get(url, [])
-                    if tweets and isinstance(tweets, list):
-                        crud.replace_trending_tweets(
-                            session=session,
-                            topic_id=topic_record.id,
-                            tweets_data=tweets,
-                        )
-                        persisted_tweets += len(tweets)
+                    persisted_topics += t_count
+                    persisted_tweets += tw_count
                 except Exception as topic_err:
-                    logger.warning(f"Error persisting topic '{url}': {topic_err}")
+                    logger.warning(f"Error persisting topic: {topic_err}")
                     errors.append(str(topic_err))
                     try:
                         session.rollback()

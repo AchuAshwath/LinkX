@@ -71,6 +71,74 @@ class CurationGraphState(TypedDict, total=False):
     error: str | None
 
 
+def _fetch_topic_context(
+    *,
+    topic_id: str | None,
+    session: Any,
+) -> tuple[str | None, list[dict[str, Any]]]:
+    """Retrieve topic summary and sample tweets safely."""
+    if not topic_id:
+        return None, []
+    try:
+        clean_topic_id = _sanitize_string(topic_id, max_length=128)
+        topic_ctx = get_topic_tweets_and_summary(
+            topic_id=clean_topic_id, session=session
+        )
+        if not topic_ctx:
+            return None, []
+        topic_summary = getattr(topic_ctx, "summary", None)
+        raw_tweets = getattr(topic_ctx, "sample_tweets", []) or []
+        sample_tweets = [
+            t if isinstance(t, dict) else {"text": str(t)}
+            for t in raw_tweets
+            if t is not None
+        ]
+        return topic_summary, sample_tweets
+    except Exception as e:
+        logger.warning(f"Error fetching topic context for {topic_id}: {e}")
+        return None, []
+
+
+def _fetch_recent_posts(
+    *,
+    user_id: str,
+    platform: str,
+    session: Any,
+) -> list[dict[str, Any]]:
+    """Retrieve formatted recent post history safely."""
+    recent_posts: list[dict[str, Any]] = []
+    try:
+        history = get_recent_post_history(
+            user_id=user_id, platform=platform, limit=3, session=session
+        )
+        for p in history or []:
+            if p is None:
+                continue
+            if hasattr(p, "model_dump"):
+                recent_posts.append(p.model_dump())
+            elif isinstance(p, dict):
+                recent_posts.append(p)
+            else:
+                recent_posts.append({"content": str(p)})
+    except Exception as e:
+        logger.warning(f"Error fetching recent post history for {user_id}: {e}")
+    return recent_posts
+
+
+def _fetch_is_premium(*, user_id: str, session: Any) -> bool:
+    """Check whether user has premium tier on X safely."""
+    try:
+        status_report = get_social_account_status(user_id=user_id, session=session)
+        if status_report:
+            if hasattr(status_report, "x_is_premium"):
+                return bool(status_report.x_is_premium)
+            if isinstance(status_report, dict):
+                return bool(status_report.get("x_is_premium", False))
+    except Exception as e:
+        logger.warning(f"Error fetching account status for {user_id}: {e}")
+    return False
+
+
 async def gather_context_node(state: CurationGraphState) -> dict[str, Any]:
     """Gather topic summary, sample tweets, post history, and account tier."""
     user_id = _sanitize_string(state.get("user_id"), max_length=128)
@@ -78,57 +146,14 @@ async def gather_context_node(state: CurationGraphState) -> dict[str, Any]:
     platform = _sanitize_platform(state.get("platform"))
     session = state.get("session")
 
-    topic_summary: str | None = None
-    sample_tweets: list[dict[str, Any]] = []
-    recent_posts: list[dict[str, Any]] = []
-    is_premium = False
-
     try:
-        # 1. Topic context (if topic_id provided)
-        if topic_id:
-            try:
-                clean_topic_id = _sanitize_string(topic_id, max_length=128)
-                topic_ctx = get_topic_tweets_and_summary(
-                    topic_id=clean_topic_id, session=session
-                )
-                if topic_ctx:
-                    topic_summary = getattr(topic_ctx, "summary", None)
-                    raw_tweets = getattr(topic_ctx, "sample_tweets", []) or []
-                    sample_tweets = [
-                        t if isinstance(t, dict) else {"text": str(t)}
-                        for t in raw_tweets
-                        if t is not None
-                    ]
-            except Exception as e:
-                logger.warning(f"Error fetching topic context for {topic_id}: {e}")
-
-        # 2. Recent post history
-        try:
-            history = get_recent_post_history(
-                user_id=user_id, platform=platform, limit=3, session=session
-            )
-            for p in history or []:
-                if p is None:
-                    continue
-                if hasattr(p, "model_dump"):
-                    recent_posts.append(p.model_dump())
-                elif isinstance(p, dict):
-                    recent_posts.append(p)
-                else:
-                    recent_posts.append({"content": str(p)})
-        except Exception as e:
-            logger.warning(f"Error fetching recent post history for {user_id}: {e}")
-
-        # 3. Social account status
-        try:
-            status_report = get_social_account_status(user_id=user_id, session=session)
-            if status_report:
-                if hasattr(status_report, "x_is_premium"):
-                    is_premium = bool(status_report.x_is_premium)
-                elif isinstance(status_report, dict):
-                    is_premium = bool(status_report.get("x_is_premium", False))
-        except Exception as e:
-            logger.warning(f"Error fetching account status for {user_id}: {e}")
+        topic_summary, sample_tweets = _fetch_topic_context(
+            topic_id=topic_id, session=session
+        )
+        recent_posts = _fetch_recent_posts(
+            user_id=user_id, platform=platform, session=session
+        )
+        is_premium = _fetch_is_premium(user_id=user_id, session=session)
 
         return {
             "topic_summary": topic_summary,
@@ -184,6 +209,20 @@ async def draft_content_node(state: CurationGraphState) -> dict[str, Any]:
         }
 
 
+def _parse_refinement_report(
+    report: Any,
+    draft_content: str,
+) -> tuple[str, bool, dict[str, Any] | None, int, str]:
+    """Extract and validate refinement fields safely."""
+    raw_refined = getattr(report, "refined_content", None)
+    refined_content = _sanitize_string(raw_refined, default=draft_content)
+    is_compliant = bool(getattr(report, "is_compliant", False))
+    compliance_report = getattr(report, "compliance_report", None)
+    attempts = int(getattr(report, "attempts", 0))
+    status = "refined" if getattr(report, "status", None) != "error" else "best_effort"
+    return refined_content, is_compliant, compliance_report, attempts, status
+
+
 async def refine_copy_node(state: CurationGraphState) -> dict[str, Any]:
     """Refine post draft using refinement subgraph against platform constraints."""
     raw_title = state.get("topic_title", "")
@@ -209,14 +248,13 @@ async def refine_copy_node(state: CurationGraphState) -> dict[str, Any]:
             is_premium=is_premium,
             target_tone=target_tone,
         )
-        raw_refined = getattr(report, "refined_content", None)
-        refined_content = _sanitize_string(raw_refined, default=draft_content)
-        is_compliant = bool(getattr(report, "is_compliant", False))
-        compliance_report = getattr(report, "compliance_report", None)
-        attempts = int(getattr(report, "attempts", 0))
-        status = (
-            "refined" if getattr(report, "status", None) != "error" else "best_effort"
-        )
+        (
+            refined_content,
+            is_compliant,
+            compliance_report,
+            attempts,
+            status,
+        ) = _parse_refinement_report(report, draft_content)
 
         return {
             "refined_content": refined_content,

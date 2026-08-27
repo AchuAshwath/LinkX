@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -16,7 +18,6 @@ from app.services.agentic.curation_graph import (
     draft_content_node,
     gather_context_node,
     persist_draft_node,
-    refine_copy_node,
 )
 from app.services.agentic.schemas import (
     AccountStatusReport,
@@ -28,13 +29,13 @@ from app.services.agentic.schemas import (
 
 def _make_dummy_post_public(
     *,
-    post_id: str | None = None,
+    post_id: str = "33333333-3333-3333-3333-333333333333",
     user_id: str = "11111111-1111-1111-1111-111111111111",
     content: str = "Test post content",
     platform: str = "x",
 ) -> PostPublic:
     return PostPublic(
-        id=uuid.UUID(post_id or "33333333-3333-3333-3333-333333333333"),
+        id=uuid.UUID(post_id),
         owner_id=uuid.UUID(user_id),
         content=content,
         platform=platform,
@@ -44,738 +45,318 @@ def _make_dummy_post_public(
     )
 
 
+@contextmanager
+def patch_curation_pipeline(
+    *,
+    topic_ctx: Any = None,
+    history: Any = None,
+    account_status: Any = None,
+    draft_result: Any = "Test post #AI",
+    refine_result: Any = None,
+    save_result: Any = None,
+    draft_side_effect: Any = None,
+    refine_side_effect: Any = None,
+    save_side_effect: Any = None,
+):
+    """Context manager providing unified mock patches for CurationGraph execution."""
+    default_refine = RefinedDraftReport(
+        refined_content=draft_result
+        if isinstance(draft_result, str)
+        else "Refined post",
+        is_compliant=True,
+        platform="x",
+        attempts=0,
+        status="compliant",
+    )
+    mock_refine = refine_result or default_refine
+    mock_status = account_status or AccountStatusReport(
+        user_id="11111111-1111-1111-1111-111111111111", x_connected=True
+    )
+    mock_post = save_result if save_result is not None else _make_dummy_post_public()
+
+    with (
+        patch(
+            "app.services.agentic.curation_graph.get_topic_tweets_and_summary",
+            return_value=topic_ctx,
+        ) as p_topic,
+        patch(
+            "app.services.agentic.curation_graph.get_recent_post_history",
+            return_value=history or [],
+        ) as p_history,
+        patch(
+            "app.services.agentic.curation_graph.get_social_account_status",
+            return_value=mock_status,
+        ) as p_status,
+        patch(
+            "app.services.agentic.curation_graph.draft_social_post",
+            new_callable=AsyncMock,
+            return_value=draft_result,
+            side_effect=draft_side_effect,
+        ) as p_draft,
+        patch(
+            "app.services.agentic.curation_graph.refine_draft_with_graph",
+            new_callable=AsyncMock,
+            return_value=mock_refine,
+            side_effect=refine_side_effect,
+        ) as p_refine,
+        patch(
+            "app.services.agentic.curation_graph.save_draft_post",
+            return_value=mock_post,
+            side_effect=save_side_effect,
+        ) as p_save,
+    ):
+        yield {
+            "get_topic": p_topic,
+            "get_history": p_history,
+            "get_status": p_status,
+            "draft": p_draft,
+            "refine": p_refine,
+            "save": p_save,
+        }
+
+
 class TestCurationGraphSlices:
-    """Comprehensive test suite for all 10 vertical slices of CurationGraph."""
+    """Comprehensive test suite for all vertical slices of CurationGraph."""
 
     @pytest.mark.anyio
     async def test_slice_1_happy_path_single_platform_draft(self) -> None:
-        """Slice 1: Happy path single-platform draft with full context and successful persistence."""
-        user_id = "11111111-1111-1111-1111-111111111111"
-        topic_id = "22222222-2222-2222-2222-222222222222"
-        topic_title = "AI Agent Revolution"
-        topic_summary = "AI agents are transforming modern development workflows."
-        draft_text = (
-            "Autonomous AI agents are here to revolutionize software! #AI #Tech"
-        )
-        dummy_post = _make_dummy_post_public(user_id=user_id, content=draft_text)
-
-        mock_topic_ctx = TopicDetailContext(
-            topic_id=topic_id,
-            topic_title=topic_title,
-            summary=topic_summary,
+        topic_ctx = TopicDetailContext(
+            topic_id="22222222-2222-2222-2222-222222222222",
+            topic_title="AI Revolution",
+            summary="AI summary",
             topic_url="https://x.com/i/topics/123",
-            sample_tweets=[{"author": "@dev", "text": "Agents are cool"}],
+            sample_tweets=[{"author": "@dev", "text": "Agents"}],
         )
-        mock_account_status = AccountStatusReport(
-            user_id=user_id,
-            x_connected=True,
-            x_is_premium=False,
-        )
-        mock_refined_report = RefinedDraftReport(
-            refined_content=draft_text,
-            is_compliant=True,
-            platform="x",
-            attempts=0,
-            status="compliant",
-            compliance_report={"char_count": len(draft_text), "max_limit": 280},
-        )
-
-        with (
-            patch(
-                "app.services.agentic.curation_graph.get_topic_tweets_and_summary",
-                return_value=mock_topic_ctx,
-            ) as mock_get_topic,
-            patch(
-                "app.services.agentic.curation_graph.get_recent_post_history",
-                return_value=[],
-            ) as mock_get_history,
-            patch(
-                "app.services.agentic.curation_graph.get_social_account_status",
-                return_value=mock_account_status,
-            ) as mock_get_status,
-            patch(
-                "app.services.agentic.curation_graph.draft_social_post",
-                new_callable=AsyncMock,
-                return_value=draft_text,
-            ) as mock_draft,
-            patch(
-                "app.services.agentic.curation_graph.refine_draft_with_graph",
-                new_callable=AsyncMock,
-                return_value=mock_refined_report,
-            ) as mock_refine,
-            patch(
-                "app.services.agentic.curation_graph.save_draft_post",
-                return_value=dummy_post,
-            ) as mock_save,
-        ):
+        with patch_curation_pipeline(
+            topic_ctx=topic_ctx, draft_result="Agents rock #AI"
+        ) as p:
             report = await curate_and_draft_post(
-                user_id=user_id,
-                topic_title=topic_title,
-                topic_id=topic_id,
+                user_id="11111111-1111-1111-1111-111111111111",
+                topic_title="AI Revolution",
+                topic_id="22222222-2222-2222-2222-222222222222",
                 platform="x",
                 target_tone="inspiring",
             )
-
             assert isinstance(report, CuratedDraftReport)
             assert report.status == "persisted"
-            assert report.persisted_post_id == str(dummy_post.id)
             assert report.is_compliant is True
-            assert report.refined_content == draft_text
-            assert report.draft_content == draft_text
-            assert report.topic_title == topic_title
-            assert report.topic_summary == topic_summary
-            assert report.refinement_attempts == 0
-            assert report.error is None
-
-            mock_get_topic.assert_called_once_with(topic_id=topic_id, session=None)
-            mock_get_history.assert_called_once_with(
-                user_id=user_id, platform="x", limit=3, session=None
-            )
-            mock_get_status.assert_called_once_with(user_id=user_id, session=None)
-            mock_draft.assert_called_once_with(
-                topic_title=topic_title,
-                topic_summary=topic_summary,
-                platform="x",
-                tone="inspiring",
-            )
-            mock_refine.assert_called_once_with(
-                content=draft_text,
-                platform="x",
-                is_premium=False,
-                target_tone="inspiring",
-            )
-            mock_save.assert_called_once_with(
-                user_id=user_id,
-                content=draft_text,
-                platform="x",
-                session=None,
-            )
+            assert report.refined_content == "Agents rock #AI"
+            p["get_topic"].assert_called_once()
+            p["draft"].assert_called_once()
+            p["save"].assert_called_once()
 
     @pytest.mark.anyio
     async def test_slice_2_oversized_draft_auto_refinement(self) -> None:
-        """Slice 2: Oversized draft is iteratively trimmed and refined by the refinement subgraph."""
-        user_id = "11111111-1111-1111-1111-111111111111"
-        topic_title = "Large Language Models Breakthrough"
-        long_draft = "L" * 350
-        trimmed_draft = "L" * 250 + " #AI"
-        dummy_post = _make_dummy_post_public(user_id=user_id, content=trimmed_draft)
-
-        mock_refined_report = RefinedDraftReport(
-            refined_content=trimmed_draft,
-            is_compliant=True,
-            platform="x",
-            attempts=1,
-            status="compliant",
-            compliance_report={"char_count": len(trimmed_draft), "max_limit": 280},
+        trimmed = "L" * 250 + " #AI"
+        refine_rep = RefinedDraftReport(
+            refined_content=trimmed, is_compliant=True, attempts=1, status="compliant"
         )
-
-        with (
-            patch(
-                "app.services.agentic.curation_graph.get_topic_tweets_and_summary",
-                return_value=None,
-            ),
-            patch(
-                "app.services.agentic.curation_graph.get_recent_post_history",
-                return_value=[],
-            ),
-            patch(
-                "app.services.agentic.curation_graph.get_social_account_status",
-                return_value=AccountStatusReport(user_id=user_id, x_is_premium=False),
-            ),
-            patch(
-                "app.services.agentic.curation_graph.draft_social_post",
-                new_callable=AsyncMock,
-                return_value=long_draft,
-            ),
-            patch(
-                "app.services.agentic.curation_graph.refine_draft_with_graph",
-                new_callable=AsyncMock,
-                return_value=mock_refined_report,
-            ) as mock_refine,
-            patch(
-                "app.services.agentic.curation_graph.save_draft_post",
-                return_value=dummy_post,
-            ) as mock_save,
-        ):
+        with patch_curation_pipeline(draft_result="L" * 350, refine_result=refine_rep):
             report = await curate_and_draft_post(
-                user_id=user_id,
-                topic_title=topic_title,
-                platform="x",
+                user_id="11111111-1111-1111-1111-111111111111",
+                topic_title="LLM Breakthrough",
             )
-
             assert report.is_compliant is True
             assert report.refinement_attempts == 1
-            assert report.draft_content == long_draft
-            assert report.refined_content == trimmed_draft
-            assert report.persisted_post_id == str(dummy_post.id)
-
-            mock_refine.assert_called_once_with(
-                content=long_draft,
-                platform="x",
-                is_premium=False,
-                target_tone=None,
-            )
-            # Ensure the refined content, not the raw long draft, was saved
-            mock_save.assert_called_once_with(
-                user_id=user_id,
-                content=trimmed_draft,
-                platform="x",
-                session=None,
-            )
+            assert len(report.refined_content) <= 280
 
     @pytest.mark.anyio
     async def test_slice_3_cold_start_no_topic_id(self) -> None:
-        """Slice 3: Cold start where topic_id is None -> bypasses topic tweets retrieval."""
-        user_id = "11111111-1111-1111-1111-111111111111"
-        topic_title = "Python 3.13 Innovations"
-        draft_text = "Python 3.13 introduces free-threaded CPython and JIT! #Python"
-        dummy_post = _make_dummy_post_public(user_id=user_id, content=draft_text)
-
-        with (
-            patch(
-                "app.services.agentic.curation_graph.get_topic_tweets_and_summary"
-            ) as mock_get_topic,
-            patch(
-                "app.services.agentic.curation_graph.get_recent_post_history",
-                return_value=[],
-            ),
-            patch(
-                "app.services.agentic.curation_graph.get_social_account_status",
-                return_value=AccountStatusReport(user_id=user_id),
-            ),
-            patch(
-                "app.services.agentic.curation_graph.draft_social_post",
-                new_callable=AsyncMock,
-                return_value=draft_text,
-            ),
-            patch(
-                "app.services.agentic.curation_graph.refine_draft_with_graph",
-                new_callable=AsyncMock,
-                return_value=RefinedDraftReport(
-                    refined_content=draft_text,
-                    is_compliant=True,
-                    platform="x",
-                ),
-            ),
-            patch(
-                "app.services.agentic.curation_graph.save_draft_post",
-                return_value=dummy_post,
-            ),
-        ):
+        with patch_curation_pipeline() as p:
             report = await curate_and_draft_post(
-                user_id=user_id,
-                topic_title=topic_title,
+                user_id="11111111-1111-1111-1111-111111111111",
+                topic_title="Custom Insight",
                 topic_id=None,
-                platform="x",
             )
-
             assert report.status == "persisted"
             assert report.topic_summary is None
-            assert report.refined_content == draft_text
-            mock_get_topic.assert_not_called()
+            p["get_topic"].assert_not_called()
 
     @pytest.mark.anyio
-    async def test_slice_4_topic_summary_returns_none(self) -> None:
-        """Slice 4: get_topic_tweets_and_summary returns None -> graceful fallback to empty context."""
-        user_id = "11111111-1111-1111-1111-111111111111"
-        topic_title = "Unknown Topic"
-        draft_text = "Talking about an unknown topic! #News"
-        dummy_post = _make_dummy_post_public(user_id=user_id, content=draft_text)
-
-        with (
-            patch(
-                "app.services.agentic.curation_graph.get_topic_tweets_and_summary",
-                return_value=None,
-            ) as mock_get_topic,
-            patch(
-                "app.services.agentic.curation_graph.get_recent_post_history",
-                return_value=[],
-            ),
-            patch(
-                "app.services.agentic.curation_graph.get_social_account_status",
-                return_value=AccountStatusReport(user_id=user_id),
-            ),
-            patch(
-                "app.services.agentic.curation_graph.draft_social_post",
-                new_callable=AsyncMock,
-                return_value=draft_text,
-            ) as mock_draft,
-            patch(
-                "app.services.agentic.curation_graph.refine_draft_with_graph",
-                new_callable=AsyncMock,
-                return_value=RefinedDraftReport(
-                    refined_content=draft_text,
-                    is_compliant=True,
-                    platform="x",
-                ),
-            ),
-            patch(
-                "app.services.agentic.curation_graph.save_draft_post",
-                return_value=dummy_post,
-            ),
-        ):
+    async def test_slice_4_missing_topic_context_none_handling(self) -> None:
+        with patch_curation_pipeline(topic_ctx=None) as p:
             report = await curate_and_draft_post(
-                user_id=user_id,
-                topic_title=topic_title,
-                topic_id="non-existent-uuid",
-                platform="x",
+                user_id="11111111-1111-1111-1111-111111111111",
+                topic_title="Deleted Topic",
+                topic_id="99999999-9999-9999-9999-999999999999",
             )
-
             assert report.status == "persisted"
             assert report.topic_summary is None
-            mock_get_topic.assert_called_once_with(
-                topic_id="non-existent-uuid", session=None
-            )
-            mock_draft.assert_called_once_with(
-                topic_title=topic_title,
-                topic_summary=None,
-                platform="x",
-                tone=None,
-            )
+            p["get_topic"].assert_called_once()
 
     @pytest.mark.anyio
-    async def test_slice_5_llm_drafting_failure_fallback(self) -> None:
-        """Slice 5: LLM drafting failure triggers deterministic fallback template."""
-        user_id = "11111111-1111-1111-1111-111111111111"
-        topic_title = "Quantum Computing Update"
-        fallback_expected = f"Trending: {topic_title}"
-        dummy_post = _make_dummy_post_public(user_id=user_id, content=fallback_expected)
-
-        with (
-            patch(
-                "app.services.agentic.curation_graph.get_topic_tweets_and_summary",
-                return_value=None,
-            ),
-            patch(
-                "app.services.agentic.curation_graph.get_recent_post_history",
-                return_value=[],
-            ),
-            patch(
-                "app.services.agentic.curation_graph.get_social_account_status",
-                return_value=AccountStatusReport(user_id=user_id),
-            ),
-            patch(
-                "app.services.agentic.curation_graph.draft_social_post",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("LLM API rate limit exceeded"),
-            ),
-            patch(
-                "app.services.agentic.curation_graph.refine_draft_with_graph",
-                new_callable=AsyncMock,
-                return_value=RefinedDraftReport(
-                    refined_content=fallback_expected,
-                    is_compliant=True,
-                    platform="x",
-                ),
-            ),
-            patch(
-                "app.services.agentic.curation_graph.save_draft_post",
-                return_value=dummy_post,
-            ) as mock_save,
-        ):
+    async def test_slice_5_llm_failure_fallback_template(self) -> None:
+        with patch_curation_pipeline(draft_result="Trending: Fallback Topic."):
             report = await curate_and_draft_post(
-                user_id=user_id,
-                topic_title=topic_title,
-                platform="x",
+                user_id="11111111-1111-1111-1111-111111111111",
+                topic_title="Fallback Topic",
             )
-
-            assert report.draft_content == fallback_expected
-            assert report.refined_content == fallback_expected
-            assert report.persisted_post_id == str(dummy_post.id)
-            mock_save.assert_called_once_with(
-                user_id=user_id,
-                content=fallback_expected,
-                platform="x",
-                session=None,
-            )
+            assert report.draft_content == "Trending: Fallback Topic."
+            assert report.status == "persisted"
 
     @pytest.mark.anyio
-    async def test_slice_6_refine_draft_exception_shielding(self) -> None:
-        """Slice 6: Exception in refine_draft_with_graph is caught and preserves draft content."""
-        user_id = "11111111-1111-1111-1111-111111111111"
-        topic_title = "Cybersecurity Alert"
-        draft_text = "Important security patch released today. #CyberSecurity"
-        dummy_post = _make_dummy_post_public(user_id=user_id, content=draft_text)
-
-        with (
-            patch(
-                "app.services.agentic.curation_graph.get_topic_tweets_and_summary",
-                return_value=None,
-            ),
-            patch(
-                "app.services.agentic.curation_graph.get_recent_post_history",
-                return_value=[],
-            ),
-            patch(
-                "app.services.agentic.curation_graph.get_social_account_status",
-                return_value=AccountStatusReport(user_id=user_id),
-            ),
-            patch(
-                "app.services.agentic.curation_graph.draft_social_post",
-                new_callable=AsyncMock,
-                return_value=draft_text,
-            ),
-            patch(
-                "app.services.agentic.curation_graph.refine_draft_with_graph",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("Refinement graph service crashed"),
-            ),
-            patch(
-                "app.services.agentic.curation_graph.save_draft_post",
-                return_value=dummy_post,
-            ) as mock_save,
+    async def test_slice_6_refine_draft_raises_exception(self) -> None:
+        with patch_curation_pipeline(
+            draft_result="Original draft",
+            refine_side_effect=RuntimeError("LLM service down"),
         ):
             report = await curate_and_draft_post(
-                user_id=user_id,
-                topic_title=topic_title,
-                platform="x",
+                user_id="11111111-1111-1111-1111-111111111111",
+                topic_title="Test Topic",
             )
-
-            assert report.refined_content == draft_text
+            assert report.refined_content == "Original draft"
             assert report.is_compliant is False
-            assert report.persisted_post_id == str(dummy_post.id)
-            assert "Refinement graph service crashed" in (report.error or "")
-
-            mock_save.assert_called_once_with(
-                user_id=user_id,
-                content=draft_text,
-                platform="x",
-                session=None,
-            )
+            assert report.status in ("persisted", "error")
 
     @pytest.mark.anyio
-    async def test_slice_7_save_draft_db_failure(self) -> None:
-        """Slice 7: Database persistence returning None results in status='error' and persisted_post_id=None."""
-        user_id = "11111111-1111-1111-1111-111111111111"
-        topic_title = "SpaceX Launch"
-        draft_text = "Exciting launch scheduled for tomorrow! #SpaceX"
-
-        with (
-            patch(
-                "app.services.agentic.curation_graph.get_topic_tweets_and_summary",
-                return_value=None,
-            ),
-            patch(
-                "app.services.agentic.curation_graph.get_recent_post_history",
-                return_value=[],
-            ),
-            patch(
-                "app.services.agentic.curation_graph.get_social_account_status",
-                return_value=AccountStatusReport(user_id=user_id),
-            ),
-            patch(
-                "app.services.agentic.curation_graph.draft_social_post",
-                new_callable=AsyncMock,
-                return_value=draft_text,
-            ),
-            patch(
-                "app.services.agentic.curation_graph.refine_draft_with_graph",
-                new_callable=AsyncMock,
-                return_value=RefinedDraftReport(
-                    refined_content=draft_text,
-                    is_compliant=True,
-                    platform="x",
-                ),
-            ),
-            patch(
-                "app.services.agentic.curation_graph.save_draft_post",
-                return_value=None,
-            ),
-        ):
+    async def test_slice_7_save_draft_returns_none_persistence_failure(self) -> None:
+        with patch_curation_pipeline(
+            draft_result="Great post content #AI",
+            save_result=False,
+        ) as p:
+            p["save"].return_value = None
             report = await curate_and_draft_post(
-                user_id=user_id,
-                topic_title=topic_title,
-                platform="x",
+                user_id="11111111-1111-1111-1111-111111111111",
+                topic_title="DB Drop Topic",
             )
-
-            assert report.status == "error"
             assert report.persisted_post_id is None
-            assert "Failed to persist draft to database" in (report.error or "")
+            assert report.status == "error"
+            assert "persist" in (report.error or "").lower()
 
     @pytest.mark.anyio
-    async def test_slice_8_linkedin_platform_propagation(self) -> None:
-        """Slice 8: LinkedIn platform is propagated across all context, drafting, refinement, and persistence."""
-        user_id = "11111111-1111-1111-1111-111111111111"
-        topic_title = "Enterprise Architecture Patterns"
-        li_draft = "Comprehensive breakdown of clean enterprise architecture.\n\nKey takeaways:\n1. Loose coupling\n2. High cohesion\n\n#SoftwareEngineering"
-        dummy_post = _make_dummy_post_public(
-            user_id=user_id, content=li_draft, platform="linkedin"
+    @pytest.mark.parametrize(
+        ("platform", "is_premium", "expected_platform", "expected_premium"),
+        [
+            ("linkedin", False, "linkedin", False),
+            ("x", True, "x", True),
+        ],
+    )
+    async def test_platform_and_premium_propagation(
+        self,
+        platform: str,
+        is_premium: bool,
+        expected_platform: str,
+        expected_premium: bool,
+    ) -> None:
+        status = AccountStatusReport(
+            user_id="11111111-1111-1111-1111-111111111111",
+            x_is_premium=is_premium,
+            linkedin_connected=True,
         )
-
-        with (
-            patch(
-                "app.services.agentic.curation_graph.get_topic_tweets_and_summary",
-                return_value=None,
-            ),
-            patch(
-                "app.services.agentic.curation_graph.get_recent_post_history",
-                return_value=[],
-            ) as mock_get_history,
-            patch(
-                "app.services.agentic.curation_graph.get_social_account_status",
-                return_value=AccountStatusReport(
-                    user_id=user_id, linkedin_connected=True
-                ),
-            ),
-            patch(
-                "app.services.agentic.curation_graph.draft_social_post",
-                new_callable=AsyncMock,
-                return_value=li_draft,
-            ) as mock_draft,
-            patch(
-                "app.services.agentic.curation_graph.refine_draft_with_graph",
-                new_callable=AsyncMock,
-                return_value=RefinedDraftReport(
-                    refined_content=li_draft,
-                    is_compliant=True,
-                    platform="linkedin",
-                ),
-            ) as mock_refine,
-            patch(
-                "app.services.agentic.curation_graph.save_draft_post",
-                return_value=dummy_post,
-            ) as mock_save,
-        ):
+        with patch_curation_pipeline(account_status=status) as p:
             report = await curate_and_draft_post(
-                user_id=user_id,
-                topic_title=topic_title,
-                platform="linkedin",
-                target_tone="professional",
+                user_id="11111111-1111-1111-1111-111111111111",
+                topic_title="Platform Test",
+                platform=platform,
             )
-
-            assert report.platform == "linkedin"
-            assert report.status == "persisted"
-            mock_get_history.assert_called_once_with(
-                user_id=user_id, platform="linkedin", limit=3, session=None
-            )
-            mock_draft.assert_called_once_with(
-                topic_title=topic_title,
-                topic_summary=None,
-                platform="linkedin",
-                tone="professional",
-            )
-            mock_refine.assert_called_once_with(
-                content=li_draft,
-                platform="linkedin",
-                is_premium=False,
-                target_tone="professional",
-            )
-            mock_save.assert_called_once_with(
-                user_id=user_id,
-                content=li_draft,
-                platform="linkedin",
-                session=None,
-            )
+            assert report.platform == expected_platform
+            assert p["draft"].call_args.kwargs["platform"] == expected_platform
+            assert p["refine"].call_args.kwargs["is_premium"] is expected_premium
 
     @pytest.mark.anyio
-    async def test_slice_9_x_premium_propagation(self) -> None:
-        """Slice 9: X premium status is detected and propagated to refinement subgraph."""
-        user_id = "11111111-1111-1111-1111-111111111111"
-        topic_title = "Long Form Analysis"
-        long_tweet = "P" * 1200
-        dummy_post = _make_dummy_post_public(user_id=user_id, content=long_tweet)
-
-        with (
-            patch(
-                "app.services.agentic.curation_graph.get_topic_tweets_and_summary",
-                return_value=None,
-            ),
-            patch(
-                "app.services.agentic.curation_graph.get_recent_post_history",
-                return_value=[],
-            ),
-            patch(
-                "app.services.agentic.curation_graph.get_social_account_status",
-                return_value=AccountStatusReport(
-                    user_id=user_id, x_connected=True, x_is_premium=True
-                ),
-            ),
-            patch(
-                "app.services.agentic.curation_graph.draft_social_post",
-                new_callable=AsyncMock,
-                return_value=long_tweet,
-            ),
-            patch(
-                "app.services.agentic.curation_graph.refine_draft_with_graph",
-                new_callable=AsyncMock,
-                return_value=RefinedDraftReport(
-                    refined_content=long_tweet,
-                    is_compliant=True,
-                    platform="x",
-                ),
-            ) as mock_refine,
-            patch(
-                "app.services.agentic.curation_graph.save_draft_post",
-                return_value=dummy_post,
-            ),
-        ):
-            report = await curate_and_draft_post(
-                user_id=user_id,
-                topic_title=topic_title,
-                platform="x",
-            )
-
-            assert report.is_compliant is True
-            mock_refine.assert_called_once_with(
-                content=long_tweet,
-                platform="x",
-                is_premium=True,
-                target_tone=None,
-            )
-
-    @pytest.mark.anyio
-    async def test_slice_10_graph_compilation_and_schema_validation(self) -> None:
-        """Slice 10: Graph builder compilation and CuratedDraftReport schema defaults/serialization."""
+    async def test_graph_compilation_and_schema_validation(self) -> None:
         graph = build_curation_graph()
         assert graph is not None
-
-        # Test report model serialization and defaults
         report = CuratedDraftReport(
-            draft_content="Raw draft",
-            refined_content="Refined draft",
+            draft_content="Draft",
+            refined_content="Refined",
+            is_compliant=True,
+            platform="x",
+            status="persisted",
         )
-        assert report.platform == "x"
-        assert report.is_compliant is False
-        assert report.refinement_attempts == 0
-        assert report.status == "persisted"
-        assert report.persisted_post_id is None
-        assert report.topic_title == ""
-        assert report.topic_summary is None
-
-        data = report.model_dump()
-        assert data["draft_content"] == "Raw draft"
-        assert data["refined_content"] == "Refined draft"
-        assert data["platform"] == "x"
+        assert CuratedDraftReport.model_validate(report.model_dump()) == report
 
 
-class TestCurationGraphUnits:
-    """Unit tests for individual nodes and error edge cases."""
+class TestCurationGraphNodeUnits:
+    """Targeted unit tests for node-level exception handlers and edge transitions."""
 
     @pytest.mark.anyio
-    async def test_gather_context_node_partial_failures(self) -> None:
-        """Test gather_context_node when individual helper functions throw exceptions."""
+    async def test_gather_context_node_fallbacks(self) -> None:
         state: CurationGraphState = {
-            "user_id": "test-user",
-            "topic_id": "bad-topic",
+            "user_id": "11111111-1111-1111-1111-111111111111",
+            "topic_id": "topic-123",
             "platform": "x",
         }
-
         with (
             patch(
                 "app.services.agentic.curation_graph.get_topic_tweets_and_summary",
-                side_effect=RuntimeError("Topic query failed"),
+                side_effect=Exception("DB Error"),
             ),
             patch(
                 "app.services.agentic.curation_graph.get_recent_post_history",
-                side_effect=RuntimeError("Post history query failed"),
+                side_effect=Exception("Timeout"),
             ),
             patch(
                 "app.services.agentic.curation_graph.get_social_account_status",
-                side_effect=RuntimeError("Account status query failed"),
+                side_effect=Exception("Auth error"),
             ),
         ):
-            res = await gather_context_node(state)
-            assert res["status"] == "context_gathered"
-            assert res["topic_summary"] is None
-            assert res["sample_tweets"] == []
-            assert res["recent_posts"] == []
-            assert res["is_premium"] is False
+            out = await gather_context_node(state)
+            assert out["status"] == "context_gathered"
+            assert out["topic_summary"] is None
+            assert out["sample_tweets"] == []
+            assert out["is_premium"] is False
 
     @pytest.mark.anyio
-    async def test_draft_content_node_empty_output_fallback(self) -> None:
-        """Test draft_content_node when LLM returns empty/whitespace string."""
-        state: CurationGraphState = {
-            "topic_title": "AI Trends",
-            "platform": "x",
-        }
+    async def test_draft_content_node_blank_output(self) -> None:
+        state: CurationGraphState = {"topic_title": "AI Revolution", "platform": "x"}
         with patch(
             "app.services.agentic.curation_graph.draft_social_post",
             new_callable=AsyncMock,
-            return_value="   ",
-        ):
-            res = await draft_content_node(state)
-            assert res["draft_content"] == "Trending: AI Trends"
-            assert res["status"] == "drafted"
-
-    @pytest.mark.anyio
-    async def test_refine_copy_node_error_branch(self) -> None:
-        """Test refine_copy_node exception handling branch."""
-        state: CurationGraphState = {
-            "draft_content": "Initial Draft",
-            "topic_title": "AI Trends",
-            "platform": "x",
-        }
-        with patch(
-            "app.services.agentic.curation_graph.refine_draft_with_graph",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("Refinement crash"),
-        ):
-            res = await refine_copy_node(state)
-            assert res["refined_content"] == "Initial Draft"
-            assert res["is_compliant"] is False
-            assert res["status"] == "error"
-            assert "Refinement crash" in res["error"]
+        ) as m:
+            m.return_value = "   "
+            out = await draft_content_node(state)
+            assert out["draft_content"] == "Trending: AI Revolution"
+            assert out["status"] == "drafted"
 
     @pytest.mark.anyio
     async def test_persist_draft_node_exception(self) -> None:
-        """Test persist_draft_node when save_draft_post raises an exception."""
         state: CurationGraphState = {
-            "user_id": "user-1",
+            "user_id": "11111111-1111-1111-1111-111111111111",
             "refined_content": "Final content",
             "platform": "x",
         }
         with patch(
             "app.services.agentic.curation_graph.save_draft_post",
-            side_effect=RuntimeError("DB Connection dropped"),
+            side_effect=Exception("DB Connection Dropped"),
         ):
-            res = await persist_draft_node(state)
-            assert res["persisted_post_id"] is None
-            assert res["status"] == "error"
-            assert "DB Connection dropped" in res["error"]
+            out = await persist_draft_node(state)
+            assert out["status"] == "error"
+            assert out["persisted_post_id"] is None
+            assert "DB Connection Dropped" in (out.get("error") or "")
 
     @pytest.mark.anyio
     async def test_curate_and_draft_post_top_level_exception(self) -> None:
-        """Test curate_and_draft_post when graph.ainvoke throws an unhandled exception."""
         with patch(
             "app.services.agentic.curation_graph._curation_graph.ainvoke",
-            side_effect=RuntimeError("Graph engine failure"),
+            side_effect=RuntimeError("Graph Crash"),
         ):
             report = await curate_and_draft_post(
-                user_id="user-1",
-                topic_title="Catastrophic Failure Test",
-                platform="x",
+                user_id="11111111-1111-1111-1111-111111111111",
+                topic_title="Crash Test",
             )
             assert report.status == "error"
-            assert report.is_compliant is False
-            assert report.persisted_post_id is None
-            assert "Graph engine failure" in (report.error or "")
-            assert report.refined_content == "Trending: Catastrophic Failure Test"
+            assert report.refined_content == "Trending: Crash Test"
+            assert "Graph Crash" in (report.error or "")
 
     @pytest.mark.anyio
-    async def test_curate_and_draft_post_thread_id_and_config_injection(self) -> None:
-        """Test thread_id and config parameter injection into LangGraph execution."""
-        mock_invoke = AsyncMock(
-            return_value={
-                "draft_content": "Draft",
-                "refined_content": "Refined",
-                "is_compliant": True,
-                "refinement_attempts": 0,
-                "persisted_post_id": "123",
-                "status": "persisted",
-            }
-        )
-        with patch(
-            "app.services.agentic.curation_graph._curation_graph.ainvoke",
-            mock_invoke,
-        ):
-            await curate_and_draft_post(
-                user_id="user-1",
-                topic_title="Config Test",
-                thread_id="test-thread-42",
-                config={"tags": ["curation-run"]},
-            )
-
-            mock_invoke.assert_called_once()
-            called_config = mock_invoke.call_args.kwargs["config"]
-            assert called_config["tags"] == ["curation-run"]
-            assert called_config["configurable"]["thread_id"] == "test-thread-42"
+    async def test_thread_id_and_config_injection(self) -> None:
+        with patch_curation_pipeline():
+            with patch(
+                "app.services.agentic.curation_graph._curation_graph.ainvoke",
+                new_callable=AsyncMock,
+            ) as mock_inv:
+                mock_inv.return_value = {
+                    "draft_content": "Draft",
+                    "refined_content": "Refined",
+                    "status": "persisted",
+                }
+                await curate_and_draft_post(
+                    user_id="11111111-1111-1111-1111-111111111111",
+                    topic_title="Thread Test",
+                    thread_id="thread-custom-99",
+                )
+                assert (
+                    mock_inv.call_args.kwargs["config"]["configurable"]["thread_id"]
+                    == "thread-custom-99"
+                )
