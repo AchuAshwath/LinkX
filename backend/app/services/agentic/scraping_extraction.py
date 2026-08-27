@@ -340,26 +340,21 @@ async def _process_single_topic_extraction(
     page: Any,
     topic: Any,
     selectors: dict[str, Any],
-    topic_tweets_map: dict[str, list[dict[str, Any]]],
-    topic_summaries: dict[str, str],
-    failed_topics: list[dict[str, str]],
     mouse: Any | None = None,
-) -> None:
-    """Extract timeline for a single topic and record outcomes."""
+) -> tuple[str, str | None, list[dict[str, Any]], str | None]:
+    """Extract timeline for a single topic and return (topic_url, summary, tweets, error)."""
     topic_url = _get_topic_url(topic=topic)
     if not topic_url:
-        return
+        return "", None, [], None
 
     try:
         summary, tweets = await _extract_single_topic_timeline(
             page=page, topic_url=topic_url, selectors=selectors, mouse=mouse
         )
-        if summary:
-            topic_summaries[topic_url] = str(summary)
-        topic_tweets_map[topic_url] = tweets
+        return topic_url, summary, tweets, None
     except Exception as e:
         logger.warning(f"Error extracting timeline for topic {topic_url}: {e}")
-        failed_topics.append({"topic_url": topic_url, "reason": str(e)})
+        return topic_url, None, [], str(e)
 
 
 async def extract_topic_timelines(
@@ -388,14 +383,19 @@ async def extract_topic_timelines(
     for idx, topic in enumerate(selected_topics):
         if idx > 0:
             await random_delay(min_sec=2.0, max_sec=4.0)
-        await _process_single_topic_extraction(
+        url, summary, tweets, err = await _process_single_topic_extraction(
             page=page,
             topic=topic,
             selectors=selectors,
-            topic_tweets_map=topic_tweets_map,
-            topic_summaries=topic_summaries,
-            failed_topics=failed_topics,
             mouse=mouse,
         )
+        if not url:
+            continue
+        if err:
+            failed_topics.append({"topic_url": url, "reason": err})
+        else:
+            if summary:
+                topic_summaries[url] = str(summary)
+            topic_tweets_map[url] = tweets
 
     return topic_tweets_map, topic_summaries, failed_topics
