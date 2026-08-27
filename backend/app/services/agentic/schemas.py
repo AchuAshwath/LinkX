@@ -341,6 +341,49 @@ class RefinedDraftReport(BaseModel):
     )
 
 
+class CuratedDraftReport(BaseModel):
+    """Structured output from CurationGraph execution."""
+
+    draft_content: str = Field(description="Original LLM-generated draft")
+    refined_content: str = Field(
+        description="Final refined copy (guaranteed non-empty)"
+    )
+    is_compliant: bool = Field(
+        default=False,
+        description="Whether refined draft passes platform constraints",
+    )
+    platform: str = Field(default="x")
+    topic_title: str = Field(default="")
+    topic_summary: str | None = Field(default=None)
+    refinement_attempts: int = Field(default=0)
+    persisted_post_id: str | None = Field(
+        default=None,
+        description="UUID string of saved Post, or None if persistence failed",
+    )
+    compliance_report: dict[str, Any] | None = Field(default=None)
+    status: str = Field(default="persisted", description="'persisted' | 'error'")
+    error: str | None = Field(default=None)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _ensure_non_empty_content(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            refined = data.get("refined_content")
+            draft = data.get("draft_content")
+            title = data.get("topic_title") or "Trending Topic"
+            fallback = f"Trending: {title}"
+
+            if not draft or not str(draft).strip():
+                data["draft_content"] = (
+                    str(refined).strip()
+                    if (refined and str(refined).strip())
+                    else fallback
+                )
+            if not refined or not str(refined).strip():
+                data["refined_content"] = data["draft_content"]
+        return data
+
+
 class SessionRecoveryReport(BaseModel):
     """Execution report from session recovery diagnosing and clearing UI overlays."""
 
@@ -381,3 +424,21 @@ class SessionRecoveryReport(BaseModel):
         validation_alias=AliasChoices("error", "error_message"),
         description="Error detail if recovery failed or encountered an exception",
     )
+
+
+class ScrapedBatchReport(BaseModel):
+    """Structured output from ScrapingGraph execution."""
+
+    scraped_topics: list[dict[str, Any]] = Field(default_factory=list)
+    topic_tweets_map: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
+    topic_summaries: dict[str, str] = Field(default_factory=dict)
+    failed_topics: list[dict[str, str]] = Field(default_factory=list)
+    persisted_topic_count: int = Field(default=0)
+    persisted_tweet_count: int = Field(default=0)
+    page_state: str = Field(default="ok")
+    session_recovery: dict[str, Any] | None = Field(default=None)
+    status: str = Field(
+        default="persisted",
+        description="'persisted' | 'unrecoverable' | 'error'",
+    )
+    error: str | None = Field(default=None)
