@@ -91,11 +91,13 @@ def _persist_single_topic_record(
     session: Session,
     resolved_user_id: uuid.UUID,
     topic: dict[str, Any],
-    tweets_map: dict[str, list[dict[str, Any]]],
-    summaries: dict[str, str],
-    now: datetime,
+    **kwargs: Any,
 ) -> tuple[int, int]:
     """Persist a single topic and its associated tweets to the database."""
+    tweets_map = kwargs.get("tweets_map") or {}
+    summaries = kwargs.get("summaries") or {}
+    now = kwargs.get("now") or datetime.now(timezone.utc)
+
     url, topic_data = _build_topic_upsert_payload(
         resolved_user_id=resolved_user_id,
         topic=topic,

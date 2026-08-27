@@ -374,8 +374,47 @@ async def _extract_single_topic_timeline(
     return summary, tweets_data
 
 
+def _get_topic_url(topic: Any) -> str:
+    """Extract valid HTTP URL from topic dictionary or model."""
+    if not topic:
+        return ""
+    raw_url = (
+        topic.get("topic_url") or topic.get("url")
+        if isinstance(topic, dict)
+        else getattr(topic, "topic_url", None)
+    )
+    url = str(raw_url).strip() if raw_url is not None else ""
+    return url if url.startswith(("http://", "https://")) else ""
+
+
+async def _process_single_topic_extraction(
+    *,
+    page: Any,
+    topic: Any,
+    selectors: dict[str, Any],
+    topic_tweets_map: dict[str, list[dict[str, Any]]],
+    topic_summaries: dict[str, str],
+    failed_topics: list[dict[str, str]],
+) -> None:
+    """Extract timeline for a single topic and record outcomes."""
+    topic_url = _get_topic_url(topic)
+    if not topic_url:
+        return
+
+    try:
+        summary, tweets = await _extract_single_topic_timeline(
+            page=page, topic_url=topic_url, selectors=selectors
+        )
+        if summary:
+            topic_summaries[topic_url] = str(summary)
+        topic_tweets_map[topic_url] = tweets
+    except Exception as e:
+        logger.warning(f"Error extracting timeline for topic {topic_url}: {e}")
+        failed_topics.append({"topic_url": topic_url, "reason": str(e)})
+
+
 async def extract_topic_timelines_node(state: ScrapingGraphState) -> dict[str, Any]:
-    """Extract Grok summary and top tweets for each topic with partial batch resilience."""
+    """For top N trending topics, navigate to timeline, extract tweets and Grok summary."""
     page = state.get("page")
     scraped_topics_raw = state.get("scraped_topics", [])
     scraped_topics = scraped_topics_raw if isinstance(scraped_topics_raw, list) else []
@@ -394,30 +433,15 @@ async def extract_topic_timelines_node(state: ScrapingGraphState) -> dict[str, A
         }
 
     selectors = _load_selectors()
-    topics_to_process = scraped_topics[:max_topics]
-
-    for topic in topics_to_process:
-        if not topic:
-            continue
-        raw_url = (
-            topic.get("topic_url") or topic.get("url")
-            if isinstance(topic, dict)
-            else getattr(topic, "topic_url", None)
+    for topic in scraped_topics[:max_topics]:
+        await _process_single_topic_extraction(
+            page=page,
+            topic=topic,
+            selectors=selectors,
+            topic_tweets_map=topic_tweets_map,
+            topic_summaries=topic_summaries,
+            failed_topics=failed_topics,
         )
-        topic_url = str(raw_url).strip() if raw_url is not None else ""
-        if not topic_url or not topic_url.startswith(("http://", "https://")):
-            continue
-
-        try:
-            summary, tweets = await _extract_single_topic_timeline(
-                page=page, topic_url=topic_url, selectors=selectors
-            )
-            if summary:
-                topic_summaries[topic_url] = str(summary)
-            topic_tweets_map[topic_url] = tweets
-        except Exception as e:
-            logger.warning(f"Error extracting timeline for topic {topic_url}: {e}")
-            failed_topics.append({"topic_url": topic_url, "reason": str(e)})
 
     return {
         "topic_tweets_map": topic_tweets_map,
