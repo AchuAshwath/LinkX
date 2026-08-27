@@ -409,14 +409,22 @@ async def _process_single_topic_extraction(
     page: Any,
     topic: Any,
     selectors: dict[str, Any],
-    topic_tweets_map: dict[str, list[dict[str, Any]]],
-    topic_summaries: dict[str, str],
-    failed_topics: list[dict[str, str]],
+    **kwargs: Any,
 ) -> None:
     """Extract timeline for a single topic and record outcomes."""
     topic_url = _get_topic_url(topic)
     if not topic_url:
         return
+
+    topic_tweets_map = kwargs.get("topic_tweets_map")
+    if topic_tweets_map is None:
+        topic_tweets_map = {}
+    topic_summaries = kwargs.get("topic_summaries")
+    if topic_summaries is None:
+        topic_summaries = {}
+    failed_topics = kwargs.get("failed_topics")
+    if failed_topics is None:
+        failed_topics = []
 
     try:
         summary, tweets = await _extract_single_topic_timeline(
