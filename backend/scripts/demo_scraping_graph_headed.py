@@ -152,6 +152,24 @@ def _display_extracted_timeline_topics(
             _display_single_topic_block(idx=idx, topic=topic, report=report)
 
 
+def _display_verified_topic(
+    *, topic: TrendingTopic, attached_tweets: list[TrendingTweet]
+) -> None:
+    """Display topic details and sample attached tweets from database."""
+    print(f" • Topic '{topic.topic_title}':")
+    print(f"    - ID:        {topic.id}")
+    print(f"    - Category:  {topic.category or 'Trending'}")
+    print(f"    - Post Count:{topic.post_count or 0:,}")
+    print(
+        f"    - Tweets DB: {len(attached_tweets)} attached tweets in 'trending_tweet' ✅"
+    )
+    for i, tw in enumerate(attached_tweets[:3], 1):
+        short_body = (tw.text or "").replace("\n", " ")[:70]
+        print(
+            f'       [{i}] {tw.author_handle}: "{short_body}..." ({tw.likes or 0:,} likes, {tw.retweets or 0:,} reposts)'
+        )
+
+
 def _verify_and_display_db_records(*, max_topics: int) -> None:
     """Verify saved topic records in PostgreSQL."""
     print("\n┌" + "─" * 76 + "┐")
@@ -167,28 +185,19 @@ def _verify_and_display_db_records(*, max_topics: int) -> None:
             .limit(8)
         ).all()
 
-        topics_with_tweets = []
+        topics_with_tweets: list[tuple[TrendingTopic, list[TrendingTweet]]] = []
         for t in recent_topics:
-            attached_tweets = session.exec(
-                select(TrendingTweet).where(TrendingTweet.topic_id == t.id)
-            ).all()
+            attached_tweets = list(
+                session.exec(
+                    select(TrendingTweet).where(TrendingTweet.topic_id == t.id)
+                ).all()
+            )
             if attached_tweets:
                 topics_with_tweets.append((t, attached_tweets))
 
-        if topics_with_tweets:
-            for t, attached_tweets in topics_with_tweets[:max_topics]:
-                print(f" • Topic '{t.topic_title}':")
-                print(f"    - ID:        {t.id}")
-                print(f"    - Category:  {t.category or 'Trending'}")
-                print(f"    - Post Count:{t.post_count or 0:,}")
-                print(
-                    f"    - Tweets DB: {len(attached_tweets)} attached tweets in 'trending_tweet' ✅"
-                )
-                for i, tw in enumerate(attached_tweets[:3], 1):
-                    short_body = (tw.text or "").replace("\n", " ")[:70]
-                    print(
-                        f'       [{i}] {tw.author_handle}: "{short_body}..." ({tw.likes or 0:,} likes, {tw.retweets or 0:,} reposts)'
-                    )
+        for t, attached in topics_with_tweets[:max_topics]:
+            _display_verified_topic(topic=t, attached_tweets=attached)
+
         else:
             print(" ⚠️ No topic records with attached tweets found in database.")
 

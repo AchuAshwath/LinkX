@@ -164,14 +164,11 @@ async def _scrape_single_trend_item(
     page: Any,
     mouse: EvasionMouse,
     idx: int,
-    total_trends: int,
-    broken_config: dict[str, Any],
+    config: dict[str, Any],
 ) -> tuple[dict[str, Any], list[dict[str, Any]], str | None]:
     """Visibly click trend card, read timeline, and extract tweets."""
     print("\n" + "─" * 70)
-    print(
-        f" 📌 [{idx + 1}/{total_trends}] Targeting Trend Item #{idx + 1} on Explore Screen"
-    )
+    print(f" 📌 Targeting Trend Item #{idx + 1} on Explore Screen")
     print("─" * 70)
 
     current_trend_elem = page.locator("[data-testid='trend']").nth(idx)
@@ -222,7 +219,7 @@ async def _scrape_single_trend_item(
         print(f" 🤖 Grok Summary: {summary[:80]}...")
 
     raw_tweets = await extract_topic_tweets(
-        page=page, topic_url=current_url, selectors=broken_config
+        page=page, topic_url=current_url, selectors=config
     )
     tweets_data = [
         {
@@ -239,25 +236,24 @@ async def _scrape_single_trend_item(
         f" ✅ Extracted {len(tweets_data)} timeline tweets with live engagement metrics"
     )
 
-    if idx < total_trends - 1:
-        print(" 🔙 Returning to Explore page...")
-        back_btn = page.locator("[data-testid='app-bar-back']").first
-        explore_tab = page.locator(
-            "[data-testid='AppTabBar_Explore_Link'], a[href='/explore']"
-        ).first
+    print(" 🔙 Returning to Explore page...")
+    back_btn = page.locator("[data-testid='app-bar-back']").first
+    explore_tab = page.locator(
+        "[data-testid='AppTabBar_Explore_Link'], a[href='/explore']"
+    ).first
 
-        if await back_btn.count() > 0 and await back_btn.is_visible():
-            await mouse.human_click(locator=back_btn)
-        elif await explore_tab.count() > 0 and await explore_tab.is_visible():
-            await mouse.human_click(locator=explore_tab)
-        else:
-            await page.go_back()
+    if await back_btn.count() > 0 and await back_btn.is_visible():
+        await mouse.human_click(locator=back_btn)
+    elif await explore_tab.count() > 0 and await explore_tab.is_visible():
+        await mouse.human_click(locator=explore_tab)
+    else:
+        await page.go_back()
 
-        await random_delay(min_sec=1.5, max_sec=2.5)
-        try:
-            await page.wait_for_selector("[data-testid='trend']", timeout=6000)
-        except Exception:
-            pass
+    await random_delay(min_sec=1.5, max_sec=2.5)
+    try:
+        await page.wait_for_selector("[data-testid='trend']", timeout=6000)
+    except Exception:
+        pass
 
     return topic_info, tweets_data, summary
 
@@ -432,8 +428,7 @@ async def _run_demo_session(
                 page=page,
                 mouse=mouse,
                 idx=idx,
-                total_trends=topics_to_process,
-                broken_config=broken_config,
+                config=broken_config,
             )
             selected_topics.append(t_info)
             topic_tweets_map[t_info["topic_url"]] = t_tweets

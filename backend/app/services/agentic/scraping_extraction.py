@@ -176,29 +176,36 @@ async def _click_topic_link_if_present(
     return False
 
 
+async def _direct_page_goto(*, page: Any, url: str) -> None:
+    """Fallback direct page navigation."""
+    goto_fn = getattr(page, "goto", None)
+    if callable(goto_fn):
+        res = goto_fn(url, wait_until="domcontentloaded")
+        if inspect.isawaitable(res):
+            await res
+
+
+async def _stealth_navigate_url(*, page: Any, url: str) -> None:
+    """Navigate to URL using stealth human navigation or direct fallback."""
+    try:
+        await human_navigation(page=page, url=url)
+    except Exception:
+        await _direct_page_goto(page=page, url=url)
+
+
 async def _ensure_topic_page_navigation(
     *, page: Any, topic_url: str, mouse: Any | None = None
 ) -> None:
     """Navigate to topic URL using human mouse click if element is present, else stealth human_navigation."""
-    page_url = getattr(page, "url", None)
-    if page_url == topic_url:
+    if getattr(page, "url", None) == topic_url:
         return
 
-    clicked = False
-    if mouse:
-        clicked = await _click_topic_link_if_present(
-            page=page, topic_url=topic_url, mouse=mouse
-        )
+    if mouse and await _click_topic_link_if_present(
+        page=page, topic_url=topic_url, mouse=mouse
+    ):
+        return
 
-    if not clicked:
-        try:
-            await human_navigation(page=page, url=topic_url)
-        except Exception:
-            goto_fn = getattr(page, "goto", None)
-            if callable(goto_fn):
-                res = goto_fn(topic_url, wait_until="domcontentloaded")
-                if inspect.isawaitable(res):
-                    await res
+    await _stealth_navigate_url(page=page, url=topic_url)
 
 
 async def _click_locator_safe(*, locator: Any, mouse: Any | None = None) -> None:
