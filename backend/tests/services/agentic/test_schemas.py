@@ -108,3 +108,47 @@ def test_selector_candidate_string_and_invalid_confidence_coercion() -> None:
         {"selector": "input#search", "description": "Search input box"}
     )
     assert c_desc.reasoning == "Search input box"
+
+
+def test_curated_draft_report_schema() -> None:
+    from app.services.agentic.schemas import CuratedDraftReport
+
+    report = CuratedDraftReport(
+        draft_content="AI is scaling rapidly.",
+        refined_content="AI is scaling rapidly. Here is why: #AI",
+        is_compliant=True,
+        platform="x",
+        topic_title="#AI",
+        topic_summary="Discussion on AI scaling laws.",
+        refinement_attempts=1,
+        persisted_post_id="post-uuid-123",
+        compliance_report={"is_compliant": True, "char_count": 40},
+        status="persisted",
+    )
+    assert report.is_compliant is True
+    assert report.persisted_post_id == "post-uuid-123"
+
+    data = report.model_dump()
+    reconstructed = CuratedDraftReport.model_validate(data)
+    assert reconstructed == report
+
+
+def test_scraped_batch_report_schema() -> None:
+    from app.services.agentic.schemas import ScrapedBatchReport
+
+    report = ScrapedBatchReport(
+        scraped_topics=[{"title": "#AI", "url": "https://x.com/trends/1"}],
+        topic_tweets_map={"https://x.com/trends/1": [{"text": "AI update"}]},
+        topic_summaries={"https://x.com/trends/1": "Summary"},
+        failed_topics=[],
+        persisted_topic_count=1,
+        persisted_tweet_count=1,
+        page_state="ok",
+        status="persisted",
+    )
+    assert report.persisted_topic_count == 1
+    assert report.page_state == "ok"
+
+    data = report.model_dump()
+    reconstructed = ScrapedBatchReport.model_validate(data)
+    assert reconstructed == report
