@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import random
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -43,6 +44,7 @@ class ScrapingGraphState(TypedDict, total=False):
     session: Any
     # Browser & Recovery
     page: Any
+    mouse: Any
     browser_context: Any
     page_state: str
     session_recovery: dict[str, Any] | None
@@ -110,12 +112,14 @@ def _verify_session_exists(*, user_id: str) -> tuple[bool, str | None]:
 
 
 async def _diagnose_and_recover_overlay(
-    *, page: Any
+    *, page: Any, mouse: Any | None = None
 ) -> tuple[str, str, dict[str, Any] | None, str | None]:
     """Recover session when overlays or transient errors are diagnosed."""
 
     try:
-        recovery = await recover_page_session(page=page, expected_state="home")
+        recovery = await recover_page_session(
+            page=page, expected_state="home", mouse=mouse
+        )
         rec_dict = recovery.model_dump() if hasattr(recovery, "model_dump") else {}
         if not getattr(recovery, "recovered", False):
             err = (
@@ -174,6 +178,7 @@ async def _check_session_and_page_state(
     *,
     user_id: str,
     page: Any,
+    mouse: Any | None = None,
 ) -> tuple[str, str, dict[str, Any] | None, str | None]:
     """Check browser session existence, diagnose sentinel state, and auto-recover overlays."""
     if not _is_valid_page(page):
@@ -193,7 +198,7 @@ async def _check_session_and_page_state(
         return page_state, "unrecoverable", None, f"Unrecoverable state: {page_state}"
 
     if page_state != "ok" or has_overlay:
-        return await _diagnose_and_recover_overlay(page=page)
+        return await _diagnose_and_recover_overlay(page=page, mouse=mouse)
 
     return "ok", "session_ready", None, None
 
@@ -203,6 +208,7 @@ async def init_and_recover_session_node(state: ScrapingGraphState) -> dict[str, 
     raw_user_id = state.get("user_id")
     user_id = str(raw_user_id).strip() if raw_user_id else "default"
     page = state.get("page")
+    mouse = state.get("mouse")
 
     try:
         (
@@ -210,13 +216,16 @@ async def init_and_recover_session_node(state: ScrapingGraphState) -> dict[str, 
             status,
             session_recovery,
             error,
-        ) = await _check_session_and_page_state(user_id=user_id or "default", page=page)
+        ) = await _check_session_and_page_state(
+            user_id=user_id or "default", page=page, mouse=mouse
+        )
         return {
             "page_state": page_state,
             "session_recovery": session_recovery,
             "status": status,
             "error": error,
         }
+
     except Exception as e:
         logger.error(f"Unexpected error in init_and_recover_session_node: {e}")
         return {
@@ -355,17 +364,42 @@ def _parse_single_tweet(t: Any) -> dict[str, Any] | None:
     }
 
 
-async def _ensure_topic_page_navigation(page: Any, topic_url: str) -> None:
-    """Navigate to topic URL if not already on it using stealth human_navigation."""
+async def _ensure_topic_page_navigation(
+    page: Any, topic_url: str, mouse: Any | None = None
+) -> None:
+    """Navigate to topic URL using human mouse click if element is present, else stealth human_navigation."""
     page_url = getattr(page, "url", None)
     if page_url == topic_url:
         return
-    try:
-        await human_navigation(page=page, url=topic_url)
-    except Exception:
-        goto_fn = getattr(page, "goto", None)
-        if callable(goto_fn):
-            await goto_fn(topic_url, wait_until="domcontentloaded")
+
+    clicked = False
+    if mouse and hasattr(mouse, "human_click") and hasattr(page, "locator"):
+        try:
+            import urllib.parse
+
+            clean_q = topic_url.split("?q=")[-1] if "?q=" in topic_url else topic_url
+            encoded_q = urllib.parse.quote(clean_q)
+
+            for cand_sel in [
+                f'a[href*="{clean_q}"]',
+                f'a[href*="{encoded_q}"]',
+                f'[data-testid="trend"]:has(a[href*="{clean_q}"])',
+            ]:
+                loc = page.locator(cand_sel)
+                if hasattr(loc, "count") and await loc.count() > 0:
+                    await mouse.human_click(locator=loc.first)
+                    clicked = True
+                    break
+        except Exception:
+            pass
+
+    if not clicked:
+        try:
+            await human_navigation(page=page, url=topic_url)
+        except Exception:
+            goto_fn = getattr(page, "goto", None)
+            if callable(goto_fn):
+                await goto_fn(topic_url, wait_until="domcontentloaded")
 
 
 async def _extract_single_topic_timeline(
@@ -373,9 +407,18 @@ async def _extract_single_topic_timeline(
     page: Any,
     topic_url: str,
     selectors: dict[str, Any],
+    mouse: Any | None = None,
 ) -> tuple[str | None, list[dict[str, Any]]]:
-    """Navigate to topic URL and extract Grok summary + top tweets."""
-    await _ensure_topic_page_navigation(page, topic_url)
+    """Navigate to topic URL, human scroll, and extract Grok summary + top tweets."""
+    await _ensure_topic_page_navigation(page, topic_url, mouse=mouse)
+    await random_delay(min_sec=1.5, max_sec=3.0)
+
+    # Smooth human scrolling to read timeline and load dynamic tweets
+    if mouse and hasattr(mouse, "human_scroll"):
+        try:
+            await mouse.human_scroll(scrolls=2)
+        except Exception:
+            pass
 
     summary = None
     try:
@@ -394,6 +437,15 @@ async def _extract_single_topic_timeline(
         for t in (raw_tweets or [])
         if (parsed := _parse_single_tweet(t)) is not None
     ]
+
+    # Human back navigation to explore / home after reading
+    if hasattr(page, "go_back"):
+        try:
+            await page.go_back()
+            await random_delay(min_sec=1.5, max_sec=2.5)
+        except Exception:
+            pass
+
     return summary, tweets_data
 
 
@@ -415,6 +467,7 @@ async def _process_single_topic_extraction(
     page: Any,
     topic: Any,
     selectors: dict[str, Any],
+    mouse: Any | None = None,
     **kwargs: Any,
 ) -> None:
     """Extract timeline for a single topic and record outcomes."""
@@ -434,7 +487,7 @@ async def _process_single_topic_extraction(
 
     try:
         summary, tweets = await _extract_single_topic_timeline(
-            page=page, topic_url=topic_url, selectors=selectors
+            page=page, topic_url=topic_url, selectors=selectors, mouse=mouse
         )
         if summary:
             topic_summaries[topic_url] = str(summary)
@@ -447,6 +500,7 @@ async def _process_single_topic_extraction(
 async def extract_topic_timelines_node(state: ScrapingGraphState) -> dict[str, Any]:
     """For top N trending topics, navigate to timeline, extract tweets and Grok summary."""
     page = state.get("page")
+    mouse = state.get("mouse")
     scraped_topics_raw = state.get("scraped_topics", [])
     scraped_topics = scraped_topics_raw if isinstance(scraped_topics_raw, list) else []
     max_topics = _parse_clamped_max_topics(state.get("max_topics"), default=3)
@@ -464,9 +518,17 @@ async def extract_topic_timelines_node(state: ScrapingGraphState) -> dict[str, A
         }
 
     selectors = _load_selectors()
-    for idx, topic in enumerate(scraped_topics[:max_topics]):
+
+    # Randomly select topics from discovered candidates to explore diverse news
+    candidates = list(scraped_topics)
+    if len(candidates) > max_topics:
+        selected_topics = random.sample(candidates, max_topics)
+    else:
+        selected_topics = candidates[:max_topics]
+
+    for idx, topic in enumerate(selected_topics):
         if idx > 0:
-            await random_delay(min_sec=1.5, max_sec=3.0)
+            await random_delay(min_sec=2.0, max_sec=4.0)
         await _process_single_topic_extraction(
             page=page,
             topic=topic,
@@ -474,6 +536,7 @@ async def extract_topic_timelines_node(state: ScrapingGraphState) -> dict[str, A
             topic_tweets_map=topic_tweets_map,
             topic_summaries=topic_summaries,
             failed_topics=failed_topics,
+            mouse=mouse,
         )
 
     return {
@@ -662,6 +725,7 @@ async def scrape_trends_with_graph(
                 "headless": headless,
                 "session": session,
                 "page": page,
+                "mouse": mouse,
                 "browser_context": context,
                 "page_state": "unknown",
                 "session_recovery": None,

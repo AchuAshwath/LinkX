@@ -782,46 +782,107 @@ async def extract_topic_tweets(
 
     await random_delay(min_sec=0.5, max_sec=1.5)
 
-    # Evaluate tweets on page
-    raw_tweets = await page.evaluate(
-        """(selector) => {
-            const tweetElements = document.querySelectorAll(selector);
-            const results = [];
-            for (const el of tweetElements) {
-                const textEl = el.querySelector('[data-testid="tweetText"]');
-                const text = textEl ? textEl.innerText : el.innerText;
-                const authorEl = el.querySelector('[data-testid="User-Name"]');
-                const author = authorEl ? authorEl.innerText.split('\\n')[0] : "unknown";
-                results.push({
-                    author_handle: author,
-                    text: text,
-                    replies: 0,
-                    retweets: 0,
-                    likes: 0,
-                    views: 0
-                });
+    extract_js = """(selector) => {
+        function parseNum(str) {
+            if (!str) return 0;
+            const match = str.match(/(\\d[\\d,\\.]*\\s*[kKmM]?)/);
+            if (!match) return 0;
+            const clean = match[1].toLowerCase().replace(/,/g, '').trim();
+            if (clean.includes('k')) return Math.round(parseFloat(clean.replace('k', '')) * 1000);
+            if (clean.includes('m')) return Math.round(parseFloat(clean.replace('m', '')) * 1000000);
+            const parsed = parseInt(clean, 10);
+            return isNaN(parsed) ? 0 : parsed;
+        }
+
+        const tweetElements = document.querySelectorAll(selector);
+        const results = [];
+        for (const el of tweetElements) {
+            const textEl = el.querySelector('[data-testid="tweetText"]');
+            const text = textEl ? textEl.innerText : el.innerText;
+            if (!text || text.trim().length === 0) continue;
+
+            const authorEl = el.querySelector('[data-testid="User-Name"]');
+            let author = "unknown";
+            if (authorEl) {
+                const lines = authorEl.innerText.split('\\n');
+                const handleLine = lines.find(l => l.startsWith('@'));
+                author = handleLine || lines[0] || "unknown";
             }
-            return results;
-        }""",
-        tweet_sel,
-    )
+
+            const replyBtn = el.querySelector('[data-testid="reply"]');
+            const retweetBtn = el.querySelector('[data-testid="retweet"]');
+            const likeBtn = el.querySelector('[data-testid="like"]');
+            const viewLink = el.querySelector('a[href*="/analytics"]') || el.querySelector('[data-testid="app-text-transition-container"]');
+
+            const replies = parseNum(replyBtn ? replyBtn.innerText || replyBtn.getAttribute('aria-label') : '0');
+            const retweets = parseNum(retweetBtn ? retweetBtn.innerText || retweetBtn.getAttribute('aria-label') : '0');
+            const likes = parseNum(likeBtn ? likeBtn.innerText || likeBtn.getAttribute('aria-label') : '0');
+            const views = parseNum(viewLink ? viewLink.innerText || viewLink.getAttribute('aria-label') : '0');
+
+            results.push({
+                author_handle: author,
+                text: text,
+                replies: replies,
+                retweets: retweets,
+                likes: likes,
+                views: views,
+            });
+        }
+        return results;
+    }"""
+
+    raw_tweets = await page.evaluate(extract_js, tweet_sel)
 
     tweets: list[TrendingTweet] = []
     dummy_topic_id = uuid.uuid4()
+    seen_sigs: set[tuple[str, str]] = set()
 
     if isinstance(raw_tweets, list):
         for raw in raw_tweets:
-            tweet = TrendingTweet(
-                id=uuid.uuid4(),
-                topic_id=dummy_topic_id,
-                author_handle=raw.get("author_handle", "unknown"),
-                text=raw.get("text", ""),
-                replies=raw.get("replies"),
-                retweets=raw.get("retweets"),
-                likes=raw.get("likes"),
-                views=raw.get("views"),
+            handle = str(raw.get("author_handle", "unknown"))
+            txt = str(raw.get("text", ""))
+            seen_sigs.add((handle, txt))
+            tweets.append(
+                TrendingTweet(
+                    id=uuid.uuid4(),
+                    topic_id=dummy_topic_id,
+                    author_handle=handle,
+                    text=txt,
+                    replies=raw.get("replies"),
+                    retweets=raw.get("retweets"),
+                    likes=raw.get("likes"),
+                    views=raw.get("views"),
+                )
             )
-            tweets.append(tweet)
+
+    # If fewer than 5 tweets, scroll down smoothly to load more
+    if len(tweets) < 5 and hasattr(page, "mouse") and hasattr(page.mouse, "wheel"):
+        try:
+            await page.mouse.wheel(delta_x=0, delta_y=700)
+            await random_delay(min_sec=1.0, max_sec=2.0)
+            more_raw = await page.evaluate(extract_js, tweet_sel)
+            if isinstance(more_raw, list):
+                for raw in more_raw:
+                    handle = str(raw.get("author_handle", "unknown"))
+                    txt = str(raw.get("text", ""))
+                    sig = (handle, txt)
+                    if sig in seen_sigs:
+                        continue
+                    seen_sigs.add(sig)
+                    tweets.append(
+                        TrendingTweet(
+                            id=uuid.uuid4(),
+                            topic_id=dummy_topic_id,
+                            author_handle=handle,
+                            text=txt,
+                            replies=raw.get("replies"),
+                            retweets=raw.get("retweets"),
+                            likes=raw.get("likes"),
+                            views=raw.get("views"),
+                        )
+                    )
+        except Exception:
+            pass
 
     return tweets
 
