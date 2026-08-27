@@ -367,20 +367,15 @@ class CuratedDraftReport(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _ensure_non_empty_content(cls, data: Any) -> Any:
-        if isinstance(data, dict):
-            refined = data.get("refined_content")
-            draft = data.get("draft_content")
-            title = data.get("topic_title") or "Trending Topic"
-            fallback = f"Trending: {title}"
-
-            if not draft or not str(draft).strip():
-                data["draft_content"] = (
-                    str(refined).strip()
-                    if (refined and str(refined).strip())
-                    else fallback
-                )
-            if not refined or not str(refined).strip():
-                data["refined_content"] = data["draft_content"]
+        if not isinstance(data, dict):
+            return data
+        title = data.get("topic_title") or "Trending Topic"
+        fallback = f"Trending: {title}"
+        draft = str(data.get("draft_content") or "").strip()
+        refined = str(data.get("refined_content") or "").strip()
+        valid_copy = refined or draft or fallback
+        data["draft_content"] = draft or valid_copy
+        data["refined_content"] = refined or valid_copy
         return data
 
 

@@ -180,6 +180,23 @@ async def _diagnose_and_recover_overlay(
         )
 
 
+async def _diagnose_page_health(page: Any) -> tuple[str, bool]:
+    """Diagnose page state and check for overlays safely."""
+    try:
+        page_state = await detect_page_state(page)
+    except Exception as e:
+        logger.warning(f"Failed to detect page state: {e}")
+        page_state = "error"
+
+    has_overlay = False
+    try:
+        has_overlay = bool(await _detect_overlay(page=page))
+    except Exception:
+        pass
+
+    return page_state, has_overlay
+
+
 async def _check_session_and_page_state(
     *,
     user_id: str,
@@ -199,20 +216,9 @@ async def _check_session_and_page_state(
         state = "logged_out" if "No stored" in (session_err or "") else "error"
         return state, "unrecoverable", None, session_err
 
-    try:
-        page_state = await detect_page_state(page)
-    except Exception as e:
-        logger.warning(f"Failed to detect page state: {e}")
-        page_state = "error"
-
+    page_state, has_overlay = await _diagnose_page_health(page)
     if page_state in ("logged_out", "captcha"):
         return page_state, "unrecoverable", None, f"Unrecoverable state: {page_state}"
-
-    has_overlay = False
-    try:
-        has_overlay = bool(await _detect_overlay(page=page))
-    except Exception:
-        pass
 
     if page_state != "ok" or has_overlay:
         return await _diagnose_and_recover_overlay(page=page)
@@ -278,6 +284,24 @@ def _format_single_topic(t: Any) -> dict[str, Any] | None:
     }
 
 
+async def _try_navigate_to_trends(page: Any) -> tuple[bool, str]:
+    """Attempt navigation to trends and return page state on failure."""
+    try:
+        nav_ok = await navigate_to_trends(page)
+    except Exception as nav_err:
+        logger.warning(f"navigate_to_trends raised exception: {nav_err}")
+        nav_ok = False
+
+    if nav_ok:
+        return True, "ok"
+
+    try:
+        page_state = await detect_page_state(page)
+    except Exception:
+        page_state = "error"
+    return False, page_state
+
+
 async def scrape_explore_trends_node(state: ScrapingGraphState) -> dict[str, Any]:
     """Navigate to explore/trends and extract trending topic blocks."""
     page = state.get("page")
@@ -289,23 +313,17 @@ async def scrape_explore_trends_node(state: ScrapingGraphState) -> dict[str, Any
         }
 
     try:
-        try:
-            nav_ok = await navigate_to_trends(page)
-        except Exception as nav_err:
-            logger.warning(f"navigate_to_trends raised exception: {nav_err}")
-            nav_ok = False
-
+        nav_ok, page_state = await _try_navigate_to_trends(page)
         if not nav_ok:
-            try:
-                page_state = await detect_page_state(page)
-            except Exception:
-                page_state = "error"
+            status = (
+                "error"
+                if page_state not in ("logged_out", "captcha")
+                else "unrecoverable"
+            )
             return {
                 "scraped_topics": [],
                 "page_state": page_state,
-                "status": "error"
-                if page_state not in ("logged_out", "captcha")
-                else "unrecoverable",
+                "status": status,
                 "error": f"Failed to navigate to trends: page state is {page_state}",
             }
 

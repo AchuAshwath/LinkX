@@ -340,26 +340,22 @@ _curation_graph = build_curation_graph()
 
 
 def _build_curation_initial_state(
-    *,
-    user_id: str,
-    topic_title: str,
-    topic_id: str | None,
-    platform: str,
-    target_tone: str | None,
-    session: Any,
+    **kwargs: Any,
 ) -> tuple[CurationGraphState, str, str, str]:
     """Sanitize inputs and initialize CurationGraph state."""
-    clean_user_id = _sanitize_string(user_id, max_length=128)
+    clean_user_id = _sanitize_string(kwargs.get("user_id"), max_length=128)
     clean_topic_title = _sanitize_string(
-        topic_title, max_length=5000, default="Trending Topic"
+        kwargs.get("topic_title"), max_length=5000, default="Trending Topic"
     )
+    topic_id = kwargs.get("topic_id")
     clean_topic_id = (
         _sanitize_string(topic_id, max_length=128) if topic_id is not None else None
     )
     if clean_topic_id == "":
         clean_topic_id = None
 
-    norm_platform = _sanitize_platform(platform)
+    norm_platform = _sanitize_platform(kwargs.get("platform"))
+    target_tone = kwargs.get("target_tone")
     clean_target_tone = (
         _sanitize_string(target_tone, max_length=500)
         if target_tone is not None
@@ -374,7 +370,7 @@ def _build_curation_initial_state(
         "topic_title": clean_topic_title,
         "platform": norm_platform,
         "target_tone": clean_target_tone,
-        "session": session,
+        "session": kwargs.get("session"),
         "topic_summary": None,
         "sample_tweets": [],
         "recent_posts": [],

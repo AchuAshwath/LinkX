@@ -83,6 +83,18 @@ def _make_default_topics() -> list[TrendingTopic]:
     ]
 
 
+def _make_default_tweets() -> list[TrendingTweet]:
+    return [
+        TrendingTweet(
+            topic_id=uuid.uuid4(),
+            author_handle="@sama",
+            text="Autonomous agents will revolutionize social pipelines.",
+            likes=100,
+            views=1000,
+        )
+    ]
+
+
 @contextmanager
 def patch_scraping_pipeline(**kwargs: Any):
     """Unified mock context manager for ScrapingGraph testing."""
@@ -100,15 +112,7 @@ def patch_scraping_pipeline(**kwargs: Any):
     mock_tweets = (
         kwargs.get("tweets_return")
         if kwargs.get("tweets_return") is not None
-        else [
-            TrendingTweet(
-                topic_id=uuid.uuid4(),
-                author_handle="@sama",
-                text="Autonomous agents will revolutionize social pipelines.",
-                likes=100,
-                views=1000,
-            )
-        ]
+        else _make_default_tweets()
     )
     grok_summary = kwargs.get("grok_summary", "AI Revolution is trending.")
     recovery_report = kwargs.get("recovery_report") or SessionRecoveryReport(
@@ -154,7 +158,7 @@ def patch_scraping_pipeline(**kwargs: Any):
         patch(
             "app.services.agentic.scraping_graph.recover_page_session",
             new_callable=AsyncMock,
-            return_value=recovery_report or SessionRecoveryReport(recovered=True),
+            return_value=recovery_report,
         ) as p_rec,
         patch(
             "app.services.agentic.scraping_graph._detect_overlay",
