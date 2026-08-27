@@ -364,20 +364,6 @@ class CuratedDraftReport(BaseModel):
     status: str = Field(default="persisted", description="'persisted' | 'error'")
     error: str | None = Field(default=None)
 
-    @model_validator(mode="before")
-    @classmethod
-    def _ensure_non_empty_content(cls, data: Any) -> Any:
-        if not isinstance(data, dict):
-            return data
-        title = data.get("topic_title") or "Trending Topic"
-        fallback = f"Trending: {title}"
-        draft = str(data.get("draft_content") or "").strip()
-        refined = str(data.get("refined_content") or "").strip()
-        valid_copy = refined or draft or fallback
-        data["draft_content"] = draft or valid_copy
-        data["refined_content"] = refined or valid_copy
-        return data
-
 
 class SessionRecoveryReport(BaseModel):
     """Execution report from session recovery diagnosing and clearing UI overlays."""

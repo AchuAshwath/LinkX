@@ -471,6 +471,39 @@ async def extract_topic_timelines_node(state: ScrapingGraphState) -> dict[str, A
     }
 
 
+def _build_topic_upsert_payload(
+    *,
+    resolved_user_id: uuid.UUID,
+    topic: dict[str, Any],
+    summaries: dict[str, str],
+    now: datetime,
+) -> tuple[str | None, dict[str, Any] | None]:
+    """Extract and sanitize database upsert dictionary for a trending topic."""
+    url = str(topic.get("topic_url") or topic.get("url", "")).strip()
+    if not url:
+        return None, None
+
+    title = str(topic.get("topic_title") or topic.get("title", "")).strip()
+    summary_val = summaries.get(url) or topic.get("summary")
+    post_count_val = _safe_int(topic.get("post_count"), default=0) or None
+
+    payload = {
+        "user_id": resolved_user_id,
+        "topic_url": url[:512],
+        "topic_title": title[:500],
+        "category": (
+            str(topic.get("category"))[:100]
+            if topic.get("category") is not None
+            else None
+        ),
+        "post_count": post_count_val,
+        "summary": str(summary_val) if summary_val is not None else None,
+        "last_seen_at": now,
+        "scraped_at": now,
+    }
+    return url, payload
+
+
 def _persist_single_topic_record(
     *,
     session: Session,
@@ -481,33 +514,14 @@ def _persist_single_topic_record(
     now: datetime,
 ) -> tuple[int, int]:
     """Persist a single topic and its associated tweets to the database."""
-    url = str(topic.get("topic_url") or topic.get("url", "")).strip()
-    if not url:
+    url, topic_data = _build_topic_upsert_payload(
+        resolved_user_id=resolved_user_id,
+        topic=topic,
+        summaries=summaries,
+        now=now,
+    )
+    if not url or not topic_data:
         return 0, 0
-
-    title = str(topic.get("topic_title") or topic.get("title", "")).strip()
-    category = topic.get("category")
-    post_count_val = topic.get("post_count")
-    if isinstance(post_count_val, str):
-        post_count_val = parse_post_count(post_count_val)
-    elif isinstance(post_count_val, (int, float)):
-        post_count_val = int(post_count_val)
-    else:
-        post_count_val = None
-
-    summary_val = summaries.get(url) or topic.get("summary")
-    summary_str = str(summary_val) if summary_val is not None else None
-
-    topic_data = {
-        "user_id": resolved_user_id,
-        "topic_url": url[:512],
-        "topic_title": title[:500],
-        "category": str(category)[:100] if category is not None else None,
-        "post_count": post_count_val,
-        "summary": summary_str,
-        "last_seen_at": now,
-        "scraped_at": now,
-    }
 
     topic_record = crud.upsert_trending_topic(session=session, topic_data=topic_data)
     tweets = tweets_map.get(url, [])
@@ -672,11 +686,13 @@ async def scrape_trends_with_graph(
     user_id: str,
     max_topics: int = 3,
     headless: bool = True,
-    thread_id: str | None = None,
-    session: Any = None,
-    config: dict[str, Any] | None = None,
+    **kwargs: Any,
 ) -> ScrapedBatchReport:
     """Run the ScrapingGraph to harvest, extract, and persist trending topics from X."""
+    thread_id = kwargs.get("thread_id")
+    session = kwargs.get("session")
+    config = kwargs.get("config")
+
     clamped_max_topics = _parse_clamped_max_topics(max_topics, default=3)
     run_config: dict[str, Any] = config.copy() if config else {}
     if thread_id:

@@ -96,31 +96,7 @@ def _make_default_tweets() -> list[TrendingTweet]:
 
 
 @contextmanager
-def patch_scraping_pipeline(**kwargs: Any):
-    """Unified mock context manager for ScrapingGraph testing."""
-    page_state = kwargs.get("page_state", "ok")
-    mock_page = kwargs.get("page") or MockPage(page_state=page_state)
-    mock_mgr = MagicMock()
-    mock_mgr.session_exists.return_value = kwargs.get("session_exists", True)
-    mock_mgr.get_context.return_value = MockContext(mock_page)
-
-    mock_topics = (
-        kwargs.get("sidebar_topics")
-        if kwargs.get("sidebar_topics") is not None
-        else _make_default_topics()
-    )
-    mock_tweets = (
-        kwargs.get("tweets_return")
-        if kwargs.get("tweets_return") is not None
-        else _make_default_tweets()
-    )
-    grok_summary = kwargs.get("grok_summary", "AI Revolution is trending.")
-    recovery_report = kwargs.get("recovery_report") or SessionRecoveryReport(
-        recovered=True
-    )
-    detect_overlay_return = kwargs.get("detect_overlay_return")
-    nav_trends_return = kwargs.get("nav_trends_return", True)
-
+def _patch_browser_layer(mock_mgr: Any, mock_page: Any, page_state: str, nav_ok: bool):
     with (
         patch(
             "app.services.agentic.scraping_graph.BrowserManager", return_value=mock_mgr
@@ -138,8 +114,26 @@ def patch_scraping_pipeline(**kwargs: Any):
         patch(
             "app.services.agentic.scraping_graph.navigate_to_trends",
             new_callable=AsyncMock,
-            return_value=nav_trends_return,
+            return_value=nav_ok,
         ) as p_nav,
+    ):
+        yield {
+            "manager": p_mgr,
+            "page": p_page,
+            "detect_state": p_state,
+            "nav_trends": p_nav,
+        }
+
+
+@contextmanager
+def _patch_scraping_extractors(
+    mock_topics: Any,
+    grok_summary: Any,
+    mock_tweets: Any,
+    recovery_report: Any,
+    detect_overlay_return: Any,
+):
+    with (
         patch(
             "app.services.agentic.scraping_graph.extract_trending_sidebar",
             new_callable=AsyncMock,
@@ -175,10 +169,6 @@ def patch_scraping_pipeline(**kwargs: Any):
         ) as p_replace,
     ):
         yield {
-            "manager": p_mgr,
-            "page": p_page,
-            "detect_state": p_state,
-            "nav_trends": p_nav,
             "sidebar": p_side,
             "grok": p_grok,
             "tweets": p_tweets,
@@ -187,6 +177,47 @@ def patch_scraping_pipeline(**kwargs: Any):
             "upsert": p_upsert,
             "replace": p_replace,
         }
+
+
+@contextmanager
+def patch_scraping_pipeline(**kwargs: Any):
+    """Unified mock context manager for ScrapingGraph testing."""
+    page_state = kwargs.get("page_state", "ok")
+    mock_page = kwargs.get("page") or MockPage(page_state=page_state)
+    mock_mgr = MagicMock()
+    mock_mgr.session_exists.return_value = kwargs.get("session_exists", True)
+    mock_mgr.get_context.return_value = MockContext(mock_page)
+
+    mock_topics = (
+        kwargs.get("sidebar_topics")
+        if kwargs.get("sidebar_topics") is not None
+        else _make_default_topics()
+    )
+    mock_tweets = (
+        kwargs.get("tweets_return")
+        if kwargs.get("tweets_return") is not None
+        else _make_default_tweets()
+    )
+    grok_summary = kwargs.get("grok_summary", "AI Revolution is trending.")
+    recovery_report = kwargs.get("recovery_report") or SessionRecoveryReport(
+        recovered=True
+    )
+    detect_overlay_return = kwargs.get("detect_overlay_return")
+    nav_trends_return = kwargs.get("nav_trends_return", True)
+
+    with (
+        _patch_browser_layer(
+            mock_mgr, mock_page, page_state, nav_trends_return
+        ) as b_patches,
+        _patch_scraping_extractors(
+            mock_topics,
+            grok_summary,
+            mock_tweets,
+            recovery_report,
+            detect_overlay_return,
+        ) as e_patches,
+    ):
+        yield {**b_patches, **e_patches}
 
 
 class TestScrapingGraphSlices:

@@ -421,14 +421,16 @@ async def curate_and_draft_post(
     *,
     user_id: str,
     topic_title: str,
-    topic_id: str | None = None,
     platform: str = "x",
+    topic_id: str | None = None,
     target_tone: str | None = None,
-    thread_id: str | None = None,
-    session: Any = None,
-    config: dict[str, Any] | None = None,
+    **kwargs: Any,
 ) -> CuratedDraftReport:
     """Run the CurationGraph to produce, refine, and persist a platform-optimized social draft."""
+    thread_id = kwargs.get("thread_id")
+    session = kwargs.get("session")
+    config = kwargs.get("config")
+
     (
         initial_state,
         clean_topic_title,
