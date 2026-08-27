@@ -262,6 +262,71 @@ async def _scrape_single_trend_item(
     return topic_info, tweets_data, summary
 
 
+def _persist_single_topic_with_tweets(
+    *,
+    session: Session,
+    target_user_id: Any,
+    top: dict[str, Any],
+    tweets: list[dict[str, Any]],
+    now: Any,
+) -> tuple[Any, list[Any]]:
+    """Upsert topic and insert corresponding tweets into DB."""
+    from app.models import TrendingTopic as TTModel
+    from app.models import TrendingTweet as TTwModel
+
+    t_url = top["topic_url"]
+    existing = session.exec(select(TTModel).where(TTModel.topic_url == t_url)).first()
+
+    if not existing:
+        existing = TTModel(
+            user_id=target_user_id,
+            topic_url=t_url,
+            topic_title=top["topic_title"],
+            category=top.get("category"),
+            post_count=top.get("post_count"),
+            scraped_at=now,
+        )
+        session.add(existing)
+    else:
+        existing.scraped_at = now
+        session.add(existing)
+    session.commit()
+    session.refresh(existing)
+
+    for tw in tweets:
+        session.add(
+            TTwModel(
+                topic_id=existing.id,
+                author_handle=tw["author_handle"],
+                text=tw["text"],
+                replies=tw["replies"],
+                retweets=tw["retweets"],
+                likes=tw["likes"],
+                views=tw["views"],
+            )
+        )
+    session.commit()
+
+    attached = session.exec(
+        select(TTwModel).where(TTwModel.topic_id == existing.id)
+    ).all()
+    return existing, list(attached)
+
+
+def _display_saved_topic_verification(*, existing: Any, attached: list[Any]) -> None:
+    """Display topic details and attached tweets from database."""
+    print(f" • Topic '{existing.topic_title}':")
+    print(f"    - ID:        {existing.id}")
+    print(f"    - Category:  {existing.category or 'Trending'}")
+    print(f"    - Post Count:{existing.post_count or 0:,}")
+    print(f"    - Tweets DB: {len(attached)} attached in 'trending_tweet' ✅")
+    for i, tw_rec in enumerate(attached[:3], 1):
+        s_text = (tw_rec.text or "").replace("\n", " ")[:70]
+        print(
+            f'       [{i}] {tw_rec.author_handle}: "{s_text}..." ({tw_rec.likes or 0:,} likes, {tw_rec.retweets or 0:,} reposts)'
+        )
+
+
 def _persist_and_display_demo_topics(
     *,
     selected_topics: list[dict[str, Any]],
@@ -277,63 +342,21 @@ def _persist_and_display_demo_topics(
     with Session(db_engine) as session:
         from datetime import datetime, timezone
 
-        from app.models import TrendingTopic as TTModel
-        from app.models import TrendingTweet as TTwModel
-
         db_user = session.exec(select(User)).first()
         target_user_id = db_user.id if db_user else None
         now = datetime.now(timezone.utc)
 
         for top in selected_topics:
             t_url = top["topic_url"]
-            existing = session.exec(
-                select(TTModel).where(TTModel.topic_url == t_url)
-            ).first()
-
-            if not existing:
-                existing = TTModel(
-                    user_id=target_user_id,
-                    topic_url=t_url,
-                    topic_title=top["topic_title"],
-                    category=top.get("category"),
-                    post_count=top.get("post_count"),
-                    scraped_at=now,
-                )
-                session.add(existing)
-            else:
-                existing.scraped_at = now
-                session.add(existing)
-            session.commit()
-            session.refresh(existing)
-
-            for tw in topic_tweets_map.get(t_url, []):
-                session.add(
-                    TTwModel(
-                        topic_id=existing.id,
-                        author_handle=tw["author_handle"],
-                        text=tw["text"],
-                        replies=tw["replies"],
-                        retweets=tw["retweets"],
-                        likes=tw["likes"],
-                        views=tw["views"],
-                    )
-                )
-            session.commit()
-
-            attached = session.exec(
-                select(TTwModel).where(TTwModel.topic_id == existing.id)
-            ).all()
-
-            print(f" • Topic '{existing.topic_title}':")
-            print(f"    - ID:        {existing.id}")
-            print(f"    - Category:  {existing.category or 'Trending'}")
-            print(f"    - Post Count:{existing.post_count or 0:,}")
-            print(f"    - Tweets DB: {len(attached)} attached in 'trending_tweet' ✅")
-            for i, tw_rec in enumerate(attached[:3], 1):
-                s_text = (tw_rec.text or "").replace("\n", " ")[:70]
-                print(
-                    f'       [{i}] {tw_rec.author_handle}: "{s_text}..." ({tw_rec.likes or 0:,} likes, {tw_rec.retweets or 0:,} reposts)'
-                )
+            tweets = topic_tweets_map.get(t_url, [])
+            existing, attached = _persist_single_topic_with_tweets(
+                session=session,
+                target_user_id=target_user_id,
+                top=top,
+                tweets=tweets,
+                now=now,
+            )
+            _display_saved_topic_verification(existing=existing, attached=attached)
 
 
 def _resolve_demo_user_id(*, user_id_arg: str | None) -> str:

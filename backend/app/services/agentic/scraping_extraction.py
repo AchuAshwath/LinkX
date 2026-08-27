@@ -148,6 +148,17 @@ def _parse_single_tweet(*, tweet: Any) -> dict[str, Any] | None:
     }
 
 
+def _build_candidate_selectors(*, topic_url: str) -> list[str]:
+    """Generate candidate link selectors for a topic URL."""
+    clean_q = topic_url.split("?q=")[-1] if "?q=" in topic_url else topic_url
+    encoded_q = urllib.parse.quote(clean_q)
+    return [
+        f'a[href*="{clean_q}"]',
+        f'a[href*="{encoded_q}"]',
+        f'[data-testid="trend"]:has(a[href*="{clean_q}"])',
+    ]
+
+
 async def _click_topic_link_if_present(
     *, page: Any, topic_url: str, mouse: Any
 ) -> bool:
@@ -155,25 +166,11 @@ async def _click_topic_link_if_present(
     if not (hasattr(mouse, "human_click") and hasattr(page, "locator")):
         return False
     try:
-        clean_q = topic_url.split("?q=")[-1] if "?q=" in topic_url else topic_url
-        encoded_q = urllib.parse.quote(clean_q)
-
-        for cand_sel in [
-            f'a[href*="{clean_q}"]',
-            f'a[href*="{encoded_q}"]',
-            f'[data-testid="trend"]:has(a[href*="{clean_q}"])',
-        ]:
-            loc_res = page.locator(cand_sel)
-            if inspect.isawaitable(loc_res):
-                loc_res = await loc_res
-            if hasattr(loc_res, "count"):
-                c = loc_res.count()
-                if inspect.isawaitable(c):
-                    c = await c
-                if c > 0:
-                    first_loc = getattr(loc_res, "first", loc_res)
-                    await mouse.human_click(locator=first_loc)
-                    return True
+        for cand_sel in _build_candidate_selectors(topic_url=topic_url):
+            if await _try_click_navigation_locator(
+                page=page, selector=cand_sel, mouse=mouse
+            ):
+                return True
     except Exception as click_err:
         logger.debug(f"Topic link click attempt failed: {click_err}")
     return False

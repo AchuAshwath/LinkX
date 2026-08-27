@@ -265,14 +265,10 @@ async def scrape_explore_trends_node(state: ScrapingGraphState) -> dict[str, Any
         }
 
 
-async def _extract_single_topic_flow(
-    *,
-    page: Any,
-    topic_url: str,
-    selectors: dict[str, Any],
-    mouse: Any | None = None,
-) -> tuple[str | None, list[dict[str, Any]]]:
-    """Perform stealth navigation, summary extraction, tweet extraction, and return navigation."""
+async def _navigate_topic_timeline(
+    *, page: Any, topic_url: str, mouse: Any | None = None
+) -> None:
+    """Navigate to topic URL and perform stealth reading scroll."""
     try:
         await human_navigation(page=page, url=topic_url)
     except Exception:
@@ -280,13 +276,17 @@ async def _extract_single_topic_flow(
             await page.goto(topic_url, wait_until="domcontentloaded")
 
     await random_delay(min_sec=1.0, max_sec=2.0)
-
     if mouse and hasattr(mouse, "human_scroll"):
         try:
             await mouse.human_scroll(scrolls=2)
         except Exception as scroll_err:
             logger.debug(f"Scroll error: {scroll_err}")
 
+
+async def _extract_topic_summary_and_tweets(
+    *, page: Any, topic_url: str, selectors: dict[str, Any]
+) -> tuple[str | None, list[dict[str, Any]]]:
+    """Extract Grok summary and parse top timeline tweets."""
     summary = None
     try:
         summary = await extract_grok_summary(page)
@@ -296,14 +296,26 @@ async def _extract_single_topic_flow(
     raw_tweets = await extract_topic_tweets(
         page=page, topic_url=topic_url, selectors=selectors
     )
-
     tweets_data = [
         parsed
         for t in (raw_tweets or [])
         if (parsed := _parse_single_tweet(tweet=t)) is not None
     ]
-
     return summary, tweets_data
+
+
+async def _extract_single_topic_flow(
+    *,
+    page: Any,
+    topic_url: str,
+    selectors: dict[str, Any],
+    mouse: Any | None = None,
+) -> tuple[str | None, list[dict[str, Any]]]:
+    """Perform stealth navigation, summary extraction, tweet extraction, and return navigation."""
+    await _navigate_topic_timeline(page=page, topic_url=topic_url, mouse=mouse)
+    return await _extract_topic_summary_and_tweets(
+        page=page, topic_url=topic_url, selectors=selectors
+    )
 
 
 async def extract_topic_timelines_node(state: ScrapingGraphState) -> dict[str, Any]:

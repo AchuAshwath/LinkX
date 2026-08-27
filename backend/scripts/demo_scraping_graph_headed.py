@@ -90,6 +90,22 @@ def _display_session_recovery_telemetry(*, report: Any) -> None:
         print(" • Session Recovery:   Clean Page State (No modal overlays detected) ✅")
 
 
+def _display_top_tweets_list(*, tweets: list[dict[str, Any]]) -> None:
+    """Print top 5 timeline tweets with handles and engagement metrics."""
+    if not tweets:
+        return
+    print("        💬 Top Timeline Tweets:")
+    for t_idx, tw in enumerate(tweets[:5], 1):
+        author = tw.get("author_handle", "unknown")
+        txt = (tw.get("text") or "").replace("\n", " ")
+        short_txt = txt[:80] + "..." if len(txt) > 80 else txt
+        likes = tw.get("likes") or 0
+        retweets = tw.get("retweets") or 0
+        print(
+            f'           {t_idx}. {author}: "{short_txt}" ({likes:,} likes, {retweets:,} reposts)'
+        )
+
+
 def _display_single_topic_block(
     *, idx: int, topic: dict[str, Any], report: Any
 ) -> None:
@@ -107,17 +123,7 @@ def _display_single_topic_block(
         clean_sum = summary.replace("\n", " ")[:140]
         print(f"        • Grok Summary: {clean_sum}...")
 
-    if tweets:
-        print("        💬 Top Timeline Tweets:")
-        for t_idx, tw in enumerate(tweets[:5], 1):
-            author = tw.get("author_handle", "unknown")
-            txt = (tw.get("text") or "").replace("\n", " ")
-            short_txt = txt[:80] + "..." if len(txt) > 80 else txt
-            likes = tw.get("likes") or 0
-            retweets = tw.get("retweets") or 0
-            print(
-                f'           {t_idx}. {author}: "{short_txt}" ({likes:,} likes, {retweets:,} reposts)'
-            )
+    _display_top_tweets_list(tweets=tweets)
 
 
 def _display_extracted_timeline_topics(
