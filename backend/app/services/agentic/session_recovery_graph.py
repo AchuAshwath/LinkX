@@ -9,6 +9,7 @@ from typing import Any, TypedDict
 from langgraph.graph import END, START, StateGraph
 
 from app.services.agentic.schemas import SessionRecoveryReport
+from app.services.browser.actions import EvasionMouse, random_delay
 from app.services.browser.diagnostics import detect_page_state
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ DEFAULT_OVERLAY_SELECTORS: dict[str, str] = {
 
 class SessionRecoveryState(TypedDict, total=False):
     page: Any
+    mouse: Any
     expected_state: str
     page_state: str
     overlay_type: str | None
@@ -119,6 +121,26 @@ async def _safe_click(*, page: Any, selector: str, timeout_ms: int = 3000) -> bo
     return False
 
 
+async def _stealth_click(
+    *,
+    page: Any,
+    selector: str,
+    mouse: Any | None = None,
+    timeout_ms: int = 3000,
+) -> bool:
+    """Click element using EvasionMouse Bezier trajectory if available, falling back to safe click."""
+    if mouse is not None and hasattr(mouse, "human_click"):
+        try:
+            await mouse.human_click(selector=selector)
+            return True
+        except Exception as mouse_err:
+            logger.debug(
+                f"EvasionMouse click failed on {selector}, using fallback: {mouse_err}"
+            )
+
+    return await _safe_click(page=page, selector=selector, timeout_ms=timeout_ms)
+
+
 def _is_valid_page(page: Any) -> bool:
     """Check if page object has basic Playwright attributes."""
     if page is None:
@@ -152,6 +174,18 @@ def _classify_sentinel_state(page_state: str) -> dict[str, Any] | None:
     return None
 
 
+def _resolve_diagnose_mouse(*, page: Any, state_mouse: Any) -> Any:
+    """Resolve or construct EvasionMouse instance from page."""
+    if state_mouse is not None:
+        return state_mouse
+    if hasattr(page, "mouse") and hasattr(page, "viewport_size"):
+        try:
+            return EvasionMouse(page)
+        except Exception as m_err:
+            logger.debug(f"Could not initialize EvasionMouse in diagnose node: {m_err}")
+    return None
+
+
 async def diagnose_page_state_node(state: SessionRecoveryState) -> dict[str, Any]:
     """Diagnose page sentinel state and inspect for known modal overlays."""
     page = state.get("page")
@@ -164,6 +198,8 @@ async def diagnose_page_state_node(state: SessionRecoveryState) -> dict[str, Any
             "error": "Invalid or missing page instance provided in state",
         }
 
+    mouse = _resolve_diagnose_mouse(page=page, state_mouse=state.get("mouse"))
+
     try:
         page_state = await detect_page_state(page)
     except Exception as e:
@@ -172,12 +208,14 @@ async def diagnose_page_state_node(state: SessionRecoveryState) -> dict[str, Any
 
     sentinel_result = _classify_sentinel_state(page_state)
     if sentinel_result is not None:
+        sentinel_result["mouse"] = mouse
         return sentinel_result
 
     # Inspect for active modal overlays
     overlay = await _detect_overlay(page=page)
     if overlay:
         return {
+            "mouse": mouse,
             "page_state": ("modal_overlay" if overlay != "error_banner" else "error"),
             "overlay_type": overlay,
             "recovered": False,
@@ -186,6 +224,7 @@ async def diagnose_page_state_node(state: SessionRecoveryState) -> dict[str, Any
 
     # Clean, healthy page
     return {
+        "mouse": mouse,
         "page_state": "ok",
         "overlay_type": None,
         "recovered": True,
@@ -193,47 +232,61 @@ async def diagnose_page_state_node(state: SessionRecoveryState) -> dict[str, Any
     }
 
 
-async def _dismiss_notification_prompt(*, page: Any) -> str:
-    clicked = await _safe_click(
-        page=page, selector=DEFAULT_OVERLAY_SELECTORS["not_now_button"]
-    )
-    if not clicked and hasattr(page, "keyboard"):
+async def _press_escape_fallback(*, page: Any) -> None:
+    """Press Escape key safely as a modal dismissal fallback."""
+    if hasattr(page, "keyboard"):
+        await random_delay(min_sec=0.2, max_sec=0.5)
         await page.keyboard.press("Escape")
+
+
+async def _dismiss_notification_prompt(*, page: Any, mouse: Any | None = None) -> str:
+    clicked = await _stealth_click(
+        page=page,
+        selector=DEFAULT_OVERLAY_SELECTORS["not_now_button"],
+        mouse=mouse,
+    )
+    if not clicked:
+        await _press_escape_fallback(page=page)
     return "click_not_now"
 
 
-async def _dismiss_premium_upsell(*, page: Any) -> str:
-    clicked = await _safe_click(
-        page=page, selector=DEFAULT_OVERLAY_SELECTORS["app_bar_close"]
+async def _dismiss_premium_upsell(*, page: Any, mouse: Any | None = None) -> str:
+    clicked = await _stealth_click(
+        page=page,
+        selector=DEFAULT_OVERLAY_SELECTORS["app_bar_close"],
+        mouse=mouse,
     )
-    if not clicked and hasattr(page, "keyboard"):
-        await page.keyboard.press("Escape")
+    if not clicked:
+        await _press_escape_fallback(page=page)
         return "press_escape"
     return "click_close"
 
 
-async def _dismiss_cookie_consent(*, page: Any) -> str:
-    clicked = await _safe_click(
-        page=page, selector=DEFAULT_OVERLAY_SELECTORS["dismiss_button"]
+async def _dismiss_cookie_consent(*, page: Any, mouse: Any | None = None) -> str:
+    clicked = await _stealth_click(
+        page=page,
+        selector=DEFAULT_OVERLAY_SELECTORS["dismiss_button"],
+        mouse=mouse,
     )
     if not clicked:
         bottom_bar_btn = (
             f"{DEFAULT_OVERLAY_SELECTORS['bottom_bar']} button, "
             f"{DEFAULT_OVERLAY_SELECTORS['bottom_bar']} [role='button']"
         )
-        await _safe_click(page=page, selector=bottom_bar_btn)
+        await _stealth_click(page=page, selector=bottom_bar_btn, mouse=mouse)
     return "click_dismiss"
 
 
-async def _reload_error_banner(*, page: Any) -> str:
+async def _reload_error_banner(*, page: Any, mouse: Any | None = None) -> str:  # noqa: ARG001
     if hasattr(page, "reload"):
         await page.reload(wait_until="domcontentloaded", timeout=15000)
+        await random_delay(min_sec=0.5, max_sec=1.5)
     return "soft_reload"
 
 
-async def _dismiss_fallback(*, page: Any) -> str:
+async def _dismiss_fallback(*, page: Any, mouse: Any | None = None) -> str:  # noqa: ARG001
     if hasattr(page, "keyboard"):
-        await page.keyboard.press("Escape")
+        await _press_escape_fallback(page=page)
         return "press_escape"
     return "none"
 
@@ -247,19 +300,20 @@ DISMISSAL_DISPATCH: dict[str, Any] = {
 
 
 async def _execute_dismissal_action(
-    *, page: Any, overlay_type: str | None
+    *, page: Any, overlay_type: str | None, mouse: Any | None = None
 ) -> str | None:
     """Execute specialized dismissal handler for diagnosed overlay type."""
     if overlay_type in ("auth_redirect", "captcha"):
         return None
     handler = DISMISSAL_DISPATCH.get(overlay_type or "", _dismiss_fallback)
-    return str(await handler(page=page))
+    return str(await handler(page=page, mouse=mouse))
 
 
 async def attempt_dismissal_node(state: SessionRecoveryState) -> dict[str, Any]:
     """Dispatch targeted dismissal action based on diagnosed overlay type."""
     page = state.get("page")
     overlay_type = state.get("overlay_type")
+    mouse = state.get("mouse")
 
     if page is None:
         return {
@@ -270,7 +324,9 @@ async def attempt_dismissal_node(state: SessionRecoveryState) -> dict[str, Any]:
         }
 
     try:
-        action = await _execute_dismissal_action(page=page, overlay_type=overlay_type)
+        action = await _execute_dismissal_action(
+            page=page, overlay_type=overlay_type, mouse=mouse
+        )
         return {
             "dismiss_attempted": True,
             "recovery_action": action,
@@ -374,10 +430,12 @@ async def recover_page_session(
     page: Any,
     expected_state: str = "home",
     timeout_ms: int = 5000,
+    mouse: Any | None = None,
 ) -> SessionRecoveryReport:
     """Execute session recovery workflow on a Playwright page."""
     initial_state: SessionRecoveryState = {
         "page": page,
+        "mouse": mouse,
         "expected_state": expected_state,
         "page_state": "unknown",
         "overlay_type": None,

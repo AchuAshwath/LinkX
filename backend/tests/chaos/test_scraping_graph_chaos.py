@@ -82,7 +82,7 @@ class TestScrapingGraphChaosInputs:
     def test_parse_clamped_max_topics_chaos(
         self, raw_input: Any, default: int, expected: int
     ) -> None:
-        assert _parse_clamped_max_topics(raw_input, default=default) == expected
+        assert _parse_clamped_max_topics(val=raw_input, default=default) == expected
 
     @pytest.mark.parametrize(
         ("val", "default", "expected"),
@@ -101,7 +101,7 @@ class TestScrapingGraphChaosInputs:
         ],
     )
     def test_safe_int_chaos(self, val: Any, default: int, expected: int) -> None:
-        assert _safe_int(val, default=default) == expected
+        assert _safe_int(val=val, default=default) == expected
 
     def test_resolve_user_id_chaos(self) -> None:
         mock_session = MagicMock()

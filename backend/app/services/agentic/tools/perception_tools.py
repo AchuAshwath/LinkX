@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from app.services.agentic.tools.common import get_active_page
+from app.services.browser.actions import human_navigation, random_delay
 from app.services.browser.diagnostics import extract_grok_summary
 from app.services.browser.manager import BrowserManager
 from scripts.scrape_trending_topics import extract_topic_tweets, scrape_trending_topics
@@ -43,6 +44,23 @@ async def scrape_live_explore_trends(
         }
 
 
+def _format_extracted_tweets(
+    *, raw_tweets: list[Any], max_tweets: int
+) -> list[dict[str, Any]]:
+    """Format raw tweet instances into lean dictionary representations."""
+    return [
+        {
+            "author": t.author_handle,
+            "text": t.text,
+            "likes": t.likes or 0,
+            "retweets": t.retweets or 0,
+            "replies": t.replies or 0,
+            "views": t.views or 0,
+        }
+        for t in raw_tweets[:max_tweets]
+    ]
+
+
 async def scrape_topic_timeline(
     *,
     topic_url: str,
@@ -63,33 +81,27 @@ async def scrape_topic_timeline(
         async with manager.get_context("x", headless=True) as context:
             page = await get_active_page(context=context)
 
-            await page.goto(topic_url, wait_until="domcontentloaded", timeout=20000)
+            try:
+                await human_navigation(page=page, url=topic_url)
+            except Exception:
+                await page.goto(topic_url, wait_until="domcontentloaded", timeout=20000)
+
+            await random_delay(min_sec=1.0, max_sec=2.0)
             summary = await extract_grok_summary(page)
 
-            # Use modular extractor
             raw_tweets = await extract_topic_tweets(
                 page=page,
-                topic_url=topic_url,
+                topic_url=page.url,
                 selectors={},
             )
-
-            tweets_data = [
-                {
-                    "author": t.author_handle,
-                    "text": t.text,
-                    "likes": t.likes or 0,
-                    "retweets": t.retweets or 0,
-                    "replies": t.replies or 0,
-                    "views": t.views or 0,
-                }
-                for t in raw_tweets[:max_tweets]
-            ]
 
             return {
                 "success": True,
                 "topic_url": topic_url,
                 "grok_summary": summary,
-                "tweets": tweets_data,
+                "tweets": _format_extracted_tweets(
+                    raw_tweets=raw_tweets or [], max_tweets=max_tweets
+                ),
             }
     except Exception as e:
         logger.error(f"Error scraping topic timeline {topic_url}: {e}")

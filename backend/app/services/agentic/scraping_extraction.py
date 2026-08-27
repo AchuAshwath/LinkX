@@ -1,0 +1,428 @@
+"""Explore trends and topic timeline extraction helpers for ScrapingGraph."""
+
+from __future__ import annotations
+
+import inspect
+import json
+import logging
+import random
+import urllib.parse
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from app.services.agentic.scraping_persistence import _safe_int
+from app.services.browser.actions import human_navigation, random_delay
+from app.services.browser.diagnostics import detect_page_state, extract_grok_summary
+from scripts.scrape_trending_topics import (
+    extract_topic_tweets,
+    navigate_to_trends,
+)
+
+logger = logging.getLogger(__name__)
+
+SELECTORS_PATH = (
+    Path(__file__).parent.parent / "browser" / "selectors" / "x_selectors.json"
+)
+
+
+def _load_selectors() -> dict[str, Any]:
+    """Load selectors from JSON configuration with fallback defaults."""
+    selectors: dict[str, Any] = {}
+    if SELECTORS_PATH.exists():
+        try:
+            with open(SELECTORS_PATH, encoding="utf-8") as f:
+                selectors = json.load(f)
+        except Exception as e:
+            logger.warning(f"Failed to load x_selectors.json: {e}")
+    if "selectors" not in selectors:
+        selectors["selectors"] = {
+            "sidebar_container": (
+                "[data-testid='sidebarColumn'], [data-testid='primaryColumn'], main[role='main']"
+            ),
+            "sidebar_link": (
+                selectors.get("feed", {}).get(
+                    "news_trends",
+                    "[data-testid='trend'], a[href*='/search?q='], [data-testid^='news_sidebar_article']",
+                )
+            ),
+            "tweet_container": selectors.get("feed", {}).get(
+                "timeline_post", "[data-testid='tweet']"
+            ),
+        }
+    return selectors
+
+
+def _parse_clamped_max_topics(*, val: Any, default: int = 3) -> int:
+    """Safely parse and clamp max_topics to [1, 10]."""
+    try:
+        if val is None:
+            return default
+        parsed = int(val)
+        return max(1, min(10, parsed))
+    except (ValueError, TypeError):
+        return default
+
+
+def _format_single_topic(*, topic: Any) -> dict[str, Any] | None:
+    """Format and sanitize a single raw topic dictionary or model."""
+    if not topic:
+        return None
+    if isinstance(topic, dict):
+        raw_title = topic.get("topic_title") or topic.get("title")
+        raw_url = topic.get("topic_url") or topic.get("url")
+        category = topic.get("category")
+        post_count = topic.get("post_count")
+        summary = topic.get("summary")
+    else:
+        raw_title = getattr(topic, "topic_title", None) or getattr(topic, "title", None)
+        raw_url = getattr(topic, "topic_url", None) or getattr(topic, "url", None)
+        category = getattr(topic, "category", None)
+        post_count = getattr(topic, "post_count", None)
+        summary = getattr(topic, "summary", None)
+
+    title = str(raw_title).strip() if raw_title is not None else ""
+    url = str(raw_url).strip() if raw_url is not None else ""
+    return {
+        "topic_title": title,
+        "title": title,
+        "topic_url": url,
+        "url": url,
+        "category": str(category) if category is not None else None,
+        "post_count": post_count,
+        "summary": str(summary) if summary is not None else None,
+    }
+
+
+async def _try_navigate_to_trends(*, page: Any) -> tuple[bool, str]:
+    """Attempt navigation to trends and return page state on failure."""
+    try:
+        nav_ok = await navigate_to_trends(page)
+    except Exception as nav_err:
+        logger.warning(f"navigate_to_trends raised exception: {nav_err}")
+        nav_ok = False
+
+    if nav_ok:
+        return True, "ok"
+
+    try:
+        page_state = await detect_page_state(page)
+    except Exception as state_err:
+        logger.debug(f"Failed to detect page state: {state_err}")
+        page_state = "error"
+    return False, page_state
+
+
+def _parse_single_tweet(*, tweet: Any) -> dict[str, Any] | None:
+    """Parse and sanitize a raw tweet model or dictionary."""
+    if not tweet:
+        return None
+    if isinstance(tweet, dict):
+        raw_author = tweet.get("author_handle") or tweet.get("author")
+        raw_text = tweet.get("text")
+        replies = tweet.get("replies")
+        retweets = tweet.get("retweets")
+        likes = tweet.get("likes")
+        views = tweet.get("views")
+    else:
+        raw_author = getattr(tweet, "author_handle", None) or getattr(
+            tweet, "author", None
+        )
+        raw_text = getattr(tweet, "text", "")
+        replies = getattr(tweet, "replies", None)
+        retweets = getattr(tweet, "retweets", None)
+        likes = getattr(tweet, "likes", None)
+        views = getattr(tweet, "views", None)
+
+    author_handle = str(raw_author).strip() if raw_author else "unknown"
+    if not author_handle:
+        author_handle = "unknown"
+    text_val = str(raw_text) if raw_text is not None else ""
+
+    return {
+        "author_handle": author_handle[:255],
+        "text": text_val,
+        "replies": _safe_int(val=replies),
+        "retweets": _safe_int(val=retweets),
+        "likes": _safe_int(val=likes),
+        "views": _safe_int(val=views),
+    }
+
+
+def _build_candidate_selectors(*, topic_url: str) -> list[str]:
+    """Generate candidate link selectors for a topic URL."""
+    clean_q = topic_url.split("?q=")[-1] if "?q=" in topic_url else topic_url
+    encoded_q = urllib.parse.quote(clean_q)
+    return [
+        f'a[href*="{clean_q}"]',
+        f'a[href*="{encoded_q}"]',
+        f'[data-testid="trend"]:has(a[href*="{clean_q}"])',
+    ]
+
+
+async def _click_topic_link_if_present(
+    *, page: Any, topic_url: str, mouse: Any
+) -> bool:
+    """Attempt to click topic link element using EvasionMouse."""
+    if not (hasattr(mouse, "human_click") and hasattr(page, "locator")):
+        return False
+    try:
+        for cand_sel in _build_candidate_selectors(topic_url=topic_url):
+            if await _try_click_navigation_locator(
+                page=page, selector=cand_sel, mouse=mouse
+            ):
+                return True
+    except Exception as click_err:
+        logger.debug(f"Topic link click attempt failed: {click_err}")
+    return False
+
+
+async def _direct_page_goto(*, page: Any, url: str) -> None:
+    """Fallback direct page navigation."""
+    goto_fn = getattr(page, "goto", None)
+    if callable(goto_fn):
+        res = goto_fn(url, wait_until="domcontentloaded")
+        if inspect.isawaitable(res):
+            await res
+
+
+async def _stealth_navigate_url(*, page: Any, url: str) -> None:
+    """Navigate to URL using stealth human navigation or direct fallback."""
+    try:
+        await human_navigation(page=page, url=url)
+    except Exception:
+        await _direct_page_goto(page=page, url=url)
+
+
+async def _ensure_topic_page_navigation(
+    *, page: Any, topic_url: str, mouse: Any | None = None
+) -> None:
+    """Navigate to topic URL using human mouse click if element is present, else stealth human_navigation."""
+    if getattr(page, "url", None) == topic_url:
+        return
+
+    if mouse and await _click_topic_link_if_present(
+        page=page, topic_url=topic_url, mouse=mouse
+    ):
+        return
+
+    await _stealth_navigate_url(page=page, url=topic_url)
+
+
+async def _click_locator_safe(*, locator: Any, mouse: Any | None = None) -> None:
+    """Click a locator safely with mouse or direct click."""
+    if mouse and hasattr(mouse, "human_click"):
+        await mouse.human_click(locator=locator)
+    else:
+        click_res = locator.click()
+        if inspect.isawaitable(click_res):
+            await click_res
+
+
+async def _try_click_navigation_locator(
+    *, page: Any, selector: str, mouse: Any | None = None
+) -> bool:
+    """Find selector, check if present, click with mouse/direct, and delay."""
+    if not hasattr(page, "locator"):
+        return False
+    try:
+        loc_res = page.locator(selector)
+        if inspect.isawaitable(loc_res):
+            loc_res = await loc_res
+        elem = getattr(loc_res, "first", loc_res)
+        if hasattr(elem, "count"):
+            c = elem.count()
+            if inspect.isawaitable(c):
+                c = await c
+            if c > 0:
+                await _click_locator_safe(locator=elem, mouse=mouse)
+                await random_delay(min_sec=1.5, max_sec=2.5)
+                return True
+    except Exception:
+        pass
+    return False
+
+
+async def _navigate_back_to_explore(*, page: Any, mouse: Any | None = None) -> None:
+    """Return to Explore feed using Back button, Explore sidebar tab, or page history."""
+    try:
+        if await _try_click_navigation_locator(
+            page=page, selector="[data-testid='app-bar-back']", mouse=mouse
+        ):
+            return
+
+        if await _try_click_navigation_locator(
+            page=page,
+            selector="[data-testid='AppTabBar_Explore_Link'], a[href='/explore']",
+            mouse=mouse,
+        ):
+            return
+
+        if hasattr(page, "go_back"):
+            back_res = page.go_back()
+            if inspect.isawaitable(back_res):
+                await back_res
+            await random_delay(min_sec=1.5, max_sec=2.5)
+    except Exception as back_err:
+        logger.debug(f"Back navigation attempt caught exception: {back_err}")
+
+
+async def _scroll_timeline_safely(*, mouse: Any | None) -> None:
+    """Perform smooth human reading scroll if mouse is available."""
+    if not (mouse and hasattr(mouse, "human_scroll")):
+        return
+    try:
+        await mouse.human_scroll(scrolls=2)
+    except Exception as scroll_err:
+        logger.debug(f"Timeline scroll error: {scroll_err}")
+
+
+async def _extract_safe_grok_summary(*, page: Any, topic_url: str) -> str | None:
+    """Extract Grok summary safely without raising exceptions."""
+    try:
+        return await extract_grok_summary(page)
+    except Exception as sum_err:
+        logger.debug(
+            f"Grok summary extraction skipped/failed for {topic_url}: {sum_err}"
+        )
+        return None
+
+
+async def _extract_and_parse_tweets(
+    *, page: Any, topic_url: str, selectors: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Extract tweets from topic timeline and sanitize into dict format."""
+    raw_tweets = await extract_topic_tweets(
+        page=page, topic_url=topic_url, selectors=selectors
+    )
+    return [
+        parsed
+        for t in (raw_tweets or [])
+        if (parsed := _parse_single_tweet(tweet=t)) is not None
+    ]
+
+
+async def _extract_single_topic_timeline(
+    *,
+    page: Any,
+    topic_url: str,
+    selectors: dict[str, Any],
+    mouse: Any | None = None,
+) -> tuple[str | None, list[dict[str, Any]]]:
+    """Navigate to topic URL, human scroll, and extract Grok summary + top tweets."""
+    await _ensure_topic_page_navigation(page=page, topic_url=topic_url, mouse=mouse)
+    await random_delay(min_sec=1.5, max_sec=3.0)
+    await _scroll_timeline_safely(mouse=mouse)
+
+    summary = await _extract_safe_grok_summary(page=page, topic_url=topic_url)
+    tweets_data = await _extract_and_parse_tweets(
+        page=page, topic_url=topic_url, selectors=selectors
+    )
+
+    await _navigate_back_to_explore(page=page, mouse=mouse)
+    return summary, tweets_data
+
+
+def _get_topic_url(*, topic: Any) -> str:
+    """Extract valid HTTP URL from topic dictionary or model."""
+    if not topic:
+        return ""
+    raw_url = (
+        topic.get("topic_url") or topic.get("url")
+        if isinstance(topic, dict)
+        else getattr(topic, "topic_url", None)
+    )
+    url = str(raw_url).strip() if raw_url is not None else ""
+    return url if url.startswith(("http://", "https://")) else ""
+
+
+async def _process_single_topic_extraction(
+    *,
+    page: Any,
+    topic: Any,
+    selectors: dict[str, Any],
+    mouse: Any | None = None,
+) -> tuple[str, str | None, list[dict[str, Any]], str | None]:
+    """Extract timeline for a single topic and return (topic_url, summary, tweets, error)."""
+    topic_url = _get_topic_url(topic=topic)
+    if not topic_url:
+        return "", None, [], None
+
+    try:
+        summary, tweets = await _extract_single_topic_timeline(
+            page=page, topic_url=topic_url, selectors=selectors, mouse=mouse
+        )
+        return topic_url, summary, tweets, None
+    except Exception as e:
+        logger.warning(f"Error extracting timeline for topic {topic_url}: {e}")
+        return topic_url, None, [], str(e)
+
+
+@dataclass
+class TopicBatchResults:
+    """Container for topic extraction batch outcomes."""
+
+    tweets_map: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    summaries: dict[str, str] = field(default_factory=dict)
+    failed: list[dict[str, str]] = field(default_factory=list)
+
+    def record(
+        self,
+        *,
+        url: str,
+        summary: str | None,
+        tweets: list[dict[str, Any]],
+        err: str | None,
+    ) -> None:
+        """Record outcome of single topic extraction."""
+        if not url:
+            return
+        if err:
+            self.failed.append({"topic_url": url, "reason": err})
+            return
+        if summary:
+            self.summaries[url] = str(summary)
+        self.tweets_map[url] = tweets
+
+
+def _select_candidate_topics(
+    *, scraped_topics: list[dict[str, Any]], max_topics: int
+) -> list[dict[str, Any]]:
+    """Select candidate topic subset up to max_topics."""
+    candidates = list(scraped_topics)
+    return (
+        random.sample(candidates, max_topics)
+        if len(candidates) > max_topics
+        else candidates[:max_topics]
+    )
+
+
+async def extract_topic_timelines(
+    *,
+    page: Any,
+    scraped_topics: list[dict[str, Any]],
+    max_topics: int,
+    mouse: Any | None = None,
+) -> tuple[dict[str, list[dict[str, Any]]], dict[str, str], list[dict[str, str]]]:
+    """Loop through top N topics to extract timelines and summaries."""
+    results = TopicBatchResults()
+    if not scraped_topics or page is None:
+        return results.tweets_map, results.summaries, results.failed
+
+    selectors = _load_selectors()
+    selected_topics = _select_candidate_topics(
+        scraped_topics=scraped_topics, max_topics=max_topics
+    )
+
+    for idx, topic in enumerate(selected_topics):
+        if idx > 0:
+            await random_delay(min_sec=2.0, max_sec=4.0)
+        url, summary, tweets, err = await _process_single_topic_extraction(
+            page=page,
+            topic=topic,
+            selectors=selectors,
+            mouse=mouse,
+        )
+        results.record(url=url, summary=summary, tweets=tweets, err=err)
+
+    return results.tweets_map, results.summaries, results.failed
