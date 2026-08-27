@@ -2,20 +2,32 @@
 
 from __future__ import annotations
 
-import inspect
-import json
 import logging
 import random
-import urllib.parse
-from pathlib import Path
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
 from app.services.agentic.schemas import ScrapedBatchReport
+from app.services.agentic.scraping_extraction import (
+    _format_single_topic,
+    _get_topic_url,
+    _load_selectors,
+    _parse_clamped_max_topics,
+    _parse_single_tweet,
+    _try_navigate_to_trends,
+)
 from app.services.agentic.scraping_persistence import (
+    _resolve_user_id,
     _safe_int,
     persist_scraped_batch_records,
+)
+from app.services.agentic.scraping_session import (
+    _diagnose_and_recover_overlay,
+    _diagnose_page_health,
+    _is_valid_page,
+    _validate_user_session,
+    _verify_session_exists,
 )
 from app.services.agentic.session_recovery_graph import (
     _detect_overlay,
@@ -33,9 +45,41 @@ from scripts.scrape_trending_topics import (
 
 logger = logging.getLogger(__name__)
 
-SELECTORS_PATH = (
-    Path(__file__).parent.parent / "browser" / "selectors" / "x_selectors.json"
-)
+__all__ = [
+    "ScrapingGraphState",
+    "build_scraping_graph",
+    "scrape_trends_with_graph",
+    "init_and_recover_session_node",
+    "scrape_explore_trends_node",
+    "extract_topic_timelines_node",
+    "persist_scraped_batch_node",
+    "_route_after_session_check",
+    "_load_selectors",
+    "_parse_clamped_max_topics",
+    "_format_single_topic",
+    "_parse_single_tweet",
+    "_try_navigate_to_trends",
+    "_get_topic_url",
+    "_diagnose_and_recover_overlay",
+    "_diagnose_page_health",
+    "_is_valid_page",
+    "_validate_user_session",
+    "_verify_session_exists",
+    "_detect_overlay",
+    "recover_page_session",
+    "get_active_page",
+    "BrowserManager",
+    "detect_page_state",
+    "extract_grok_summary",
+    "extract_topic_tweets",
+    "extract_trending_sidebar",
+    "navigate_to_trends",
+    "human_navigation",
+    "random_delay",
+    "EvasionMouse",
+    "_safe_int",
+    "_resolve_user_id",
+]
 
 
 class ScrapingGraphState(TypedDict, total=False):
@@ -63,119 +107,6 @@ class ScrapingGraphState(TypedDict, total=False):
     error: str | None
 
 
-def _load_selectors() -> dict[str, Any]:
-    """Load selectors from JSON configuration with fallback defaults."""
-    selectors: dict[str, Any] = {}
-    if SELECTORS_PATH.exists():
-        try:
-            with open(SELECTORS_PATH, encoding="utf-8") as f:
-                selectors = json.load(f)
-        except Exception as e:
-            logger.warning(f"Failed to load x_selectors.json: {e}")
-    if "selectors" not in selectors:
-        selectors["selectors"] = {
-            "sidebar_container": (
-                "[data-testid='sidebarColumn'], [data-testid='primaryColumn'], main[role='main']"
-            ),
-            "sidebar_link": (
-                selectors.get("feed", {}).get(
-                    "news_trends",
-                    "[data-testid='trend'], a[href*='/search?q='], [data-testid^='news_sidebar_article']",
-                )
-            ),
-            "tweet_container": selectors.get("feed", {}).get(
-                "timeline_post", "[data-testid='tweet']"
-            ),
-        }
-    return selectors
-
-
-def _parse_clamped_max_topics(*, val: Any, default: int = 3) -> int:
-    """Safely parse and clamp max_topics to [1, 10]."""
-    try:
-        if val is None:
-            return default
-        parsed = int(val)
-        return max(1, min(10, parsed))
-    except (ValueError, TypeError):
-        return default
-
-
-def _verify_session_exists(*, user_id: str) -> tuple[bool, str | None]:
-    """Verify if user has stored session credentials."""
-    try:
-        manager = BrowserManager(user_id=user_id)
-        if not manager.session_exists("x"):
-            return False, "No stored X.com session found"
-        return True, None
-    except Exception as e:
-        logger.warning(f"BrowserManager session check error: {e}")
-        return False, f"Failed checking session: {e}"
-
-
-async def _diagnose_and_recover_overlay(
-    *, page: Any, mouse: Any | None = None
-) -> tuple[str, str, dict[str, Any] | None, str | None]:
-    """Recover session when overlays or transient errors are diagnosed."""
-
-    try:
-        recovery = await recover_page_session(
-            page=page, expected_state="home", mouse=mouse
-        )
-        rec_dict = recovery.model_dump() if hasattr(recovery, "model_dump") else {}
-        if not getattr(recovery, "recovered", False):
-            err = (
-                getattr(recovery, "error", None)
-                or f"Session recovery failed: {getattr(recovery, 'status', 'failed')}"
-            )
-            return (
-                getattr(recovery, "page_state", "error"),
-                "unrecoverable",
-                rec_dict,
-                err,
-            )
-        return "ok", "session_ready", rec_dict, None
-    except Exception as rec_err:
-        logger.warning(f"Exception during session recovery: {rec_err}")
-        return (
-            "error",
-            "unrecoverable",
-            {"recovered": False, "error": str(rec_err)},
-            f"Session recovery encountered exception: {rec_err}",
-        )
-
-
-async def _diagnose_page_health(*, page: Any) -> tuple[str, bool]:
-    """Diagnose page state and check for overlays safely."""
-    try:
-        page_state = await detect_page_state(page)
-    except Exception as e:
-        logger.warning(f"Failed to detect page state: {e}")
-        page_state = "error"
-
-    has_overlay = False
-    try:
-        has_overlay = bool(await _detect_overlay(page=page))
-    except Exception as overlay_err:
-        logger.debug(f"Overlay check error: {overlay_err}")
-
-    return page_state, has_overlay
-
-
-def _is_valid_page(*, page: Any) -> bool:
-    """Check if page object is a valid Playwright page instance."""
-    return page is not None and (hasattr(page, "goto") or hasattr(page, "locator"))
-
-
-def _validate_user_session(*, user_id: str) -> tuple[str, str, None, str | None] | None:
-    """Check if user session credentials exist on disk."""
-    has_session, session_err = _verify_session_exists(user_id=user_id)
-    if not has_session:
-        state = "logged_out" if "No stored" in (session_err or "") else "error"
-        return state, "unrecoverable", None, session_err
-    return None
-
-
 async def _check_session_and_page_state(
     *,
     user_id: str,
@@ -191,16 +122,51 @@ async def _check_session_and_page_state(
             "No active browser page instance provided in state",
         )
 
-    session_abort = _validate_user_session(user_id=user_id)
-    if session_abort:
-        return session_abort
+    has_session, session_err = _verify_session_exists(user_id=user_id)
+    if not has_session:
+        st = "logged_out" if "No stored" in (session_err or "") else "error"
+        return st, "unrecoverable", None, session_err
 
-    page_state, has_overlay = await _diagnose_page_health(page=page)
+    try:
+        page_state = await detect_page_state(page)
+    except Exception as e:
+        logger.warning(f"Failed to detect page state: {e}")
+        page_state = "error"
+
     if page_state in ("logged_out", "captcha"):
         return page_state, "unrecoverable", None, f"Unrecoverable state: {page_state}"
 
+    has_overlay = False
+    try:
+        has_overlay = bool(await _detect_overlay(page=page))
+    except Exception as overlay_err:
+        logger.debug(f"Overlay check error: {overlay_err}")
+
     if page_state != "ok" or has_overlay:
-        return await _diagnose_and_recover_overlay(page=page, mouse=mouse)
+        try:
+            recovery = await recover_page_session(
+                page=page, expected_state="home", mouse=mouse
+            )
+            rec_dict = recovery.model_dump() if hasattr(recovery, "model_dump") else {}
+            if not getattr(recovery, "recovered", False):
+                err = (
+                    getattr(recovery, "error", None)
+                    or f"Session recovery failed: {getattr(recovery, 'status', 'failed')}"
+                )
+                return (
+                    getattr(recovery, "page_state", "error"),
+                    "unrecoverable",
+                    rec_dict,
+                    err,
+                )
+            return "ok", "session_ready", rec_dict, None
+        except Exception as rec_err:
+            return (
+                "error",
+                "unrecoverable",
+                {"recovered": False, "error": str(rec_err)},
+                f"Session recovery encountered exception: {rec_err}",
+            )
 
     return "ok", "session_ready", None, None
 
@@ -237,55 +203,6 @@ async def init_and_recover_session_node(state: ScrapingGraphState) -> dict[str, 
         }
 
 
-def _format_single_topic(*, topic: Any) -> dict[str, Any] | None:
-    """Format and sanitize a single raw topic dictionary or model."""
-    if not topic:
-        return None
-    if isinstance(topic, dict):
-        raw_title = topic.get("topic_title") or topic.get("title")
-        raw_url = topic.get("topic_url") or topic.get("url")
-        category = topic.get("category")
-        post_count = topic.get("post_count")
-        summary = topic.get("summary")
-    else:
-        raw_title = getattr(topic, "topic_title", None) or getattr(topic, "title", None)
-        raw_url = getattr(topic, "topic_url", None) or getattr(topic, "url", None)
-        category = getattr(topic, "category", None)
-        post_count = getattr(topic, "post_count", None)
-        summary = getattr(topic, "summary", None)
-
-    title = str(raw_title).strip() if raw_title is not None else ""
-    url = str(raw_url).strip() if raw_url is not None else ""
-    return {
-        "topic_title": title,
-        "title": title,
-        "topic_url": url,
-        "url": url,
-        "category": str(category) if category is not None else None,
-        "post_count": post_count,
-        "summary": str(summary) if summary is not None else None,
-    }
-
-
-async def _try_navigate_to_trends(*, page: Any) -> tuple[bool, str]:
-    """Attempt navigation to trends and return page state on failure."""
-    try:
-        nav_ok = await navigate_to_trends(page)
-    except Exception as nav_err:
-        logger.warning(f"navigate_to_trends raised exception: {nav_err}")
-        nav_ok = False
-
-    if nav_ok:
-        return True, "ok"
-
-    try:
-        page_state = await detect_page_state(page)
-    except Exception as state_err:
-        logger.debug(f"Failed to detect page state: {state_err}")
-        page_state = "error"
-    return False, page_state
-
-
 async def scrape_explore_trends_node(state: ScrapingGraphState) -> dict[str, Any]:
     """Navigate to explore/trends and extract trending topic blocks."""
     page = state.get("page")
@@ -297,8 +214,17 @@ async def scrape_explore_trends_node(state: ScrapingGraphState) -> dict[str, Any
         }
 
     try:
-        nav_ok, page_state = await _try_navigate_to_trends(page=page)
+        try:
+            nav_ok = await navigate_to_trends(page)
+        except Exception as nav_err:
+            logger.warning(f"navigate_to_trends raised exception: {nav_err}")
+            nav_ok = False
+
         if not nav_ok:
+            try:
+                page_state = await detect_page_state(page)
+            except Exception:
+                page_state = "error"
             status = (
                 "error"
                 if page_state not in ("logged_out", "captcha")
@@ -333,163 +259,33 @@ async def scrape_explore_trends_node(state: ScrapingGraphState) -> dict[str, Any
         }
 
 
-def _parse_single_tweet(*, tweet: Any) -> dict[str, Any] | None:
-    """Parse and sanitize a raw tweet model or dictionary."""
-    if not tweet:
-        return None
-    if isinstance(tweet, dict):
-        raw_author = tweet.get("author_handle") or tweet.get("author")
-        raw_text = tweet.get("text")
-        replies = tweet.get("replies")
-        retweets = tweet.get("retweets")
-        likes = tweet.get("likes")
-        views = tweet.get("views")
-    else:
-        raw_author = getattr(tweet, "author_handle", None) or getattr(
-            tweet, "author", None
-        )
-        raw_text = getattr(tweet, "text", "")
-        replies = getattr(tweet, "replies", None)
-        retweets = getattr(tweet, "retweets", None)
-        likes = getattr(tweet, "likes", None)
-        views = getattr(tweet, "views", None)
-
-    author_handle = str(raw_author).strip() if raw_author else "unknown"
-    if not author_handle:
-        author_handle = "unknown"
-    text_val = str(raw_text) if raw_text is not None else ""
-
-    return {
-        "author_handle": author_handle[:255],
-        "text": text_val,
-        "replies": _safe_int(replies),
-        "retweets": _safe_int(retweets),
-        "likes": _safe_int(likes),
-        "views": _safe_int(views),
-    }
-
-
-async def _ensure_topic_page_navigation(
-    *, page: Any, topic_url: str, mouse: Any | None = None
-) -> None:
-    """Navigate to topic URL using human mouse click if element is present, else stealth human_navigation."""
-    page_url = getattr(page, "url", None)
-    if page_url == topic_url:
-        return
-
-    clicked = False
-    if mouse and hasattr(mouse, "human_click") and hasattr(page, "locator"):
-        try:
-            clean_q = topic_url.split("?q=")[-1] if "?q=" in topic_url else topic_url
-            encoded_q = urllib.parse.quote(clean_q)
-
-            for cand_sel in [
-                f'a[href*="{clean_q}"]',
-                f'a[href*="{encoded_q}"]',
-                f'[data-testid="trend"]:has(a[href*="{clean_q}"])',
-            ]:
-                loc_res = page.locator(cand_sel)
-                if inspect.isawaitable(loc_res):
-                    loc_res = await loc_res
-                if hasattr(loc_res, "count"):
-                    c = loc_res.count()
-                    if inspect.isawaitable(c):
-                        c = await c
-                    if c > 0:
-                        first_loc = getattr(loc_res, "first", loc_res)
-                        await mouse.human_click(locator=first_loc)
-                        clicked = True
-                        break
-        except Exception as click_err:
-            logger.debug(f"Topic link click attempt failed: {click_err}")
-
-    if not clicked:
-        try:
-            await human_navigation(page=page, url=topic_url)
-        except Exception:
-            goto_fn = getattr(page, "goto", None)
-            if callable(goto_fn):
-                res = goto_fn(topic_url, wait_until="domcontentloaded")
-                if inspect.isawaitable(res):
-                    await res
-
-
-async def _navigate_back_to_explore(*, page: Any, mouse: Any | None = None) -> None:
-    """Return to Explore feed using Back button, Explore sidebar tab, or page history."""
-    try:
-        if hasattr(page, "locator"):
-            loc_result = page.locator("[data-testid='app-bar-back']")
-            if inspect.isawaitable(loc_result):
-                loc_result = await loc_result
-            back_btn = getattr(loc_result, "first", loc_result)
-            if hasattr(back_btn, "count"):
-                c = back_btn.count()
-                if inspect.isawaitable(c):
-                    c = await c
-                if c > 0:
-                    if mouse and hasattr(mouse, "human_click"):
-                        await mouse.human_click(locator=back_btn)
-                    else:
-                        click_res = back_btn.click()
-                        if inspect.isawaitable(click_res):
-                            await click_res
-                    await random_delay(min_sec=1.5, max_sec=2.5)
-                    return
-
-            exp_result = page.locator(
-                "[data-testid='AppTabBar_Explore_Link'], a[href='/explore']"
-            )
-            if inspect.isawaitable(exp_result):
-                exp_result = await exp_result
-            explore_tab = getattr(exp_result, "first", exp_result)
-            if hasattr(explore_tab, "count"):
-                c = explore_tab.count()
-                if inspect.isawaitable(c):
-                    c = await c
-                if c > 0:
-                    if mouse and hasattr(mouse, "human_click"):
-                        await mouse.human_click(locator=explore_tab)
-                    else:
-                        click_res = explore_tab.click()
-                        if inspect.isawaitable(click_res):
-                            await click_res
-                    await random_delay(min_sec=1.5, max_sec=2.5)
-                    return
-
-        if hasattr(page, "go_back"):
-            back_res = page.go_back()
-            if inspect.isawaitable(back_res):
-                await back_res
-            await random_delay(min_sec=1.5, max_sec=2.5)
-    except Exception as back_err:
-        logger.debug(f"Back navigation attempt caught exception: {back_err}")
-
-
-async def _extract_single_topic_timeline(
+async def _extract_single_topic_flow(
     *,
     page: Any,
     topic_url: str,
     selectors: dict[str, Any],
     mouse: Any | None = None,
 ) -> tuple[str | None, list[dict[str, Any]]]:
-    """Navigate to topic URL, human scroll, and extract Grok summary + top tweets."""
-    await _ensure_topic_page_navigation(page=page, topic_url=topic_url, mouse=mouse)
-    await random_delay(min_sec=1.5, max_sec=3.0)
+    """Perform stealth navigation, summary extraction, tweet extraction, and return navigation."""
+    try:
+        await human_navigation(page=page, url=topic_url)
+    except Exception:
+        if hasattr(page, "goto"):
+            await page.goto(topic_url, wait_until="domcontentloaded")
 
-    # Smooth human scrolling to read timeline and load dynamic tweets
+    await random_delay(min_sec=1.0, max_sec=2.0)
+
     if mouse and hasattr(mouse, "human_scroll"):
         try:
             await mouse.human_scroll(scrolls=2)
         except Exception as scroll_err:
-            logger.debug(f"Timeline scroll error: {scroll_err}")
+            logger.debug(f"Scroll error: {scroll_err}")
 
     summary = None
     try:
         summary = await extract_grok_summary(page)
     except Exception as sum_err:
-        logger.debug(
-            f"Grok summary extraction skipped/failed for {topic_url}: {sum_err}"
-        )
+        logger.debug(f"Grok summary extraction skipped: {sum_err}")
 
     raw_tweets = await extract_topic_tweets(
         page=page, topic_url=topic_url, selectors=selectors
@@ -501,58 +297,7 @@ async def _extract_single_topic_timeline(
         if (parsed := _parse_single_tweet(tweet=t)) is not None
     ]
 
-    # Human back navigation to explore / home after reading
-    await _navigate_back_to_explore(page=page, mouse=mouse)
-
     return summary, tweets_data
-
-
-def _get_topic_url(*, topic: Any) -> str:
-    """Extract valid HTTP URL from topic dictionary or model."""
-    if not topic:
-        return ""
-    raw_url = (
-        topic.get("topic_url") or topic.get("url")
-        if isinstance(topic, dict)
-        else getattr(topic, "topic_url", None)
-    )
-    url = str(raw_url).strip() if raw_url is not None else ""
-    return url if url.startswith(("http://", "https://")) else ""
-
-
-async def _process_single_topic_extraction(
-    *,
-    page: Any,
-    topic: Any,
-    selectors: dict[str, Any],
-    mouse: Any | None = None,
-    **kwargs: Any,
-) -> None:
-    """Extract timeline for a single topic and record outcomes."""
-    topic_url = _get_topic_url(topic=topic)
-    if not topic_url:
-        return
-
-    topic_tweets_map = kwargs.get("topic_tweets_map")
-    if topic_tweets_map is None:
-        topic_tweets_map = {}
-    topic_summaries = kwargs.get("topic_summaries")
-    if topic_summaries is None:
-        topic_summaries = {}
-    failed_topics = kwargs.get("failed_topics")
-    if failed_topics is None:
-        failed_topics = []
-
-    try:
-        summary, tweets = await _extract_single_topic_timeline(
-            page=page, topic_url=topic_url, selectors=selectors, mouse=mouse
-        )
-        if summary:
-            topic_summaries[topic_url] = str(summary)
-        topic_tweets_map[topic_url] = tweets
-    except Exception as e:
-        logger.warning(f"Error extracting timeline for topic {topic_url}: {e}")
-        failed_topics.append({"topic_url": topic_url, "reason": str(e)})
 
 
 async def extract_topic_timelines_node(state: ScrapingGraphState) -> dict[str, Any]:
@@ -576,26 +321,32 @@ async def extract_topic_timelines_node(state: ScrapingGraphState) -> dict[str, A
         }
 
     selectors = _load_selectors()
-
-    # Randomly select topics from discovered candidates to explore diverse news
     candidates = list(scraped_topics)
-    if len(candidates) > max_topics:
-        selected_topics = random.sample(candidates, max_topics)
-    else:
-        selected_topics = candidates[:max_topics]
+    selected_topics = (
+        random.sample(candidates, max_topics)
+        if len(candidates) > max_topics
+        else candidates[:max_topics]
+    )
 
     for idx, topic in enumerate(selected_topics):
         if idx > 0:
             await random_delay(min_sec=2.0, max_sec=4.0)
-        await _process_single_topic_extraction(
-            page=page,
-            topic=topic,
-            selectors=selectors,
-            topic_tweets_map=topic_tweets_map,
-            topic_summaries=topic_summaries,
-            failed_topics=failed_topics,
-            mouse=mouse,
-        )
+        topic_url = _get_topic_url(topic=topic)
+        if not topic_url:
+            continue
+        try:
+            summary, tweets = await _extract_single_topic_flow(
+                page=page,
+                topic_url=topic_url,
+                selectors=selectors,
+                mouse=mouse,
+            )
+            if summary:
+                topic_summaries[topic_url] = str(summary)
+            topic_tweets_map[topic_url] = tweets
+        except Exception as e:
+            logger.warning(f"Error extracting timeline for topic {topic_url}: {e}")
+            failed_topics.append({"topic_url": topic_url, "reason": str(e)})
 
     return {
         "topic_tweets_map": topic_tweets_map,

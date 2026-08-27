@@ -225,15 +225,21 @@ async def diagnose_page_state_node(state: SessionRecoveryState) -> dict[str, Any
     }
 
 
+async def _press_escape_fallback(*, page: Any) -> None:
+    """Press Escape key safely as a modal dismissal fallback."""
+    if hasattr(page, "keyboard"):
+        await random_delay(min_sec=0.2, max_sec=0.5)
+        await page.keyboard.press("Escape")
+
+
 async def _dismiss_notification_prompt(*, page: Any, mouse: Any | None = None) -> str:
     clicked = await _stealth_click(
         page=page,
         selector=DEFAULT_OVERLAY_SELECTORS["not_now_button"],
         mouse=mouse,
     )
-    if not clicked and hasattr(page, "keyboard"):
-        await random_delay(min_sec=0.2, max_sec=0.5)
-        await page.keyboard.press("Escape")
+    if not clicked:
+        await _press_escape_fallback(page=page)
     return "click_not_now"
 
 
@@ -243,9 +249,8 @@ async def _dismiss_premium_upsell(*, page: Any, mouse: Any | None = None) -> str
         selector=DEFAULT_OVERLAY_SELECTORS["app_bar_close"],
         mouse=mouse,
     )
-    if not clicked and hasattr(page, "keyboard"):
-        await random_delay(min_sec=0.2, max_sec=0.5)
-        await page.keyboard.press("Escape")
+    if not clicked:
+        await _press_escape_fallback(page=page)
         return "press_escape"
     return "click_close"
 
@@ -274,8 +279,7 @@ async def _reload_error_banner(*, page: Any, mouse: Any | None = None) -> str:  
 
 async def _dismiss_fallback(*, page: Any, mouse: Any | None = None) -> str:  # noqa: ARG001
     if hasattr(page, "keyboard"):
-        await random_delay(min_sec=0.2, max_sec=0.5)
-        await page.keyboard.press("Escape")
+        await _press_escape_fallback(page=page)
         return "press_escape"
     return "none"
 
