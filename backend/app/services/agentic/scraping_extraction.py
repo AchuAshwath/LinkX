@@ -7,6 +7,7 @@ import json
 import logging
 import random
 import urllib.parse
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -357,6 +358,45 @@ async def _process_single_topic_extraction(
         return topic_url, None, [], str(e)
 
 
+@dataclass
+class TopicBatchResults:
+    """Container for topic extraction batch outcomes."""
+
+    tweets_map: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    summaries: dict[str, str] = field(default_factory=dict)
+    failed: list[dict[str, str]] = field(default_factory=list)
+
+    def record(
+        self,
+        *,
+        url: str,
+        summary: str | None,
+        tweets: list[dict[str, Any]],
+        err: str | None,
+    ) -> None:
+        """Record outcome of single topic extraction."""
+        if not url:
+            return
+        if err:
+            self.failed.append({"topic_url": url, "reason": err})
+            return
+        if summary:
+            self.summaries[url] = str(summary)
+        self.tweets_map[url] = tweets
+
+
+def _select_candidate_topics(
+    *, scraped_topics: list[dict[str, Any]], max_topics: int
+) -> list[dict[str, Any]]:
+    """Select candidate topic subset up to max_topics."""
+    candidates = list(scraped_topics)
+    return (
+        random.sample(candidates, max_topics)
+        if len(candidates) > max_topics
+        else candidates[:max_topics]
+    )
+
+
 async def extract_topic_timelines(
     *,
     page: Any,
@@ -365,19 +405,13 @@ async def extract_topic_timelines(
     mouse: Any | None = None,
 ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, str], list[dict[str, str]]]:
     """Loop through top N topics to extract timelines and summaries."""
-    topic_tweets_map: dict[str, list[dict[str, Any]]] = {}
-    topic_summaries: dict[str, str] = {}
-    failed_topics: list[dict[str, str]] = []
-
+    results = TopicBatchResults()
     if not scraped_topics or page is None:
-        return topic_tweets_map, topic_summaries, failed_topics
+        return results.tweets_map, results.summaries, results.failed
 
     selectors = _load_selectors()
-    candidates = list(scraped_topics)
-    selected_topics = (
-        random.sample(candidates, max_topics)
-        if len(candidates) > max_topics
-        else candidates[:max_topics]
+    selected_topics = _select_candidate_topics(
+        scraped_topics=scraped_topics, max_topics=max_topics
     )
 
     for idx, topic in enumerate(selected_topics):
@@ -389,13 +423,6 @@ async def extract_topic_timelines(
             selectors=selectors,
             mouse=mouse,
         )
-        if not url:
-            continue
-        if err:
-            failed_topics.append({"topic_url": url, "reason": err})
-        else:
-            if summary:
-                topic_summaries[url] = str(summary)
-            topic_tweets_map[url] = tweets
+        results.record(url=url, summary=summary, tweets=tweets, err=err)
 
-    return topic_tweets_map, topic_summaries, failed_topics
+    return results.tweets_map, results.summaries, results.failed
