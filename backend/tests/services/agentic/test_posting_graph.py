@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -25,20 +26,17 @@ def _make_fake_post(
     post_id: str,
     user_id: str,
     platform: str = "x",
-    content: str = "Test post content",
-    status: str = "draft",
-    external_post_id: str | None = None,
-    image_url: str | None = None,
+    **kwargs: Any,
 ) -> Post:
     """Helper to instantiate mock Post models cleanly."""
     return Post(
         id=uuid.UUID(post_id),
         owner_id=uuid.UUID(user_id),
-        content=content,
         platform=platform,
-        status=status,
-        external_post_id=external_post_id,
-        image_url=image_url,
+        content=kwargs.get("content", f"Post content for {platform}"),
+        status=kwargs.get("status", "draft"),
+        external_post_id=kwargs.get("external_post_id"),
+        image_url=kwargs.get("image_url"),
     )
 
 

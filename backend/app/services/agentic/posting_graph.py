@@ -218,19 +218,20 @@ def _extract_published_urls(*, platform: str, ext_id: str | None) -> list[str]:
     return urls
 
 
+def _extract_channel_id(*, ext_id: str | None, prefix: str) -> str | None:
+    """Extract individual platform post ID from combined ID string."""
+    if not ext_id or prefix not in ext_id:
+        return None
+    part = ext_id.split(prefix)[1].split(",")[0].strip()
+    return part if part else None
+
+
 def _parse_dual_channel_results(
     *, ext_id: str | None, err: str | None
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Decompose combined external ID into per-channel result dicts."""
-    li_id = None
-    x_id = None
-    if ext_id:
-        if "linkedin:" in ext_id:
-            li_part = ext_id.split("linkedin:")[1].split(",")[0]
-            li_id = li_part if li_part else None
-        if "x:" in ext_id:
-            x_part = ext_id.split("x:")[1].split(",")[0]
-            x_id = x_part if x_part else None
+    li_id = _extract_channel_id(ext_id=ext_id, prefix="linkedin:")
+    x_id = _extract_channel_id(ext_id=ext_id, prefix="x:")
 
     li_res = {
         "success": bool(li_id),

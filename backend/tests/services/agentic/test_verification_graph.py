@@ -147,7 +147,7 @@ async def test_slice_1_x_profile_fuzzy_match() -> None:
             ],
         ),
         patch(
-            "app.services.agentic.verification_graph._scrape_x_profile_feed",
+            "app.services.agentic.verification_graph.scrape_x_profile_feed",
             new_callable=AsyncMock,
             return_value=mock_tweets,
         ),
@@ -190,7 +190,7 @@ async def test_slice_2_x_profile_unverified_post() -> None:
             ],
         ),
         patch(
-            "app.services.agentic.verification_graph._scrape_x_profile_feed",
+            "app.services.agentic.verification_graph.scrape_x_profile_feed",
             new_callable=AsyncMock,
             return_value=[{"text": "Unrelated topic", "status_id": "111"}],
         ),
@@ -275,7 +275,7 @@ async def test_slice_4_dual_platform_batch_verification() -> None:
             return_value=target_posts,
         ),
         patch(
-            "app.services.agentic.verification_graph._scrape_x_profile_feed",
+            "app.services.agentic.verification_graph.scrape_x_profile_feed",
             new_callable=AsyncMock,
             return_value=mock_tweets,
         ),
@@ -370,7 +370,7 @@ async def test_slice_8_cross_posting_dual_channel_verification() -> None:
             return_value=target_posts,
         ),
         patch(
-            "app.services.agentic.verification_graph._scrape_x_profile_feed",
+            "app.services.agentic.verification_graph.scrape_x_profile_feed",
             new_callable=AsyncMock,
             return_value=mock_tweets,
         ),
