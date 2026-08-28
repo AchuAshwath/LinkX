@@ -19,6 +19,29 @@ from app.services.agentic.schemas import (
     VerificationItemReport,
 )
 
+
+def _make_fake_post(
+    *,
+    post_id: str,
+    user_id: str,
+    platform: str = "x",
+    content: str = "Test post content",
+    status: str = "draft",
+    external_post_id: str | None = None,
+    image_url: str | None = None,
+) -> Post:
+    """Helper to instantiate mock Post models cleanly."""
+    return Post(
+        id=uuid.UUID(post_id),
+        owner_id=uuid.UUID(user_id),
+        content=content,
+        platform=platform,
+        status=status,
+        external_post_id=external_post_id,
+        image_url=image_url,
+    )
+
+
 # ==============================================================================
 # VERTICAL SLICE TESTS
 # ==============================================================================
@@ -30,12 +53,11 @@ async def test_slice_1_x_stealth_publishing_happy_path() -> None:
     user_id = str(uuid.uuid4())
     post_id = str(uuid.uuid4())
 
-    fake_post = Post(
-        id=uuid.UUID(post_id),
-        owner_id=uuid.UUID(user_id),
+    fake_post = _make_fake_post(
+        post_id=post_id,
+        user_id=user_id,
         content="Autonomous posting test via LinkX PostingGraph.",
         platform="x",
-        status="draft",
     )
 
     mock_verify_report = VerificationGraphReport(
@@ -92,12 +114,11 @@ async def test_slice_2_linkedin_publishing_happy_path() -> None:
     user_id = str(uuid.uuid4())
     post_id = str(uuid.uuid4())
 
-    fake_post = Post(
-        id=uuid.UUID(post_id),
-        owner_id=uuid.UUID(user_id),
+    fake_post = _make_fake_post(
+        post_id=post_id,
+        user_id=user_id,
         content="LinkedIn professional article on agentic workflows.",
         platform="linkedin",
-        status="draft",
     )
 
     mock_verify_report = VerificationGraphReport(
@@ -155,12 +176,11 @@ async def test_slice_3_dual_platform_cross_posting_success() -> None:
     user_id = str(uuid.uuid4())
     post_id = str(uuid.uuid4())
 
-    fake_post = Post(
-        id=uuid.UUID(post_id),
-        owner_id=uuid.UUID(user_id),
+    fake_post = _make_fake_post(
+        post_id=post_id,
+        user_id=user_id,
         content="Cross-posted content to X and LinkedIn.",
         platform="both",
-        status="draft",
     )
 
     with (
@@ -206,12 +226,11 @@ async def test_slice_4_dual_platform_partial_failure() -> None:
     user_id = str(uuid.uuid4())
     post_id = str(uuid.uuid4())
 
-    fake_post = Post(
-        id=uuid.UUID(post_id),
-        owner_id=uuid.UUID(user_id),
+    fake_post = _make_fake_post(
+        post_id=post_id,
+        user_id=user_id,
         content="Cross-posted content.",
         platform="both",
-        status="draft",
     )
 
     with (
@@ -273,12 +292,11 @@ async def test_slice_6_preflight_failure_disconnected_account() -> None:
     user_id = str(uuid.uuid4())
     post_id = str(uuid.uuid4())
 
-    fake_post = Post(
-        id=uuid.UUID(post_id),
-        owner_id=uuid.UUID(user_id),
+    fake_post = _make_fake_post(
+        post_id=post_id,
+        user_id=user_id,
         content="Post without connected account",
         platform="x",
-        status="draft",
     )
 
     with (
@@ -306,12 +324,11 @@ async def test_slice_7_preflight_failure_missing_image() -> None:
     user_id = str(uuid.uuid4())
     post_id = str(uuid.uuid4())
 
-    fake_post = Post(
-        id=uuid.UUID(post_id),
-        owner_id=uuid.UUID(user_id),
+    fake_post = _make_fake_post(
+        post_id=post_id,
+        user_id=user_id,
         content="Image post with missing file",
         platform="x",
-        status="draft",
         image_url="/non/existent/image.png",
     )
 
@@ -340,12 +357,11 @@ async def test_slice_8_embedded_verification_failure_shielding() -> None:
     user_id = str(uuid.uuid4())
     post_id = str(uuid.uuid4())
 
-    fake_post = Post(
-        id=uuid.UUID(post_id),
-        owner_id=uuid.UUID(user_id),
+    fake_post = _make_fake_post(
+        post_id=post_id,
+        user_id=user_id,
         content="Post where verification times out",
         platform="x",
-        status="draft",
     )
 
     with (
@@ -392,9 +408,9 @@ async def test_slice_10_idempotent_publish_on_already_published_post() -> None:
     user_id = str(uuid.uuid4())
     post_id = str(uuid.uuid4())
 
-    fake_post = Post(
-        id=uuid.UUID(post_id),
-        owner_id=uuid.UUID(user_id),
+    fake_post = _make_fake_post(
+        post_id=post_id,
+        user_id=user_id,
         content="Already published content",
         platform="x",
         status="published",
@@ -428,12 +444,11 @@ async def test_slice_11_cross_posting_separate_channel_results() -> None:
     user_id = str(uuid.uuid4())
     post_id = str(uuid.uuid4())
 
-    fake_post = Post(
-        id=uuid.UUID(post_id),
-        owner_id=uuid.UUID(user_id),
+    fake_post = _make_fake_post(
+        post_id=post_id,
+        user_id=user_id,
         content="Cross-posting content",
         platform="both",
-        status="draft",
     )
 
     with (

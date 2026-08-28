@@ -377,7 +377,8 @@ class XPostClient:
         await mouse.human_type(selector=post_input_selector, text=content, wpm=90.0)
         await random_delay(min_sec=1.0, max_sec=2.0)
 
-    async def _click_publish_and_wait(self, page: Any, mouse: EvasionMouse) -> str:
+    async def _resolve_post_button_selector(self, page: Any) -> str:
+        """Heal or resolve the active post button selector."""
         try:
             await find_or_heal_element(
                 page=page,
@@ -388,10 +389,15 @@ class XPostClient:
         except Exception as e:
             logger.warning(f"Selector diagnosis/healing exception: {e}")
 
-        post_button_selector = self.selectors.get("compose", {}).get(
-            "post_button",
-            "[data-testid='tweetButtonInline']",
+        return str(
+            self.selectors.get("compose", {}).get(
+                "post_button",
+                "[data-testid='tweetButtonInline']",
+            )
         )
+
+    async def _click_publish_and_wait(self, page: Any, mouse: EvasionMouse) -> str:
+        post_btn_sel = await self._resolve_post_button_selector(page)
         logger.info(
             "Setting up network interceptor for CreateTweet GraphQL endpoint..."
         )
@@ -402,7 +408,7 @@ class XPostClient:
                 and response.request.method == "POST",
                 timeout=30000,
             ) as response_info:
-                await mouse.human_click(selector=post_button_selector)
+                await mouse.human_click(selector=post_btn_sel)
 
             response = await response_info.value
             return await self._parse_graphql_response(response, mouse)

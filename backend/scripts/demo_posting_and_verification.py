@@ -174,6 +174,28 @@ def _restore_x_selectors(*, original: dict[str, Any]) -> None:
         json.dump(original, f, indent=2)
 
 
+def _print_published_urls(*, published_urls: list[str], error: str | None) -> None:
+    """Print formatted list of live URLs or error."""
+    if published_urls:
+        print(" 🌐 Live Published URLs:")
+        for idx, u in enumerate(published_urls, start=1):
+            print(f"    [{idx}] {u}")
+    elif error:
+        print(f" ⚠️ Publishing Status: {error}")
+
+
+def _print_verification_summary(*, v_rep: dict[str, Any] | None) -> None:
+    """Print formatted verification summary."""
+    if not v_rep:
+        return
+    print(f" 🔍 Verification Subgraph Status: {v_rep.get('status', 'N/A').upper()}")
+    for item in v_rep.get("items", []):
+        p_name = item.get("platform", "x").upper()
+        v_ok = item.get("is_verified")
+        conf = item.get("match_confidence", 0.0)
+        print(f"    - {p_name}: Verified={v_ok} | Confidence={conf:.2f}")
+
+
 def _display_step_4_results(*, report: PostingGraphReport, duration: float) -> None:
     print("┌" + "─" * 76 + "┐")
     print(
@@ -183,20 +205,8 @@ def _display_step_4_results(*, report: PostingGraphReport, duration: float) -> N
     print(f" ✅ PostingGraph finished in {duration}s | Status: {report.status.upper()}")
     print(f" • Ground Truth Verified: {report.is_verified}")
 
-    if report.published_urls:
-        print(" 🌐 Live Published URLs:")
-        for idx, u in enumerate(report.published_urls, start=1):
-            print(f"    [{idx}] {u}")
-    elif report.error:
-        print(f" ⚠️ Publishing Status: {report.error}")
-
-    if report.verification_report:
-        v_rep = report.verification_report
-        print(f" 🔍 Verification Subgraph Status: {v_rep.get('status', 'N/A').upper()}")
-        for item in v_rep.get("items", []):
-            print(
-                f"    - {item.get('platform', 'x').upper()}: Verified={item.get('is_verified')} | Confidence={item.get('match_confidence', 0.0):.2f}"
-            )
+    _print_published_urls(published_urls=report.published_urls, error=report.error)
+    _print_verification_summary(v_rep=report.verification_report)
     print()
 
 

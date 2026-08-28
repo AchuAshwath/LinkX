@@ -334,6 +334,21 @@ def _verify_single_linkedin_post(*, post: dict[str, Any]) -> VerificationItemRep
     )
 
 
+def _evaluate_target_post(
+    *, post: dict[str, Any], timeline_tweets: list[dict[str, Any]]
+) -> list[VerificationItemReport]:
+    """Evaluate a single target post across its configured platforms."""
+    platform = str(post.get("platform") or "x").lower().strip()
+    if platform in ("both", "all", "linkx"):
+        return [
+            _verify_single_linkedin_post(post=post),
+            _verify_single_x_post(post=post, timeline_tweets=timeline_tweets),
+        ]
+    if platform == "linkedin":
+        return [_verify_single_linkedin_post(post=post)]
+    return [_verify_single_x_post(post=post, timeline_tweets=timeline_tweets)]
+
+
 async def match_and_verify_posts_node(
     state: VerificationGraphState,
 ) -> dict[str, Any]:
@@ -346,36 +361,15 @@ async def match_and_verify_posts_node(
     unverified_ids: list[str] = []
 
     for post in target_posts:
-        platform = str(post.get("platform") or "x").lower().strip()
         post_id = str(post.get("id") or "")
+        reports = _evaluate_target_post(post=post, timeline_tweets=timeline_tweets)
+        for r in reports:
+            items.append(r.model_dump())
 
-        if platform in ("both", "all", "linkx"):
-            # Verify LinkedIn channel
-            li_item = _verify_single_linkedin_post(post=post)
-            items.append(li_item.model_dump())
-
-            # Verify X channel
-            x_item = _verify_single_x_post(post=post, timeline_tweets=timeline_tweets)
-            items.append(x_item.model_dump())
-
-            if li_item.is_verified or x_item.is_verified:
-                verified_ids.append(post_id)
-            else:
-                unverified_ids.append(post_id)
-        elif platform == "linkedin":
-            item = _verify_single_linkedin_post(post=post)
-            items.append(item.model_dump())
-            if item.is_verified:
-                verified_ids.append(item.post_id)
-            else:
-                unverified_ids.append(item.post_id)
+        if any(r.is_verified for r in reports):
+            verified_ids.append(post_id)
         else:
-            item = _verify_single_x_post(post=post, timeline_tweets=timeline_tweets)
-            items.append(item.model_dump())
-            if item.is_verified:
-                verified_ids.append(item.post_id)
-            else:
-                unverified_ids.append(item.post_id)
+            unverified_ids.append(post_id)
 
     return {
         "items": items,

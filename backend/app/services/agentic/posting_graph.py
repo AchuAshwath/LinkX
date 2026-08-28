@@ -10,6 +10,7 @@ from langgraph.graph import END, START, StateGraph
 from sqlmodel import Session
 
 from app import crud
+from app.models import Post
 from app.services.agentic.posting_dispatch import (
     dispatch_dual_post,
     dispatch_linkedin_post,
@@ -102,10 +103,55 @@ def _validate_preflight_accounts(
     return True, None
 
 
+def _build_post_record(*, post: Post, platform: str) -> dict[str, Any]:
+    """Serialize Post model into a clean dict for graph state."""
+    return {
+        "id": str(post.id),
+        "content": post.content,
+        "platform": platform,
+        "image_url": post.image_url,
+        "status": post.status,
+    }
+
+
+def _handle_published_preflight(*, db_post: Post, platform: str) -> dict[str, Any]:
+    """Return idempotent report for already published post."""
+    urls = _extract_published_urls(platform=platform, ext_id=db_post.external_post_id)
+    return {
+        "platform": platform,
+        "post_record": _build_post_record(post=db_post, platform=platform),
+        "external_post_id": db_post.external_post_id,
+        "published_urls": urls,
+        "status": "published",
+    }
+
+
+def _transition_post_to_publishing(*, db_post: Post, session: Session) -> str | None:
+    """Transition post status to 'publishing' with state validation."""
+    if db_post.image_url:
+        image_path = resolve_image_path(image_url=db_post.image_url)
+        if not image_path.exists():
+            return f"Attached image file not found: {image_path}"
+
+    try:
+        validate_transition(current_status=db_post.status, target_status="publishing")
+        db_post.status = "publishing"
+        db_post.publishing_started_at = _now_utc()
+        try:
+            session.add(db_post)
+            session.commit()
+            session.refresh(db_post)
+        except Exception:
+            pass
+        return None
+    except Exception as exc:
+        return f"State transition error: {exc}"
+
+
 async def preflight_check_node(
     state: PostingGraphState,
 ) -> dict[str, Any]:
-    """Validate post existence, ownership, platform connection, and media files."""
+    """Validate target post, accounts, image attachments, and initial state."""
     user_id = state.get("user_id", "")
     post_id = state.get("post_id", "")
     platform_override = state.get("platform")
@@ -135,68 +181,22 @@ async def preflight_check_node(
 
         target_platform = (platform_override or db_post.platform).lower().strip()
 
-        # Idempotent return if already published
         if db_post.status == "published":
-            post_record = {
-                "id": str(db_post.id),
-                "content": db_post.content,
-                "platform": target_platform,
-                "image_url": db_post.image_url,
-                "status": db_post.status,
-            }
-            urls = _extract_published_urls(
-                platform=target_platform, ext_id=db_post.external_post_id
+            return _handle_published_preflight(
+                db_post=db_post, platform=target_platform
             )
-            return {
-                "platform": target_platform,
-                "post_record": post_record,
-                "external_post_id": db_post.external_post_id,
-                "published_urls": urls,
-                "status": "published",
-            }
 
-        # Check account connection
         ok, acc_err = _validate_preflight_accounts(
             user_id=user_id, platform=target_platform, session=s
         )
         if not ok:
             return {"status": "preflight_failed", "error": acc_err}
 
-        # Check media presence if attached
-        if db_post.image_url:
-            image_path = resolve_image_path(image_url=db_post.image_url)
-            if not image_path.exists():
-                return {
-                    "status": "preflight_failed",
-                    "error": f"Attached image file not found: {image_path}",
-                }
+        trans_err = _transition_post_to_publishing(db_post=db_post, session=s)
+        if trans_err:
+            return {"status": "preflight_failed", "error": trans_err}
 
-        # Validate state machine transition to 'publishing'
-        try:
-            validate_transition(
-                current_status=db_post.status, target_status="publishing"
-            )
-            db_post.status = "publishing"
-            db_post.publishing_started_at = _now_utc()
-            try:
-                s.add(db_post)
-                s.commit()
-                s.refresh(db_post)
-            except Exception:
-                pass
-        except Exception as exc:
-            return {
-                "status": "preflight_failed",
-                "error": f"State transition error: {exc}",
-            }
-
-        post_record = {
-            "id": str(db_post.id),
-            "content": db_post.content,
-            "platform": target_platform,
-            "image_url": db_post.image_url,
-            "status": db_post.status,
-        }
+        post_record = _build_post_record(post=db_post, platform=target_platform)
 
     return {
         "platform": target_platform,
