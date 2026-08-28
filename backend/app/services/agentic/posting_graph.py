@@ -16,19 +16,19 @@ from app.services.agentic.posting_dispatch import (
     dispatch_linkedin_post,
     dispatch_x_post,
 )
+from app.services.agentic.posting_preflight import (
+    build_post_record,
+    extract_published_urls,
+    handle_published_preflight,
+    transition_post_to_publishing,
+    validate_preflight_accounts,
+)
 from app.services.agentic.schemas import PostingGraphReport
 from app.services.agentic.tools.common import resolve_session
-from app.services.agentic.tools.context_tools import get_social_account_status
 from app.services.agentic.verification_graph import verify_posts_with_graph
-from app.services.agentic.verification_matching import (
-    format_canonical_post_url,
-)
-from app.services.post_state_machine import validate_transition
 from app.services.publishing import (
     _handle_publish_error,
     _mark_as_published,
-    _now_utc,
-    resolve_image_path,
 )
 
 logger = logging.getLogger(__name__)
@@ -83,71 +83,6 @@ class PostingGraphState(TypedDict, total=False):
     error: str | None
 
 
-def _validate_preflight_accounts(
-    *, user_id: str, platform: str, session: Session
-) -> tuple[bool, str | None]:
-    """Verify target platforms are connected for the user."""
-    status_report = get_social_account_status(user_id=user_id, session=session)
-    clean_platform = platform.lower().strip()
-
-    if clean_platform in ("x", "twitter") and not status_report.x_connected:
-        return False, "X (Twitter) account is not connected or session missing"
-
-    if clean_platform == "linkedin" and not status_report.linkedin_connected:
-        return False, "LinkedIn account is not connected"
-
-    if clean_platform in ("both", "all", "linkx"):
-        if not status_report.x_connected and not status_report.linkedin_connected:
-            return False, "Neither X nor LinkedIn accounts are connected"
-
-    return True, None
-
-
-def _build_post_record(*, post: Post, platform: str) -> dict[str, Any]:
-    """Serialize Post model into a clean dict for graph state."""
-    return {
-        "id": str(post.id),
-        "content": post.content,
-        "platform": platform,
-        "image_url": post.image_url,
-        "status": post.status,
-    }
-
-
-def _handle_published_preflight(*, db_post: Post, platform: str) -> dict[str, Any]:
-    """Return idempotent report for already published post."""
-    urls = _extract_published_urls(platform=platform, ext_id=db_post.external_post_id)
-    return {
-        "platform": platform,
-        "post_record": _build_post_record(post=db_post, platform=platform),
-        "external_post_id": db_post.external_post_id,
-        "published_urls": urls,
-        "status": "published",
-    }
-
-
-def _transition_post_to_publishing(*, db_post: Post, session: Session) -> str | None:
-    """Transition post status to 'publishing' with state validation."""
-    if db_post.image_url:
-        image_path = resolve_image_path(image_url=db_post.image_url)
-        if not image_path.exists():
-            return f"Attached image file not found: {image_path}"
-
-    try:
-        validate_transition(current_status=db_post.status, target_status="publishing")
-        db_post.status = "publishing"
-        db_post.publishing_started_at = _now_utc()
-        try:
-            session.add(db_post)
-            session.commit()
-            session.refresh(db_post)
-        except Exception:
-            pass
-        return None
-    except Exception as exc:
-        return f"State transition error: {exc}"
-
-
 async def preflight_check_node(
     state: PostingGraphState,
 ) -> dict[str, Any]:
@@ -182,40 +117,25 @@ async def preflight_check_node(
         target_platform = (platform_override or db_post.platform).lower().strip()
 
         if db_post.status == "published":
-            return _handle_published_preflight(
-                db_post=db_post, platform=target_platform
-            )
+            return handle_published_preflight(db_post=db_post, platform=target_platform)
 
-        ok, acc_err = _validate_preflight_accounts(
+        ok, acc_err = validate_preflight_accounts(
             user_id=user_id, platform=target_platform, session=s
         )
         if not ok:
             return {"status": "preflight_failed", "error": acc_err}
 
-        trans_err = _transition_post_to_publishing(db_post=db_post, session=s)
+        trans_err = transition_post_to_publishing(db_post=db_post, session=s)
         if trans_err:
             return {"status": "preflight_failed", "error": trans_err}
 
-        post_record = _build_post_record(post=db_post, platform=target_platform)
+        post_record = build_post_record(post=db_post, platform=target_platform)
 
     return {
         "platform": target_platform,
         "post_record": post_record,
         "status": "preflight_passed",
     }
-
-
-def _extract_published_urls(*, platform: str, ext_id: str | None) -> list[str]:
-    """Parse canonical live URLs from platform external ID."""
-    if not ext_id:
-        return []
-    chunks = ext_id.split(",") if "," in ext_id else [ext_id]
-    urls: list[str] = []
-    for chunk in chunks:
-        u = format_canonical_post_url(platform=platform, ext_id=chunk.strip())
-        if u:
-            urls.append(u)
-    return urls
 
 
 def _extract_channel_id(*, ext_id: str | None, prefix: str) -> str | None:
@@ -275,7 +195,7 @@ async def dispatch_publish_node(
             )
             x_res, li_res = _parse_dual_channel_results(ext_id=ext_id, err=err)
 
-        urls = _extract_published_urls(platform=platform, ext_id=ext_id)
+        urls = extract_published_urls(platform=platform, ext_id=ext_id)
 
     if not ok:
         status = "partial_failure" if ext_id else "error"

@@ -7,10 +7,8 @@ import uuid
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
-from sqlmodel import Session, col, select
+from sqlmodel import Session
 
-from app import crud
-from app.models import Post
 from app.services.agentic.schemas import (
     VerificationGraphReport,
     VerificationItemReport,
@@ -22,6 +20,7 @@ from app.services.agentic.verification_matching import (
     probe_url_reachability,
 )
 from app.services.agentic.verification_scraper import scrape_x_profile_feed
+from app.services.agentic.verification_storage import load_target_posts_from_db
 
 logger = logging.getLogger(__name__)
 
@@ -75,74 +74,6 @@ class VerificationGraphState(TypedDict, total=False):
     error: str | None
 
 
-def _load_posts_by_ids(
-    *, session: Session, user_uuid: uuid.UUID, post_ids: list[str]
-) -> list[dict[str, Any]]:
-    """Fetch target posts by explicit post ID list."""
-    target_posts: list[dict[str, Any]] = []
-    for pid_str in post_ids:
-        try:
-            p_uuid = uuid.UUID(pid_str)
-            db_p = crud.get_post(session=session, post_id=p_uuid)
-            if db_p and db_p.owner_id == user_uuid:
-                target_posts.append(
-                    {
-                        "id": str(db_p.id),
-                        "content": db_p.content,
-                        "platform": db_p.platform,
-                        "external_post_id": db_p.external_post_id,
-                        "status": db_p.status,
-                    }
-                )
-        except (ValueError, TypeError):
-            continue
-    return target_posts
-
-
-def _load_recent_published_posts(
-    *, session: Session, user_uuid: uuid.UUID, platform: str
-) -> list[dict[str, Any]]:
-    """Fetch recent published/failed posts for user matching platform."""
-    target_posts: list[dict[str, Any]] = []
-    clean_plat = platform.lower().strip()
-    stmt = (
-        select(Post)
-        .where(Post.owner_id == user_uuid)
-        .where(col(Post.status).in_(["published", "failed"]))
-        .order_by(col(Post.created_at).desc())
-        .limit(5)
-    )
-    for p in session.exec(stmt).all():
-        if clean_plat in ("both", "all", "linkx") or p.platform.lower() == clean_plat:
-            target_posts.append(
-                {
-                    "id": str(p.id),
-                    "content": p.content,
-                    "platform": p.platform,
-                    "external_post_id": p.external_post_id,
-                    "status": p.status,
-                }
-            )
-    return target_posts
-
-
-def _load_target_posts_from_db(
-    *,
-    session: Session,
-    user_uuid: uuid.UUID,
-    post_ids: list[str],
-    platform: str,
-) -> list[dict[str, Any]]:
-    """Fetch target posts from PostgreSQL by IDs or recent published state."""
-    if post_ids:
-        return _load_posts_by_ids(
-            session=session, user_uuid=user_uuid, post_ids=post_ids
-        )
-    return _load_recent_published_posts(
-        session=session, user_uuid=user_uuid, platform=platform
-    )
-
-
 async def fetch_unverified_posts_node(
     state: VerificationGraphState,
 ) -> dict[str, Any]:
@@ -160,7 +91,7 @@ async def fetch_unverified_posts_node(
         }
 
     with resolve_session(session=state.get("session")) as s:
-        target_posts = _load_target_posts_from_db(
+        target_posts = load_target_posts_from_db(
             session=s,
             user_uuid=user_uuid,
             post_ids=post_ids,

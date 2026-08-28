@@ -18,6 +18,27 @@ __all__ = [
 ]
 
 
+async def _extract_status_id(tweet_loc: Any) -> str | None:
+    """Extract tweet status ID from link hrefs."""
+    links = tweet_loc.locator("a[href*='/status/']")
+    if await links.count() > 0:
+        href = await links.first.get_attribute("href")
+        if href and "/status/" in href:
+            return str(href.split("/status/")[-1].split("?")[0])
+    return None
+
+
+async def _extract_single_tweet(tweet_loc: Any) -> dict[str, Any] | None:
+    """Extract status ID and text from a single tweet DOM element."""
+    try:
+        text_loc = tweet_loc.locator("[data-testid='tweetText']")
+        text = await text_loc.inner_text() if await text_loc.is_visible() else ""
+        status_id = await _extract_status_id(tweet_loc)
+        return {"status_id": status_id, "text": text.strip()}
+    except Exception:
+        return None
+
+
 async def extract_profile_timeline_tweets(
     *, page: Any, limit: int = 5
 ) -> list[dict[str, Any]]:
@@ -34,22 +55,9 @@ async def extract_profile_timeline_tweets(
     count = await locators.count()
 
     for idx in range(min(count, limit)):
-        tweet_loc = locators.nth(idx)
-        try:
-            text_loc = tweet_loc.locator("[data-testid='tweetText']")
-            text = await text_loc.inner_text() if await text_loc.is_visible() else ""
-
-            status_id: str | None = None
-            links = tweet_loc.locator("a[href*='/status/']")
-            link_count = await links.count()
-            if link_count > 0:
-                href = await links.first.get_attribute("href")
-                if href and "/status/" in href:
-                    status_id = href.split("/status/")[-1].split("?")[0]
-
-            tweets.append({"status_id": status_id, "text": text.strip()})
-        except Exception:
-            continue
+        item = await _extract_single_tweet(locators.nth(idx))
+        if item:
+            tweets.append(item)
 
     return tweets
 

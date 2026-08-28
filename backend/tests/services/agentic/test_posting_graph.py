@@ -47,40 +47,32 @@ def _make_fake_post(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    (
-        "platform",
-        "dispatch_path",
-        "dispatch_ret",
-        "expected_url",
-        "acc_kwargs",
-    ),
+    "case",
     [
-        (
-            "x",
-            "app.services.agentic.posting_graph.dispatch_x_post",
-            (True, "1829384729384", None),
-            "https://x.com/i/status/1829384729384",
-            {"x_connected": True, "linkedin_connected": False},
-        ),
-        (
-            "linkedin",
-            "app.services.agentic.posting_graph.dispatch_linkedin_post",
-            (True, "urn:li:share:998877", None),
-            "https://www.linkedin.com/feed/update/urn:li:share:998877",
-            {"x_connected": False, "linkedin_connected": True},
-        ),
+        {
+            "platform": "x",
+            "dispatch_path": "app.services.agentic.posting_graph.dispatch_x_post",
+            "dispatch_ret": (True, "1829384729384", None),
+            "expected_url": "https://x.com/i/status/1829384729384",
+            "acc_kwargs": {"x_connected": True, "linkedin_connected": False},
+        },
+        {
+            "platform": "linkedin",
+            "dispatch_path": "app.services.agentic.posting_graph.dispatch_linkedin_post",
+            "dispatch_ret": (True, "urn:li:share:998877", None),
+            "expected_url": "https://www.linkedin.com/feed/update/urn:li:share:998877",
+            "acc_kwargs": {"x_connected": False, "linkedin_connected": True},
+        },
     ],
 )
 async def test_slices_single_platform_publishing_happy_paths(
-    platform: str,
-    dispatch_path: str,
-    dispatch_ret: tuple[bool, str, str | None],
-    expected_url: str,
-    acc_kwargs: dict[str, bool],
+    case: dict[str, Any],
 ) -> None:
     """Slices 1 & 2: Happy path single-channel publishing with embedded verification."""
     user_id = str(uuid.uuid4())
     post_id = str(uuid.uuid4())
+    platform = case["platform"]
+    expected_url = case["expected_url"]
 
     fake_post = _make_fake_post(
         post_id=post_id,
@@ -107,13 +99,13 @@ async def test_slices_single_platform_publishing_happy_paths(
     with (
         patch("app.crud.get_post", return_value=fake_post),
         patch(
-            "app.services.agentic.posting_graph.get_social_account_status",
-            return_value=AccountStatusReport(user_id=user_id, **acc_kwargs),
+            "app.services.agentic.posting_preflight.get_social_account_status",
+            return_value=AccountStatusReport(user_id=user_id, **case["acc_kwargs"]),
         ),
         patch(
-            dispatch_path,
+            case["dispatch_path"],
             new_callable=AsyncMock,
-            return_value=dispatch_ret,
+            return_value=case["dispatch_ret"],
         ),
         patch(
             "app.services.agentic.posting_graph.verify_posts_with_graph",
@@ -136,39 +128,33 @@ async def test_slices_single_platform_publishing_happy_paths(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    (
-        "dispatch_ret",
-        "mock_verify_ids",
-        "expected_status",
-        "expected_err",
-        "expected_urls",
-    ),
+    "case",
     [
-        (
-            (True, "linkedin:urn:li:share:123,x:456", None),
-            ["dual-post-id"],
-            "published",
-            None,
-            [
+        {
+            "dispatch_ret": (True, "linkedin:urn:li:share:123,x:456", None),
+            "mock_verify_ids": ["dual-post-id"],
+            "expected_status": "published",
+            "expected_err": None,
+            "expected_urls": [
                 "https://x.com/i/status/456",
                 "https://www.linkedin.com/feed/update/urn:li:share:123",
             ],
-        ),
-        (
-            (False, "linkedin:urn:li:share:123", "LinkedIn published, but X failed"),
-            [],
-            "partial_failure",
-            "LinkedIn published, but X failed",
-            [],
-        ),
+        },
+        {
+            "dispatch_ret": (
+                False,
+                "linkedin:urn:li:share:123",
+                "LinkedIn published, but X failed",
+            ),
+            "mock_verify_ids": [],
+            "expected_status": "partial_failure",
+            "expected_err": "LinkedIn published, but X failed",
+            "expected_urls": [],
+        },
     ],
 )
 async def test_slices_dual_platform_cross_posting(
-    dispatch_ret: tuple[bool, str, str | None],
-    mock_verify_ids: list[str],
-    expected_status: str,
-    expected_err: str | None,
-    expected_urls: list[str],
+    case: dict[str, Any],
 ) -> None:
     """Slices 3 & 4: Dual-platform cross posting (success and partial failure)."""
     user_id = str(uuid.uuid4())
@@ -184,7 +170,7 @@ async def test_slices_dual_platform_cross_posting(
     with (
         patch("app.crud.get_post", return_value=fake_post),
         patch(
-            "app.services.agentic.posting_graph.get_social_account_status",
+            "app.services.agentic.posting_preflight.get_social_account_status",
             return_value=AccountStatusReport(
                 user_id=user_id, x_connected=True, linkedin_connected=True
             ),
@@ -192,14 +178,14 @@ async def test_slices_dual_platform_cross_posting(
         patch(
             "app.services.agentic.posting_graph.dispatch_dual_post",
             new_callable=AsyncMock,
-            return_value=dispatch_ret,
+            return_value=case["dispatch_ret"],
         ),
         patch(
             "app.services.agentic.posting_graph.verify_posts_with_graph",
             new_callable=AsyncMock,
             return_value=VerificationGraphReport(
-                verified_post_ids=mock_verify_ids,
-                status="completed" if mock_verify_ids else "partial",
+                verified_post_ids=case["mock_verify_ids"],
+                status="completed" if case["mock_verify_ids"] else "partial",
             ),
         ),
         patch("app.services.agentic.posting_graph._mark_as_published"),
@@ -210,12 +196,12 @@ async def test_slices_dual_platform_cross_posting(
             platform="both",
         )
 
-        assert report.status == expected_status
-        if expected_err:
-            assert expected_err in str(report.error)
-        if expected_urls:
-            assert len(report.published_urls) == len(expected_urls)
-            for u in expected_urls:
+        assert report.status == case["expected_status"]
+        if case["expected_err"]:
+            assert case["expected_err"] in str(report.error)
+        if case["expected_urls"]:
+            assert len(report.published_urls) == len(case["expected_urls"])
+            for u in case["expected_urls"]:
                 assert u in report.published_urls
 
 
@@ -268,7 +254,7 @@ async def test_slices_preflight_failures(
     with (
         patch("app.crud.get_post", return_value=fake_post),
         patch(
-            "app.services.agentic.posting_graph.get_social_account_status",
+            "app.services.agentic.posting_preflight.get_social_account_status",
             return_value=AccountStatusReport(user_id=user_id, **acc_kwargs),
         ),
     ):
@@ -298,7 +284,7 @@ async def test_slice_8_embedded_verification_failure_shielding() -> None:
     with (
         patch("app.crud.get_post", return_value=fake_post),
         patch(
-            "app.services.agentic.posting_graph.get_social_account_status",
+            "app.services.agentic.posting_preflight.get_social_account_status",
             return_value=AccountStatusReport(
                 user_id=user_id, x_connected=True, linkedin_connected=False
             ),
@@ -385,7 +371,7 @@ async def test_slice_11_cross_posting_separate_channel_results() -> None:
     with (
         patch("app.crud.get_post", return_value=fake_post),
         patch(
-            "app.services.agentic.posting_graph.get_social_account_status",
+            "app.services.agentic.posting_preflight.get_social_account_status",
             return_value=AccountStatusReport(
                 user_id=user_id, x_connected=True, linkedin_connected=True
             ),
