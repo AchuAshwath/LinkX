@@ -77,23 +77,20 @@ def route_after_harvest(state: TrendToDraftState) -> str:
 
 async def _curate_single_topic(
     *,
-    user_id: str,
+    state: TrendToDraftState,
     topic_item: dict[str, Any],
-    platform: str,
-    target_tone: str | None,
-    session: Any,
 ) -> CuratedDraftReport | None:
     """Curate and refine a single social draft for a given topic."""
     title = topic_item.get("title", "")
     topic_id = topic_item.get("id")
     try:
         return await curate_and_draft_post(
-            user_id=user_id,
+            user_id=state.get("user_id", ""),
             topic_title=title,
             topic_id=topic_id,
-            platform=platform,
-            target_tone=target_tone,
-            session=session,
+            platform=state.get("platform", "both"),
+            target_tone=state.get("target_tone"),
+            session=state.get("session"),
         )
     except Exception as exc:
         logger.warning(f"Draft curation failed for topic '{title}': {exc}")
@@ -111,10 +108,6 @@ async def generate_curated_drafts_node(
     state: TrendToDraftState,
 ) -> dict[str, Any]:
     """Iterate through harvested trends and synthesize polished post drafts via CurationGraph."""
-    user_id = state.get("user_id", "")
-    platform = state.get("platform", "both")
-    target_tone = state.get("target_tone")
-    session = state.get("session")
     topics = state.get("scraped_topics", [])
 
     curated_drafts: list[dict[str, Any]] = []
@@ -123,11 +116,8 @@ async def generate_curated_drafts_node(
 
     for topic_item in topics:
         curate_report = await _curate_single_topic(
-            user_id=user_id,
+            state=state,
             topic_item=topic_item,
-            platform=platform,
-            target_tone=target_tone,
-            session=session,
         )
         if curate_report is None:
             had_error = True
