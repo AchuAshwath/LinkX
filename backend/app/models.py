@@ -231,6 +231,7 @@ class AIDraftRequest(SQLModel):
 
 class AIDraftResponse(SQLModel):
     content: str
+    post_id: uuid.UUID | None = None
 
 
 # --- SocialAccount (OAuth / Browser session metadata) ---

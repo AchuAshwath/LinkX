@@ -115,12 +115,14 @@ interface PostInputFormBodyProps {
   removeMedia: () => void
   isSubmitting: boolean
   isAiGenerating?: boolean
+  isAiMode?: boolean
   setActionType: (type: "draft" | "schedule" | "post") => void
   canPublishOrSchedule: boolean
   isXPremium?: boolean
   onImageClick: () => void
   handleSubmit: (action: "draft" | "schedule" | "post") => void
-  onAiDraftClick?: () => void
+  onToggleAiMode?: () => void
+  onAiDraftSubmit?: () => void
   onCancel?: () => void
   scheduledAt?: Date
   setScheduledAt: (date?: Date) => void
@@ -140,12 +142,14 @@ function PostInputFormBody({
   removeMedia,
   isSubmitting,
   isAiGenerating,
+  isAiMode = false,
   setActionType,
   canPublishOrSchedule,
   isXPremium,
   onImageClick,
   handleSubmit,
-  onAiDraftClick,
+  onToggleAiMode,
+  onAiDraftSubmit,
   onCancel,
   scheduledAt,
   setScheduledAt,
@@ -170,7 +174,11 @@ function PostInputFormBody({
         ref={textareaRef}
         value={content}
         onChange={handleContentChange}
-        placeholder="What's happening?"
+        placeholder={
+          isAiMode
+            ? "Type a topic, idea, or notes for AI to draft..."
+            : "What's happening?"
+        }
         aria-label="Post content"
         rows={2}
         className="w-full bg-transparent border-0 outline-none resize-none text-[15px] sm:text-[16px] leading-relaxed placeholder:text-muted-foreground/60 focus:outline-none focus:ring-0 p-0 text-foreground min-h-[64px]"
@@ -198,6 +206,7 @@ function PostInputFormBody({
         <PostActionBar
           isSubmitting={isSubmitting}
           isAiGenerating={isAiGenerating}
+          isAiMode={isAiMode}
           isContentEmpty={content.trim().length === 0 && !imageUrl}
           canPublishOrSchedule={canPublishOrSchedule}
           currentLength={content.length}
@@ -206,7 +215,8 @@ function PostInputFormBody({
           onActionTypeChange={setActionType}
           onImageClick={onImageClick}
           onDraftClick={() => handleSubmit("draft")}
-          onAiDraftClick={onAiDraftClick}
+          onToggleAiMode={onToggleAiMode}
+          onAiDraftSubmit={onAiDraftSubmit}
           onScheduleClick={() => handleSubmit("schedule")}
           onPostClick={() => handleSubmit("post")}
           onCancelClick={onCancel}
@@ -342,12 +352,14 @@ export function PostInputBox({
         removeMedia={form.removeMedia}
         isSubmitting={isSubmitting}
         isAiGenerating={form.isGeneratingAiDraft}
+        isAiMode={form.isAiMode}
         setActionType={form.setActionType}
         canPublishOrSchedule={canPublishOrSchedule}
         isXPremium={Boolean(xStatus?.is_premium)}
         onImageClick={() => fileInputRef.current?.click()}
         handleSubmit={onSubmitHandler}
-        onAiDraftClick={onAiDraftHandler}
+        onToggleAiMode={form.toggleAiMode}
+        onAiDraftSubmit={onAiDraftHandler}
         onCancel={onCancel}
         scheduledAt={form.scheduledAt}
         setScheduledAt={form.setScheduledAt}

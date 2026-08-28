@@ -36,6 +36,18 @@ export const AIDraftResponseSchema = {
         content: {
             type: 'string',
             title: 'Content'
+        },
+        post_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Post Id'
         }
     },
     type: 'object',

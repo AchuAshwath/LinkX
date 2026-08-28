@@ -15,6 +15,7 @@ import * as React from "react"
 import { PostsService, type PostUpdate } from "@/client"
 import type { Platform } from "@/components/Common/PlatformSelector"
 import {
+  DraftingPost,
   DraftPost,
   FailedPost,
   Posted,
@@ -43,7 +44,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import useAuth from "@/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
+import { useActiveDrafts } from "@/hooks/useDraftingStore"
 import {
   handleError,
   transformToDraftPost,
@@ -688,8 +691,29 @@ function PostsFeedList({
   onPublish: (id: string) => void
   isPublishing: (id: string) => boolean
 }) {
+  const activeDrafts = useActiveDrafts()
+  const { user } = useAuth()
+
   return (
     <div className="w-full pb-20">
+      {activeCategory === "drafts" &&
+        activeDrafts.map((draft) => (
+          <DraftingPost
+            key={draft.id}
+            isDrafting
+            post={{
+              id: draft.id,
+              author: {
+                name: user?.full_name || user?.email || "You",
+                username: user?.email?.split("@")[0] || "user",
+              },
+              content: draft.prompt,
+              createdAt: draft.startedAt,
+              platform: (draft.platform as any) || "linkx",
+              status: "drafting",
+            }}
+          />
+        ))}
       {activePosts.map((post) => {
         const isEditing = editingPostId === post.id
 
@@ -879,6 +903,7 @@ export function PostsPage() {
     React.useState<Platform>("linkedin")
 
   const { showSuccessToast, showErrorToast } = useCustomToast()
+  const activeDrafts = useActiveDrafts()
 
   const {
     data: postsData,
@@ -1054,7 +1079,8 @@ export function PostsPage() {
                 Loading posts...
               </p>
             </div>
-          ) : activePosts.length === 0 ? (
+          ) : activePosts.length === 0 &&
+            (activeCategory !== "drafts" || activeDrafts.length === 0) ? (
             <PostsEmptyState
               activeCategory={activeCategory}
               hasActiveFilters={hasActiveFilters}

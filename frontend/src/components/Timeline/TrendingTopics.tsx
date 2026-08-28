@@ -1,9 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { Bot, RefreshCw } from "lucide-react"
+import { Bot, Loader2, RefreshCw } from "lucide-react"
 import * as React from "react"
 import { TrendingService, type TrendingTopicPublic } from "@/client"
 import { Button } from "@/components/ui/button"
 import useCustomToast from "@/hooks/useCustomToast"
+import { draftingStore } from "@/hooks/useDraftingStore"
 import { formatRelativeTime, handleError } from "@/utils"
 
 export type TrendingTopic = TrendingTopicPublic
@@ -110,10 +111,11 @@ function TrendingEmptyState({ isPending, onRefresh }: EmptyProps) {
 
 interface RowProps {
   topic: TrendingTopicPublic
-  onTopicDraft?: (topicTitle: string) => void
+  isDrafting?: boolean
+  onDraft: () => void
 }
 
-function TrendingTopicRow({ topic, onTopicDraft }: RowProps) {
+function TrendingTopicRow({ topic, isDrafting = false, onDraft }: RowProps) {
   const postCountStr = formatPostCount(topic.post_count)
 
   return (
@@ -135,16 +137,25 @@ function TrendingTopicRow({ topic, onTopicDraft }: RowProps) {
         <span className="text-xs text-muted-foreground">
           {postCountStr || ""}
         </span>
-        {onTopicDraft && (
-          <button
-            type="button"
-            onClick={() => onTopicDraft(topic.topic_title)}
-            className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary transition-colors cursor-pointer focus:outline-none"
-          >
-            <Bot className="h-3.5 w-3.5" />
-            <span>Draft</span>
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={onDraft}
+          disabled={isDrafting}
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-primary transition-colors cursor-pointer focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
+          title={`Generate AI draft from "${topic.topic_title}"`}
+        >
+          {isDrafting ? (
+            <>
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+              <span className="text-primary font-semibold">Drafting…</span>
+            </>
+          ) : (
+            <>
+              <Bot className="h-3.5 w-3.5" />
+              <span>Draft</span>
+            </>
+          )}
+        </button>
       </div>
     </div>
   )
@@ -157,7 +168,10 @@ export function TrendingTopics({
   onTopicDraft,
 }: TrendingTopicsProps) {
   const queryClient = useQueryClient()
-  const { showSuccessToast, showErrorToast } = useCustomToast()
+  const { showSuccessToast, showErrorToast, showInfoToast } = useCustomToast()
+  const [draftingTopicId, setDraftingTopicId] = React.useState<string | null>(
+    null,
+  )
 
   const extractMutation = useMutation({
     mutationFn: async () =>
@@ -173,6 +187,53 @@ export function TrendingTopics({
     },
     onError: handleError.bind(showErrorToast),
   })
+
+  const draftMutation = useMutation({
+    mutationFn: async ({
+      topicId,
+    }: {
+      topicId: string
+      topicTitle: string
+    }) => {
+      setDraftingTopicId(topicId)
+      return TrendingService.draftFromTrendingTopic({ topicId })
+    },
+    onSuccess: (_, variables) => {
+      draftingStore.removeDraft(`trend-${variables.topicId}`)
+      showSuccessToast(
+        `Draft created from trending topic: "${variables.topicTitle}"`,
+      )
+      queryClient.invalidateQueries({ queryKey: ["posts"] })
+    },
+    onError: (err, variables) => {
+      draftingStore.removeDraft(`trend-${variables.topicId}`)
+      handleError.call(showErrorToast, err as any)
+    },
+    onSettled: () => {
+      setDraftingTopicId(null)
+    },
+  })
+
+  const handleDraftClick = (topic: TrendingTopicPublic) => {
+    if (onTopicDraft) {
+      onTopicDraft(topic.topic_title)
+    } else {
+      draftingStore.addDraft({
+        id: `trend-${topic.id}`,
+        prompt: topic.topic_title,
+        platform: "both",
+        startedAt: new Date(),
+      })
+      showInfoToast(
+        `Drafting post from "${topic.topic_title}" in background...`,
+        "Drafting...",
+      )
+      draftMutation.mutate({
+        topicId: topic.id,
+        topicTitle: topic.topic_title,
+      })
+    }
+  }
 
   const relativeTime = React.useMemo(() => {
     if (!lastScrapedAt) return null
@@ -199,7 +260,8 @@ export function TrendingTopics({
             <TrendingTopicRow
               key={topic.id}
               topic={topic}
-              onTopicDraft={onTopicDraft}
+              isDrafting={draftingTopicId === topic.id}
+              onDraft={() => handleDraftClick(topic)}
             />
           ))}
         </div>

@@ -14,7 +14,16 @@ const useCustomToast = () => {
     })
   }, [])
 
-  return { showSuccessToast, showErrorToast }
+  const showInfoToast = React.useCallback(
+    (description: string, title = "Drafting...") => {
+      toast.info(title, {
+        description,
+      })
+    },
+    [],
+  )
+
+  return { showSuccessToast, showErrorToast, showInfoToast }
 }
 
 export default useCustomToast
