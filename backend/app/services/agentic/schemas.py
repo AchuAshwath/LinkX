@@ -559,3 +559,95 @@ class VerificationGraphState(TypedDict, total=False):
     reachability_status: dict[str, bool]
     status: str
     error: str | None
+
+
+# --- Tier 3 Composite Pipeline Schemas ---
+
+
+class TrendToDraftReport(BaseModel):
+    """Structured report from AutonomousTrendToDraftPipeline execution."""
+
+    scraped_topics: list[dict[str, Any]] = Field(
+        default_factory=list, description="Metadata of scraped explore trends"
+    )
+    curated_drafts: list[CuratedDraftReport] = Field(
+        default_factory=list, description="Curated and refined post drafts"
+    )
+    persisted_post_ids: list[str] = Field(
+        default_factory=list,
+        description="UUID strings of persisted draft posts in PostgreSQL",
+    )
+    platform: str = Field(
+        default="both", description="Target platforms (e.g. 'both', 'x', 'linkedin')"
+    )
+    status: str = Field(
+        default="completed",
+        description="'completed' | 'partial_failure' | 'empty_trends' | 'error'",
+    )
+    error: str | None = Field(
+        default=None, description="Error details if pipeline failed"
+    )
+
+
+class TrendToDraftState(TypedDict, total=False):
+    """Execution state for AutonomousTrendToDraft pipeline."""
+
+    user_id: str
+    max_topics: int
+    platform: str
+    target_tone: str | None
+    headless: bool
+    session: Any
+    scraped_topics: list[dict[str, Any]]
+    curated_drafts: list[dict[str, Any]]
+    persisted_post_ids: list[str]
+    status: str
+    error: str | None
+
+
+class PublishAndVerifyReport(BaseModel):
+    """Structured report from AutonomousPublishAndVerifyPipeline execution."""
+
+    post_id: str = Field(description="UUID string of target post")
+    platform: str = Field(default="both", description="Published platform(s)")
+    is_published: bool = Field(
+        default=False, description="Whether publishing succeeded"
+    )
+    is_verified: bool = Field(
+        default=False,
+        description="Whether profile timeline verification succeeded",
+    )
+    published_urls: list[str] = Field(
+        default_factory=list, description="Canonical live URLs"
+    )
+    posting_report: PostingGraphReport | None = Field(
+        default=None, description="Detailed PostingGraph report"
+    )
+    verification_report: VerificationGraphReport | None = Field(
+        default=None, description="Detailed VerificationGraph report"
+    )
+    status: str = Field(
+        default="completed",
+        description="'completed' | 'partial_failure' | 'posting_failed' | 'error'",
+    )
+    error: str | None = Field(
+        default=None, description="Error details if pipeline failed"
+    )
+
+
+class PublishAndVerifyState(TypedDict, total=False):
+    """Execution state for AutonomousPublishAndVerify pipeline."""
+
+    user_id: str
+    post_id: str
+    platform: str | None
+    headless: bool
+    session: Any
+    mouse: Any | None
+    posting_report: dict[str, Any] | None
+    verification_report: dict[str, Any] | None
+    is_published: bool
+    is_verified: bool
+    published_urls: list[str]
+    status: str
+    error: str | None
