@@ -137,8 +137,42 @@ async def test_slices_single_platform_publishing_happy_paths(
 
 
 @pytest.mark.anyio
-async def test_slice_3_dual_platform_cross_posting_success() -> None:
-    """Slice 3: Dual-platform publishing (both) with sequential success."""
+@pytest.mark.parametrize(
+    (
+        "dispatch_ret",
+        "mock_verify_ids",
+        "expected_status",
+        "expected_err",
+        "expected_urls",
+    ),
+    [
+        (
+            (True, "linkedin:urn:li:share:123,x:456", None),
+            ["dual-post-id"],
+            "published",
+            None,
+            [
+                "https://x.com/i/status/456",
+                "https://www.linkedin.com/feed/update/urn:li:share:123",
+            ],
+        ),
+        (
+            (False, "linkedin:urn:li:share:123", "LinkedIn published, but X failed"),
+            [],
+            "partial_failure",
+            "LinkedIn published, but X failed",
+            [],
+        ),
+    ],
+)
+async def test_slices_dual_platform_cross_posting(
+    dispatch_ret: tuple[bool, str, str | None],
+    mock_verify_ids: list[str],
+    expected_status: str,
+    expected_err: str | None,
+    expected_urls: list[str],
+) -> None:
+    """Slices 3 & 4: Dual-platform cross posting (success and partial failure)."""
     user_id = str(uuid.uuid4())
     post_id = str(uuid.uuid4())
 
@@ -160,13 +194,14 @@ async def test_slice_3_dual_platform_cross_posting_success() -> None:
         patch(
             "app.services.agentic.posting_graph.dispatch_dual_post",
             new_callable=AsyncMock,
-            return_value=(True, "linkedin:urn:li:share:123,x:456", None),
+            return_value=dispatch_ret,
         ),
         patch(
             "app.services.agentic.posting_graph.verify_posts_with_graph",
             new_callable=AsyncMock,
             return_value=VerificationGraphReport(
-                verified_post_ids=[post_id], status="completed"
+                verified_post_ids=mock_verify_ids,
+                status="completed" if mock_verify_ids else "partial",
             ),
         ),
         patch("app.services.agentic.posting_graph._mark_as_published"),
@@ -177,62 +212,13 @@ async def test_slice_3_dual_platform_cross_posting_success() -> None:
             platform="both",
         )
 
-        assert report.status == "published"
-        assert len(report.published_urls) == 2
-        assert "https://x.com/i/status/456" in report.published_urls
-        assert (
-            "https://www.linkedin.com/feed/update/urn:li:share:123"
-            in report.published_urls
-        )
-
-
-@pytest.mark.anyio
-async def test_slice_4_dual_platform_partial_failure() -> None:
-    """Slice 4: Partial failure (LinkedIn succeeds, X fails -> partial_failure)."""
-    user_id = str(uuid.uuid4())
-    post_id = str(uuid.uuid4())
-
-    fake_post = _make_fake_post(
-        post_id=post_id,
-        user_id=user_id,
-        content="Cross-posted content.",
-        platform="both",
-    )
-
-    with (
-        patch("app.crud.get_post", return_value=fake_post),
-        patch(
-            "app.services.agentic.posting_graph.get_social_account_status",
-            return_value=AccountStatusReport(
-                user_id=user_id, x_connected=True, linkedin_connected=True
-            ),
-        ),
-        patch(
-            "app.services.agentic.posting_graph.dispatch_dual_post",
-            new_callable=AsyncMock,
-            return_value=(
-                False,
-                "linkedin:urn:li:share:123",
-                "LinkedIn published, but X failed",
-            ),
-        ),
-        patch(
-            "app.services.agentic.posting_graph.verify_posts_with_graph",
-            new_callable=AsyncMock,
-            return_value=VerificationGraphReport(
-                verified_post_ids=[], status="partial"
-            ),
-        ),
-        patch("app.services.agentic.posting_graph._mark_as_published"),
-    ):
-        report = await publish_post_with_graph(
-            user_id=user_id,
-            post_id=post_id,
-            platform="both",
-        )
-
-        assert report.status == "partial_failure"
-        assert "LinkedIn published, but X failed" in str(report.error)
+        assert report.status == expected_status
+        if expected_err:
+            assert expected_err in str(report.error)
+        if expected_urls:
+            assert len(report.published_urls) == len(expected_urls)
+            for u in expected_urls:
+                assert u in report.published_urls
 
 
 @pytest.mark.anyio
@@ -253,25 +239,39 @@ async def test_slice_5_preflight_failure_non_existent_post() -> None:
 
 
 @pytest.mark.anyio
-async def test_slice_6_preflight_failure_disconnected_account() -> None:
-    """Slice 6: Preflight failure on disconnected account -> clean abort."""
+@pytest.mark.parametrize(
+    ("acc_kwargs", "img_url", "expected_err_snippet"),
+    [
+        ({"x_connected": False, "linkedin_connected": False}, None, "not connected"),
+        (
+            {"x_connected": True, "linkedin_connected": False},
+            "/non/existent/image.png",
+            "image file not found",
+        ),
+    ],
+)
+async def test_slices_preflight_failures(
+    acc_kwargs: dict[str, bool],
+    img_url: str | None,
+    expected_err_snippet: str,
+) -> None:
+    """Slices 6 & 7: Preflight failure on disconnected account or missing image file."""
     user_id = str(uuid.uuid4())
     post_id = str(uuid.uuid4())
 
     fake_post = _make_fake_post(
         post_id=post_id,
         user_id=user_id,
-        content="Post without connected account",
+        content="Preflight failure test",
         platform="x",
+        image_url=img_url,
     )
 
     with (
         patch("app.crud.get_post", return_value=fake_post),
         patch(
             "app.services.agentic.posting_graph.get_social_account_status",
-            return_value=AccountStatusReport(
-                user_id=user_id, x_connected=False, linkedin_connected=False
-            ),
+            return_value=AccountStatusReport(user_id=user_id, **acc_kwargs),
         ),
     ):
         report = await publish_post_with_graph(
@@ -281,40 +281,7 @@ async def test_slice_6_preflight_failure_disconnected_account() -> None:
         )
 
         assert report.status == "preflight_failed"
-        assert "not connected" in str(report.error)
-
-
-@pytest.mark.anyio
-async def test_slice_7_preflight_failure_missing_image() -> None:
-    """Slice 7: Preflight failure on missing attached image file."""
-    user_id = str(uuid.uuid4())
-    post_id = str(uuid.uuid4())
-
-    fake_post = _make_fake_post(
-        post_id=post_id,
-        user_id=user_id,
-        content="Image post with missing file",
-        platform="x",
-        image_url="/non/existent/image.png",
-    )
-
-    with (
-        patch("app.crud.get_post", return_value=fake_post),
-        patch(
-            "app.services.agentic.posting_graph.get_social_account_status",
-            return_value=AccountStatusReport(
-                user_id=user_id, x_connected=True, linkedin_connected=False
-            ),
-        ),
-    ):
-        report = await publish_post_with_graph(
-            user_id=user_id,
-            post_id=post_id,
-            platform="x",
-        )
-
-        assert report.status == "preflight_failed"
-        assert "image file not found" in str(report.error)
+        assert expected_err_snippet in str(report.error)
 
 
 @pytest.mark.anyio

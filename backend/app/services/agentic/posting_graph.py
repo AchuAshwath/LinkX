@@ -209,14 +209,10 @@ def _extract_published_urls(*, platform: str, ext_id: str | None) -> list[str]:
     """Parse canonical live URLs from platform external ID."""
     if not ext_id:
         return []
+    chunks = ext_id.split(",") if "," in ext_id else [ext_id]
     urls: list[str] = []
-    if "," in ext_id:
-        for chunk in ext_id.split(","):
-            u = format_canonical_post_url(platform=platform, ext_id=chunk)
-            if u:
-                urls.append(u)
-    else:
-        u = format_canonical_post_url(platform=platform, ext_id=ext_id)
+    for chunk in chunks:
+        u = format_canonical_post_url(platform=platform, ext_id=chunk.strip())
         if u:
             urls.append(u)
     return urls
