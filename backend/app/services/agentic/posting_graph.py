@@ -10,11 +10,12 @@ from langgraph.graph import END, START, StateGraph
 from sqlmodel import Session
 
 from app import crud
-from app.models import Post
 from app.services.agentic.posting_dispatch import (
     dispatch_dual_post,
     dispatch_linkedin_post,
     dispatch_x_post,
+    parse_dual_channel_results,
+    update_db_post_publish_state,
 )
 from app.services.agentic.posting_preflight import (
     build_post_record,
@@ -26,10 +27,6 @@ from app.services.agentic.posting_preflight import (
 from app.services.agentic.schemas import PostingGraphReport
 from app.services.agentic.tools.common import resolve_session
 from app.services.agentic.verification_graph import verify_posts_with_graph
-from app.services.publishing import (
-    _handle_publish_error,
-    _mark_as_published,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -138,34 +135,6 @@ async def preflight_check_node(
     }
 
 
-def _extract_channel_id(*, ext_id: str | None, prefix: str) -> str | None:
-    """Extract individual platform post ID from combined ID string."""
-    if not ext_id or prefix not in ext_id:
-        return None
-    part = ext_id.split(prefix)[1].split(",")[0].strip()
-    return part if part else None
-
-
-def _parse_dual_channel_results(
-    *, ext_id: str | None, err: str | None
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Decompose combined external ID into per-channel result dicts."""
-    li_id = _extract_channel_id(ext_id=ext_id, prefix="linkedin:")
-    x_id = _extract_channel_id(ext_id=ext_id, prefix="x:")
-
-    li_res = {
-        "success": bool(li_id),
-        "post_id": li_id,
-        "error": None if li_id else err,
-    }
-    x_res = {
-        "success": bool(x_id),
-        "post_id": x_id,
-        "error": None if x_id else err,
-    }
-    return x_res, li_res
-
-
 async def dispatch_publish_node(
     state: PostingGraphState,
 ) -> dict[str, Any]:
@@ -193,7 +162,7 @@ async def dispatch_publish_node(
             ok, ext_id, err = await dispatch_dual_post(
                 session=s, post=db_post, headless=headless
             )
-            x_res, li_res = _parse_dual_channel_results(ext_id=ext_id, err=err)
+            x_res, li_res = parse_dual_channel_results(ext_id=ext_id, err=err)
 
         urls = extract_published_urls(platform=platform, ext_id=ext_id)
 
@@ -253,35 +222,6 @@ async def verify_published_post_node(
         }
 
 
-def _update_db_post_publish_state(
-    *,
-    session: Session,
-    db_post: Post,
-    status: str,
-    ext_id: str | None,
-    err: str | None,
-) -> str:
-    """Update post in PostgreSQL based on dispatch status and return final status."""
-    if status == "partial_failure" and ext_id:
-        _mark_as_published(session=session, post=db_post, external_post_id=ext_id)
-        return "partial_failure"
-
-    if ext_id and status in ("dispatched", "preflight_passed", "published"):
-        if db_post.status != "published":
-            _mark_as_published(session=session, post=db_post, external_post_id=ext_id)
-        return "published"
-
-    if db_post.status == "published":
-        return "published"
-
-    _handle_publish_error(
-        session=session,
-        post=db_post,
-        err=RuntimeError(err or "Publishing failed"),
-    )
-    return "failed"
-
-
 async def record_publish_results_node(
     state: PostingGraphState,
 ) -> dict[str, Any]:
@@ -296,7 +236,7 @@ async def record_publish_results_node(
         if not db_post:
             return {"status": "error", "error": f"Post not found: {post_id}"}
 
-        final_status = _update_db_post_publish_state(
+        final_status = update_db_post_publish_state(
             session=s,
             db_post=db_post,
             status=status,

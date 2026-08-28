@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 
+from app.services.agentic.schemas import VerificationItemReport
 from app.services.browser.actions import normalize_post_text
 
 logger = logging.getLogger(__name__)
@@ -171,3 +172,68 @@ async def probe_url_reachability(
     except Exception as exc:
         logger.debug(f"Reachability probe failed for {url}: {exc}")
         return False, 0, str(exc)
+
+
+def _verify_single_x_post(
+    *, post: dict[str, Any], timeline_tweets: list[dict[str, Any]]
+) -> VerificationItemReport:
+    """Perform ground-truth verification on an X post."""
+    post_id = str(post.get("id") or "")
+    content = str(post.get("content") or "")
+    ext_id = post.get("external_post_id")
+
+    is_match, matched_text, matched_id, conf = match_post_on_timeline(
+        expected_content=content,
+        expected_ext_id=ext_id,
+        timeline_tweets=timeline_tweets,
+    )
+
+    live_url = format_canonical_post_url(platform="x", ext_id=matched_id or ext_id)
+
+    return VerificationItemReport(
+        post_id=post_id,
+        platform="x",
+        is_verified=is_match,
+        external_post_id=matched_id or ext_id,
+        matched_text=matched_text,
+        match_confidence=conf,
+        live_url=live_url,
+        status_code=200 if is_match else 404,
+        error=None if is_match else "Post not found on live profile timeline",
+    )
+
+
+def _verify_single_linkedin_post(*, post: dict[str, Any]) -> VerificationItemReport:
+    """Verify a LinkedIn post by URN presence and format."""
+    post_id = str(post.get("id") or "")
+    ext_id = post.get("external_post_id")
+
+    is_valid_urn = bool(ext_id and ("urn:li:" in ext_id or ext_id.isdigit()))
+    live_url = format_canonical_post_url(platform="linkedin", ext_id=ext_id)
+
+    return VerificationItemReport(
+        post_id=post_id,
+        platform="linkedin",
+        is_verified=is_valid_urn,
+        external_post_id=ext_id,
+        matched_text=post.get("content"),
+        match_confidence=1.0 if is_valid_urn else 0.0,
+        live_url=live_url,
+        status_code=200 if is_valid_urn else 400,
+        error=None if is_valid_urn else "Invalid or missing LinkedIn URN",
+    )
+
+
+def evaluate_target_post(
+    *, post: dict[str, Any], timeline_tweets: list[dict[str, Any]]
+) -> list[VerificationItemReport]:
+    """Evaluate a single target post across its configured platforms."""
+    platform = str(post.get("platform") or "x").lower().strip()
+    if platform in ("both", "all", "linkx"):
+        return [
+            _verify_single_linkedin_post(post=post),
+            _verify_single_x_post(post=post, timeline_tweets=timeline_tweets),
+        ]
+    if platform == "linkedin":
+        return [_verify_single_linkedin_post(post=post)]
+    return [_verify_single_x_post(post=post, timeline_tweets=timeline_tweets)]

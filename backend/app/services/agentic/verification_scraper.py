@@ -109,12 +109,14 @@ async def _scrape_direct_status_urls(
 async def scrape_x_profile_feed(
     *,
     user_id: str,
-    max_tweets: int,
-    mouse: Any | None,
-    headless: bool = True,
-    target_ext_ids: list[str] | None = None,
+    max_tweets: int = 5,
+    mouse: Any | None = None,
+    **kwargs: Any,
 ) -> list[dict[str, Any]]:
     """Scrape timeline tweets from user's live X.com profile and status pages."""
+    headless: bool = kwargs.get("headless", True)
+    target_ext_ids: list[str] | None = kwargs.get("target_ext_ids")
+
     manager = BrowserManager(user_id=user_id)
     if not manager.session_exists("x"):
         return []
