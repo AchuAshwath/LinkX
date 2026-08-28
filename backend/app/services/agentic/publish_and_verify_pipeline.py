@@ -162,14 +162,24 @@ async def run_publish_and_verify_pipeline(
     **kwargs: Any,
 ) -> PublishAndVerifyReport:
     """Execute multi-channel publishing with automated ground-truth profile verification."""
+    user_id_clean = str(user_id or "").strip()
+    post_id_clean = str(post_id or "").strip()
+    if not user_id_clean or not post_id_clean:
+        return PublishAndVerifyReport(
+            post_id=post_id_clean,
+            platform=platform or "both",
+            status="error",
+            error="Missing required user_id or post_id",
+        )
+
     headless: bool = kwargs.get("headless", True)
     session: Any = kwargs.get("session")
     mouse: Any | None = kwargs.get("mouse")
     config: dict[str, Any] | None = kwargs.get("config")
 
     initial_state: PublishAndVerifyState = {
-        "user_id": user_id.strip(),
-        "post_id": post_id.strip(),
+        "user_id": user_id_clean,
+        "post_id": post_id_clean,
         "platform": (platform or "both").lower().strip(),
         "headless": headless,
         "session": session,

@@ -81,8 +81,12 @@ async def _curate_single_topic(
     topic_item: dict[str, Any],
 ) -> CuratedDraftReport | None:
     """Curate and refine a single social draft for a given topic."""
-    title = topic_item.get("title", "")
-    topic_id = topic_item.get("id")
+    if not isinstance(topic_item, dict):
+        return None
+    raw_title = topic_item.get("title")
+    title = str(raw_title).strip() if raw_title else "Trending Topic"
+    raw_id = topic_item.get("id")
+    topic_id = str(raw_id).strip() if raw_id is not None else None
     try:
         return await curate_and_draft_post(
             user_id=state.get("user_id", ""),
@@ -166,13 +170,24 @@ async def run_trend_to_draft_pipeline(
     **kwargs: Any,
 ) -> TrendToDraftReport:
     """Execute the AutonomousTrendToDraft pipeline from live explore scraping to draft persistence."""
+    user_id_clean = str(user_id or "").strip()
+    if not user_id_clean:
+        return TrendToDraftReport(
+            scraped_topics=[],
+            curated_drafts=[],
+            persisted_post_ids=[],
+            platform=platform,
+            status="error",
+            error="Missing required user_id",
+        )
+
     target_tone: str | None = kwargs.get("target_tone")
     headless: bool = kwargs.get("headless", True)
     session: Any = kwargs.get("session")
     config: dict[str, Any] | None = kwargs.get("config")
 
     initial_state: TrendToDraftState = {
-        "user_id": user_id.strip(),
+        "user_id": user_id_clean,
         "max_topics": max(1, min(max_topics, 10)),
         "platform": platform.lower().strip(),
         "target_tone": target_tone,
