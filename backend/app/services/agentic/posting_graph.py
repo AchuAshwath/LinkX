@@ -1,0 +1,477 @@
+"""PostingGraph: Multi-Channel Autonomous Publishing Orchestrator with Embedded Verification."""
+
+from __future__ import annotations
+
+import logging
+import uuid
+from typing import Any, TypedDict
+
+from langgraph.graph import END, START, StateGraph
+from sqlmodel import Session
+
+from app import crud
+from app.services.agentic.posting_dispatch import (
+    dispatch_dual_post,
+    dispatch_linkedin_post,
+    dispatch_x_post,
+)
+from app.services.agentic.schemas import PostingGraphReport
+from app.services.agentic.tools.common import resolve_session
+from app.services.agentic.tools.context_tools import get_social_account_status
+from app.services.agentic.verification_graph import verify_posts_with_graph
+from app.services.agentic.verification_matching import (
+    format_canonical_post_url,
+)
+from app.services.post_state_machine import validate_transition
+from app.services.publishing import (
+    _handle_publish_error,
+    _mark_as_published,
+    _now_utc,
+    resolve_image_path,
+)
+
+logger = logging.getLogger(__name__)
+
+__all__ = [
+    "PostingGraphState",
+    "build_posting_graph",
+    "publish_post_with_graph",
+    "preflight_check_node",
+    "dispatch_publish_node",
+    "verify_published_post_node",
+    "record_publish_results_node",
+    "_route_after_preflight",
+    "_route_after_dispatch",
+]
+
+
+def _sanitize_string(
+    val: Any,
+    *,
+    max_length: int | None = None,
+    default: str = "",
+) -> str:
+    """Sanitize input string by stripping null bytes, whitespace, and bounding length."""
+    if val is None:
+        return default
+    cleaned = str(val).replace("\x00", "").strip()
+    if not cleaned:
+        return default
+    if max_length is not None and len(cleaned) > max_length:
+        return cleaned[:max_length]
+    return cleaned
+
+
+class PostingGraphState(TypedDict, total=False):
+    """Execution state for PostingGraph orchestrator."""
+
+    user_id: str
+    post_id: str
+    platform: str
+    headless: bool
+    session: Any
+    mouse: Any
+    post_record: dict[str, Any] | None
+    x_result: dict[str, Any] | None
+    linkedin_result: dict[str, Any] | None
+    published_urls: list[str]
+    is_verified: bool
+    verification_report: dict[str, Any] | None
+    external_post_id: str | None
+    status: str
+    error: str | None
+
+
+def _validate_preflight_accounts(
+    *, user_id: str, platform: str, session: Session
+) -> tuple[bool, str | None]:
+    """Verify target platforms are connected for the user."""
+    status_report = get_social_account_status(user_id=user_id, session=session)
+    clean_platform = platform.lower().strip()
+
+    if clean_platform in ("x", "twitter") and not status_report.x_connected:
+        return False, "X (Twitter) account is not connected or session missing"
+
+    if clean_platform == "linkedin" and not status_report.linkedin_connected:
+        return False, "LinkedIn account is not connected"
+
+    if clean_platform in ("both", "all", "linkx"):
+        if not status_report.x_connected and not status_report.linkedin_connected:
+            return False, "Neither X nor LinkedIn accounts are connected"
+
+    return True, None
+
+
+async def preflight_check_node(
+    state: PostingGraphState,
+) -> dict[str, Any]:
+    """Validate post existence, ownership, platform connection, and media files."""
+    user_id = state.get("user_id", "")
+    post_id = state.get("post_id", "")
+    platform_override = state.get("platform")
+
+    try:
+        user_uuid = uuid.UUID(user_id)
+        post_uuid = uuid.UUID(post_id)
+    except (ValueError, TypeError):
+        return {
+            "status": "preflight_failed",
+            "error": f"Invalid user_id ({user_id}) or post_id ({post_id})",
+        }
+
+    with resolve_session(session=state.get("session")) as s:
+        db_post = crud.get_post(session=s, post_id=post_uuid)
+        if not db_post:
+            return {
+                "status": "preflight_failed",
+                "error": f"Post not found with ID: {post_id}",
+            }
+
+        if db_post.owner_id != user_uuid:
+            return {
+                "status": "preflight_failed",
+                "error": "Post ownership validation failed",
+            }
+
+        target_platform = (platform_override or db_post.platform).lower().strip()
+
+        # Idempotent return if already published
+        if db_post.status == "published":
+            post_record = {
+                "id": str(db_post.id),
+                "content": db_post.content,
+                "platform": target_platform,
+                "image_url": db_post.image_url,
+                "status": db_post.status,
+            }
+            urls = _extract_published_urls(
+                platform=target_platform, ext_id=db_post.external_post_id
+            )
+            return {
+                "platform": target_platform,
+                "post_record": post_record,
+                "external_post_id": db_post.external_post_id,
+                "published_urls": urls,
+                "status": "published",
+            }
+
+        # Check account connection
+        ok, acc_err = _validate_preflight_accounts(
+            user_id=user_id, platform=target_platform, session=s
+        )
+        if not ok:
+            return {"status": "preflight_failed", "error": acc_err}
+
+        # Check media presence if attached
+        if db_post.image_url:
+            image_path = resolve_image_path(image_url=db_post.image_url)
+            if not image_path.exists():
+                return {
+                    "status": "preflight_failed",
+                    "error": f"Attached image file not found: {image_path}",
+                }
+
+        # Validate state machine transition to 'publishing'
+        try:
+            validate_transition(
+                current_status=db_post.status, target_status="publishing"
+            )
+            db_post.status = "publishing"
+            db_post.publishing_started_at = _now_utc()
+            try:
+                s.add(db_post)
+                s.commit()
+                s.refresh(db_post)
+            except Exception:
+                pass
+        except Exception as exc:
+            return {
+                "status": "preflight_failed",
+                "error": f"State transition error: {exc}",
+            }
+
+        post_record = {
+            "id": str(db_post.id),
+            "content": db_post.content,
+            "platform": target_platform,
+            "image_url": db_post.image_url,
+            "status": db_post.status,
+        }
+
+    return {
+        "platform": target_platform,
+        "post_record": post_record,
+        "status": "preflight_passed",
+    }
+
+
+def _extract_published_urls(*, platform: str, ext_id: str | None) -> list[str]:
+    """Parse canonical live URLs from platform external ID."""
+    if not ext_id:
+        return []
+    urls: list[str] = []
+    if "," in ext_id:
+        for chunk in ext_id.split(","):
+            u = format_canonical_post_url(platform=platform, ext_id=chunk)
+            if u:
+                urls.append(u)
+    else:
+        u = format_canonical_post_url(platform=platform, ext_id=ext_id)
+        if u:
+            urls.append(u)
+    return urls
+
+
+def _parse_dual_channel_results(
+    *, ext_id: str | None, err: str | None
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Decompose combined external ID into per-channel result dicts."""
+    li_id = None
+    x_id = None
+    if ext_id:
+        if "linkedin:" in ext_id:
+            li_part = ext_id.split("linkedin:")[1].split(",")[0]
+            li_id = li_part if li_part else None
+        if "x:" in ext_id:
+            x_part = ext_id.split("x:")[1].split(",")[0]
+            x_id = x_part if x_part else None
+
+    li_res = {
+        "success": bool(li_id),
+        "post_id": li_id,
+        "error": None if li_id else err,
+    }
+    x_res = {
+        "success": bool(x_id),
+        "post_id": x_id,
+        "error": None if x_id else err,
+    }
+    return x_res, li_res
+
+
+async def dispatch_publish_node(
+    state: PostingGraphState,
+) -> dict[str, Any]:
+    """Route publishing to platform dispatchers."""
+    post_id = state.get("post_id", "")
+    platform = state.get("platform", "x").lower().strip()
+
+    with resolve_session(session=state.get("session")) as s:
+        db_post = crud.get_post(session=s, post_id=uuid.UUID(post_id))
+        if not db_post:
+            return {"status": "error", "error": f"Post not found: {post_id}"}
+
+        if platform in ("x", "twitter"):
+            ok, ext_id, err = await dispatch_x_post(session=s, post=db_post)
+            x_res = {"success": ok, "post_id": ext_id, "error": err}
+            li_res = None
+        elif platform == "linkedin":
+            ok, ext_id, err = await dispatch_linkedin_post(session=s, post=db_post)
+            li_res = {"success": ok, "post_id": ext_id, "error": err}
+            x_res = None
+        else:
+            ok, ext_id, err = await dispatch_dual_post(session=s, post=db_post)
+            x_res, li_res = _parse_dual_channel_results(ext_id=ext_id, err=err)
+
+        urls = _extract_published_urls(platform=platform, ext_id=ext_id)
+
+    if not ok:
+        status = "partial_failure" if ext_id else "error"
+    else:
+        status = "dispatched"
+
+    return {
+        "x_result": x_res,
+        "linkedin_result": li_res,
+        "external_post_id": ext_id,
+        "published_urls": urls,
+        "status": status,
+        "error": err,
+    }
+
+
+async def verify_published_post_node(
+    state: PostingGraphState,
+) -> dict[str, Any]:
+    """Execute embedded VerificationGraph against live published post."""
+    user_id = state.get("user_id", "")
+    post_id = state.get("post_id", "")
+    platform = state.get("platform", "x")
+    ext_id = state.get("external_post_id")
+    mouse = state.get("mouse")
+    prev_status = state.get("status", "")
+
+    if not ext_id:
+        return {
+            "is_verified": False,
+            "verification_report": None,
+            "status": prev_status,
+        }
+
+    try:
+        verify_report = await verify_posts_with_graph(
+            user_id=user_id,
+            post_ids=[post_id],
+            platform=platform,
+            session=state.get("session"),
+            mouse=mouse,
+        )
+        is_verified = post_id in verify_report.verified_post_ids
+        return {
+            "is_verified": is_verified,
+            "verification_report": verify_report.model_dump(),
+            "status": prev_status,
+        }
+    except Exception as exc:
+        logger.warning(f"Embedded verification failed for post {post_id}: {exc}")
+        return {
+            "is_verified": False,
+            "verification_report": None,
+            "status": prev_status,
+        }
+
+
+async def record_publish_results_node(
+    state: PostingGraphState,
+) -> dict[str, Any]:
+    """Update post status in PostgreSQL and finalize report."""
+    post_id = state.get("post_id", "")
+    ext_id = state.get("external_post_id")
+    status = state.get("status", "")
+    err = state.get("error")
+
+    with resolve_session(session=state.get("session")) as s:
+        db_post = crud.get_post(session=s, post_id=uuid.UUID(post_id))
+        if not db_post:
+            return {"status": "error", "error": f"Post not found: {post_id}"}
+
+        if status == "partial_failure" and ext_id:
+            _mark_as_published(session=s, post=db_post, external_post_id=ext_id)
+            final_status = "partial_failure"
+        elif ext_id and status in ("dispatched", "preflight_passed", "published"):
+            if db_post.status != "published":
+                _mark_as_published(session=s, post=db_post, external_post_id=ext_id)
+            final_status = "published"
+        elif db_post.status == "published":
+            final_status = "published"
+        else:
+            _handle_publish_error(
+                session=s,
+                post=db_post,
+                err=RuntimeError(err or "Publishing failed"),
+            )
+            final_status = "failed"
+
+    return {"status": final_status}
+
+
+def _route_after_preflight(state: PostingGraphState) -> str:
+    """Branch to dispatch, verification, or abort to END on preflight failure."""
+    status = state.get("status")
+    if status == "preflight_failed":
+        return END
+    if status == "published":
+        return "verify_published_post"
+    return "dispatch_publish"
+
+
+def _route_after_dispatch(state: PostingGraphState) -> str:
+    """Branch to verification or failure recording."""
+    if state.get("status") == "error":
+        return "record_publish_results"
+    return "verify_published_post"
+
+
+def build_posting_graph() -> Any:
+    """Construct and compile the PostingGraph state machine."""
+    workflow = StateGraph(PostingGraphState)
+    workflow.add_node("preflight_check", preflight_check_node)
+    workflow.add_node("dispatch_publish", dispatch_publish_node)
+    workflow.add_node("verify_published_post", verify_published_post_node)
+    workflow.add_node("record_publish_results", record_publish_results_node)
+
+    workflow.add_edge(START, "preflight_check")
+    workflow.add_conditional_edges(
+        "preflight_check",
+        _route_after_preflight,
+        {
+            END: END,
+            "dispatch_publish": "dispatch_publish",
+            "verify_published_post": "verify_published_post",
+        },
+    )
+    workflow.add_conditional_edges(
+        "dispatch_publish",
+        _route_after_dispatch,
+        {
+            "record_publish_results": "record_publish_results",
+            "verify_published_post": "verify_published_post",
+        },
+    )
+    workflow.add_edge("verify_published_post", "record_publish_results")
+    workflow.add_edge("record_publish_results", END)
+    return workflow.compile()
+
+
+_posting_graph = build_posting_graph()
+
+
+async def publish_post_with_graph(
+    *,
+    user_id: str,
+    post_id: str,
+    platform: str | None = None,
+    headless: bool = True,
+    session: Session | None = None,
+    mouse: Any | None = None,
+    config: dict[str, Any] | None = None,
+) -> PostingGraphReport:
+    """Run the PostingGraph to execute multi-channel publishing with embedded verification."""
+    initial_state: PostingGraphState = {
+        "user_id": user_id.strip(),
+        "post_id": post_id.strip(),
+        "platform": (platform or "x").lower().strip(),
+        "headless": headless,
+        "session": session,
+        "mouse": mouse,
+        "post_record": None,
+        "x_result": None,
+        "linkedin_result": None,
+        "published_urls": [],
+        "is_verified": False,
+        "verification_report": None,
+        "external_post_id": None,
+        "status": "initializing",
+        "error": None,
+    }
+
+    run_config = dict(config or {})
+
+    try:
+        final_state: dict[str, Any] = await _posting_graph.ainvoke(
+            initial_state, config=run_config
+        )
+        post_rec = final_state.get("post_record") or {}
+        content = post_rec.get("content", "")
+
+        return PostingGraphReport(
+            post_id=post_id,
+            platform=final_state.get("platform", platform or "x"),
+            content=content,
+            x_result=final_state.get("x_result"),
+            linkedin_result=final_state.get("linkedin_result"),
+            published_urls=final_state.get("published_urls", []),
+            is_verified=final_state.get("is_verified", False),
+            verification_report=final_state.get("verification_report"),
+            status=final_state.get("status", "published"),
+            error=final_state.get("error"),
+        )
+    except Exception as exc:
+        logger.exception(f"PostingGraph failed with exception: {exc}")
+        return PostingGraphReport(
+            post_id=post_id,
+            platform=platform or "x",
+            content="",
+            status="error",
+            error=str(exc),
+        )

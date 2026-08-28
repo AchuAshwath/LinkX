@@ -152,3 +152,64 @@ def test_scraped_batch_report_schema() -> None:
     data = report.model_dump()
     reconstructed = ScrapedBatchReport.model_validate(data)
     assert reconstructed == report
+
+
+def test_verification_graph_report_schemas() -> None:
+    from app.services.agentic.schemas import (
+        VerificationGraphReport,
+        VerificationItemReport,
+    )
+
+    item = VerificationItemReport(
+        post_id="post-uuid-1",
+        platform="x",
+        is_verified=True,
+        external_post_id="1829384729384",
+        matched_text="AI agents in 2026",
+        match_confidence=0.95,
+        live_url="https://x.com/user/status/1829384729384",
+        status_code=200,
+    )
+    assert item.is_verified is True
+    assert item.match_confidence == 0.95
+
+    report = VerificationGraphReport(
+        verified_post_ids=["post-uuid-1"],
+        unverified_post_ids=[],
+        items=[item],
+        platform="x",
+        reachability_status={"https://x.com/user/status/1829384729384": True},
+        status="completed",
+    )
+    assert report.verified_post_ids == ["post-uuid-1"]
+    assert len(report.items) == 1
+
+    data = report.model_dump()
+    reconstructed = VerificationGraphReport.model_validate(data)
+    assert reconstructed == report
+
+
+def test_posting_graph_report_schema() -> None:
+    from app.services.agentic.schemas import PostingGraphReport
+
+    report = PostingGraphReport(
+        post_id="post-uuid-2",
+        platform="both",
+        content="Published across X and LinkedIn",
+        x_result={"success": True, "post_id": "12345"},
+        linkedin_result={"success": True, "post_id": "urn:li:share:67890"},
+        published_urls=[
+            "https://x.com/user/status/12345",
+            "https://www.linkedin.com/feed/update/urn:li:share:67890",
+        ],
+        is_verified=True,
+        verification_report={"status": "completed"},
+        status="published",
+    )
+    assert report.is_verified is True
+    assert report.platform == "both"
+    assert len(report.published_urls) == 2
+
+    data = report.model_dump()
+    reconstructed = PostingGraphReport.model_validate(data)
+    assert reconstructed == report

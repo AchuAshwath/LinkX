@@ -58,7 +58,7 @@ class TrendingScrapeBatch(BaseModel):
     )
 
 
-def _parse_candidate_confidence(raw_conf: Any) -> float:
+def _parse_candidate_confidence(*, raw_conf: Any) -> float:
     """Parse string or numeric confidence score into normalized float (0.0 - 1.0)."""
     if isinstance(raw_conf, (int, float)):
         return float(raw_conf)
@@ -111,13 +111,13 @@ class SelectorCandidate(BaseModel):
         if isinstance(data, dict):
             raw_conf = data.get("confidence") or data.get("score") or data.get("weight")
             if raw_conf is not None:
-                data["confidence"] = _parse_candidate_confidence(raw_conf)
+                data["confidence"] = _parse_candidate_confidence(raw_conf=raw_conf)
             if not data.get("reasoning") and data.get("description"):
                 data["reasoning"] = str(data["description"])
         return data
 
 
-def _clean_diagnosis_dict(data: dict[str, Any]) -> None:
+def _clean_diagnosis_dict(*, data: dict[str, Any]) -> None:
     """Format nested diagnosis dict to string details and default page state."""
     raw_diagnosis = data.get("diagnosis")
     if isinstance(raw_diagnosis, dict):
@@ -131,12 +131,16 @@ def _clean_diagnosis_dict(data: dict[str, Any]) -> None:
             data["page_state"] = "authenticated"
 
 
-def _clean_single_candidate(item: Any) -> Any | None:
+def _clean_single_candidate(*, item: Any) -> Any | None:
     """Coerce string, dict, or model into valid candidate dict."""
     if isinstance(item, SelectorCandidate):
         return item
     if isinstance(item, str):
-        return {"selector": item, "confidence": 0.9, "reasoning": "Proposed selector"}
+        return {
+            "selector": item,
+            "confidence": 0.9,
+            "reasoning": "Proposed selector",
+        }
     if isinstance(item, dict):
         sel = item.get("selector") or item.get("css_selector") or item.get("locator")
         if sel:
@@ -144,7 +148,7 @@ def _clean_single_candidate(item: Any) -> Any | None:
     return None
 
 
-def _clean_candidates_list(data: dict[str, Any]) -> list[Any]:
+def _clean_candidates_list(*, data: dict[str, Any]) -> list[Any]:
     """Coerce candidate list if passed under various names."""
     raw = (
         data.get("candidate_selectors")
@@ -154,7 +158,7 @@ def _clean_candidates_list(data: dict[str, Any]) -> list[Any]:
     )
     cleaned: list[Any] = []
     for item in raw:
-        c = _clean_single_candidate(item)
+        c = _clean_single_candidate(item=item)
         if c is not None:
             cleaned.append(c)
     return cleaned
@@ -196,8 +200,8 @@ class SelectorDiagnosisReport(BaseModel):
     @classmethod
     def _coerce_report_fields(cls, data: Any) -> Any:
         if isinstance(data, dict):
-            _clean_diagnosis_dict(data)
-            data["candidate_selectors"] = _clean_candidates_list(data)
+            _clean_diagnosis_dict(data=data)
+            data["candidate_selectors"] = _clean_candidates_list(data=data)
         return data
 
 
@@ -423,3 +427,95 @@ class ScrapedBatchReport(BaseModel):
         description="'persisted' | 'unrecoverable' | 'error'",
     )
     error: str | None = Field(default=None)
+
+
+class VerificationItemReport(BaseModel):
+    """Per-post live ground-truth verification record."""
+
+    post_id: str = Field(description="UUID string of target Post")
+    platform: str = Field(default="x", description="Target platform ('x', 'linkedin')")
+    is_verified: bool = Field(
+        default=False,
+        description="Whether the post was verified live on the platform",
+    )
+    external_post_id: str | None = Field(
+        default=None, description="External tweet ID or LinkedIn URN"
+    )
+    matched_text: str | None = Field(
+        default=None, description="Matched text content on live timeline"
+    )
+    match_confidence: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Confidence score (0.0 to 1.0)",
+    )
+    live_url: str | None = Field(default=None, description="Canonical live post URL")
+    status_code: int = Field(
+        default=200, description="HTTP status code from reachability probe"
+    )
+    error: str | None = Field(
+        default=None, description="Error message if verification failed"
+    )
+
+
+class VerificationGraphReport(BaseModel):
+    """Structured report returned after running VerificationGraph."""
+
+    verified_post_ids: list[str] = Field(
+        default_factory=list, description="List of verified post IDs"
+    )
+    unverified_post_ids: list[str] = Field(
+        default_factory=list, description="List of unverified post IDs"
+    )
+    items: list[VerificationItemReport] = Field(
+        default_factory=list,
+        description="Detailed per-post verification result records",
+    )
+    platform: str = Field(
+        default="x", description="Target platform ('x', 'linkedin', 'both')"
+    )
+    reachability_status: dict[str, bool] = Field(
+        default_factory=dict, description="URL reachability probe outcomes"
+    )
+    status: str = Field(
+        default="completed", description="'completed' | 'partial' | 'error'"
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message if graph encountered an unhandled exception",
+    )
+
+
+class PostingGraphReport(BaseModel):
+    """Structured report returned after running PostingGraph."""
+
+    post_id: str = Field(description="UUID string of target Post")
+    platform: str = Field(
+        default="x", description="Target platform ('x', 'linkedin', 'both')"
+    )
+    content: str = Field(default="", description="Published post content")
+    x_result: dict[str, Any] | None = Field(
+        default=None, description="X publishing & verification details"
+    )
+    linkedin_result: dict[str, Any] | None = Field(
+        default=None, description="LinkedIn publishing & verification details"
+    )
+    published_urls: list[str] = Field(
+        default_factory=list, description="List of canonical live post URLs"
+    )
+    is_verified: bool = Field(
+        default=False,
+        description="Whether the post was verified live on the platform",
+    )
+    verification_report: dict[str, Any] | None = Field(
+        default=None, description="Embedded VerificationGraph report"
+    )
+    status: str = Field(
+        default="published",
+        description="'published' | 'partial_failure' | 'preflight_failed' | 'error'",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message if publishing or verification failed",
+    )

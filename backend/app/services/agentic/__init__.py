@@ -6,6 +6,11 @@ from app.services.agentic.curation_graph import (
     build_curation_graph,
     curate_and_draft_post,
 )
+from app.services.agentic.posting_graph import (
+    PostingGraphState,
+    build_posting_graph,
+    publish_post_with_graph,
+)
 from app.services.agentic.refinement_graph import (
     DraftRefinementState,
     build_draft_refinement_graph,
@@ -15,12 +20,15 @@ from app.services.agentic.schemas import (
     CuratedDraftReport,
     ExtractedTrendingTopic,
     ExtractedTweet,
+    PostingGraphReport,
     RefinedDraftReport,
     ScrapedBatchReport,
     SelectorCandidate,
     SelectorDiagnosisReport,
     SessionRecoveryReport,
     TrendingScrapeBatch,
+    VerificationGraphReport,
+    VerificationItemReport,
     VisionDraftAnalysis,
 )
 from app.services.agentic.scraping_graph import (
@@ -38,6 +46,11 @@ from app.services.agentic.session_recovery_graph import (
     build_session_recovery_graph,
     recover_page_session,
 )
+from app.services.agentic.verification_graph import (
+    VerificationGraphState,
+    build_verification_graph,
+    verify_posts_with_graph,
+)
 
 __all__ = [
     "get_chat_model",
@@ -51,6 +64,9 @@ __all__ = [
     "RefinedDraftReport",
     "CuratedDraftReport",
     "ScrapedBatchReport",
+    "PostingGraphReport",
+    "VerificationGraphReport",
+    "VerificationItemReport",
     "VisionDraftAnalysis",
     "SelfHealingState",
     "build_self_healing_graph",
@@ -67,4 +83,10 @@ __all__ = [
     "ScrapingGraphState",
     "build_scraping_graph",
     "scrape_trends_with_graph",
+    "PostingGraphState",
+    "build_posting_graph",
+    "publish_post_with_graph",
+    "VerificationGraphState",
+    "build_verification_graph",
+    "verify_posts_with_graph",
 ]
