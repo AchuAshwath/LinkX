@@ -177,7 +177,9 @@ async def _publish_linkedin(*, session: Session, post: Post) -> str | PublishFai
         return _handle_publish_error(session=session, post=post, err=err)
 
 
-async def _publish_x(*, session: Session, post: Post) -> str | PublishFailure:
+async def _publish_x(
+    *, session: Session, post: Post, headless: bool = True
+) -> str | PublishFailure:
     try:
         x_client = XPostClient()
         if post.image_url:
@@ -194,17 +196,21 @@ async def _publish_x(*, session: Session, post: Post) -> str | PublishFailure:
                 user_id=str(post.owner_id),
                 content=post.content,
                 image_path=str(image_path),
+                headless=headless,
             )
             return res.post_id
         return await x_client.create_text_post(
             user_id=str(post.owner_id),
             content=post.content,
+            headless=headless,
         )
     except Exception as err:
         return _handle_publish_error(session=session, post=post, err=err)
 
 
-async def _publish_all(*, session: Session, post: Post) -> str | PublishFailure:
+async def _publish_all(
+    *, session: Session, post: Post, headless: bool = True
+) -> str | PublishFailure:
     """Publish to both LinkedIn and X platforms (cross-posting)."""
     li_res = await _publish_linkedin(session=session, post=post)
     if isinstance(li_res, PublishFailure):
@@ -216,7 +222,7 @@ async def _publish_all(*, session: Session, post: Post) -> str | PublishFailure:
     session.commit()
     session.refresh(post)
 
-    x_res = await _publish_x(session=session, post=post)
+    x_res = await _publish_x(session=session, post=post, headless=headless)
     if isinstance(x_res, PublishFailure):
         post.error_message = (
             f"LinkedIn published ({li_res}), but X failed: {x_res.payload.message}"
@@ -229,20 +235,18 @@ async def _publish_all(*, session: Session, post: Post) -> str | PublishFailure:
     return f"linkedin:{li_res},x:{x_res}"
 
 
-_PLATFORM_PUBLISHERS = {
-    "linkedin": _publish_linkedin,
-    "x": _publish_x,
-    "all": _publish_all,
-    "linkx": _publish_all,
-}
-
-
-async def _publish_to_platform(*, session: Session, post: Post) -> str | PublishFailure:
-    publisher = _PLATFORM_PUBLISHERS.get(post.platform)
-    if not publisher:
+async def _publish_to_platform(
+    *, session: Session, post: Post, headless: bool = True
+) -> str | PublishFailure:
+    if post.platform == "linkedin":
+        return await _publish_linkedin(session=session, post=post)
+    elif post.platform == "x":
+        return await _publish_x(session=session, post=post, headless=headless)
+    elif post.platform in ("all", "linkx"):
+        return await _publish_all(session=session, post=post, headless=headless)
+    else:
         err = ValueError(f"Unsupported platform: {post.platform}")
         return _handle_publish_error(session=session, post=post, err=err)
-    return await publisher(session=session, post=post)
 
 
 def _mark_as_published(*, session: Session, post: Post, external_post_id: str) -> None:
