@@ -184,6 +184,43 @@ interface ActionButtonsProps {
   onAiDraftSubmit?: () => void
 }
 
+function getPrimaryButtonLabel(
+  isAiMode: boolean,
+  isAiGenerating: boolean,
+  isSubmitting: boolean,
+  isScheduled: boolean,
+): string {
+  if (isAiMode) {
+    return isAiGenerating ? "Drafting…" : "Draft"
+  }
+  if (isSubmitting) {
+    return isScheduled ? "Scheduling…" : "Posting…"
+  }
+  return isScheduled ? "Schedule" : "Post"
+}
+
+function getPrimaryButtonHandler(
+  isAiMode: boolean,
+  isScheduled: boolean,
+  onAiDraftSubmit?: () => void,
+  onScheduleClick?: () => void,
+  onPostClick?: () => void,
+): (() => void) | undefined {
+  if (isAiMode) return onAiDraftSubmit
+  if (isScheduled) return onScheduleClick
+  return onPostClick
+}
+
+function getPrimaryButtonDisabled(
+  isAiMode: boolean,
+  isDraftDisabled: boolean,
+  isAiGenerating: boolean,
+  isScheduleOrPublishDisabled: boolean,
+): boolean {
+  if (isAiMode) return isDraftDisabled || isAiGenerating
+  return isScheduleOrPublishDisabled
+}
+
 function ActionButtonsGroup({
   isSubmitting,
   isScheduled,
@@ -201,27 +238,31 @@ function ActionButtonsGroup({
   onPostClick,
   onAiDraftSubmit,
 }: ActionButtonsProps) {
-  const primaryLabel = isAiMode
-    ? isAiGenerating
-      ? "Drafting…"
-      : "Draft"
-    : isSubmitting
-      ? isScheduled
-        ? "Scheduling…"
-        : "Posting…"
-      : isScheduled
-        ? "Schedule"
-        : "Post"
+  const primaryLabel = getPrimaryButtonLabel(
+    isAiMode,
+    isAiGenerating,
+    isSubmitting,
+    isScheduled,
+  )
 
-  const handlePrimaryClick = isAiMode
-    ? onAiDraftSubmit
-    : isScheduled
-      ? onScheduleClick
-      : onPostClick
+  const handlePrimaryClick = getPrimaryButtonHandler(
+    isAiMode,
+    isScheduled,
+    onAiDraftSubmit,
+    onScheduleClick,
+    onPostClick,
+  )
 
-  const isPrimaryDisabled = isAiMode
-    ? isDraftDisabled || isAiGenerating
-    : isScheduleOrPublishDisabled
+  const isPrimaryDisabled = getPrimaryButtonDisabled(
+    isAiMode,
+    isDraftDisabled,
+    isAiGenerating,
+    isScheduleOrPublishDisabled,
+  )
+
+  const buttonStyle = isAiMode
+    ? "bg-primary/90 hover:bg-primary text-primary-foreground shadow-xs"
+    : "bg-primary text-primary-foreground hover:bg-primary/90 shadow-2xs hover:shadow-sm"
 
   return (
     <div className="flex items-center gap-2 shrink-0 ml-auto">
@@ -268,11 +309,7 @@ function ActionButtonsGroup({
         size="sm"
         onClick={handlePrimaryClick}
         disabled={isPrimaryDisabled}
-        className={`h-8.5 min-w-[70px] px-4.5 text-xs font-bold rounded-full transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-[1.03] active:scale-95 cursor-pointer disabled:opacity-50 disabled:hover:scale-100 ${
-          isAiMode
-            ? "bg-primary/90 hover:bg-primary text-primary-foreground shadow-xs"
-            : "bg-primary text-primary-foreground hover:bg-primary/90 shadow-2xs hover:shadow-sm"
-        }`}
+        className={`h-8.5 min-w-[70px] px-4.5 text-xs font-bold rounded-full transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-[1.03] active:scale-95 cursor-pointer disabled:opacity-50 disabled:hover:scale-100 ${buttonStyle}`}
         data-testid="primary-post-btn"
       >
         <span

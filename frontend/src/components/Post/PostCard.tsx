@@ -84,14 +84,28 @@ function parseScheduledDate(scheduledAt?: Date | string | null): Date | null {
   return typeof scheduledAt === "string" ? new Date(scheduledAt) : scheduledAt
 }
 
-function PostCardAuthorMeta({
-  author,
+function ScheduledTimeBadge({
+  scheduledDateTime,
+}: {
+  scheduledDateTime: string
+}) {
+  return (
+    <span
+      title={`Scheduled for ${scheduledDateTime}`}
+      className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline cursor-default"
+    >
+      <Clock className="h-3 w-3 shrink-0" />
+      {scheduledDateTime}
+    </span>
+  )
+}
+
+function TimeMeta({
   createdAt,
   scheduledAt,
   isScheduled,
   scheduledDateTime,
 }: {
-  author: PostAuthorData
   createdAt: Date | string
   scheduledAt?: Date | string | null
   isScheduled: boolean
@@ -106,6 +120,36 @@ function PostCardAuthorMeta({
     [createdAt],
   )
 
+  if (isScheduled && scheduledAt) {
+    return <ScheduledTimeBadge scheduledDateTime={scheduledDateTime} />
+  }
+
+  return (
+    <time
+      dateTime={
+        typeof createdAt === "string" ? createdAt : createdAt.toISOString()
+      }
+      title={fullDateTime}
+      className="shrink-0 text-xs hover:underline"
+    >
+      {relativeTime}
+    </time>
+  )
+}
+
+function PostCardAuthorMeta({
+  author,
+  createdAt,
+  scheduledAt,
+  isScheduled,
+  scheduledDateTime,
+}: {
+  author: PostAuthorData
+  createdAt: Date | string
+  scheduledAt?: Date | string | null
+  isScheduled: boolean
+  scheduledDateTime: string
+}) {
   return (
     <div className="flex min-w-0 items-center gap-1.5 flex-wrap sm:flex-nowrap">
       <button
@@ -120,78 +164,63 @@ function PostCardAuthorMeta({
         <span className="shrink-0" aria-hidden="true">
           ·
         </span>
-        {isScheduled && scheduledAt ? (
-          <span
-            title={`Scheduled for ${scheduledDateTime}`}
-            className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline cursor-default"
-          >
-            <Clock className="h-3 w-3 shrink-0" />
-            {scheduledDateTime}
-          </span>
-        ) : (
-          <time
-            dateTime={
-              typeof createdAt === "string"
-                ? createdAt
-                : createdAt.toISOString()
-            }
-            title={fullDateTime}
-            className="shrink-0 text-xs hover:underline"
-          >
-            {relativeTime}
-          </time>
-        )}
+        <TimeMeta
+          createdAt={createdAt}
+          scheduledAt={scheduledAt}
+          isScheduled={isScheduled}
+          scheduledDateTime={scheduledDateTime}
+        />
       </div>
     </div>
   )
 }
 
-function PostCardHeaderActions({
-  isEditing,
+function EditingHeaderActions({
   canSave,
   onCancel,
   onSave,
+}: {
+  canSave: boolean
+  onCancel: () => void
+  onSave: () => void
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={onCancel}
+        className="h-8 px-3 text-xs"
+      >
+        <X className="mr-1.5 h-3.5 w-3.5" />
+        Cancel
+      </Button>
+      <Button
+        size="sm"
+        onClick={onSave}
+        className="h-8 px-3 text-xs"
+        disabled={!canSave}
+      >
+        <Check className="mr-1.5 h-3.5 w-3.5" />
+        Save
+      </Button>
+    </div>
+  )
+}
+
+function DropdownHeaderActions({
   onPreview,
   onEdit,
   onDelete,
   onPublish,
   isPublishing,
 }: {
-  isEditing: boolean
-  canSave: boolean
-  onCancel: () => void
-  onSave: () => void
   onPreview?: () => void
   onEdit?: () => void
   onDelete?: () => void
   onPublish?: () => void
   isPublishing?: boolean
 }) {
-  if (isEditing) {
-    return (
-      <div className="flex items-center gap-1.5">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onCancel}
-          className="h-8 px-3 text-xs"
-        >
-          <X className="mr-1.5 h-3.5 w-3.5" />
-          Cancel
-        </Button>
-        <Button
-          size="sm"
-          onClick={onSave}
-          className="h-8 px-3 text-xs"
-          disabled={!canSave}
-        >
-          <Check className="mr-1.5 h-3.5 w-3.5" />
-          Save
-        </Button>
-      </div>
-    )
-  }
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -242,6 +271,48 @@ function PostCardHeaderActions({
         )}
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+function PostCardHeaderActions({
+  isEditing,
+  canSave,
+  onCancel,
+  onSave,
+  onPreview,
+  onEdit,
+  onDelete,
+  onPublish,
+  isPublishing,
+}: {
+  isEditing: boolean
+  canSave: boolean
+  onCancel: () => void
+  onSave: () => void
+  onPreview?: () => void
+  onEdit?: () => void
+  onDelete?: () => void
+  onPublish?: () => void
+  isPublishing?: boolean
+}) {
+  if (isEditing) {
+    return (
+      <EditingHeaderActions
+        canSave={canSave}
+        onCancel={onCancel}
+        onSave={onSave}
+      />
+    )
+  }
+
+  return (
+    <DropdownHeaderActions
+      onPreview={onPreview}
+      onEdit={onEdit}
+      onDelete={onDelete}
+      onPublish={onPublish}
+      isPublishing={isPublishing}
+    />
   )
 }
 
@@ -334,49 +405,47 @@ function FailureNotice({
   )
 }
 
-function PostCardBodyContent({
-  isEditing,
-  isDrafting,
-  content,
+function EditingBodyContent({
   editedContent,
   onContentChange,
-  imageUrl,
 }: {
-  isEditing: boolean
-  isDrafting?: boolean
-  content: string
   editedContent: string
   onContentChange: (val: string) => void
+}) {
+  return (
+    <div className="mt-1.5">
+      <Textarea
+        value={editedContent}
+        onChange={(e) => onContentChange(e.target.value)}
+        placeholder="What's happening?"
+        className="min-h-24 resize-none border py-2.5 px-3 text-sm leading-relaxed focus-visible:ring-1 focus-visible:ring-primary"
+        rows={4}
+      />
+    </div>
+  )
+}
+
+function DraftingBodyContent({ content }: { content: string }) {
+  return (
+    <div className="mt-1">
+      <p className="break-words text-sm leading-normal whitespace-pre-wrap text-foreground">
+        {content}
+      </p>
+      <div className="space-y-2 mt-3 opacity-60">
+        <div className="h-2.5 bg-muted rounded-full w-4/5 animate-pulse" />
+        <div className="h-2.5 bg-muted rounded-full w-3/5 animate-pulse" />
+      </div>
+    </div>
+  )
+}
+
+function NormalBodyContent({
+  content,
+  imageUrl,
+}: {
+  content: string
   imageUrl?: string | null
 }) {
-  if (isEditing) {
-    return (
-      <div className="mt-1.5">
-        <Textarea
-          value={editedContent}
-          onChange={(e) => onContentChange(e.target.value)}
-          placeholder="What's happening?"
-          className="min-h-24 resize-none border py-2.5 px-3 text-sm leading-relaxed focus-visible:ring-1 focus-visible:ring-primary"
-          rows={4}
-        />
-      </div>
-    )
-  }
-
-  if (isDrafting) {
-    return (
-      <div className="mt-1">
-        <p className="break-words text-sm leading-normal whitespace-pre-wrap text-foreground">
-          {content}
-        </p>
-        <div className="space-y-2 mt-3 opacity-60">
-          <div className="h-2.5 bg-muted rounded-full w-4/5 animate-pulse" />
-          <div className="h-2.5 bg-muted rounded-full w-3/5 animate-pulse" />
-        </div>
-      </div>
-    )
-  }
-
   return (
     <>
       <div className="mt-1">
@@ -397,6 +466,37 @@ function PostCardBodyContent({
       )}
     </>
   )
+}
+
+function PostCardBodyContent({
+  isEditing,
+  isDrafting,
+  content,
+  editedContent,
+  onContentChange,
+  imageUrl,
+}: {
+  isEditing: boolean
+  isDrafting?: boolean
+  content: string
+  editedContent: string
+  onContentChange: (val: string) => void
+  imageUrl?: string | null
+}) {
+  if (isEditing) {
+    return (
+      <EditingBodyContent
+        editedContent={editedContent}
+        onContentChange={onContentChange}
+      />
+    )
+  }
+
+  if (isDrafting) {
+    return <DraftingBodyContent content={content} />
+  }
+
+  return <NormalBodyContent content={content} imageUrl={imageUrl} />
 }
 
 function PostCardAvatar({ author }: { author: PostAuthorData }) {
@@ -567,25 +667,22 @@ function PostCardActionsRow({
   )
 }
 
-function getPostCardFlags(post: PostCardData, isDrafting?: boolean) {
-  const isDraftingMode = Boolean(isDrafting || post.status === "drafting")
-  const isScheduled = Boolean(
-    post.scheduledAt ||
-      post.type === "scheduled" ||
-      post.status === "scheduled",
-  )
-  const isFailed = post.status === "failed"
-  const isPosted = post.type === "posted" || post.status === "published"
-  const scheduledDateTime = post.scheduledAt
-    ? formatFullDateTime(post.scheduledAt)
-    : ""
+function getScheduledDateTime(scheduledAt?: Date | string | null): string {
+  if (!scheduledAt) return ""
+  return formatFullDateTime(scheduledAt)
+}
 
+function getPostCardFlags(post: PostCardData, isDrafting?: boolean) {
   return {
-    isDrafting: isDraftingMode,
-    isScheduled,
-    isFailed,
-    isPosted,
-    scheduledDateTime,
+    isDrafting: Boolean(isDrafting || post.status === "drafting"),
+    isScheduled: Boolean(
+      post.scheduledAt ||
+        post.type === "scheduled" ||
+        post.status === "scheduled",
+    ),
+    isFailed: post.status === "failed",
+    isPosted: post.type === "posted" || post.status === "published",
+    scheduledDateTime: getScheduledDateTime(post.scheduledAt),
   }
 }
 
