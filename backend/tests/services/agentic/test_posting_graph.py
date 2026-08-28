@@ -48,77 +48,47 @@ def _make_fake_post(
 
 
 @pytest.mark.anyio
-async def test_slice_1_x_stealth_publishing_happy_path() -> None:
-    """Slice 1: Happy path X stealth browser publishing with embedded verification."""
-    user_id = str(uuid.uuid4())
-    post_id = str(uuid.uuid4())
-
-    fake_post = _make_fake_post(
-        post_id=post_id,
-        user_id=user_id,
-        content="Autonomous posting test via LinkX PostingGraph.",
-        platform="x",
-    )
-
-    mock_verify_report = VerificationGraphReport(
-        verified_post_ids=[post_id],
-        unverified_post_ids=[],
-        items=[
-            VerificationItemReport(
-                post_id=post_id,
-                platform="x",
-                is_verified=True,
-                live_url="https://x.com/i/status/1829384729384",
-            )
-        ],
-        platform="x",
-        status="completed",
-    )
-
-    with (
-        patch("app.crud.get_post", return_value=fake_post),
-        patch(
-            "app.services.agentic.posting_graph.get_social_account_status",
-            return_value=AccountStatusReport(
-                user_id=user_id, x_connected=True, linkedin_connected=False
-            ),
-        ),
-        patch(
+@pytest.mark.parametrize(
+    (
+        "platform",
+        "dispatch_path",
+        "dispatch_ret",
+        "expected_url",
+        "acc_kwargs",
+    ),
+    [
+        (
+            "x",
             "app.services.agentic.posting_graph.dispatch_x_post",
-            new_callable=AsyncMock,
-            return_value=(True, "1829384729384", None),
+            (True, "1829384729384", None),
+            "https://x.com/i/status/1829384729384",
+            {"x_connected": True, "linkedin_connected": False},
         ),
-        patch(
-            "app.services.agentic.posting_graph.verify_posts_with_graph",
-            new_callable=AsyncMock,
-            return_value=mock_verify_report,
+        (
+            "linkedin",
+            "app.services.agentic.posting_graph.dispatch_linkedin_post",
+            (True, "urn:li:share:998877", None),
+            "https://www.linkedin.com/feed/update/urn:li:share:998877",
+            {"x_connected": False, "linkedin_connected": True},
         ),
-        patch("app.services.agentic.posting_graph._mark_as_published") as mock_mark,
-    ):
-        report = await publish_post_with_graph(
-            user_id=user_id,
-            post_id=post_id,
-            platform="x",
-        )
-
-        assert isinstance(report, PostingGraphReport)
-        assert report.status == "published"
-        assert report.is_verified is True
-        assert "https://x.com/i/status/1829384729384" in report.published_urls
-        mock_mark.assert_called_once()
-
-
-@pytest.mark.anyio
-async def test_slice_2_linkedin_publishing_happy_path() -> None:
-    """Slice 2: Happy path LinkedIn REST API publishing with verification."""
+    ],
+)
+async def test_slices_single_platform_publishing_happy_paths(
+    platform: str,
+    dispatch_path: str,
+    dispatch_ret: tuple[bool, str, str | None],
+    expected_url: str,
+    acc_kwargs: dict[str, bool],
+) -> None:
+    """Slices 1 & 2: Happy path single-channel publishing with embedded verification."""
     user_id = str(uuid.uuid4())
     post_id = str(uuid.uuid4())
 
     fake_post = _make_fake_post(
         post_id=post_id,
         user_id=user_id,
-        content="LinkedIn professional article on agentic workflows.",
-        platform="linkedin",
+        content=f"Post content for {platform}",
+        platform=platform,
     )
 
     mock_verify_report = VerificationGraphReport(
@@ -127,12 +97,12 @@ async def test_slice_2_linkedin_publishing_happy_path() -> None:
         items=[
             VerificationItemReport(
                 post_id=post_id,
-                platform="linkedin",
+                platform=platform,
                 is_verified=True,
-                live_url="https://www.linkedin.com/feed/update/urn:li:share:998877",
+                live_url=expected_url,
             )
         ],
-        platform="linkedin",
+        platform=platform,
         status="completed",
     )
 
@@ -140,14 +110,12 @@ async def test_slice_2_linkedin_publishing_happy_path() -> None:
         patch("app.crud.get_post", return_value=fake_post),
         patch(
             "app.services.agentic.posting_graph.get_social_account_status",
-            return_value=AccountStatusReport(
-                user_id=user_id, x_connected=False, linkedin_connected=True
-            ),
+            return_value=AccountStatusReport(user_id=user_id, **acc_kwargs),
         ),
         patch(
-            "app.services.agentic.posting_graph.dispatch_linkedin_post",
+            dispatch_path,
             new_callable=AsyncMock,
-            return_value=(True, "urn:li:share:998877", None),
+            return_value=dispatch_ret,
         ),
         patch(
             "app.services.agentic.posting_graph.verify_posts_with_graph",
@@ -159,15 +127,13 @@ async def test_slice_2_linkedin_publishing_happy_path() -> None:
         report = await publish_post_with_graph(
             user_id=user_id,
             post_id=post_id,
-            platform="linkedin",
+            platform=platform,
         )
 
+        assert isinstance(report, PostingGraphReport)
         assert report.status == "published"
         assert report.is_verified is True
-        assert (
-            "https://www.linkedin.com/feed/update/urn:li:share:998877"
-            in report.published_urls
-        )
+        assert expected_url in report.published_urls
 
 
 @pytest.mark.anyio

@@ -336,6 +336,35 @@ async def verify_published_post_node(
         }
 
 
+def _update_db_post_publish_state(
+    *,
+    session: Session,
+    db_post: Post,
+    status: str,
+    ext_id: str | None,
+    err: str | None,
+) -> str:
+    """Update post in PostgreSQL based on dispatch status and return final status."""
+    if status == "partial_failure" and ext_id:
+        _mark_as_published(session=session, post=db_post, external_post_id=ext_id)
+        return "partial_failure"
+
+    if ext_id and status in ("dispatched", "preflight_passed", "published"):
+        if db_post.status != "published":
+            _mark_as_published(session=session, post=db_post, external_post_id=ext_id)
+        return "published"
+
+    if db_post.status == "published":
+        return "published"
+
+    _handle_publish_error(
+        session=session,
+        post=db_post,
+        err=RuntimeError(err or "Publishing failed"),
+    )
+    return "failed"
+
+
 async def record_publish_results_node(
     state: PostingGraphState,
 ) -> dict[str, Any]:
@@ -350,22 +379,13 @@ async def record_publish_results_node(
         if not db_post:
             return {"status": "error", "error": f"Post not found: {post_id}"}
 
-        if status == "partial_failure" and ext_id:
-            _mark_as_published(session=s, post=db_post, external_post_id=ext_id)
-            final_status = "partial_failure"
-        elif ext_id and status in ("dispatched", "preflight_passed", "published"):
-            if db_post.status != "published":
-                _mark_as_published(session=s, post=db_post, external_post_id=ext_id)
-            final_status = "published"
-        elif db_post.status == "published":
-            final_status = "published"
-        else:
-            _handle_publish_error(
-                session=s,
-                post=db_post,
-                err=RuntimeError(err or "Publishing failed"),
-            )
-            final_status = "failed"
+        final_status = _update_db_post_publish_state(
+            session=s,
+            db_post=db_post,
+            status=status,
+            ext_id=ext_id,
+            err=err,
+        )
 
     return {"status": final_status}
 

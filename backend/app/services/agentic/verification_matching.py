@@ -121,6 +121,14 @@ def _format_linkedin_url(ext_id: str) -> str:
     return f"https://www.linkedin.com/feed/update/{urn}"
 
 
+def _format_dual_canonical_url(ext_id: str) -> str | None:
+    if ext_id.isdigit():
+        return _format_x_url(ext_id)
+    if "urn:li:" in ext_id:
+        return _format_linkedin_url(ext_id)
+    return None
+
+
 def format_canonical_post_url(*, platform: str, ext_id: str | None) -> str | None:
     """Format live post URL for X or LinkedIn from external ID."""
     if not ext_id:
@@ -131,10 +139,7 @@ def format_canonical_post_url(*, platform: str, ext_id: str | None) -> str | Non
     if clean_platform == "linkedin" or "linkedin:" in ext_id:
         return _format_linkedin_url(ext_id)
     if clean_platform in ("both", "all", "linkx"):
-        if ext_id.isdigit():
-            return _format_x_url(ext_id)
-        if "urn:li:" in ext_id:
-            return _format_linkedin_url(ext_id)
+        return _format_dual_canonical_url(ext_id)
     return None
 
 

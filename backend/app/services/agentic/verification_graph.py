@@ -178,6 +178,50 @@ async def fetch_unverified_posts_node(
     }
 
 
+async def _navigate_x_profile(*, page: Any, username: str, mouse: Any | None) -> None:
+    """Navigate to user profile page and handle sidebar navigation fallback."""
+    profile_url = f"https://x.com/{username}" if username else "https://x.com/home"
+    try:
+        await human_navigation(page=page, url=profile_url)
+    except Exception:
+        await page.goto(profile_url, wait_until="domcontentloaded", timeout=20000)
+    await recover_page_session(page=page, mouse=mouse)
+
+    if not username and "/home" in page.url:
+        try:
+            profile_btn = page.locator("[data-testid='AppTabBar_Profile_Link']")
+            if await profile_btn.is_visible():
+                await profile_btn.click()
+                await page.wait_for_timeout(2000)
+        except Exception:
+            pass
+
+
+async def _scrape_direct_status_urls(
+    *, page: Any, target_ext_ids: list[str], mouse: Any | None
+) -> list[dict[str, Any]]:
+    """Inspect specific status URLs directly in DOM to extract tweets."""
+    tweets: list[dict[str, Any]] = []
+    for eid in target_ext_ids:
+        clean_id = eid.split("x:")[-1] if "x:" in eid else eid
+        if not clean_id.isdigit():
+            continue
+        try:
+            await page.goto(
+                f"https://x.com/i/status/{clean_id}",
+                wait_until="domcontentloaded",
+                timeout=15000,
+            )
+            await recover_page_session(page=page, mouse=mouse)
+            await page.wait_for_timeout(1500)
+            direct_tweets = await _extract_profile_timeline_tweets(page=page, limit=2)
+            if direct_tweets:
+                tweets.extend(direct_tweets)
+        except Exception:
+            pass
+    return tweets
+
+
 async def _scrape_x_profile_feed(
     *,
     user_id: str,
@@ -193,55 +237,19 @@ async def _scrape_x_profile_feed(
 
     meta = manager.read_session_metadata("x")
     username = meta.get("username", "")
-    profile_url = f"https://x.com/{username}" if username else "https://x.com/home"
 
     try:
         async with manager.get_context("x", headless=headless) as context:
             page = await get_active_page(context=context)
-
-            # Navigate to profile or home
-            try:
-                await human_navigation(page=page, url=profile_url)
-            except Exception:
-                await page.goto(
-                    profile_url, wait_until="domcontentloaded", timeout=20000
-                )
-            await recover_page_session(page=page, mouse=mouse)
-
-            # If username was not known and we are at /home, click Profile on left sidebar
-            if not username and "/home" in page.url:
-                try:
-                    profile_btn = page.locator("[data-testid='AppTabBar_Profile_Link']")
-                    if await profile_btn.is_visible():
-                        await profile_btn.click()
-                        await page.wait_for_timeout(2000)
-                except Exception:
-                    pass
-
+            await _navigate_x_profile(page=page, username=username, mouse=mouse)
             await random_delay(min_sec=1.0, max_sec=2.0)
             tweets = await _extract_profile_timeline_tweets(page=page, limit=max_tweets)
 
-            # Also check direct status URLs if provided
             if target_ext_ids:
-                for eid in target_ext_ids:
-                    clean_id = eid.split("x:")[-1] if "x:" in eid else eid
-                    if clean_id.isdigit():
-                        status_url = f"https://x.com/i/status/{clean_id}"
-                        try:
-                            await page.goto(
-                                status_url,
-                                wait_until="domcontentloaded",
-                                timeout=15000,
-                            )
-                            await recover_page_session(page=page, mouse=mouse)
-                            await page.wait_for_timeout(1500)
-                            direct_tweets = await _extract_profile_timeline_tweets(
-                                page=page, limit=2
-                            )
-                            if direct_tweets:
-                                tweets.extend(direct_tweets)
-                        except Exception:
-                            pass
+                status_tweets = await _scrape_direct_status_urls(
+                    page=page, target_ext_ids=target_ext_ids, mouse=mouse
+                )
+                tweets.extend(status_tweets)
 
             return tweets
     except Exception as exc:
