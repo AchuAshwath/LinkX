@@ -48,24 +48,24 @@ async def test_chaos_adversarial_payload_fuzzing(
     with (
         patch("app.crud.get_post", return_value=fake_post),
         patch(
-            "app.services.agentic.posting_graph.get_social_account_status",
+            "app.services.agentic.posting_preflight.get_social_account_status",
             return_value=AccountStatusReport(
                 user_id=user_id, x_connected=True, linkedin_connected=False
             ),
         ),
         patch(
-            "app.services.agentic.posting_graph.dispatch_x_post",
+            "app.services.agentic.posting_nodes.dispatch_x_post",
             new_callable=AsyncMock,
             return_value=(True, "1829384729384", None),
         ),
         patch(
-            "app.services.agentic.posting_graph.verify_posts_with_graph",
+            "app.services.agentic.posting_nodes.verify_posts_with_graph",
             new_callable=AsyncMock,
             return_value=VerificationGraphReport(
                 verified_post_ids=[post_id], status="completed"
             ),
         ),
-        patch("app.services.agentic.posting_graph._mark_as_published"),
+        patch("app.services.agentic.posting_dispatch._mark_as_published"),
     ):
         report = await publish_post_with_graph(
             user_id=user_id,
@@ -93,16 +93,16 @@ async def test_chaos_network_timeout_resilience() -> None:
     with (
         patch("app.crud.get_post", return_value=fake_post),
         patch(
-            "app.services.agentic.posting_graph.get_social_account_status",
+            "app.services.agentic.posting_preflight.get_social_account_status",
             return_value=AccountStatusReport(
                 user_id=user_id, x_connected=False, linkedin_connected=True
             ),
         ),
         patch(
-            "app.services.agentic.posting_graph.dispatch_linkedin_post",
+            "app.services.agentic.posting_nodes.dispatch_linkedin_post",
             side_effect=TimeoutError("Connection timed out after 30s"),
         ),
-        patch("app.services.agentic.posting_graph._handle_publish_error"),
+        patch("app.services.agentic.posting_dispatch._handle_publish_error"),
     ):
         report = await publish_post_with_graph(
             user_id=user_id,
@@ -130,16 +130,16 @@ async def test_chaos_browser_hard_crash_during_submission() -> None:
     with (
         patch("app.crud.get_post", return_value=fake_post),
         patch(
-            "app.services.agentic.posting_graph.get_social_account_status",
+            "app.services.agentic.posting_preflight.get_social_account_status",
             return_value=AccountStatusReport(
                 user_id=user_id, x_connected=True, linkedin_connected=False
             ),
         ),
         patch(
-            "app.services.agentic.posting_graph.dispatch_x_post",
+            "app.services.agentic.posting_nodes.dispatch_x_post",
             side_effect=RuntimeError("Target page, context or browser has been closed"),
         ),
-        patch("app.services.agentic.posting_graph._handle_publish_error"),
+        patch("app.services.agentic.posting_dispatch._handle_publish_error"),
     ):
         report = await publish_post_with_graph(
             user_id=user_id,
@@ -157,14 +157,14 @@ async def test_chaos_verification_graph_corrupted_post_records() -> None:
 
     with (
         patch(
-            "app.services.agentic.verification_graph._load_target_posts_from_db",
+            "app.services.agentic.verification_nodes.load_target_posts_from_db",
             return_value=[
                 {"id": "not-a-uuid", "content": None, "platform": 12345},
                 {"id": str(uuid.uuid4()), "content": "Valid", "platform": "x"},
             ],
         ),
         patch(
-            "app.services.agentic.verification_graph._scrape_x_profile_feed",
+            "app.services.agentic.verification_nodes.scrape_x_profile_feed",
             new_callable=AsyncMock,
             return_value=[],
         ),
@@ -194,24 +194,24 @@ async def test_chaos_concurrent_multi_post_publishing() -> None:
         with (
             patch("app.crud.get_post", return_value=fake_p),
             patch(
-                "app.services.agentic.posting_graph.get_social_account_status",
+                "app.services.agentic.posting_preflight.get_social_account_status",
                 return_value=AccountStatusReport(
                     user_id=user_id, x_connected=True, linkedin_connected=False
                 ),
             ),
             patch(
-                "app.services.agentic.posting_graph.dispatch_x_post",
+                "app.services.agentic.posting_nodes.dispatch_x_post",
                 new_callable=AsyncMock,
                 return_value=(True, f"182938472938{idx}", None),
             ),
             patch(
-                "app.services.agentic.posting_graph.verify_posts_with_graph",
+                "app.services.agentic.posting_nodes.verify_posts_with_graph",
                 new_callable=AsyncMock,
                 return_value=VerificationGraphReport(
                     verified_post_ids=[pid], status="completed"
                 ),
             ),
-            patch("app.services.agentic.posting_graph._mark_as_published"),
+            patch("app.services.agentic.posting_dispatch._mark_as_published"),
         ):
             return await publish_post_with_graph(
                 user_id=user_id,

@@ -51,14 +51,14 @@ def _make_fake_post(
     [
         {
             "platform": "x",
-            "dispatch_path": "app.services.agentic.posting_graph.dispatch_x_post",
+            "dispatch_path": "app.services.agentic.posting_nodes.dispatch_x_post",
             "dispatch_ret": (True, "1829384729384", None),
             "expected_url": "https://x.com/i/status/1829384729384",
             "acc_kwargs": {"x_connected": True, "linkedin_connected": False},
         },
         {
             "platform": "linkedin",
-            "dispatch_path": "app.services.agentic.posting_graph.dispatch_linkedin_post",
+            "dispatch_path": "app.services.agentic.posting_nodes.dispatch_linkedin_post",
             "dispatch_ret": (True, "urn:li:share:998877", None),
             "expected_url": "https://www.linkedin.com/feed/update/urn:li:share:998877",
             "acc_kwargs": {"x_connected": False, "linkedin_connected": True},
@@ -108,11 +108,11 @@ async def test_slices_single_platform_publishing_happy_paths(
             return_value=case["dispatch_ret"],
         ),
         patch(
-            "app.services.agentic.posting_graph.verify_posts_with_graph",
+            "app.services.agentic.posting_nodes.verify_posts_with_graph",
             new_callable=AsyncMock,
             return_value=mock_verify_report,
         ),
-        patch("app.services.agentic.posting_graph._mark_as_published"),
+        patch("app.services.agentic.posting_dispatch._mark_as_published"),
     ):
         report = await publish_post_with_graph(
             user_id=user_id,
@@ -176,19 +176,19 @@ async def test_slices_dual_platform_cross_posting(
             ),
         ),
         patch(
-            "app.services.agentic.posting_graph.dispatch_dual_post",
+            "app.services.agentic.posting_nodes.dispatch_dual_post",
             new_callable=AsyncMock,
             return_value=case["dispatch_ret"],
         ),
         patch(
-            "app.services.agentic.posting_graph.verify_posts_with_graph",
+            "app.services.agentic.posting_nodes.verify_posts_with_graph",
             new_callable=AsyncMock,
             return_value=VerificationGraphReport(
                 verified_post_ids=case["mock_verify_ids"],
                 status="completed" if case["mock_verify_ids"] else "partial",
             ),
         ),
-        patch("app.services.agentic.posting_graph._mark_as_published"),
+        patch("app.services.agentic.posting_dispatch._mark_as_published"),
     ):
         report = await publish_post_with_graph(
             user_id=user_id,
@@ -290,15 +290,15 @@ async def test_slice_8_embedded_verification_failure_shielding() -> None:
             ),
         ),
         patch(
-            "app.services.agentic.posting_graph.dispatch_x_post",
+            "app.services.agentic.posting_nodes.dispatch_x_post",
             new_callable=AsyncMock,
             return_value=(True, "987654321", None),
         ),
         patch(
-            "app.services.agentic.posting_graph.verify_posts_with_graph",
+            "app.services.agentic.posting_nodes.verify_posts_with_graph",
             side_effect=RuntimeError("Browser crashed during verification"),
         ),
-        patch("app.services.agentic.posting_graph._mark_as_published"),
+        patch("app.services.agentic.posting_dispatch._mark_as_published"),
     ):
         report = await publish_post_with_graph(
             user_id=user_id,
@@ -337,7 +337,7 @@ async def test_slice_10_idempotent_publish_on_already_published_post() -> None:
     with (
         patch("app.crud.get_post", return_value=fake_post),
         patch(
-            "app.services.agentic.posting_graph.verify_posts_with_graph",
+            "app.services.agentic.posting_nodes.verify_posts_with_graph",
             new_callable=AsyncMock,
             return_value=VerificationGraphReport(
                 verified_post_ids=[post_id], status="completed"
@@ -377,7 +377,7 @@ async def test_slice_11_cross_posting_separate_channel_results() -> None:
             ),
         ),
         patch(
-            "app.services.agentic.posting_graph.dispatch_dual_post",
+            "app.services.agentic.posting_nodes.dispatch_dual_post",
             new_callable=AsyncMock,
             return_value=(
                 False,
@@ -386,13 +386,13 @@ async def test_slice_11_cross_posting_separate_channel_results() -> None:
             ),
         ),
         patch(
-            "app.services.agentic.posting_graph.verify_posts_with_graph",
+            "app.services.agentic.posting_nodes.verify_posts_with_graph",
             new_callable=AsyncMock,
             return_value=VerificationGraphReport(
                 verified_post_ids=[], status="partial"
             ),
         ),
-        patch("app.services.agentic.posting_graph._mark_as_published"),
+        patch("app.services.agentic.posting_dispatch._mark_as_published"),
     ):
         report = await publish_post_with_graph(
             user_id=user_id,

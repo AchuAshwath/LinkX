@@ -136,7 +136,7 @@ async def test_slice_1_x_profile_fuzzy_match() -> None:
 
     with (
         patch(
-            "app.services.agentic.verification_graph.load_target_posts_from_db",
+            "app.services.agentic.verification_nodes.load_target_posts_from_db",
             return_value=[
                 {
                     "id": post_id,
@@ -147,12 +147,12 @@ async def test_slice_1_x_profile_fuzzy_match() -> None:
             ],
         ),
         patch(
-            "app.services.agentic.verification_graph.scrape_x_profile_feed",
+            "app.services.agentic.verification_nodes.scrape_x_profile_feed",
             new_callable=AsyncMock,
             return_value=mock_tweets,
         ),
         patch(
-            "app.services.agentic.verification_graph.probe_url_reachability",
+            "app.services.agentic.verification_nodes.probe_url_reachability",
             new_callable=AsyncMock,
             return_value=(True, 200, None),
         ),
@@ -179,7 +179,7 @@ async def test_slice_2_x_profile_unverified_post() -> None:
 
     with (
         patch(
-            "app.services.agentic.verification_graph.load_target_posts_from_db",
+            "app.services.agentic.verification_nodes.load_target_posts_from_db",
             return_value=[
                 {
                     "id": post_id,
@@ -190,7 +190,7 @@ async def test_slice_2_x_profile_unverified_post() -> None:
             ],
         ),
         patch(
-            "app.services.agentic.verification_graph.scrape_x_profile_feed",
+            "app.services.agentic.verification_nodes.scrape_x_profile_feed",
             new_callable=AsyncMock,
             return_value=[{"text": "Unrelated topic", "status_id": "111"}],
         ),
@@ -214,7 +214,7 @@ async def test_slice_3_linkedin_post_verification() -> None:
 
     with (
         patch(
-            "app.services.agentic.verification_graph.load_target_posts_from_db",
+            "app.services.agentic.verification_nodes.load_target_posts_from_db",
             return_value=[
                 {
                     "id": post_id,
@@ -225,7 +225,7 @@ async def test_slice_3_linkedin_post_verification() -> None:
             ],
         ),
         patch(
-            "app.services.agentic.verification_graph.probe_url_reachability",
+            "app.services.agentic.verification_nodes.probe_url_reachability",
             new_callable=AsyncMock,
             return_value=(True, 200, None),
         ),
@@ -271,16 +271,16 @@ async def test_slice_4_dual_platform_batch_verification() -> None:
 
     with (
         patch(
-            "app.services.agentic.verification_graph.load_target_posts_from_db",
+            "app.services.agentic.verification_nodes.load_target_posts_from_db",
             return_value=target_posts,
         ),
         patch(
-            "app.services.agentic.verification_graph.scrape_x_profile_feed",
+            "app.services.agentic.verification_nodes.scrape_x_profile_feed",
             new_callable=AsyncMock,
             return_value=mock_tweets,
         ),
         patch(
-            "app.services.agentic.verification_graph.probe_url_reachability",
+            "app.services.agentic.verification_nodes.probe_url_reachability",
             new_callable=AsyncMock,
             return_value=(True, 200, None),
         ),
@@ -366,16 +366,16 @@ async def test_slice_8_cross_posting_dual_channel_verification() -> None:
 
     with (
         patch(
-            "app.services.agentic.verification_graph.load_target_posts_from_db",
+            "app.services.agentic.verification_nodes.load_target_posts_from_db",
             return_value=target_posts,
         ),
         patch(
-            "app.services.agentic.verification_graph.scrape_x_profile_feed",
+            "app.services.agentic.verification_nodes.scrape_x_profile_feed",
             new_callable=AsyncMock,
             return_value=mock_tweets,
         ),
         patch(
-            "app.services.agentic.verification_graph.probe_url_reachability",
+            "app.services.agentic.verification_nodes.probe_url_reachability",
             new_callable=AsyncMock,
             return_value=(True, 200, None),
         ),
@@ -400,7 +400,7 @@ async def test_slice_9_empty_target_posts_error_status() -> None:
     missing_id = str(uuid.uuid4())
 
     with patch(
-        "app.services.agentic.verification_graph.load_target_posts_from_db",
+        "app.services.agentic.verification_nodes.load_target_posts_from_db",
         return_value=[],
     ):
         report = await verify_posts_with_graph(

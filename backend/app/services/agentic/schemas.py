@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypedDict
 
 from pydantic import AliasChoices, BaseModel, Field, model_validator
 
@@ -519,3 +519,43 @@ class PostingGraphReport(BaseModel):
         default=None,
         description="Error message if publishing or verification failed",
     )
+
+
+class PostingGraphState(TypedDict, total=False):
+    """Execution state schema for multi-channel posting graph."""
+
+    user_id: str
+    post_id: str
+    platform: str
+    headless: bool
+    session: Any
+    mouse: Any | None
+    post_record: dict[str, Any] | None
+    x_result: dict[str, Any] | None
+    linkedin_result: dict[str, Any] | None
+    published_urls: list[str]
+    is_verified: bool
+    verification_report: dict[str, Any] | None
+    external_post_id: str | None
+    status: str
+    error: str | None
+
+
+class VerificationGraphState(TypedDict, total=False):
+    """Execution state for VerificationGraph orchestrator."""
+
+    user_id: str
+    post_ids: list[str]
+    platform: str
+    headless: bool
+    max_tweets_to_check: int
+    session: Any
+    mouse: Any
+    target_posts: list[dict[str, Any]]
+    timeline_tweets: list[dict[str, Any]]
+    items: list[dict[str, Any]]
+    verified_ids: list[str]
+    unverified_ids: list[str]
+    reachability_status: dict[str, bool]
+    status: str
+    error: str | None

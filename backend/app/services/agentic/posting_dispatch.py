@@ -109,10 +109,12 @@ def update_db_post_publish_state(
     session: Session,
     db_post: Post,
     status: str,
-    ext_id: str | None,
-    err: str | None,
+    **kwargs: Any,
 ) -> str:
     """Update post in PostgreSQL based on dispatch status and return final status."""
+    ext_id: str | None = kwargs.get("ext_id")
+    err: str | None = kwargs.get("err")
+
     if status == "partial_failure" and ext_id:
         _mark_as_published(session=session, post=db_post, external_post_id=ext_id)
         return "partial_failure"
