@@ -17,11 +17,11 @@ logger = logging.getLogger(__name__)
 
 
 async def dispatch_x_post(
-    *, session: Session, post: Post
+    *, session: Session, post: Post, headless: bool = True
 ) -> tuple[bool, str | None, str | None]:
     """Execute live post publishing to X.com via stealth browser automation."""
     try:
-        res = await _publish_x(session=session, post=post)
+        res = await _publish_x(session=session, post=post, headless=headless)
         if isinstance(res, PublishFailure):
             return False, None, res.payload.message
         return True, str(res), None
@@ -45,7 +45,7 @@ async def dispatch_linkedin_post(
 
 
 async def dispatch_dual_post(
-    *, session: Session, post: Post
+    *, session: Session, post: Post, headless: bool = True
 ) -> tuple[bool, str | None, str | None]:
     """Execute sequential dual-channel publishing across LinkedIn and X."""
     li_ok, li_id, li_err = await dispatch_linkedin_post(session=session, post=post)
@@ -58,7 +58,9 @@ async def dispatch_dual_post(
     session.commit()
     session.refresh(post)
 
-    x_ok, x_id, x_err = await dispatch_x_post(session=session, post=post)
+    x_ok, x_id, x_err = await dispatch_x_post(
+        session=session, post=post, headless=headless
+    )
     if not x_ok:
         combined_id = f"linkedin:{li_id}"
         return (

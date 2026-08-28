@@ -67,8 +67,9 @@ async def test_publish_x_with_media(
         content: str,
         image_path: str,
         user_id: str | None = None,
-        _headless: bool | None = None,
+        headless: bool | None = None,
     ) -> XPostResult:
+        _ = headless
         called_with["content"] = content
         called_with["image_path"] = image_path
         called_with["user_id"] = user_id

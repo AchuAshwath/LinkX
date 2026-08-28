@@ -1,23 +1,57 @@
 #!/usr/bin/env python3
-"""Interactive terminal demonstration of PostingGraph and VerificationGraph."""
+"""Interactive terminal demonstration of CurationGraph, PostingGraph, and VerificationGraph with Self-Healing."""
 
 from __future__ import annotations
 
 import asyncio
+import json
+import os
+import platform as sys_platform
+import subprocess
 import sys
 import time
 import uuid
-from typing import NamedTuple
+from pathlib import Path
+from typing import Any, NamedTuple
+
+os.environ["PLAYWRIGHT_HEADLESS"] = "0"
 
 from sqlalchemy import create_engine
 from sqlmodel import Session, select
 
 from app import crud
 from app.core.config import settings
-from app.models import Post, PostCreate, User
+from app.models import User
+from app.services.agentic.curation_graph import curate_and_draft_post
 from app.services.agentic.posting_graph import publish_post_with_graph
 from app.services.agentic.schemas import PostingGraphReport
 from app.services.agentic.tools.context_tools import get_social_account_status
+
+SELECTORS_PATH = (
+    Path(__file__).parent.parent
+    / "app"
+    / "services"
+    / "browser"
+    / "selectors"
+    / "x_selectors.json"
+)
+
+
+def _focus_chrome_on_macos() -> None:
+    """Bring Google Chrome to the front on macOS so the user can watch the automation."""
+    if sys_platform.system() == "Darwin":
+        try:
+            subprocess.run(
+                [
+                    "osascript",
+                    "-e",
+                    'tell application "Google Chrome" to activate',
+                ],
+                capture_output=True,
+                check=False,
+            )
+        except Exception:
+            pass
 
 
 def _get_engine():
@@ -41,64 +75,52 @@ class DemoPostContext(NamedTuple):
 
 def _print_banner() -> None:
     print("\n" + "═" * 78)
-    print(" 🚀  LINKX MULTI-CHANNEL AGENTIC PUBLISHING & GROUND-TRUTH VERIFICATION")
+    print(" 🚀  LINKX END-TO-END AGENTIC CURATION, PUBLISHING & VERIFICATION DEMO")
     print("═" * 78)
     print(
-        " Engine: PostingGraph + VerificationGraph + EvasionMouse + LinkedIn REST API\n"
+        " Architecture: CurationGraph ➔ PostingGraph ➔ VerificationGraph ➔ PostgreSQL\n"
     )
 
 
-def _resolve_or_create_draft(
+async def _curate_and_create_draft(
     *, session: Session, user_id: str, platform: str
 ) -> DemoPostContext:
-    """Find recent draft post or create a demonstration draft."""
-    user_uuid = uuid.UUID(user_id)
-    statement = (
-        select(Post)
-        .where(Post.owner_id == user_uuid, Post.status == "draft")
-        .order_by(Post.created_at.desc())  # type: ignore[attr-defined]
-    )
-    existing_draft = session.exec(statement).first()
-
-    if existing_draft:
-        return DemoPostContext(
-            user_id=user_id,
-            post_id=str(existing_draft.id),
-            content=existing_draft.content,
-            platform=platform or existing_draft.platform,
-        )
-
-    # Create synthetic demonstration draft
-    sample_content = (
-        "Autonomous AI agent swarms are redefining workflows in 2026. "
-        "From self-healing web scrapers to multi-channel publishing with "
-        "ground-truth verification, the era of action is here. #AIAgents #LangGraph"
-    )
-    post_in = PostCreate(
-        content=sample_content,
-        platform=platform,
-        method="agent",
-        status="draft",
-    )
-    new_post = crud.create_post(session=session, post_in=post_in, owner_id=user_uuid)
-    return DemoPostContext(
-        user_id=user_id,
-        post_id=str(new_post.id),
-        content=new_post.content,
-        platform=platform,
+    """Curate and refine an AI draft using CurationGraph."""
+    topic_title = (
+        "Deterministic State Graphs & Self-Healing Agents in Modern AI Automation"
     )
 
-
-def _display_step_1_context(*, ctx: DemoPostContext) -> None:
     print("┌" + "─" * 76 + "┐")
     print(
-        "│ STEP 1: TARGET DRAFT POST CONTEXT (FROM POSTGRESQL)                       │"
+        "│ STEP 1: AUTONOMOUS AI CURATION & DRAFT REFINEMENT (CURATIONGRAPH)          │"
     )
     print("└" + "─" * 76 + "┘")
-    print(f" • Post ID:        {ctx.post_id}")
-    print(f" • User ID:        {ctx.user_id}")
-    print(f" • Platform:       {ctx.platform.upper()}")
-    print(f' • Draft Content:  "{ctx.content[:75]}..."\n')
+    print(f" • Topic:          {topic_title}")
+    print(f" • Platform:       {platform.upper()}")
+    print(" • Generating & refining draft via CurationGraph...")
+
+    curation_report = await curate_and_draft_post(
+        user_id=user_id,
+        topic_title=topic_title,
+        platform=platform,
+        target_tone="thought leadership",
+        session=session,
+    )
+
+    post_id = curation_report.persisted_post_id
+    if not post_id:
+        raise RuntimeError("CurationGraph failed to persist draft to database")
+
+    print(f' • Refined Draft:  "{curation_report.refined_content[:75]}..."')
+    print(f" • Compliant:      {curation_report.is_compliant} ✅")
+    print(f" • Persisted ID:   {post_id}\n")
+
+    return DemoPostContext(
+        user_id=user_id,
+        post_id=post_id,
+        content=curation_report.refined_content,
+        platform=platform,
+    )
 
 
 def _display_step_2_accounts(*, user_id: str, session: Session) -> None:
@@ -119,12 +141,43 @@ def _display_step_2_accounts(*, user_id: str, session: Session) -> None:
     )
 
 
-def _display_step_3_and_4_results(
-    *, report: PostingGraphReport, duration: float
-) -> None:
+def _inject_broken_x_selector() -> dict[str, Any]:
+    """Backup selectors and inject an intentionally broken selector for X compose."""
+    with open(SELECTORS_PATH, encoding="utf-8") as f:
+        original = json.load(f)
+
+    mutated = json.loads(json.dumps(original))
+    mutated["compose"]["post_input"] = (
+        "[data-testid='broken_tweetTextarea_999'], .broken-DraftEditor-nonexistent"
+    )
+
+    with open(SELECTORS_PATH, "w", encoding="utf-8") as f:
+        json.dump(mutated, f, indent=2)
+
     print("┌" + "─" * 76 + "┐")
     print(
-        "│ STEP 3 & 4: POSTINGGRAPH EXECUTION & EMBEDDED VERIFICATION                 │"
+        "│ STEP 3: INJECT INTENTIONALLY BROKEN SELECTOR (TESTING SELF-HEALING)        │"
+    )
+    print("└" + "─" * 76 + "┘")
+    print(" ⚠️  Mutated `compose.post_input` in x_selectors.json to:")
+    print(f'    "{mutated["compose"]["post_input"]}"')
+    print(
+        " 🛡️  SelfHealingGraph will intercept DOM miss, diagnose with AI, & repair live!\n"
+    )
+
+    return original
+
+
+def _restore_x_selectors(*, original: dict[str, Any]) -> None:
+    """Restore original selector configuration if needed."""
+    with open(SELECTORS_PATH, "w", encoding="utf-8") as f:
+        json.dump(original, f, indent=2)
+
+
+def _display_step_4_results(*, report: PostingGraphReport, duration: float) -> None:
+    print("┌" + "─" * 76 + "┐")
+    print(
+        "│ STEP 4: POSTINGGRAPH EXECUTION & EMBEDDED VERIFICATION                     │"
     )
     print("└" + "─" * 76 + "┘")
     print(f" ✅ PostingGraph finished in {duration}s | Status: {report.status.upper()}")
@@ -169,10 +222,10 @@ def _verify_database_record(*, session: Session, post_id: str) -> None:
 
 
 async def main() -> None:
-    """Main execution flow for posting and verification demonstration."""
+    """Main execution flow for posting, self-healing, and verification demonstration."""
     _print_banner()
 
-    platform_arg = sys.argv[1] if len(sys.argv) > 1 else "x"
+    platform_arg = sys.argv[1] if len(sys.argv) > 1 else "both"
     user_id_arg = sys.argv[2] if len(sys.argv) > 2 else None
 
     with Session(db_engine) as session:
@@ -180,18 +233,28 @@ async def main() -> None:
         user_id = user_id_arg or (
             str(first_user.id) if first_user else "93c0700a-423f-42eb-8c91-0b90f300ca11"
         )
-        ctx = _resolve_or_create_draft(
+        # Step 1: Autonomous AI Curation via CurationGraph
+        ctx = await _curate_and_create_draft(
             session=session, user_id=user_id, platform=platform_arg
         )
 
-    _display_step_1_context(ctx=ctx)
-
-    with Session(db_engine) as session:
+        # Step 2: Account diagnostics
         _display_step_2_accounts(user_id=user_id, session=session)
+
+    # Step 3: Inject broken selector to demonstrate Self-Healing
+    original_selectors = _inject_broken_x_selector()
 
     start_time = time.time()
     try:
+
+        async def _delayed_focus() -> None:
+            await asyncio.sleep(2.5)
+            _focus_chrome_on_macos()
+
+        asyncio.create_task(_delayed_focus())
+
         with Session(db_engine) as session:
+            # Step 4: Multi-channel dispatch (LinkedIn REST + X Headed Self-Healing + Headed Verification)
             report = await publish_post_with_graph(
                 user_id=user_id,
                 post_id=ctx.post_id,
@@ -200,12 +263,15 @@ async def main() -> None:
                 session=session,
             )
         duration = round(time.time() - start_time, 2)
-        _display_step_3_and_4_results(report=report, duration=duration)
+        _display_step_4_results(report=report, duration=duration)
 
         with Session(db_engine) as session:
+            # Step 5: PostgreSQL persistence inspection
             _verify_database_record(session=session, post_id=ctx.post_id)
     except Exception as exc:
         print(f"\n❌ PostingGraph demo failed with exception: {exc}")
+    finally:
+        _restore_x_selectors(original=original_selectors)
 
 
 if __name__ == "__main__":

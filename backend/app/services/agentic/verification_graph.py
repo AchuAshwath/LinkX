@@ -66,6 +66,7 @@ class VerificationGraphState(TypedDict, total=False):
     user_id: str
     post_ids: list[str]
     platform: str
+    headless: bool
     max_tweets_to_check: int
     session: Any
     mouse: Any
@@ -80,57 +81,62 @@ class VerificationGraphState(TypedDict, total=False):
 
 
 def _load_target_posts_from_db(
-    *, session: Session, user_uuid: uuid.UUID, post_ids: list[str] | None, platform: str
+    *,
+    session: Session,
+    user_uuid: uuid.UUID,
+    post_ids: list[str],
+    platform: str,
 ) -> list[dict[str, Any]]:
-    """Query target post records from PostgreSQL."""
+    """Fetch target posts from PostgreSQL by IDs or recent published state."""
+    target_posts: list[dict[str, Any]] = []
     if post_ids:
-        records: list[dict[str, Any]] = []
         for pid_str in post_ids:
             try:
-                pid = uuid.UUID(pid_str)
-                p = crud.get_post(session=session, post_id=pid)
-                if p:
-                    records.append(
+                p_uuid = uuid.UUID(pid_str)
+                db_p = crud.get_post(session=session, post_id=p_uuid)
+                if db_p and db_p.owner_id == user_uuid:
+                    target_posts.append(
                         {
-                            "id": str(p.id),
-                            "content": p.content,
-                            "platform": p.platform,
-                            "external_post_id": p.external_post_id,
+                            "id": str(db_p.id),
+                            "content": db_p.content,
+                            "platform": db_p.platform,
+                            "external_post_id": db_p.external_post_id,
+                            "status": db_p.status,
                         }
                     )
-            except Exception:
+            except (ValueError, TypeError):
                 continue
-        return records
-
-    # Query recent published posts for this user
-    query = select(Post).where(Post.owner_id == user_uuid, Post.status == "published")
-    clean_platform = platform.lower().strip()
-    if clean_platform in ("x", "twitter"):
-        query = query.where(
-            Post.platform.in_(["x", "twitter", "both", "all", "linkx"])  # type: ignore[attr-defined]
+    else:
+        clean_plat = platform.lower().strip()
+        stmt = (
+            select(Post)
+            .where(Post.owner_id == user_uuid)
+            .where(col(Post.status).in_(["published", "failed"]))
+            .order_by(col(Post.created_at).desc())
+            .limit(5)
         )
-    elif clean_platform == "linkedin":
-        query = query.where(
-            Post.platform.in_(["linkedin", "both", "all", "linkx"])  # type: ignore[attr-defined]
-        )
-
-    query = query.order_by(col(Post.created_at).desc().nulls_last()).limit(5)
-    db_posts = list(session.exec(query).all())
-    return [
-        {
-            "id": str(p.id),
-            "content": p.content,
-            "platform": p.platform,
-            "external_post_id": p.external_post_id,
-        }
-        for p in db_posts
-    ]
+        posts = session.exec(stmt).all()
+        for p in posts:
+            if (
+                clean_plat in ("both", "all", "linkx")
+                or p.platform.lower() == clean_plat
+            ):
+                target_posts.append(
+                    {
+                        "id": str(p.id),
+                        "content": p.content,
+                        "platform": p.platform,
+                        "external_post_id": p.external_post_id,
+                        "status": p.status,
+                    }
+                )
+    return target_posts
 
 
 async def fetch_unverified_posts_node(
     state: VerificationGraphState,
 ) -> dict[str, Any]:
-    """Load target posts from database for verification."""
+    """Retrieve post records from database that require verification."""
     user_id = state.get("user_id", "")
     post_ids = state.get("post_ids", [])
     platform = state.get("platform", "x")
@@ -139,9 +145,8 @@ async def fetch_unverified_posts_node(
         user_uuid = uuid.UUID(user_id)
     except (ValueError, TypeError):
         return {
-            "target_posts": [],
             "status": "error",
-            "error": f"Invalid user_id: {user_id}",
+            "error": f"Invalid user_id provided: {user_id}",
         }
 
     with resolve_session(session=state.get("session")) as s:
@@ -174,9 +179,14 @@ async def fetch_unverified_posts_node(
 
 
 async def _scrape_x_profile_feed(
-    *, user_id: str, max_tweets: int, mouse: Any | None
+    *,
+    user_id: str,
+    max_tweets: int,
+    mouse: Any | None,
+    headless: bool = True,
+    target_ext_ids: list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Scrape timeline tweets from user's live X.com profile."""
+    """Scrape timeline tweets from user's live X.com profile and status pages."""
     manager = BrowserManager(user_id=user_id)
     if not manager.session_exists("x"):
         return []
@@ -186,8 +196,10 @@ async def _scrape_x_profile_feed(
     profile_url = f"https://x.com/{username}" if username else "https://x.com/home"
 
     try:
-        async with manager.get_context("x", headless=True) as context:
+        async with manager.get_context("x", headless=headless) as context:
             page = await get_active_page(context=context)
+
+            # Navigate to profile or home
             try:
                 await human_navigation(page=page, url=profile_url)
             except Exception:
@@ -195,8 +207,43 @@ async def _scrape_x_profile_feed(
                     profile_url, wait_until="domcontentloaded", timeout=20000
                 )
             await recover_page_session(page=page, mouse=mouse)
+
+            # If username was not known and we are at /home, click Profile on left sidebar
+            if not username and "/home" in page.url:
+                try:
+                    profile_btn = page.locator("[data-testid='AppTabBar_Profile_Link']")
+                    if await profile_btn.is_visible():
+                        await profile_btn.click()
+                        await page.wait_for_timeout(2000)
+                except Exception:
+                    pass
+
             await random_delay(min_sec=1.0, max_sec=2.0)
-            return await _extract_profile_timeline_tweets(page=page, limit=max_tweets)
+            tweets = await _extract_profile_timeline_tweets(page=page, limit=max_tweets)
+
+            # Also check direct status URLs if provided
+            if target_ext_ids:
+                for eid in target_ext_ids:
+                    clean_id = eid.split("x:")[-1] if "x:" in eid else eid
+                    if clean_id.isdigit():
+                        status_url = f"https://x.com/i/status/{clean_id}"
+                        try:
+                            await page.goto(
+                                status_url,
+                                wait_until="domcontentloaded",
+                                timeout=15000,
+                            )
+                            await recover_page_session(page=page, mouse=mouse)
+                            await page.wait_for_timeout(1500)
+                            direct_tweets = await _extract_profile_timeline_tweets(
+                                page=page, limit=2
+                            )
+                            if direct_tweets:
+                                tweets.extend(direct_tweets)
+                        except Exception:
+                            pass
+
+            return tweets
     except Exception as exc:
         logger.warning(f"Error scraping X profile feed for {user_id}: {exc}")
         return []
@@ -220,9 +267,19 @@ async def scrape_x_profile_timeline_node(
     user_id = state.get("user_id", "")
     max_tweets = state.get("max_tweets_to_check", 5)
     mouse = state.get("mouse")
+    headless = state.get("headless", True)
+    ext_ids = [
+        str(p.get("external_post_id"))
+        for p in target_posts
+        if p.get("external_post_id")
+    ]
 
     timeline_tweets = await _scrape_x_profile_feed(
-        user_id=user_id, max_tweets=max_tweets, mouse=mouse
+        user_id=user_id,
+        max_tweets=max_tweets,
+        mouse=mouse,
+        headless=headless,
+        target_ext_ids=ext_ids,
     )
     return {"timeline_tweets": timeline_tweets, "status": "timeline_scraped"}
 
@@ -414,6 +471,7 @@ async def verify_posts_with_graph(
     user_id: str,
     post_ids: list[str] | None = None,
     platform: str = "x",
+    headless: bool = True,
     max_tweets_to_check: int = 5,
     session: Session | None = None,
     mouse: Any | None = None,
@@ -424,6 +482,7 @@ async def verify_posts_with_graph(
         "user_id": user_id.strip(),
         "post_ids": post_ids or [],
         "platform": platform.lower().strip(),
+        "headless": headless,
         "max_tweets_to_check": max(1, min(max_tweets_to_check, 20)),
         "session": session,
         "mouse": mouse,

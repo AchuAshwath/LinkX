@@ -15,6 +15,7 @@ from app.services.browser.actions import (
     EvasionMouse,
     HumanTyper,
     PostButtonDisabledError,
+    install_visual_cursor,
     normalize_post_text,
     random_delay,
 )
@@ -62,13 +63,26 @@ class XPostClient:
         with open(self.selectors_path) as f:
             self.selectors = json.load(f)
 
-    async def create_text_post(self, *, user_id: str, content: str) -> str:
+    async def create_text_post(
+        self,
+        *,
+        user_id: str,
+        content: str,
+        headless: bool | None = None,
+    ) -> str:
         """Create a text-only post on X.com using Playwright."""
         manager = self._get_manager(user_id=user_id)
         meta = manager.read_session_metadata("x")
         max_limit = int(meta.get("max_character_limit", 280))
         self._validate_content(content, max_length=max_limit)
-        return await self._execute_post_flow(manager=manager, content=content)
+        is_headless = (
+            (os.environ.get("PLAYWRIGHT_HEADLESS", "1") == "1")
+            if headless is None
+            else headless
+        )
+        return await self._execute_post_flow(
+            manager=manager, content=content, headless=is_headless
+        )
 
     async def create_media_post(
         self,
@@ -133,12 +147,14 @@ class XPostClient:
             )
         return manager
 
-    async def _execute_post_flow(self, *, manager: BrowserManager, content: str) -> str:
+    async def _execute_post_flow(
+        self, *, manager: BrowserManager, content: str, headless: bool = True
+    ) -> str:
         try:
-            async with manager.get_context(
-                "x", headless=(os.environ.get("PLAYWRIGHT_HEADLESS", "1") == "1")
-            ) as context:
+            async with manager.get_context("x", headless=headless) as context:
                 page = context.pages[0] if context.pages else await context.new_page()
+                if not headless:
+                    await install_visual_cursor(page)
                 mouse = EvasionMouse(page)
                 asyncio.create_task(mouse.start_idle())
 
@@ -165,6 +181,8 @@ class XPostClient:
         try:
             async with manager.get_context("x", headless=headless) as context:
                 page = context.pages[0] if context.pages else await context.new_page()
+                if not headless:
+                    await install_visual_cursor(page)
                 mouse = EvasionMouse(page)
                 asyncio.create_task(mouse.start_idle())
 
@@ -198,7 +216,7 @@ class XPostClient:
         content: str,
         image_path: str,
     ) -> str:
-        await self._fill_post_content(mouse, content)
+        await self._fill_post_content(page=page, mouse=mouse, content=content)
 
         file_input_selector = self.selectors["compose"]["file_input"]
         logger.info(
@@ -332,11 +350,26 @@ class XPostClient:
     async def _type_and_publish(
         self, page: Any, mouse: EvasionMouse, content: str
     ) -> str:
-        await self._fill_post_content(mouse, content)
+        await self._fill_post_content(page=page, mouse=mouse, content=content)
         return await self._click_publish_and_wait(page, mouse)
 
-    async def _fill_post_content(self, mouse: EvasionMouse, content: str) -> None:
-        post_input_selector = self.selectors["compose"]["post_input"]
+    async def _fill_post_content(
+        self, page: Any, mouse: EvasionMouse, content: str
+    ) -> None:
+        try:
+            await find_or_heal_element(
+                page=page,
+                selector_key="compose.post_input",
+                selectors_dict=self.selectors,
+                config_path=self.selectors_path,
+            )
+        except Exception as e:
+            logger.warning(f"Selector diagnosis/healing exception: {e}")
+
+        post_input_selector = self.selectors.get("compose", {}).get(
+            "post_input",
+            "[data-testid='tweetTextarea_0'], .public-DraftEditor-content",
+        )
         logger.info(f"Targeting post input box using selector: {post_input_selector}")
         await mouse.human_click(selector=post_input_selector)
 
@@ -345,7 +378,20 @@ class XPostClient:
         await random_delay(min_sec=1.0, max_sec=2.0)
 
     async def _click_publish_and_wait(self, page: Any, mouse: EvasionMouse) -> str:
-        post_button_selector = self.selectors["compose"]["post_button"]
+        try:
+            await find_or_heal_element(
+                page=page,
+                selector_key="compose.post_button",
+                selectors_dict=self.selectors,
+                config_path=self.selectors_path,
+            )
+        except Exception as e:
+            logger.warning(f"Selector diagnosis/healing exception: {e}")
+
+        post_button_selector = self.selectors.get("compose", {}).get(
+            "post_button",
+            "[data-testid='tweetButtonInline']",
+        )
         logger.info(
             "Setting up network interceptor for CreateTweet GraphQL endpoint..."
         )

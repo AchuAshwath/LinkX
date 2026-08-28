@@ -255,6 +255,7 @@ async def dispatch_publish_node(
     """Route publishing to platform dispatchers."""
     post_id = state.get("post_id", "")
     platform = state.get("platform", "x").lower().strip()
+    headless = state.get("headless", True)
 
     with resolve_session(session=state.get("session")) as s:
         db_post = crud.get_post(session=s, post_id=uuid.UUID(post_id))
@@ -262,7 +263,9 @@ async def dispatch_publish_node(
             return {"status": "error", "error": f"Post not found: {post_id}"}
 
         if platform in ("x", "twitter"):
-            ok, ext_id, err = await dispatch_x_post(session=s, post=db_post)
+            ok, ext_id, err = await dispatch_x_post(
+                session=s, post=db_post, headless=headless
+            )
             x_res = {"success": ok, "post_id": ext_id, "error": err}
             li_res = None
         elif platform == "linkedin":
@@ -270,7 +273,9 @@ async def dispatch_publish_node(
             li_res = {"success": ok, "post_id": ext_id, "error": err}
             x_res = None
         else:
-            ok, ext_id, err = await dispatch_dual_post(session=s, post=db_post)
+            ok, ext_id, err = await dispatch_dual_post(
+                session=s, post=db_post, headless=headless
+            )
             x_res, li_res = _parse_dual_channel_results(ext_id=ext_id, err=err)
 
         urls = _extract_published_urls(platform=platform, ext_id=ext_id)
