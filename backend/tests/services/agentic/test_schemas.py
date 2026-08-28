@@ -213,3 +213,44 @@ def test_posting_graph_report_schema() -> None:
     data = report.model_dump()
     reconstructed = PostingGraphReport.model_validate(data)
     assert reconstructed == report
+
+
+def test_trend_to_draft_report_schema() -> None:
+    """Validate TrendToDraftReport model defaults, fields, and roundtrip serialization."""
+    from app.services.agentic.schemas import TrendToDraftReport
+
+    report = TrendToDraftReport(
+        scraped_topics=[{"title": "Trending Tech", "id": "t1"}],
+        persisted_post_ids=["pid-123", "pid-456"],
+        platform="both",
+        status="completed",
+    )
+    assert report.status == "completed"
+    assert report.platform == "both"
+    assert len(report.scraped_topics) == 1
+    assert len(report.persisted_post_ids) == 2
+
+    data = report.model_dump()
+    reconstructed = TrendToDraftReport.model_validate(data)
+    assert reconstructed == report
+
+
+def test_publish_and_verify_report_schema() -> None:
+    """Validate PublishAndVerifyReport model defaults, fields, and roundtrip serialization."""
+    from app.services.agentic.schemas import PublishAndVerifyReport
+
+    report = PublishAndVerifyReport(
+        post_id="post-abc-123",
+        platform="both",
+        is_published=True,
+        is_verified=True,
+        published_urls=["https://x.com/i/status/123"],
+        status="completed",
+    )
+    assert report.is_published is True
+    assert report.is_verified is True
+    assert report.post_id == "post-abc-123"
+
+    data = report.model_dump()
+    reconstructed = PublishAndVerifyReport.model_validate(data)
+    assert reconstructed == report

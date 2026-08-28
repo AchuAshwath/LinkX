@@ -11,6 +11,11 @@ from app.services.agentic.posting_graph import (
     build_posting_graph,
     publish_post_with_graph,
 )
+from app.services.agentic.publish_and_verify_pipeline import (
+    PublishAndVerifyState,
+    build_publish_and_verify_pipeline,
+    run_publish_and_verify_pipeline,
+)
 from app.services.agentic.refinement_graph import (
     DraftRefinementState,
     build_draft_refinement_graph,
@@ -21,12 +26,14 @@ from app.services.agentic.schemas import (
     ExtractedTrendingTopic,
     ExtractedTweet,
     PostingGraphReport,
+    PublishAndVerifyReport,
     RefinedDraftReport,
     ScrapedBatchReport,
     SelectorCandidate,
     SelectorDiagnosisReport,
     SessionRecoveryReport,
     TrendingScrapeBatch,
+    TrendToDraftReport,
     VerificationGraphReport,
     VerificationItemReport,
     VisionDraftAnalysis,
@@ -45,6 +52,11 @@ from app.services.agentic.session_recovery_graph import (
     SessionRecoveryState,
     build_session_recovery_graph,
     recover_page_session,
+)
+from app.services.agentic.trend_to_draft_pipeline import (
+    TrendToDraftState,
+    build_trend_to_draft_pipeline,
+    run_trend_to_draft_pipeline,
 )
 from app.services.agentic.verification_graph import (
     VerificationGraphState,
@@ -68,6 +80,8 @@ __all__ = [
     "VerificationGraphReport",
     "VerificationItemReport",
     "VisionDraftAnalysis",
+    "TrendToDraftReport",
+    "PublishAndVerifyReport",
     "SelfHealingState",
     "build_self_healing_graph",
     "heal_selector",
@@ -89,4 +103,10 @@ __all__ = [
     "VerificationGraphState",
     "build_verification_graph",
     "verify_posts_with_graph",
+    "TrendToDraftState",
+    "build_trend_to_draft_pipeline",
+    "run_trend_to_draft_pipeline",
+    "PublishAndVerifyState",
+    "build_publish_and_verify_pipeline",
+    "run_publish_and_verify_pipeline",
 ]
