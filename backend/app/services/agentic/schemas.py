@@ -598,7 +598,6 @@ class TrendToDraftState(TypedDict, total=False):
     target_tone: str | None
     headless: bool
     session: Any
-    mouse: Any | None
     scraped_topics: list[dict[str, Any]]
     curated_drafts: list[dict[str, Any]]
     persisted_post_ids: list[str]

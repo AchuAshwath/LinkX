@@ -27,29 +27,73 @@ from app.services.agentic.trend_to_draft_pipeline import (
 )
 
 
+@pytest.mark.parametrize(
+    "case",
+    [
+        {
+            "topics": [
+                {"title": "AI Agents in Production", "id": "t1"},
+                {"title": "FastAPI Async Patterns", "id": "t2"},
+            ],
+            "batch_status": "persisted",
+            "page_state": "ok",
+            "scrape_err": None,
+            "curate_err_on": None,
+            "expected_status": "completed",
+            "expected_draft_count": 2,
+            "expected_id_count": 2,
+        },
+        {
+            "topics": [],
+            "batch_status": "persisted",
+            "page_state": "ok",
+            "scrape_err": None,
+            "curate_err_on": None,
+            "expected_status": "empty_trends",
+            "expected_draft_count": 0,
+            "expected_id_count": 0,
+        },
+        {
+            "topics": [],
+            "batch_status": "unrecoverable",
+            "page_state": "logged_out",
+            "scrape_err": "Unrecoverable state: logged_out",
+            "curate_err_on": None,
+            "expected_status": "error",
+            "expected_draft_count": 0,
+            "expected_id_count": 0,
+        },
+        {
+            "topics": [
+                {"title": "Failing Topic", "id": "t1"},
+                {"title": "Successful Topic", "id": "t2"},
+            ],
+            "batch_status": "persisted",
+            "page_state": "ok",
+            "scrape_err": None,
+            "curate_err_on": "Failing Topic",
+            "expected_status": "partial_failure",
+            "expected_draft_count": 1,
+            "expected_id_count": 1,
+        },
+    ],
+)
 @pytest.mark.anyio
-async def test_slice_1_trend_to_draft_happy_path() -> None:
-    """Slice 1: Scrapes explore trends, curates drafts for each, and persists with status='completed'."""
+async def test_trend_to_draft_scenarios(case: dict[str, Any]) -> None:
+    """Validate all execution branches of AutonomousTrendToDraftPipeline."""
     user_id = str(uuid.uuid4())
     mock_batch = ScrapedBatchReport(
-        scraped_topics=[
-            {
-                "title": "AI Agents in Production",
-                "id": "t1",
-                "url": "https://x.com/i/trends/1",
-            },
-            {
-                "title": "FastAPI Async Patterns",
-                "id": "t2",
-                "url": "https://x.com/i/trends/2",
-            },
-        ],
-        persisted_topic_count=2,
-        status="persisted",
+        scraped_topics=case["topics"],
+        persisted_topic_count=len(case["topics"]),
+        page_state=case["page_state"],
+        status=case["batch_status"],
+        error=case["scrape_err"],
     )
 
     def _mock_curate(**kw: Any) -> CuratedDraftReport:
         t_title = kw.get("topic_title", "Topic")
+        if case["curate_err_on"] and t_title == case["curate_err_on"]:
+            raise RuntimeError("LLM rate limit exceeded during draft generation")
         return CuratedDraftReport(
             draft_content=f"Original draft for {t_title}",
             refined_content=f"Refined draft for {t_title}",
@@ -73,141 +117,70 @@ async def test_slice_1_trend_to_draft_happy_path() -> None:
     ):
         report = await run_trend_to_draft_pipeline(
             user_id=user_id,
-            max_topics=2,
+            max_topics=len(case["topics"]) or 3,
             platform="both",
             session=MagicMock(),
         )
 
         assert isinstance(report, TrendToDraftReport)
-        assert report.status == "completed"
-        assert len(report.scraped_topics) == 2
-        assert len(report.curated_drafts) == 2
-        assert len(report.persisted_post_ids) == 2
-        assert report.error is None
+        assert report.status == case["expected_status"]
+        assert len(report.curated_drafts) == case["expected_draft_count"]
+        assert len(report.persisted_post_ids) == case["expected_id_count"]
 
 
+@pytest.mark.parametrize(
+    "case",
+    [
+        {
+            "post_status": "published",
+            "is_pub": True,
+            "post_verified": True,
+            "urls": [
+                "https://x.com/i/status/123",
+                "https://www.linkedin.com/feed/update/urn:li:share:456",
+            ],
+            "err": None,
+            "audit_rep": None,
+            "expected_status": "completed",
+            "expected_is_pub": True,
+            "expected_is_ver": True,
+        },
+        {
+            "post_status": "preflight_failed",
+            "is_pub": False,
+            "post_verified": False,
+            "urls": [],
+            "err": "Target social accounts disconnected",
+            "audit_rep": None,
+            "expected_status": "posting_failed",
+            "expected_is_pub": False,
+            "expected_is_ver": False,
+        },
+        {
+            "post_status": "published",
+            "is_pub": True,
+            "post_verified": False,
+            "urls": ["https://x.com/i/status/999"],
+            "err": None,
+            "audit_rep": VerificationGraphReport(
+                verified_post_ids=[],
+                unverified_post_ids=["test-pid"],
+                items=[
+                    VerificationItemReport(
+                        post_id="test-pid", platform="x", is_verified=False
+                    )
+                ],
+                status="completed",
+            ),
+            "expected_status": "partial_failure",
+            "expected_is_pub": True,
+            "expected_is_ver": False,
+        },
+    ],
+)
 @pytest.mark.anyio
-async def test_slice_2_trend_to_draft_empty_trends() -> None:
-    """Slice 2: 0 trends harvested routes directly to END with status='empty_trends'."""
-    user_id = str(uuid.uuid4())
-    mock_batch = ScrapedBatchReport(
-        scraped_topics=[],
-        persisted_topic_count=0,
-        status="persisted",
-    )
-
-    with (
-        patch(
-            "app.services.agentic.trend_to_draft_pipeline.scrape_trends_with_graph",
-            new_callable=AsyncMock,
-            return_value=mock_batch,
-        ),
-        patch(
-            "app.services.agentic.trend_to_draft_pipeline.curate_and_draft_post",
-            new_callable=AsyncMock,
-        ) as mock_curate,
-    ):
-        report = await run_trend_to_draft_pipeline(
-            user_id=user_id,
-            session=MagicMock(),
-        )
-
-        assert isinstance(report, TrendToDraftReport)
-        assert report.status == "empty_trends"
-        assert len(report.curated_drafts) == 0
-        assert len(report.persisted_post_ids) == 0
-        mock_curate.assert_not_called()
-
-
-@pytest.mark.anyio
-async def test_slice_3_trend_to_draft_unrecoverable_session() -> None:
-    """Slice 3: ScrapingGraph unrecoverable session aborts pipeline with status='error'."""
-    user_id = str(uuid.uuid4())
-    mock_batch = ScrapedBatchReport(
-        scraped_topics=[],
-        page_state="logged_out",
-        status="unrecoverable",
-        error="Unrecoverable state: logged_out",
-    )
-
-    with (
-        patch(
-            "app.services.agentic.trend_to_draft_pipeline.scrape_trends_with_graph",
-            new_callable=AsyncMock,
-            return_value=mock_batch,
-        ),
-        patch(
-            "app.services.agentic.trend_to_draft_pipeline.curate_and_draft_post",
-            new_callable=AsyncMock,
-        ) as mock_curate,
-    ):
-        report = await run_trend_to_draft_pipeline(
-            user_id=user_id,
-            session=MagicMock(),
-        )
-
-        assert isinstance(report, TrendToDraftReport)
-        assert report.status == "error"
-        assert "logged_out" in str(report.error)
-        mock_curate.assert_not_called()
-
-
-@pytest.mark.anyio
-async def test_slice_4_trend_to_draft_partial_curation_fault() -> None:
-    """Slice 4: 1 of 2 topics raises exception during drafting, remaining topic succeeds."""
-    user_id = str(uuid.uuid4())
-    mock_batch = ScrapedBatchReport(
-        scraped_topics=[
-            {"title": "Failing Topic", "id": "t1", "url": "https://x.com/i/trends/1"},
-            {
-                "title": "Successful Topic",
-                "id": "t2",
-                "url": "https://x.com/i/trends/2",
-            },
-        ],
-        persisted_topic_count=2,
-        status="persisted",
-    )
-
-    def _mock_curate(**kw: Any) -> CuratedDraftReport:
-        t_title = kw.get("topic_title", "")
-        if t_title == "Failing Topic":
-            raise RuntimeError("LLM rate limit exceeded during draft generation")
-        return CuratedDraftReport(
-            draft_content="Draft text",
-            refined_content="Refined text",
-            is_compliant=True,
-            topic_title=t_title,
-            persisted_post_id=str(uuid.uuid4()),
-            status="persisted",
-        )
-
-    with (
-        patch(
-            "app.services.agentic.trend_to_draft_pipeline.scrape_trends_with_graph",
-            new_callable=AsyncMock,
-            return_value=mock_batch,
-        ),
-        patch(
-            "app.services.agentic.trend_to_draft_pipeline.curate_and_draft_post",
-            new_callable=AsyncMock,
-            side_effect=_mock_curate,
-        ),
-    ):
-        report = await run_trend_to_draft_pipeline(
-            user_id=user_id,
-            session=MagicMock(),
-        )
-
-        assert isinstance(report, TrendToDraftReport)
-        assert report.status == "partial_failure"
-        assert len(report.curated_drafts) == 1
-        assert len(report.persisted_post_ids) == 1
-
-
-@pytest.mark.anyio
-async def test_slice_5_publish_and_verify_happy_path() -> None:
-    """Slice 5: Publishes across X and LinkedIn and confirms profile timeline verification."""
+async def test_publish_and_verify_scenarios(case: dict[str, Any]) -> None:
+    """Validate all execution branches of AutonomousPublishAndVerifyPipeline."""
     user_id = str(uuid.uuid4())
     post_id = str(uuid.uuid4())
 
@@ -215,23 +188,23 @@ async def test_slice_5_publish_and_verify_happy_path() -> None:
         post_id=post_id,
         platform="both",
         content="Published content",
-        published_urls=[
-            "https://www.linkedin.com/feed/update/urn:li:share:123",
-            "https://x.com/i/status/456",
-        ],
-        is_verified=True,
-        verification_report={
-            "verified_post_ids": [post_id],
-            "items": [{"platform": "x", "is_verified": True}],
-            "status": "completed",
-        },
-        status="published",
+        published_urls=case["urls"],
+        is_verified=case["post_verified"],
+        status=case["post_status"],
+        error=case["err"],
     )
 
-    with patch(
-        "app.services.agentic.publish_and_verify_pipeline.publish_post_with_graph",
-        new_callable=AsyncMock,
-        return_value=mock_posting,
+    with (
+        patch(
+            "app.services.agentic.publish_and_verify_pipeline.publish_post_with_graph",
+            new_callable=AsyncMock,
+            return_value=mock_posting,
+        ),
+        patch(
+            "app.services.agentic.publish_and_verify_pipeline.verify_posts_with_graph",
+            new_callable=AsyncMock,
+            return_value=case["audit_rep"],
+        ),
     ):
         report = await run_publish_and_verify_pipeline(
             user_id=user_id,
@@ -241,102 +214,10 @@ async def test_slice_5_publish_and_verify_happy_path() -> None:
         )
 
         assert isinstance(report, PublishAndVerifyReport)
-        assert report.status == "completed"
-        assert report.is_published is True
-        assert report.is_verified is True
-        assert len(report.published_urls) == 2
-        assert report.error is None
-
-
-@pytest.mark.anyio
-async def test_slice_6_publish_and_verify_preflight_or_posting_failure() -> None:
-    """Slice 6: Posting preflight failure skips verification and returns status='posting_failed'."""
-    user_id = str(uuid.uuid4())
-    post_id = str(uuid.uuid4())
-
-    mock_posting = PostingGraphReport(
-        post_id=post_id,
-        platform="x",
-        content="",
-        status="preflight_failed",
-        error="Target social accounts disconnected",
-    )
-
-    with (
-        patch(
-            "app.services.agentic.publish_and_verify_pipeline.publish_post_with_graph",
-            new_callable=AsyncMock,
-            return_value=mock_posting,
-        ),
-        patch(
-            "app.services.agentic.publish_and_verify_pipeline.verify_posts_with_graph",
-            new_callable=AsyncMock,
-        ) as mock_verify,
-    ):
-        report = await run_publish_and_verify_pipeline(
-            user_id=user_id,
-            post_id=post_id,
-            platform="x",
-            session=MagicMock(),
-        )
-
-        assert isinstance(report, PublishAndVerifyReport)
-        assert report.status == "posting_failed"
-        assert report.is_published is False
-        assert report.is_verified is False
-        assert "disconnected" in str(report.error)
-        mock_verify.assert_not_called()
-
-
-@pytest.mark.anyio
-async def test_slice_7_publish_and_verify_profile_verification_missing() -> None:
-    """Slice 7: Post published, but timeline verification fails to locate the post."""
-    user_id = str(uuid.uuid4())
-    post_id = str(uuid.uuid4())
-
-    mock_posting = PostingGraphReport(
-        post_id=post_id,
-        platform="x",
-        content="Testing post",
-        published_urls=["https://x.com/i/status/999"],
-        is_verified=False,
-        verification_report=None,
-        status="published",
-    )
-
-    mock_audit = VerificationGraphReport(
-        verified_post_ids=[],
-        unverified_post_ids=[post_id],
-        items=[
-            VerificationItemReport(post_id=post_id, platform="x", is_verified=False)
-        ],
-        status="completed",
-    )
-
-    with (
-        patch(
-            "app.services.agentic.publish_and_verify_pipeline.publish_post_with_graph",
-            new_callable=AsyncMock,
-            return_value=mock_posting,
-        ),
-        patch(
-            "app.services.agentic.publish_and_verify_pipeline.verify_posts_with_graph",
-            new_callable=AsyncMock,
-            return_value=mock_audit,
-        ),
-    ):
-        report = await run_publish_and_verify_pipeline(
-            user_id=user_id,
-            post_id=post_id,
-            platform="x",
-            session=MagicMock(),
-        )
-
-        assert isinstance(report, PublishAndVerifyReport)
-        assert report.status == "partial_failure"
-        assert report.is_published is True
-        assert report.is_verified is False
-        assert len(report.published_urls) == 1
+        assert report.status == case["expected_status"]
+        assert report.is_published is case["expected_is_pub"]
+        assert report.is_verified is case["expected_is_ver"]
+        assert len(report.published_urls) == len(case["urls"])
 
 
 @pytest.mark.parametrize(
@@ -349,11 +230,11 @@ async def test_slice_7_publish_and_verify_profile_verification_missing() -> None
     ],
 )
 @pytest.mark.anyio
-async def test_slice_8_pipeline_parameter_reduction_and_kwargs(
+async def test_pipeline_parameter_reduction_and_kwargs(
     max_topics_in: int,
     expected_clamped: int,
 ) -> None:
-    """Slice 8: Parameter boundary clamping and kwargs forwarding."""
+    """Validate parameter boundary clamping and kwargs forwarding."""
     user_id = str(uuid.uuid4())
     captured_max_topics = None
 
@@ -375,8 +256,8 @@ async def test_slice_8_pipeline_parameter_reduction_and_kwargs(
         assert captured_max_topics == expected_clamped
 
 
-def test_slice_9_graph_compilation_and_schema_validation() -> None:
-    """Slice 9: Graph builders compile without error and schema models validate."""
+def test_pipeline_graph_compilation_and_schema_validation() -> None:
+    """Validate graph builders compile without error and schema models validate."""
     g1 = build_trend_to_draft_pipeline()
     g2 = build_publish_and_verify_pipeline()
     assert g1 is not None

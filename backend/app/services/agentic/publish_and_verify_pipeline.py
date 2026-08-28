@@ -28,6 +28,20 @@ __all__ = [
 ]
 
 
+def _build_publication_state(*, post_report: PostingGraphReport) -> dict[str, Any]:
+    """Convert PostingGraphReport into pipeline state fields."""
+    is_published = post_report.status in ("published", "completed")
+    return {
+        "posting_report": post_report.model_dump(),
+        "verification_report": post_report.verification_report,
+        "published_urls": post_report.published_urls,
+        "is_published": is_published,
+        "is_verified": post_report.is_verified,
+        "status": "published" if is_published else "posting_failed",
+        "error": post_report.error,
+    }
+
+
 async def dispatch_publication_node(
     state: PublishAndVerifyState,
 ) -> dict[str, Any]:
@@ -40,7 +54,7 @@ async def dispatch_publication_node(
     mouse = state.get("mouse")
 
     try:
-        post_rep = await publish_post_with_graph(
+        post_report = await publish_post_with_graph(
             user_id=user_id,
             post_id=post_id,
             platform=platform,
@@ -48,15 +62,7 @@ async def dispatch_publication_node(
             session=session,
             mouse=mouse,
         )
-        is_pub = post_rep.status in ("published", "completed")
-        return {
-            "posting_report": post_rep.model_dump(),
-            "published_urls": post_rep.published_urls,
-            "is_published": is_pub,
-            "is_verified": post_rep.is_verified,
-            "status": "published" if is_pub else "posting_failed",
-            "error": post_rep.error,
-        }
+        return _build_publication_state(post_report=post_report)
     except Exception as exc:
         logger.exception(f"Publication dispatch failed: {exc}")
         return {
@@ -77,12 +83,28 @@ def route_after_publish(state: PublishAndVerifyState) -> str:
     return "audit_verification"
 
 
+def _evaluate_audit_outcome(
+    *, audit_report: VerificationGraphReport, post_id: str
+) -> dict[str, Any]:
+    """Evaluate audit results and determine verification status."""
+    is_verified = post_id in audit_report.verified_post_ids
+    status = "completed" if is_verified else "partial_failure"
+    return {
+        "verification_report": audit_report.model_dump(),
+        "is_verified": is_verified,
+        "status": status,
+    }
+
+
 async def audit_verification_node(
     state: PublishAndVerifyState,
 ) -> dict[str, Any]:
     """Audit live profile timeline via VerificationGraph if not already confirmed."""
     if state.get("is_verified"):
-        return {"status": "completed"}
+        return {
+            "verification_report": state.get("verification_report"),
+            "status": "completed",
+        }
 
     user_id = state.get("user_id", "")
     post_id = state.get("post_id", "")
@@ -92,7 +114,7 @@ async def audit_verification_node(
     mouse = state.get("mouse")
 
     try:
-        audit_rep = await verify_posts_with_graph(
+        audit_report = await verify_posts_with_graph(
             user_id=user_id,
             post_ids=[post_id],
             platform=platform,
@@ -100,13 +122,7 @@ async def audit_verification_node(
             session=session,
             mouse=mouse,
         )
-        is_ver = post_id in audit_rep.verified_post_ids
-        status = "completed" if is_ver else "partial_failure"
-        return {
-            "verification_report": audit_rep.model_dump(),
-            "is_verified": is_ver,
-            "status": status,
-        }
+        return _evaluate_audit_outcome(audit_report=audit_report, post_id=post_id)
     except Exception as exc:
         logger.warning(f"Verification audit failed: {exc}")
         return {
@@ -174,10 +190,10 @@ async def run_publish_and_verify_pipeline(
         post_rep_raw = final_state.get("posting_report")
         ver_rep_raw = final_state.get("verification_report")
 
-        post_rep = (
+        post_report = (
             PostingGraphReport.model_validate(post_rep_raw) if post_rep_raw else None
         )
-        ver_rep = (
+        ver_report = (
             VerificationGraphReport.model_validate(ver_rep_raw) if ver_rep_raw else None
         )
 
@@ -187,8 +203,8 @@ async def run_publish_and_verify_pipeline(
             is_published=final_state.get("is_published", False),
             is_verified=final_state.get("is_verified", False),
             published_urls=final_state.get("published_urls", []),
-            posting_report=post_rep,
-            verification_report=ver_rep,
+            posting_report=post_report,
+            verification_report=ver_report,
             status=final_state.get("status", "completed"),
             error=final_state.get("error"),
         )
