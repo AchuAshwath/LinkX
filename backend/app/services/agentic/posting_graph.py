@@ -65,12 +65,14 @@ async def publish_post_with_graph(
     user_id: str,
     post_id: str,
     platform: str | None = None,
-    headless: bool = True,
-    session: Session | None = None,
-    mouse: Any | None = None,
-    config: dict[str, Any] | None = None,
+    **kwargs: Any,
 ) -> PostingGraphReport:
     """Run the PostingGraph to execute multi-channel publishing with embedded verification."""
+    headless: bool = kwargs.get("headless", True)
+    session: Session | None = kwargs.get("session")
+    mouse: Any | None = kwargs.get("mouse")
+    config: dict[str, Any] | None = kwargs.get("config")
+
     initial_state: PostingGraphState = {
         "user_id": user_id.strip(),
         "post_id": post_id.strip(),

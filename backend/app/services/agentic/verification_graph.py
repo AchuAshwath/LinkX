@@ -72,13 +72,15 @@ async def verify_posts_with_graph(
     user_id: str,
     post_ids: list[str] | None = None,
     platform: str = "x",
-    headless: bool = True,
-    max_tweets_to_check: int = 5,
-    session: Session | None = None,
-    mouse: Any | None = None,
-    config: dict[str, Any] | None = None,
+    **kwargs: Any,
 ) -> VerificationGraphReport:
     """Run the VerificationGraph to audit and verify ground-truth live posts."""
+    headless: bool = kwargs.get("headless", True)
+    max_tweets_to_check: int = kwargs.get("max_tweets_to_check", 5)
+    session: Session | None = kwargs.get("session")
+    mouse: Any | None = kwargs.get("mouse")
+    config: dict[str, Any] | None = kwargs.get("config")
+
     initial_state: VerificationGraphState = {
         "user_id": user_id.strip(),
         "post_ids": post_ids or [],
