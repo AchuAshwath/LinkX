@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from unittest.mock import AsyncMock, patch
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -71,6 +72,7 @@ async def test_chaos_adversarial_payload_fuzzing(
             user_id=user_id,
             post_id=post_id,
             platform="x",
+            session=MagicMock(),
         )
         assert isinstance(report, PostingGraphReport)
         assert report.status in ("published", "error")
@@ -108,6 +110,7 @@ async def test_chaos_network_timeout_resilience() -> None:
             user_id=user_id,
             post_id=post_id,
             platform="linkedin",
+            session=MagicMock(),
         )
         assert isinstance(report, PostingGraphReport)
         assert report.status in ("failed", "error")
@@ -145,6 +148,7 @@ async def test_chaos_browser_hard_crash_during_submission() -> None:
             user_id=user_id,
             post_id=post_id,
             platform="x",
+            session=MagicMock(),
         )
         assert isinstance(report, PostingGraphReport)
         assert report.status in ("failed", "error")
@@ -172,6 +176,7 @@ async def test_chaos_verification_graph_corrupted_post_records() -> None:
         report = await verify_posts_with_graph(
             user_id=user_id,
             platform="x",
+            session=MagicMock(),
         )
         assert isinstance(report, VerificationGraphReport)
         assert report.status in ("completed", "partial")
@@ -182,45 +187,49 @@ async def test_chaos_concurrent_multi_post_publishing() -> None:
     """Chaos 5: Concurrent invocations of publish_post_with_graph are state-isolated."""
     user_id = str(uuid.uuid4())
 
-    async def _run_single(idx: int) -> PostingGraphReport:
-        pid = str(uuid.uuid4())
-        fake_p = Post(
-            id=uuid.UUID(pid),
+    def _mock_get_post(*, session: Any, post_id: uuid.UUID) -> Post:  # noqa: ARG001
+        return Post(
+            id=post_id,
             owner_id=uuid.UUID(user_id),
-            content=f"Concurrent post {idx}",
+            content=f"Concurrent post {post_id}",
             platform="x",
             status="draft",
         )
-        with (
-            patch("app.crud.get_post", return_value=fake_p),
-            patch(
-                "app.services.agentic.posting_preflight.get_social_account_status",
-                return_value=AccountStatusReport(
-                    user_id=user_id, x_connected=True, linkedin_connected=False
-                ),
+
+    with (
+        patch("app.crud.get_post", side_effect=_mock_get_post),
+        patch(
+            "app.services.agentic.posting_preflight.get_social_account_status",
+            return_value=AccountStatusReport(
+                user_id=user_id, x_connected=True, linkedin_connected=False
             ),
-            patch(
-                "app.services.agentic.posting_nodes.dispatch_x_post",
-                new_callable=AsyncMock,
-                return_value=(True, f"182938472938{idx}", None),
+        ),
+        patch(
+            "app.services.agentic.posting_nodes.dispatch_x_post",
+            new_callable=AsyncMock,
+            return_value=(True, "1829384729384", None),
+        ),
+        patch(
+            "app.services.agentic.posting_nodes.verify_posts_with_graph",
+            new_callable=AsyncMock,
+            side_effect=lambda **kw: VerificationGraphReport(
+                verified_post_ids=kw.get("post_ids", []), status="completed"
             ),
-            patch(
-                "app.services.agentic.posting_nodes.verify_posts_with_graph",
-                new_callable=AsyncMock,
-                return_value=VerificationGraphReport(
-                    verified_post_ids=[pid], status="completed"
-                ),
-            ),
-            patch("app.services.agentic.posting_dispatch._mark_as_published"),
-        ):
+        ),
+        patch("app.services.agentic.posting_dispatch._mark_as_published"),
+    ):
+
+        async def _run_single(_idx: int) -> PostingGraphReport:
+            pid = str(uuid.uuid4())
             return await publish_post_with_graph(
                 user_id=user_id,
                 post_id=pid,
                 platform="x",
+                session=MagicMock(),
             )
 
-    tasks = [_run_single(i) for i in range(10)]
-    results = await asyncio.gather(*tasks)
+        tasks = [_run_single(i) for i in range(10)]
+        results = await asyncio.gather(*tasks)
 
     assert len(results) == 10
     for r in results:

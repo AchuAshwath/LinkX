@@ -57,9 +57,12 @@ async def dispatch_dual_post(
 
     # Checkpoint LinkedIn post URN in database
     post.external_post_id = f"linkedin:{li_id}"
-    session.add(post)
-    session.commit()
-    session.refresh(post)
+    try:
+        session.add(post)
+        session.commit()
+        session.refresh(post)
+    except Exception:
+        session.rollback()
 
     x_ok, x_id, x_err = await dispatch_x_post(
         session=session, post=post, headless=headless

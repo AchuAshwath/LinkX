@@ -94,7 +94,7 @@ def transition_post_to_publishing(*, db_post: Post, session: Session) -> str | N
             session.commit()
             session.refresh(db_post)
         except Exception:
-            pass
+            session.rollback()
         return None
     except Exception as exc:
         return f"State transition error: {exc}"
