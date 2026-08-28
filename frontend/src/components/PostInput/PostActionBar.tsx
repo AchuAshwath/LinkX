@@ -62,12 +62,13 @@ interface LeftControlsProps {
   isScheduled: boolean
   isSubmitting: boolean
   isAiGenerating?: boolean
+  isAiMode?: boolean
   scheduledAt?: Date | undefined
   onScheduleChange?: (date: Date | undefined) => void
   onToggleSchedule: (open: boolean) => void
   onActionTypeChange: (type: "draft" | "schedule" | "post") => void
   onImageClick?: () => void
-  onAiDraftClick?: () => void
+  onToggleAiMode?: () => void
 }
 
 function ScheduleAndMediaControls({
@@ -75,12 +76,13 @@ function ScheduleAndMediaControls({
   isScheduled,
   isSubmitting,
   isAiGenerating,
+  isAiMode,
   scheduledAt,
   onScheduleChange,
   onToggleSchedule,
   onActionTypeChange,
   onImageClick,
-  onAiDraftClick,
+  onToggleAiMode,
 }: LeftControlsProps) {
   const mediaAndAiButtons = (
     <>
@@ -102,22 +104,22 @@ function ScheduleAndMediaControls({
         type="button"
         variant="ghost"
         size="icon"
-        className={`h-8.5 w-8.5 rounded-full transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 ${
-          isAiGenerating
-            ? "text-primary bg-primary/15 animate-pulse"
+        className={`h-8.5 w-8.5 rounded-full transition-colors duration-150 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 ${
+          isAiMode
+            ? "text-primary bg-primary/20 ring-1 ring-primary/40 shadow-xs"
             : "text-muted-foreground hover:text-primary hover:bg-primary/10"
         }`}
-        aria-label="Draft with AI"
-        title="Draft with AI"
-        onClick={onAiDraftClick}
+        aria-label={isAiMode ? "Disable AI Draft Mode" : "Draft with AI"}
+        title={
+          isAiMode
+            ? "AI Draft Mode Active (click to toggle off)"
+            : "Draft with AI"
+        }
+        onClick={onToggleAiMode}
         disabled={isSubmitting || isAiGenerating}
         data-testid="ai-draft-btn"
       >
-        <PencilSparklesIcon
-          className={`h-4.5 w-4.5 transition-transform duration-200 ${
-            isAiGenerating ? "animate-spin" : "group-hover:scale-110"
-          }`}
-        />
+        <PencilSparklesIcon className="h-4.5 w-4.5" />
       </Button>
     </>
   )
@@ -173,10 +175,50 @@ interface ActionButtonsProps {
   currentLength: number
   platform: Platform
   isXPremium?: boolean
+  isAiMode?: boolean
+  isAiGenerating?: boolean
   onCancelClick?: () => void
   onDraftClick: () => void
   onScheduleClick: () => void
   onPostClick: () => void
+  onAiDraftSubmit?: () => void
+}
+
+function getPrimaryButtonLabel(
+  isAiMode: boolean,
+  isAiGenerating: boolean,
+  isSubmitting: boolean,
+  isScheduled: boolean,
+): string {
+  if (isAiMode) {
+    return isAiGenerating ? "Drafting…" : "Draft"
+  }
+  if (isSubmitting) {
+    return isScheduled ? "Scheduling…" : "Posting…"
+  }
+  return isScheduled ? "Schedule" : "Post"
+}
+
+function getPrimaryButtonHandler(
+  isAiMode: boolean,
+  isScheduled: boolean,
+  onAiDraftSubmit?: () => void,
+  onScheduleClick?: () => void,
+  onPostClick?: () => void,
+): (() => void) | undefined {
+  if (isAiMode) return onAiDraftSubmit
+  if (isScheduled) return onScheduleClick
+  return onPostClick
+}
+
+function getPrimaryButtonDisabled(
+  isAiMode: boolean,
+  isDraftDisabled: boolean,
+  isAiGenerating: boolean,
+  isScheduleOrPublishDisabled: boolean,
+): boolean {
+  if (isAiMode) return isDraftDisabled || isAiGenerating
+  return isScheduleOrPublishDisabled
 }
 
 function ActionButtonsGroup({
@@ -188,18 +230,39 @@ function ActionButtonsGroup({
   currentLength,
   platform,
   isXPremium,
+  isAiMode = false,
+  isAiGenerating = false,
   onCancelClick,
   onDraftClick,
   onScheduleClick,
   onPostClick,
+  onAiDraftSubmit,
 }: ActionButtonsProps) {
-  const primaryLabel = isSubmitting
-    ? isScheduled
-      ? "Scheduling…"
-      : "Posting…"
-    : isScheduled
-      ? "Schedule"
-      : "Post"
+  const primaryLabel = getPrimaryButtonLabel(
+    isAiMode,
+    isAiGenerating,
+    isSubmitting,
+    isScheduled,
+  )
+
+  const handlePrimaryClick = getPrimaryButtonHandler(
+    isAiMode,
+    isScheduled,
+    onAiDraftSubmit,
+    onScheduleClick,
+    onPostClick,
+  )
+
+  const isPrimaryDisabled = getPrimaryButtonDisabled(
+    isAiMode,
+    isDraftDisabled,
+    isAiGenerating,
+    isScheduleOrPublishDisabled,
+  )
+
+  const buttonStyle = isAiMode
+    ? "bg-primary/90 hover:bg-primary text-primary-foreground shadow-xs"
+    : "bg-primary text-primary-foreground hover:bg-primary/90 shadow-2xs hover:shadow-sm"
 
   return (
     <div className="flex items-center gap-2 shrink-0 ml-auto">
@@ -235,7 +298,7 @@ function ActionButtonsGroup({
         aria-label="Add to draft"
         title="Add to draft"
         onClick={onDraftClick}
-        disabled={isDraftDisabled}
+        disabled={isDraftDisabled || isAiMode}
         data-testid="save-draft-btn"
       >
         <Plus className="h-3.5 w-3.5 transition-transform duration-200 group-hover:scale-110" />
@@ -244,9 +307,9 @@ function ActionButtonsGroup({
       <Button
         type="button"
         size="sm"
-        onClick={isScheduled ? onScheduleClick : onPostClick}
-        disabled={isScheduleOrPublishDisabled}
-        className="h-8.5 min-w-[70px] px-4.5 text-xs font-bold rounded-full bg-primary text-primary-foreground hover:bg-primary/90 shadow-2xs hover:shadow-sm transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-[1.03] active:scale-95 cursor-pointer disabled:opacity-50 disabled:hover:scale-100"
+        onClick={handlePrimaryClick}
+        disabled={isPrimaryDisabled}
+        className={`h-8.5 min-w-[70px] px-4.5 text-xs font-bold rounded-full transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-[1.03] active:scale-95 cursor-pointer disabled:opacity-50 disabled:hover:scale-100 ${buttonStyle}`}
         data-testid="primary-post-btn"
       >
         <span
@@ -260,6 +323,30 @@ function ActionButtonsGroup({
   )
 }
 
+export interface PostActionBarProps {
+  isSubmitting: boolean
+  isContentEmpty: boolean
+  canPublishOrSchedule?: boolean
+  currentLength?: number
+  platform?: Platform
+  isXPremium?: boolean
+  isAiGenerating?: boolean
+  isAiMode?: boolean
+  onActionTypeChange: (type: "draft" | "schedule" | "post") => void
+  onImageClick?: () => void
+  onDraftClick: () => void
+  onToggleAiMode?: () => void
+  onAiDraftSubmit?: () => void
+  onScheduleClick: () => void
+  onPostClick: () => void
+  onCancelClick?: () => void
+  showCancel?: boolean
+  scheduledAt?: Date | undefined
+  onScheduleChange?: (date: Date | undefined) => void
+  isScheduleOpen: boolean
+  onToggleSchedule: (open: boolean) => void
+}
+
 export const PostActionBar = React.memo(function PostActionBar({
   isSubmitting,
   isContentEmpty,
@@ -268,10 +355,12 @@ export const PostActionBar = React.memo(function PostActionBar({
   platform = "linkx",
   isXPremium = false,
   isAiGenerating = false,
+  isAiMode = false,
   onActionTypeChange,
   onImageClick,
   onDraftClick,
-  onAiDraftClick,
+  onToggleAiMode,
+  onAiDraftSubmit,
   onScheduleClick,
   onPostClick,
   onCancelClick,
@@ -298,12 +387,13 @@ export const PostActionBar = React.memo(function PostActionBar({
         isScheduled={isScheduled}
         isSubmitting={isSubmitting}
         isAiGenerating={isAiGenerating}
+        isAiMode={isAiMode}
         scheduledAt={scheduledAt}
         onScheduleChange={onScheduleChange}
         onToggleSchedule={onToggleSchedule}
         onActionTypeChange={onActionTypeChange}
         onImageClick={onImageClick}
-        onAiDraftClick={onAiDraftClick}
+        onToggleAiMode={onToggleAiMode}
       />
 
       <ActionButtonsGroup
@@ -315,10 +405,13 @@ export const PostActionBar = React.memo(function PostActionBar({
         currentLength={currentLength}
         platform={platform}
         isXPremium={isXPremium}
+        isAiMode={isAiMode}
+        isAiGenerating={isAiGenerating}
         onCancelClick={onCancelClick}
         onDraftClick={onDraftClick}
         onScheduleClick={onScheduleClick}
         onPostClick={onPostClick}
+        onAiDraftSubmit={onAiDraftSubmit}
       />
     </div>
   )

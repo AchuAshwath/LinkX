@@ -4,6 +4,7 @@ import { useCallback, useState } from "react"
 import { PostsService } from "@/client"
 import type { Platform } from "@/components/Common/PlatformSelector"
 import useCustomToast from "@/hooks/useCustomToast"
+import { draftingStore } from "@/hooks/useDraftingStore"
 import { handleError } from "@/utils"
 
 export interface UsePostFormOptions {
@@ -176,6 +177,11 @@ function useComposerCoreState(options?: UsePostFormOptions) {
   const [actionType, setActionType] = useState<"draft" | "schedule" | "post">(
     "post",
   )
+  const [isAiMode, setIsAiMode] = useState<boolean>(false)
+
+  const toggleAiMode = useCallback(() => {
+    setIsAiMode((prev) => !prev)
+  }, [])
 
   const handleContentChange = useCallback(
     (event: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -193,6 +199,9 @@ function useComposerCoreState(options?: UsePostFormOptions) {
     setChannel,
     actionType,
     setActionType,
+    isAiMode,
+    setIsAiMode,
+    toggleAiMode,
     handleContentChange,
   }
 }
@@ -200,10 +209,15 @@ function useComposerCoreState(options?: UsePostFormOptions) {
 function useAiDraftMutation(
   showSuccessToast: (msg: string) => void,
   showErrorToast: (msg: string) => void,
-  onDraftGenerated: (content: string) => void,
 ) {
+  const queryClient = useQueryClient()
+
   return useMutation({
-    mutationFn: async (data: { prompt: string; platform: Platform }) => {
+    mutationFn: async (data: {
+      draftId: string
+      prompt: string
+      platform: Platform
+    }) => {
       return await PostsService.generateAiDraft({
         requestBody: {
           prompt: data.prompt,
@@ -211,18 +225,20 @@ function useAiDraftMutation(
         },
       })
     },
-    onSuccess: (res) => {
-      if (res?.content) {
-        onDraftGenerated(res.content)
-        showSuccessToast("AI draft generated!")
-      }
+    onSuccess: (_, variables) => {
+      draftingStore.removeDraft(variables.draftId)
+      showSuccessToast("Draft created and saved to your drafts!")
+      queryClient.invalidateQueries({ queryKey: ["posts"] })
     },
-    onError: handleError.bind(showErrorToast),
+    onError: (err, variables) => {
+      draftingStore.removeDraft(variables.draftId)
+      handleError.call(showErrorToast, err as any)
+    },
   })
 }
 
 export function usePostForm(options?: UsePostFormOptions) {
-  const { showSuccessToast, showErrorToast } = useCustomToast()
+  const { showSuccessToast, showErrorToast, showInfoToast } = useCustomToast()
   const core = useComposerCoreState(options)
   const media = useComposerMedia(showErrorToast, options?.initialImageUrl)
 
@@ -231,6 +247,7 @@ export function usePostForm(options?: UsePostFormOptions) {
     core.setScheduledAt(undefined)
     core.setChannel("linkx")
     core.setActionType("post")
+    core.setIsAiMode(false)
     media.removeMedia()
   }, [core, media])
 
@@ -240,18 +257,36 @@ export function usePostForm(options?: UsePostFormOptions) {
     onSuccessReset: resetForm,
   })
 
-  const aiDraftMutation = useAiDraftMutation(
-    showSuccessToast,
-    showErrorToast,
-    (generatedContent) => core.setContent(generatedContent),
-  )
+  const aiDraftMutation = useAiDraftMutation(showSuccessToast, showErrorToast)
 
   const handleAiDraft = useCallback(() => {
+    const prompt = core.content.trim()
+    if (!prompt) return
+
+    const draftId = `draft-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+
+    // Add to in-flight drafting list immediately
+    draftingStore.addDraft({
+      id: draftId,
+      prompt,
+      platform: core.channel,
+      startedAt: new Date(),
+    })
+
+    // Immediately free the input box for the user's next post
+    core.setContent("")
+    core.setIsAiMode(false)
+
+    // Show initial notification toast
+    showInfoToast("Drafting post in background with AI...", "Drafting...")
+
+    // Trigger background generation
     aiDraftMutation.mutate({
-      prompt: core.content,
+      draftId,
+      prompt,
       platform: core.channel,
     })
-  }, [core.content, core.channel, aiDraftMutation])
+  }, [core, showInfoToast, aiDraftMutation])
 
   const handleSubmit = useCallback(
     (action: "draft" | "schedule" | "post") => {
@@ -280,6 +315,6 @@ export function usePostForm(options?: UsePostFormOptions) {
     handleSubmit,
     createPostMutation,
     handleAiDraft,
-    isGeneratingAiDraft: aiDraftMutation.isPending,
+    isGeneratingAiDraft: false,
   }
 }

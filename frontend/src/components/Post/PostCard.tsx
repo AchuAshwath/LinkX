@@ -59,6 +59,7 @@ export interface PostCardData {
 export interface PostCardProps {
   post: PostCardData
   isEditing?: boolean
+  isDrafting?: boolean
   onLike?: (postId: string) => void
   onRepost?: (postId: string) => void
   onComment?: (postId: string) => void
@@ -83,14 +84,28 @@ function parseScheduledDate(scheduledAt?: Date | string | null): Date | null {
   return typeof scheduledAt === "string" ? new Date(scheduledAt) : scheduledAt
 }
 
-function PostCardAuthorMeta({
-  author,
+function ScheduledTimeBadge({
+  scheduledDateTime,
+}: {
+  scheduledDateTime: string
+}) {
+  return (
+    <span
+      title={`Scheduled for ${scheduledDateTime}`}
+      className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline cursor-default"
+    >
+      <Clock className="h-3 w-3 shrink-0" />
+      {scheduledDateTime}
+    </span>
+  )
+}
+
+function TimeMeta({
   createdAt,
   scheduledAt,
   isScheduled,
   scheduledDateTime,
 }: {
-  author: PostAuthorData
   createdAt: Date | string
   scheduledAt?: Date | string | null
   isScheduled: boolean
@@ -105,6 +120,36 @@ function PostCardAuthorMeta({
     [createdAt],
   )
 
+  if (isScheduled && scheduledAt) {
+    return <ScheduledTimeBadge scheduledDateTime={scheduledDateTime} />
+  }
+
+  return (
+    <time
+      dateTime={
+        typeof createdAt === "string" ? createdAt : createdAt.toISOString()
+      }
+      title={fullDateTime}
+      className="shrink-0 text-xs hover:underline"
+    >
+      {relativeTime}
+    </time>
+  )
+}
+
+function PostCardAuthorMeta({
+  author,
+  createdAt,
+  scheduledAt,
+  isScheduled,
+  scheduledDateTime,
+}: {
+  author: PostAuthorData
+  createdAt: Date | string
+  scheduledAt?: Date | string | null
+  isScheduled: boolean
+  scheduledDateTime: string
+}) {
   return (
     <div className="flex min-w-0 items-center gap-1.5 flex-wrap sm:flex-nowrap">
       <button
@@ -119,78 +164,63 @@ function PostCardAuthorMeta({
         <span className="shrink-0" aria-hidden="true">
           ·
         </span>
-        {isScheduled && scheduledAt ? (
-          <span
-            title={`Scheduled for ${scheduledDateTime}`}
-            className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline cursor-default"
-          >
-            <Clock className="h-3 w-3 shrink-0" />
-            {scheduledDateTime}
-          </span>
-        ) : (
-          <time
-            dateTime={
-              typeof createdAt === "string"
-                ? createdAt
-                : createdAt.toISOString()
-            }
-            title={fullDateTime}
-            className="shrink-0 text-xs hover:underline"
-          >
-            {relativeTime}
-          </time>
-        )}
+        <TimeMeta
+          createdAt={createdAt}
+          scheduledAt={scheduledAt}
+          isScheduled={isScheduled}
+          scheduledDateTime={scheduledDateTime}
+        />
       </div>
     </div>
   )
 }
 
-function PostCardHeaderActions({
-  isEditing,
+function EditingHeaderActions({
   canSave,
   onCancel,
   onSave,
+}: {
+  canSave: boolean
+  onCancel: () => void
+  onSave: () => void
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={onCancel}
+        className="h-8 px-3 text-xs"
+      >
+        <X className="mr-1.5 h-3.5 w-3.5" />
+        Cancel
+      </Button>
+      <Button
+        size="sm"
+        onClick={onSave}
+        className="h-8 px-3 text-xs"
+        disabled={!canSave}
+      >
+        <Check className="mr-1.5 h-3.5 w-3.5" />
+        Save
+      </Button>
+    </div>
+  )
+}
+
+function DropdownHeaderActions({
   onPreview,
   onEdit,
   onDelete,
   onPublish,
   isPublishing,
 }: {
-  isEditing: boolean
-  canSave: boolean
-  onCancel: () => void
-  onSave: () => void
   onPreview?: () => void
   onEdit?: () => void
   onDelete?: () => void
   onPublish?: () => void
   isPublishing?: boolean
 }) {
-  if (isEditing) {
-    return (
-      <div className="flex items-center gap-1.5">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onCancel}
-          className="h-8 px-3 text-xs"
-        >
-          <X className="mr-1.5 h-3.5 w-3.5" />
-          Cancel
-        </Button>
-        <Button
-          size="sm"
-          onClick={onSave}
-          className="h-8 px-3 text-xs"
-          disabled={!canSave}
-        >
-          <Check className="mr-1.5 h-3.5 w-3.5" />
-          Save
-        </Button>
-      </div>
-    )
-  }
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -244,11 +274,54 @@ function PostCardHeaderActions({
   )
 }
 
+function PostCardHeaderActions({
+  isEditing,
+  canSave,
+  onCancel,
+  onSave,
+  onPreview,
+  onEdit,
+  onDelete,
+  onPublish,
+  isPublishing,
+}: {
+  isEditing: boolean
+  canSave: boolean
+  onCancel: () => void
+  onSave: () => void
+  onPreview?: () => void
+  onEdit?: () => void
+  onDelete?: () => void
+  onPublish?: () => void
+  isPublishing?: boolean
+}) {
+  if (isEditing) {
+    return (
+      <EditingHeaderActions
+        canSave={canSave}
+        onCancel={onCancel}
+        onSave={onSave}
+      />
+    )
+  }
+
+  return (
+    <DropdownHeaderActions
+      onPreview={onPreview}
+      onEdit={onEdit}
+      onDelete={onDelete}
+      onPublish={onPublish}
+      isPublishing={isPublishing}
+    />
+  )
+}
+
 interface PostCardHeaderProps {
   author: PostAuthorData
   createdAt: Date | string
   scheduledAt?: Date | string | null
   isScheduled: boolean
+  isDrafting?: boolean
   scheduledDateTime: string
   isEditing: boolean
   canSave: boolean
@@ -271,17 +344,19 @@ function PostCardHeader(props: PostCardHeaderProps) {
         isScheduled={props.isScheduled}
         scheduledDateTime={props.scheduledDateTime}
       />
-      <PostCardHeaderActions
-        isEditing={props.isEditing}
-        canSave={props.canSave}
-        onCancel={props.onCancel}
-        onSave={props.onSave}
-        onPreview={props.onPreview}
-        onEdit={props.onEdit}
-        onDelete={props.onDelete}
-        onPublish={props.onPublish}
-        isPublishing={props.isPublishing}
-      />
+      {!props.isDrafting && (
+        <PostCardHeaderActions
+          isEditing={props.isEditing}
+          canSave={props.canSave}
+          onCancel={props.onCancel}
+          onSave={props.onSave}
+          onPreview={props.onPreview}
+          onEdit={props.onEdit}
+          onDelete={props.onDelete}
+          onPublish={props.onPublish}
+          isPublishing={props.isPublishing}
+        />
+      )}
     </div>
   )
 }
@@ -330,33 +405,47 @@ function FailureNotice({
   )
 }
 
-function PostCardBodyContent({
-  isEditing,
-  content,
+function EditingBodyContent({
   editedContent,
   onContentChange,
-  imageUrl,
 }: {
-  isEditing: boolean
-  content: string
   editedContent: string
   onContentChange: (val: string) => void
+}) {
+  return (
+    <div className="mt-1.5">
+      <Textarea
+        value={editedContent}
+        onChange={(e) => onContentChange(e.target.value)}
+        placeholder="What's happening?"
+        className="min-h-24 resize-none border py-2.5 px-3 text-sm leading-relaxed focus-visible:ring-1 focus-visible:ring-primary"
+        rows={4}
+      />
+    </div>
+  )
+}
+
+function DraftingBodyContent({ content }: { content: string }) {
+  return (
+    <div className="mt-1">
+      <p className="break-words text-sm leading-normal whitespace-pre-wrap text-foreground">
+        {content}
+      </p>
+      <div className="space-y-2 mt-3 opacity-60">
+        <div className="h-2.5 bg-muted rounded-full w-4/5 animate-pulse" />
+        <div className="h-2.5 bg-muted rounded-full w-3/5 animate-pulse" />
+      </div>
+    </div>
+  )
+}
+
+function NormalBodyContent({
+  content,
+  imageUrl,
+}: {
+  content: string
   imageUrl?: string | null
 }) {
-  if (isEditing) {
-    return (
-      <div className="mt-1.5">
-        <Textarea
-          value={editedContent}
-          onChange={(e) => onContentChange(e.target.value)}
-          placeholder="What's happening?"
-          className="min-h-24 resize-none border py-2.5 px-3 text-sm leading-relaxed focus-visible:ring-1 focus-visible:ring-primary"
-          rows={4}
-        />
-      </div>
-    )
-  }
-
   return (
     <>
       <div className="mt-1">
@@ -377,6 +466,37 @@ function PostCardBodyContent({
       )}
     </>
   )
+}
+
+function PostCardBodyContent({
+  isEditing,
+  isDrafting,
+  content,
+  editedContent,
+  onContentChange,
+  imageUrl,
+}: {
+  isEditing: boolean
+  isDrafting?: boolean
+  content: string
+  editedContent: string
+  onContentChange: (val: string) => void
+  imageUrl?: string | null
+}) {
+  if (isEditing) {
+    return (
+      <EditingBodyContent
+        editedContent={editedContent}
+        onContentChange={onContentChange}
+      />
+    )
+  }
+
+  if (isDrafting) {
+    return <DraftingBodyContent content={content} />
+  }
+
+  return <NormalBodyContent content={content} imageUrl={imageUrl} />
 }
 
 function PostCardAvatar({ author }: { author: PostAuthorData }) {
@@ -470,15 +590,22 @@ function usePostCardEngagement(
   const [isReposted, setIsReposted] = React.useState(post.isReposted ?? false)
   const [repostCount, setRepostCount] = React.useState(post.reposts ?? 0)
 
+  React.useEffect(() => {
+    setIsLiked(post.isLiked ?? false)
+    setLikeCount(post.likes ?? 0)
+    setIsReposted(post.isReposted ?? false)
+    setRepostCount(post.reposts ?? 0)
+  }, [post.isLiked, post.likes, post.isReposted, post.reposts])
+
   const handleLike = React.useCallback(() => {
     setIsLiked((prev) => !prev)
-    setLikeCount((prev) => (isLiked ? prev - 1 : prev + 1))
+    setLikeCount((prev) => (isLiked ? Math.max(0, prev - 1) : prev + 1))
     onLike?.(post.id)
   }, [isLiked, onLike, post.id])
 
   const handleRepost = React.useCallback(() => {
     setIsReposted((prev) => !prev)
-    setRepostCount((prev) => (isReposted ? prev - 1 : prev + 1))
+    setRepostCount((prev) => (isReposted ? Math.max(0, prev - 1) : prev + 1))
     onRepost?.(post.id)
   }, [isReposted, onRepost, post.id])
 
@@ -494,6 +621,7 @@ function usePostCardEngagement(
 
 interface PostCardActionsProps {
   isEditing: boolean
+  isDrafting?: boolean
   platform: Platform
   onPlatformChange?: (platform: Platform) => void
   engagement: ReturnType<typeof usePostCardEngagement>
@@ -505,6 +633,7 @@ interface PostCardActionsProps {
 
 function PostCardActionsRow({
   isEditing,
+  isDrafting = false,
   platform,
   onPlatformChange,
   engagement,
@@ -514,39 +643,47 @@ function PostCardActionsRow({
   isPosted,
 }: PostCardActionsProps) {
   return (
-    <div className="mt-2">
+    <div
+      className={`mt-2 ${
+        isDrafting ? "opacity-40 pointer-events-none select-none" : ""
+      }`}
+    >
       <PostActionFooter
         isEditing={isEditing}
         platform={platform}
         onPlatformChange={onPlatformChange}
         isLiked={engagement.isLiked}
         likeCount={engagement.likeCount}
-        onLike={engagement.handleLike}
+        onLike={isDrafting ? undefined : engagement.handleLike}
         isReposted={engagement.isReposted}
         repostCount={engagement.repostCount}
-        onRepost={engagement.handleRepost}
+        onRepost={isDrafting ? undefined : engagement.handleRepost}
         commentsCount={commentsCount}
-        onComment={onComment}
-        onShare={onShare}
+        onComment={isDrafting ? undefined : onComment}
+        onShare={isDrafting ? undefined : onShare}
         isPosted={isPosted}
       />
     </div>
   )
 }
 
-function getPostCardFlags(post: PostCardData) {
-  const isScheduled = Boolean(
-    post.scheduledAt ||
-      post.type === "scheduled" ||
-      post.status === "scheduled",
-  )
-  const isFailed = post.status === "failed"
-  const isPosted = post.type === "posted" || post.status === "published"
-  const scheduledDateTime = post.scheduledAt
-    ? formatFullDateTime(post.scheduledAt)
-    : ""
+function getScheduledDateTime(scheduledAt?: Date | string | null): string {
+  if (!scheduledAt) return ""
+  return formatFullDateTime(scheduledAt)
+}
 
-  return { isScheduled, isFailed, isPosted, scheduledDateTime }
+function getPostCardFlags(post: PostCardData, isDrafting?: boolean) {
+  return {
+    isDrafting: Boolean(isDrafting || post.status === "drafting"),
+    isScheduled: Boolean(
+      post.scheduledAt ||
+        post.type === "scheduled" ||
+        post.status === "scheduled",
+    ),
+    isFailed: post.status === "failed",
+    isPosted: post.type === "posted" || post.status === "published",
+    scheduledDateTime: getScheduledDateTime(post.scheduledAt),
+  }
 }
 
 interface PostCardLayoutProps extends PostCardProps {
@@ -602,6 +739,7 @@ function PostCardHeaderWrapper({
       createdAt={post.createdAt}
       scheduledAt={post.scheduledAt}
       isScheduled={flags.isScheduled}
+      isDrafting={flags.isDrafting}
       scheduledDateTime={flags.scheduledDateTime}
       isEditing={isEditing}
       canSave={editor.editedContent.trim().length > 0}
@@ -617,7 +755,7 @@ function PostCardHeaderWrapper({
 }
 
 function PostCardMainColumn(props: PostCardLayoutProps) {
-  const flags = getPostCardFlags(props.post)
+  const flags = getPostCardFlags(props.post, props.isDrafting)
 
   return (
     <div className="min-w-0 flex-1">
@@ -635,6 +773,7 @@ function PostCardMainColumn(props: PostCardLayoutProps) {
 
       <PostCardBodyContent
         isEditing={false}
+        isDrafting={flags.isDrafting}
         content={props.post.content}
         editedContent={props.editor.editedContent}
         onContentChange={props.editor.setEditedContent}
@@ -652,6 +791,7 @@ function PostCardMainColumn(props: PostCardLayoutProps) {
 
       <PostCardActionsRow
         isEditing={false}
+        isDrafting={flags.isDrafting}
         platform={props.editor.platform}
         onPlatformChange={
           flags.isPosted ? undefined : props.editor.handlePlatformChange
@@ -669,7 +809,7 @@ function PostCardMainColumn(props: PostCardLayoutProps) {
 function PostCardLayout(props: PostCardLayoutProps) {
   return (
     <article
-      className={`group border-b transition-colors hover:bg-accent/40`}
+      className="group border-b transition-colors hover:bg-accent/40"
       aria-label={`Post by ${props.post.author.name}`}
     >
       <div className="p-3 sm:p-4">
@@ -737,15 +877,18 @@ export const Posted = PostCard
 export const ScheduledPost = PostCard
 export const DraftPost = PostCard
 export const FailedPost = PostCard
+export const DraftingPost = PostCard
 
 export type PostedData = PostCardData
 export type ScheduledPostData = PostCardData
 export type DraftPostData = PostCardData
 export type FailedPostData = PostCardData
+export type DraftingPostData = PostCardData
 
 export type PostedProps = PostCardProps
 export type ScheduledPostProps = PostCardProps
 export type DraftPostProps = PostCardProps
 export type FailedPostProps = PostCardProps
+export type DraftingPostProps = PostCardProps
 
 export default PostCard

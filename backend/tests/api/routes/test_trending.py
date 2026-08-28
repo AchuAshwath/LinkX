@@ -70,3 +70,73 @@ def test_extract_trending_requires_x_connection(
         )
     assert response.status_code == 400
     assert "not connected" in response.json()["detail"].lower()
+
+
+def test_draft_from_trending_topic_success(
+    client: TestClient,
+    db: Session,
+) -> None:
+    user, headers = _create_user_with_auth(client=client, db=db)
+
+    now = datetime.now(timezone.utc)
+    topic = TrendingTopic(
+        user_id=user.id,
+        topic_url="https://x.com/i/trending/ai_trends",
+        topic_title="AI Agent Breakthroughs",
+        category="Tech",
+        post_count=50000,
+        scraped_at=now,
+    )
+    db.add(topic)
+    db.commit()
+
+    from app.models import Post
+    from app.services.agentic.schemas import CuratedDraftReport
+
+    created_post = Post(
+        owner_id=user.id,
+        content="AI Agent Breakthroughs are transforming developer productivity.",
+        platform="both",
+        status="draft",
+    )
+    db.add(created_post)
+    db.commit()
+
+    mock_report = CuratedDraftReport(
+        draft_content=created_post.content,
+        refined_content=created_post.content,
+        is_compliant=True,
+        topic_title=topic.topic_title,
+        persisted_post_id=str(created_post.id),
+        status="persisted",
+    )
+
+    with patch(
+        "app.services.agentic.curation_graph.curate_and_draft_post",
+        return_value=mock_report,
+    ):
+        response = client.post(
+            f"{settings.API_V1_STR}/trending/{topic.id}/draft",
+            headers=headers,
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == str(created_post.id)
+    assert data["content"] == created_post.content
+    assert data["status"] == "draft"
+
+
+def test_draft_from_trending_topic_not_found(
+    client: TestClient,
+    db: Session,
+) -> None:
+    _user, headers = _create_user_with_auth(client=client, db=db)
+    import uuid
+
+    fake_id = uuid.uuid4()
+    response = client.post(
+        f"{settings.API_V1_STR}/trending/{fake_id}/draft",
+        headers=headers,
+    )
+    assert response.status_code == 404

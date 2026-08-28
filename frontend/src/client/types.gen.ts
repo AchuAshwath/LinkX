@@ -8,6 +8,7 @@ export type AIDraftRequest = {
 
 export type AIDraftResponse = {
     content: string;
+    post_id?: (string | null);
 };
 
 export type Body_login_login_access_token = {
@@ -387,6 +388,13 @@ export type TrendingExtractTrendingTopicsData = {
 };
 
 export type TrendingExtractTrendingTopicsResponse = (TrendingTopicsPublic);
+
+export type TrendingDraftFromTrendingTopicData = {
+    platform?: string;
+    topicId: string;
+};
+
+export type TrendingDraftFromTrendingTopicResponse = (PostPublic);
 
 export type UsersReadUsersData = {
     limit?: number;

@@ -27,7 +27,6 @@ from app.models import (
     PostUpdate,
     User,
 )
-from app.services.ai_draft import generate_ai_post_draft
 from app.services.post_state_machine import validate_transition
 from app.services.publishing import PublishFailure, publish_post
 
@@ -110,16 +109,29 @@ async def upload_media(
 @router.post("/ai-draft", response_model=AIDraftResponse)
 async def generate_ai_draft(
     *,
-    _current_user: CurrentUser,
+    current_user: CurrentUser,
+    session: SessionDep,
     draft_in: AIDraftRequest,
 ) -> Any:
-    """Generate or enhance a post draft using AI based on prompt and platform."""
-    content = await generate_ai_post_draft(
-        prompt=draft_in.prompt,
+    """Curate, refine, and persist a post draft using CurationGraph directly into the database."""
+    from app.services.agentic.curation_graph import curate_and_draft_post
+
+    prompt = draft_in.prompt.strip() if draft_in.prompt else "Social media update"
+    report = await curate_and_draft_post(
+        user_id=str(current_user.id),
+        topic_title=prompt,
         platform=draft_in.platform,
-        tone=draft_in.tone,
+        target_tone=draft_in.tone,
+        session=session,
     )
-    return AIDraftResponse(content=content)
+
+    persisted_id = (
+        uuid.UUID(report.persisted_post_id) if report.persisted_post_id else None
+    )
+
+    final_content = report.refined_content or report.draft_content or prompt
+
+    return AIDraftResponse(content=final_content, post_id=persisted_id)
 
 
 def _get_user_details(*, session: Session, user_id: uuid.UUID) -> User | None:
@@ -161,10 +173,13 @@ def _post_to_public(*, post: Post, author: PostAuthor | None = None) -> PostPubl
     )
 
 
-def _serialize_post_with_author(*, session: Session, post: Post) -> PostPublic:
+def serialize_post_with_author(*, session: Session, post: Post) -> PostPublic:
     user = _get_user_details(session=session, user_id=post.owner_id)
     author = _build_post_author(user=user) if user else None
     return _post_to_public(post=post, author=author)
+
+
+_serialize_post_with_author = serialize_post_with_author
 
 
 def _raise_publish_failure(*, failure: PublishFailure) -> None:

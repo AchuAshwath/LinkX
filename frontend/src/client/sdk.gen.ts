@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { AdminReadSchedulerStatusResponse, AuthLinkedinConfigCheckResponse, AuthLinkedinAuthorizeResponse, AuthLinkedinCallbackData, AuthLinkedinCallbackResponse, AuthXStatusResponse, AuthXVerifyResponse, AuthXConnectData, AuthXConnectResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, LinkedinLinkedinStatusResponse, LinkedinLinkedinDisconnectResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PostsUploadMediaData, PostsUploadMediaResponse, PostsGenerateAiDraftData, PostsGenerateAiDraftResponse, PostsReadPostsData, PostsReadPostsResponse, PostsCreateNewPostData, PostsCreateNewPostResponse, PostsReadPostData, PostsReadPostResponse, PostsUpdateExistingPostData, PostsUpdateExistingPostResponse, PostsDeleteExistingPostData, PostsDeleteExistingPostResponse, PostsPublishExistingPostData, PostsPublishExistingPostResponse, PostsRetryFailedPostData, PostsRetryFailedPostResponse, PrivateCreateUserData, PrivateCreateUserResponse, TrendingGetTrendingResponse, TrendingExtractTrendingTopicsData, TrendingExtractTrendingTopicsResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
+import type { AdminReadSchedulerStatusResponse, AuthLinkedinConfigCheckResponse, AuthLinkedinAuthorizeResponse, AuthLinkedinCallbackData, AuthLinkedinCallbackResponse, AuthXStatusResponse, AuthXVerifyResponse, AuthXConnectData, AuthXConnectResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, LinkedinLinkedinStatusResponse, LinkedinLinkedinDisconnectResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PostsUploadMediaData, PostsUploadMediaResponse, PostsGenerateAiDraftData, PostsGenerateAiDraftResponse, PostsReadPostsData, PostsReadPostsResponse, PostsCreateNewPostData, PostsCreateNewPostResponse, PostsReadPostData, PostsReadPostResponse, PostsUpdateExistingPostData, PostsUpdateExistingPostResponse, PostsDeleteExistingPostData, PostsDeleteExistingPostResponse, PostsPublishExistingPostData, PostsPublishExistingPostResponse, PostsRetryFailedPostData, PostsRetryFailedPostResponse, PrivateCreateUserData, PrivateCreateUserResponse, TrendingGetTrendingResponse, TrendingExtractTrendingTopicsData, TrendingExtractTrendingTopicsResponse, TrendingDraftFromTrendingTopicData, TrendingDraftFromTrendingTopicResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
 
 export class AdminService {
     /**
@@ -386,7 +386,7 @@ export class PostsService {
     
     /**
      * Generate Ai Draft
-     * Generate or enhance a post draft using AI based on prompt and platform.
+     * Curate, refine, and persist a post draft using CurationGraph directly into the database.
      * @param data The data for the request.
      * @param data.requestBody
      * @returns AIDraftResponse Successful Response
@@ -608,6 +608,31 @@ export class TrendingService {
             url: '/api/v1/trending/extract',
             query: {
                 max_topics: data.maxTopics
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Draft From Trending Topic
+     * Curate and refine a social post draft from a database trending topic using CurationGraph.
+     * @param data The data for the request.
+     * @param data.topicId
+     * @param data.platform
+     * @returns PostPublic Successful Response
+     * @throws ApiError
+     */
+    public static draftFromTrendingTopic(data: TrendingDraftFromTrendingTopicData): CancelablePromise<TrendingDraftFromTrendingTopicResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/trending/{topic_id}/draft',
+            path: {
+                topic_id: data.topicId
+            },
+            query: {
+                platform: data.platform
             },
             errors: {
                 422: 'Validation Error'

@@ -1,4 +1,7 @@
 export {
+  DraftingPost,
+  type DraftingPostData,
+  type DraftingPostProps,
   DraftPost,
   type DraftPostData,
   type DraftPostProps,

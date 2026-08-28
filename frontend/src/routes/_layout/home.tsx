@@ -4,8 +4,7 @@ import { Loader2 } from "lucide-react"
 import * as React from "react"
 import { PostsService, TrendingService } from "@/client"
 import type { Platform } from "@/components/Common/PlatformSelector"
-import type { PostedData } from "@/components/Post/Posted"
-import { Posted } from "@/components/Post/Posted"
+import { DraftingPost, Posted, type PostedData } from "@/components/Post"
 import {
   PostPreviewDialog,
   type PreviewPostData,
@@ -27,6 +26,7 @@ import {
 import { LoadingButton } from "@/components/ui/loading-button"
 import useAuth from "@/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
+import { useActiveDrafts } from "@/hooks/useDraftingStore"
 import { transformToPostedPost, transformToScheduledPost } from "@/utils"
 
 type TimelinePost =
@@ -78,8 +78,8 @@ function convertToPreviewData(post: TimelinePost): PreviewPostData {
 function TimelinePage() {
   const queryClient = useQueryClient()
   const { user } = useAuth()
-
-  const [draftContent, setDraftContent] = React.useState<string>("")
+  const { showSuccessToast, showErrorToast } = useCustomToast()
+  const activeDrafts = useActiveDrafts()
   const [editingPostId, setEditingPostId] = React.useState<string | null>(null)
 
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
@@ -92,8 +92,6 @@ function TimelinePage() {
   const [previewPost, setPreviewPost] = React.useState<PreviewPostData | null>(
     null,
   )
-
-  const { showSuccessToast, showErrorToast } = useCustomToast()
 
   const { data: scheduledData, isLoading: isLoadingScheduled } = useQuery({
     queryKey: ["posts", "scheduled"],
@@ -271,11 +269,6 @@ function TimelinePage() {
     }
   }
 
-  const handleTopicDraft = (topicTitle: string) => {
-    setDraftContent(topicTitle)
-    window.scrollTo({ top: 0, behavior: "smooth" })
-  }
-
   const sortedPosts = React.useMemo(() => {
     const toTime = (d: Date | string) =>
       (typeof d === "string" ? new Date(d) : d).getTime()
@@ -302,13 +295,34 @@ function TimelinePage() {
           <PostInputBox
             username={user?.full_name || user?.email || "User"}
             avatarUrl={undefined}
-            initialContent={draftContent}
             onSubmit={() => {
-              setDraftContent("")
               queryClient.invalidateQueries({ queryKey: ["posts"] })
             }}
           />
         </div>
+
+        {/* In-Flight Background AI Drafts */}
+        {activeDrafts.length > 0 && (
+          <div className="w-full">
+            {activeDrafts.map((draft) => (
+              <DraftingPost
+                key={draft.id}
+                isDrafting
+                post={{
+                  id: draft.id,
+                  author: {
+                    name: user?.full_name || user?.email || "You",
+                    username: user?.email?.split("@")[0] || "user",
+                  },
+                  content: draft.prompt,
+                  createdAt: draft.startedAt,
+                  platform: (draft.platform as any) || "linkx",
+                  status: "drafting",
+                }}
+              />
+            ))}
+          </div>
+        )}
 
         {/* Feed Posts */}
         {isLoadingScheduled || isLoadingPublished ? (
@@ -318,7 +332,7 @@ function TimelinePage() {
               Loading timeline...
             </p>
           </div>
-        ) : sortedPosts.length === 0 ? (
+        ) : sortedPosts.length === 0 && activeDrafts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
             <p className="text-sm text-muted-foreground">
               No posts in your timeline yet. Create a draft or schedule your
@@ -368,7 +382,6 @@ function TimelinePage() {
           <TrendingTopics
             topics={trendingTopics}
             lastScrapedAt={latestScrapedAt}
-            onTopicDraft={handleTopicDraft}
           />
         </div>
       </div>
