@@ -319,6 +319,21 @@ def _should_skip_link(
     return not _is_valid_topic_text(text, heuristic)
 
 
+async def _resolve_link_href(link: Any, *, clean_title: str) -> str:
+    """Resolve href attribute or construct search query URL."""
+    url = await link.get_attribute("href")
+    if not url:
+        try:
+            nested_a = link.locator("a[href*='/search?q=']").first
+            if await nested_a.count() > 0:
+                url = await nested_a.get_attribute("href")
+        except Exception:
+            pass
+    if not url:
+        url = f"/search?q={urllib.parse.quote(clean_title)}"
+    return str(url)
+
+
 async def _extract_sidebar_links(
     sidebar: Any,
     link_selector: str,
@@ -344,20 +359,7 @@ async def _extract_sidebar_links(
             if not _is_valid_topic_text(text, heuristic):
                 continue
 
-            url = await link.get_attribute("href")
-            if not url:
-                try:
-                    nested_a = link.locator("a[href*='/search?q=']").first
-                    if await nested_a.count() > 0:
-                        url = await nested_a.get_attribute("href")
-                except Exception:
-                    pass
-
-            if not url:
-                import urllib.parse
-
-                url = f"/search?q={urllib.parse.quote(clean_title)}"
-
+            url = await _resolve_link_href(link, clean_title=clean_title)
             seen_titles.add(clean_title)
             news_urls.append((url, True))
             news_titles[url] = text
@@ -490,17 +492,12 @@ async def _extract_candidate_summary(
     return None
 
 
-async def _navigate_and_verify_topic(
+async def _execute_topic_click_or_goto(
     ctx: TopicProcessContext,
-    tweet_selector: str,
-) -> tuple[bool, TopicFailure | None]:
-    """Click a topic link and verify the resulting page state."""
-    clean_text = ctx.target_title.split("\n")[0].strip()
-    if ctx.is_href:
-        selector = f'a[href="{ctx.target_id}"]'
-    else:
-        selector = f'[data-testid="trend"]:has-text({json.dumps(clean_text)})'
-
+    selector: str,
+    clean_text: str,
+) -> None:
+    """Attempt stealth click on topic element with fallback to direct search navigation."""
     try:
         if ctx.is_href:
             link_locator = ctx.page.locator(selector).first
@@ -517,6 +514,20 @@ async def _navigate_and_verify_topic(
             await ctx.page.goto(direct_url, wait_until="domcontentloaded")
         except Exception as goto_err:
             logger.warning(f"Fallback navigation to {direct_url} failed: {goto_err}")
+
+
+async def _navigate_and_verify_topic(
+    ctx: TopicProcessContext,
+    tweet_selector: str,
+) -> tuple[bool, TopicFailure | None]:
+    """Click a topic link and verify the resulting page state."""
+    clean_text = ctx.target_title.split("\n")[0].strip()
+    if ctx.is_href:
+        selector = f'a[href="{ctx.target_id}"]'
+    else:
+        selector = f'[data-testid="trend"]:has-text({json.dumps(clean_text)})'
+
+    await _execute_topic_click_or_goto(ctx, selector, clean_text)
 
     try:
         await ctx.page.wait_for_selector(tweet_selector, state="visible", timeout=15000)
@@ -753,24 +764,8 @@ def _format_trend_url(identifier: str, *, is_url: bool, topic_title: str) -> str
     return f"https://x.com/search?q={urllib.parse.quote(topic_title)}"
 
 
-async def extract_trending_sidebar(
-    page: Any,
-    *,
-    selectors: dict[str, Any],
-    config_path: str | Path | None = None,
-) -> list[TrendingTopic]:
-    """Extract structured TrendingTopic models from the X.com sidebar."""
-    cfg_path = config_path or (
-        Path(__file__).parent.parent / "app/services/browser/selectors/x_selectors.json"
-    )
-    sidebar_link_sel = (
-        selectors.get("selectors", {}).get("sidebar_link")
-        or selectors.get("feed", {}).get("news_trends")
-        or "[data-testid='trend'], a[href*='/search?q='], [data-testid^='news_sidebar_article']"
-    )
-    heuristic = selectors.get("link_heuristic", {"must_contain_newline": False})
-
-    # Wait for trend items to appear in the DOM
+async def _wait_for_trends_dom(page: Any) -> None:
+    """Wait for trend elements to appear in the DOM."""
     try:
         if hasattr(page, "locator"):
             await page.locator("[data-testid='trend']").first.wait_for(
@@ -779,7 +774,16 @@ async def extract_trending_sidebar(
     except Exception as e:
         logger.debug(f"Wait for trend element timed out or skipped: {e}")
 
-    sidebar = None
+
+async def _resolve_sidebar_container(
+    page: Any,
+    selectors: dict[str, Any],
+    config_path: str | Path | None,
+) -> Any:
+    """Find or self-heal sidebar container element, fallback to page."""
+    cfg_path = config_path or (
+        Path(__file__).parent.parent / "app/services/browser/selectors/x_selectors.json"
+    )
     try:
         sidebar = await find_or_heal_element(
             page=page,
@@ -787,10 +791,29 @@ async def extract_trending_sidebar(
             selectors_dict=selectors,
             config_path=cfg_path,
         )
+        if sidebar is not None:
+            return sidebar
     except Exception as e:
         logger.debug(f"Sidebar lookup failed, searching page directly: {e}")
+    return page
 
-    container = sidebar if sidebar is not None else page
+
+async def extract_trending_sidebar(
+    page: Any,
+    *,
+    selectors: dict[str, Any],
+    config_path: str | Path | None = None,
+) -> list[TrendingTopic]:
+    """Extract structured TrendingTopic models from the X.com sidebar."""
+    sidebar_link_sel = (
+        selectors.get("selectors", {}).get("sidebar_link")
+        or selectors.get("feed", {}).get("news_trends")
+        or "[data-testid='trend'], a[href*='/search?q='], [data-testid^='news_sidebar_article']"
+    )
+    heuristic = selectors.get("link_heuristic", {"must_contain_newline": False})
+
+    await _wait_for_trends_dom(page)
+    container = await _resolve_sidebar_container(page, selectors, config_path)
     news_urls, news_titles = await _extract_sidebar_links(
         container, sidebar_link_sel, heuristic
     )
