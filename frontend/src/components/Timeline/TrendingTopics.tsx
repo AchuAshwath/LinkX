@@ -115,13 +115,20 @@ interface RowProps {
   onDraft: () => void
 }
 
+function formatCategory(category?: string | null): string {
+  if (!category) return "Trending"
+  const cat = category.trim()
+  if (cat.toLowerCase().includes("trending")) return cat
+  return `${cat} · Trending`
+}
+
 function TrendingTopicRow({ topic, isDrafting = false, onDraft }: RowProps) {
   const postCountStr = formatPostCount(topic.post_count)
 
   return (
     <div className="w-full py-3 px-4 transition-colors hover:bg-muted/10">
       <div className="text-xs font-medium text-muted-foreground mb-1">
-        {topic.category ? `${topic.category} · Trending` : "Trending"}
+        {formatCategory(topic.category)}
       </div>
 
       <a
@@ -256,7 +263,7 @@ export function TrendingTopics({
         />
       ) : (
         <div className="w-full divide-y divide-border/30">
-          {topics.map((topic) => (
+          {topics.slice(0, 3).map((topic) => (
             <TrendingTopicRow
               key={topic.id}
               topic={topic}

@@ -142,9 +142,10 @@ async def _check_error_banners(page: Any) -> str | None:
         "text=Something went wrong",
         "text=Rate limit exceeded",
         "text=Your account has been locked",
+        "[data-testid='error-detail']",
     ):
         try:
-            if await page.locator(text_sel).count() > 0:
+            if hasattr(page, "locator") and await page.locator(text_sel).count() > 0:
                 return "rate_limited"
         except Exception:
             pass

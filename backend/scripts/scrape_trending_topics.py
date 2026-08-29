@@ -12,6 +12,7 @@ import os
 import random
 import re
 import sys
+import urllib.parse
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -129,6 +130,24 @@ async def extract_tweet_data(locator) -> dict | None:
     except PlaywrightError as e:
         logger.warning(f"Playwright error extracting tweet: {e}")
         return None
+
+
+def _clean_category(category: str | None) -> str | None:
+    """Clean category string to avoid duplicate 'Trending' suffixes in UI."""
+    if not category:
+        return None
+    cat = category.strip()
+    for marker in (
+        "· Trending in",
+        "Trending in",
+        "· Trending",
+        "Trending ·",
+        "Trending",
+    ):
+        if marker in cat:
+            cat = cat.replace(marker, "").strip()
+    cat = cat.strip(" ·-")
+    return cat if cat else None
 
 
 def _parse_prefixed_topic(
@@ -275,13 +294,15 @@ async def simulate_reading(mouse: EvasionMouse) -> None:
 
 def _is_valid_topic_text(text: str, heuristic: dict[str, Any]) -> bool:
     """Validate topic text against heuristics."""
-    if heuristic.get("must_contain_newline", True) and "\n" not in text:
+    if not text or len(text.strip()) < 2:
+        return False
+    if heuristic.get("must_contain_newline", False) and "\n" not in text:
         return False
     prefix = heuristic.get("exclude_prefix", "@")
-    if prefix and text.startswith(prefix):
+    if prefix and text.strip().startswith(prefix):
         return False
     exclude_texts = heuristic.get("exclude_texts", ["Show more", "Subscribe"])
-    return not any(ex in text for ex in exclude_texts)
+    return not any(ex.lower() in text.lower() for ex in exclude_texts)
 
 
 def _should_skip_link(
@@ -307,21 +328,39 @@ async def _extract_sidebar_links(
     all_links = await sidebar.locator(link_selector).all()
     news_urls: list[tuple[str, bool]] = []
     news_titles: dict[str, str] = {}
+    seen_titles: set[str] = set()
 
-    for i, link in enumerate(all_links):
+    for _i, link in enumerate(all_links):
         try:
             text = await link.inner_text()
-            if not text or not text.strip():
+            if not text or len(text.strip()) < 2:
                 continue
+
+            meta = parse_title_metadata(text)
+            clean_title = meta.get("topic_title") or text.split("\n")[0].strip()
+            if not clean_title or clean_title in seen_titles:
+                continue
+
+            if not _is_valid_topic_text(text, heuristic):
+                continue
+
             url = await link.get_attribute("href")
-            first_line = text.split("\n")[0].strip()
-            identifier = url or (first_line if first_line else f"trend_{i}")
+            if not url:
+                try:
+                    nested_a = link.locator("a[href*='/search?q=']").first
+                    if await nested_a.count() > 0:
+                        url = await nested_a.get_attribute("href")
+                except Exception:
+                    pass
 
-            if _should_skip_link(identifier, text, news_titles, heuristic):
-                continue
+            if not url:
+                import urllib.parse
 
-            news_urls.append((identifier, bool(url)))
-            news_titles[identifier] = text
+                url = f"/search?q={urllib.parse.quote(clean_title)}"
+
+            seen_titles.add(clean_title)
+            news_urls.append((url, True))
+            news_titles[url] = text
         except Exception:
             continue
 
@@ -456,20 +495,28 @@ async def _navigate_and_verify_topic(
     tweet_selector: str,
 ) -> tuple[bool, TopicFailure | None]:
     """Click a topic link and verify the resulting page state."""
-    selector = (
-        f'a[href="{ctx.target_id}"]'
-        if ctx.is_href
-        else f'[data-testid="{ctx.target_id}"]'
-    )
-    link_locator = ctx.page.locator(selector).first
-
+    clean_text = ctx.target_title.split("\n")[0].strip()
     if ctx.is_href:
-        try:
-            await link_locator.evaluate("node => node.removeAttribute('target')")
-        except Exception:
-            pass
+        selector = f'a[href="{ctx.target_id}"]'
+    else:
+        selector = f'[data-testid="trend"]:has-text({json.dumps(clean_text)})'
 
-    await ctx.mouse.human_click(selector=selector)
+    try:
+        if ctx.is_href:
+            link_locator = ctx.page.locator(selector).first
+            try:
+                await link_locator.evaluate("node => node.removeAttribute('target')")
+            except Exception:
+                pass
+        await ctx.mouse.human_click(selector=selector)
+    except Exception as click_err:
+        logger.debug(f"Direct click failed on {selector}: {click_err}")
+        search_query = urllib.parse.quote(clean_text)
+        direct_url = f"https://x.com/search?q={search_query}"
+        try:
+            await ctx.page.goto(direct_url, wait_until="domcontentloaded")
+        except Exception as goto_err:
+            logger.warning(f"Fallback navigation to {direct_url} failed: {goto_err}")
 
     try:
         await ctx.page.wait_for_selector(tweet_selector, state="visible", timeout=15000)
@@ -682,9 +729,9 @@ async def scrape_trending_topics(
 
 
 async def navigate_to_trends(
-    page: Any, *, target_url: str = "https://x.com/home"
+    page: Any, *, target_url: str = "https://x.com/explore"
 ) -> bool:
-    """Navigate to X.com trends/home and verify authenticated page state."""
+    """Navigate to X.com explore/trends and verify authenticated page state."""
     state = await detect_page_state(page)
     if state in {"logged_out", "rate_limited", "captcha"}:
         return False
@@ -713,22 +760,45 @@ async def extract_trending_sidebar(
     config_path: str | Path | None = None,
 ) -> list[TrendingTopic]:
     """Extract structured TrendingTopic models from the X.com sidebar."""
-    cfg_path = config_path or (Path(__file__).parent.parent / "scrape_config.json")
-    sidebar_link_sel = selectors.get("selectors", {}).get(
-        "sidebar_link", "a[href*='/search?q=']"
+    cfg_path = config_path or (
+        Path(__file__).parent.parent / "app/services/browser/selectors/x_selectors.json"
     )
-    heuristic = selectors.get("link_heuristic", {})
-
-    sidebar = await find_or_heal_element(
-        page=page,
-        selector_key="selectors.sidebar_container",
-        selectors_dict=selectors,
-        config_path=cfg_path,
+    sidebar_link_sel = (
+        selectors.get("selectors", {}).get("sidebar_link")
+        or selectors.get("feed", {}).get("news_trends")
+        or "[data-testid='trend'], a[href*='/search?q='], [data-testid^='news_sidebar_article']"
     )
+    heuristic = selectors.get("link_heuristic", {"must_contain_newline": False})
 
+    # Wait for trend items to appear in the DOM
+    try:
+        if hasattr(page, "locator"):
+            await page.locator("[data-testid='trend']").first.wait_for(
+                state="visible", timeout=10000
+            )
+    except Exception as e:
+        logger.debug(f"Wait for trend element timed out or skipped: {e}")
+
+    sidebar = None
+    try:
+        sidebar = await find_or_heal_element(
+            page=page,
+            selector_key="selectors.sidebar_container",
+            selectors_dict=selectors,
+            config_path=cfg_path,
+        )
+    except Exception as e:
+        logger.debug(f"Sidebar lookup failed, searching page directly: {e}")
+
+    container = sidebar if sidebar is not None else page
     news_urls, news_titles = await _extract_sidebar_links(
-        sidebar, sidebar_link_sel, heuristic
+        container, sidebar_link_sel, heuristic
     )
+
+    if not news_urls and container is not page:
+        news_urls, news_titles = await _extract_sidebar_links(
+            page, sidebar_link_sel, heuristic
+        )
 
     topics: list[TrendingTopic] = []
     dummy_user_id = uuid.uuid4()
@@ -745,7 +815,7 @@ async def extract_trending_sidebar(
             user_id=dummy_user_id,
             topic_url=full_url,
             topic_title=topic_title,
-            category=meta.get("category"),
+            category=_clean_category(meta.get("category")),
             post_count=parse_post_count(meta.get("post_count")),
             scraped_at=now,
         )
@@ -761,12 +831,19 @@ async def extract_topic_tweets(
     selectors: dict[str, Any],
 ) -> list[TrendingTweet]:
     """Extract structured TrendingTweet models from a specific topic URL."""
-    if page.url != topic_url:
+    if hasattr(page, "url") and page.url != topic_url and hasattr(page, "goto"):
         await page.goto(topic_url, wait_until="domcontentloaded")
 
     tweet_sel = selectors.get("selectors", {}).get(
         "tweet_container", "[data-testid='tweet']"
     )
+
+    # Wait for tweets to appear in the DOM
+    try:
+        if hasattr(page, "locator"):
+            await page.locator(tweet_sel).first.wait_for(state="visible", timeout=6000)
+    except Exception:
+        pass
 
     # Evaluate tweets on page
     raw_tweets = await page.evaluate(

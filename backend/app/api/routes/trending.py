@@ -40,19 +40,23 @@ async def extract_trending_topics(
             detail="X.com session not connected. Please connect your X account in Social Accounts before extracting trends.",
         )
 
-    from scripts.scrape_trending_topics import scrape_trending_topics
+    from app.services.agentic.scraping_graph import scrape_trends_with_graph
 
     headless = os.environ.get("PLAYWRIGHT_HEADLESS", "1") == "1"
-    result = await scrape_trending_topics(
+    report = await scrape_trends_with_graph(
         user_id=str(current_user.id),
         max_topics=max_topics,
         headless=headless,
+        session=session,
     )
 
-    if result.status in ["auth_failed", "captcha", "rate_limited", "error"]:
+    if (
+        report.status in ["unrecoverable", "error"]
+        and report.persisted_topic_count == 0
+    ):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to extract trends from X ({result.status}): {'; '.join(result.errors) if result.errors else 'Unknown error'}",
+            detail=f"Failed to extract trends from X ({report.status}): {report.error or 'Unknown error'}",
         )
 
     topics = crud.get_latest_trending_topics(session=session, user_id=current_user.id)

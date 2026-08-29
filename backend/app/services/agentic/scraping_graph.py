@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import random
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -340,11 +339,7 @@ async def extract_topic_timelines_node(state: ScrapingGraphState) -> dict[str, A
 
     selectors = _load_selectors()
     candidates = list(scraped_topics)
-    selected_topics = (
-        random.sample(candidates, max_topics)
-        if len(candidates) > max_topics
-        else candidates[:max_topics]
-    )
+    selected_topics = candidates[:max_topics]
 
     for idx, topic in enumerate(selected_topics):
         if idx > 0:

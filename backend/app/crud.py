@@ -212,7 +212,7 @@ def replace_trending_tweets(
 
 
 def get_latest_trending_topics(
-    *, session: Session, user_id: uuid.UUID, limit: int = 10
+    *, session: Session, user_id: uuid.UUID, limit: int = 3
 ) -> list[TrendingTopic]:
     """Get the most recent batch of trending topics for a user."""
     # 1. Find MAX(scraped_at) for this user
@@ -239,7 +239,6 @@ def get_latest_trending_topics(
         )
         .limit(limit)
     )
-
     return list(session.exec(stmt).all())
 
 

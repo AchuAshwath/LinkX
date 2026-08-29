@@ -72,6 +72,74 @@ def test_extract_trending_requires_x_connection(
     assert "not connected" in response.json()["detail"].lower()
 
 
+def test_extract_trending_topics_success(
+    client: TestClient,
+    db: Session,
+) -> None:
+    user, headers = _create_user_with_auth(client=client, db=db)
+
+    from app.services.agentic.schemas import ScrapedBatchReport
+
+    mock_report = ScrapedBatchReport(
+        scraped_topics=[
+            {"topic_title": "AI Breakthroughs", "topic_url": "https://x.com/123"}
+        ],
+        persisted_topic_count=1,
+        status="persisted",
+    )
+
+    with (
+        patch(
+            "app.services.browser.manager.BrowserManager.session_exists",
+            return_value=True,
+        ),
+        patch(
+            "app.services.agentic.scraping_graph.scrape_trends_with_graph",
+            return_value=mock_report,
+        ),
+    ):
+        response = client.post(
+            f"{settings.API_V1_STR}/trending/extract",
+            headers=headers,
+        )
+
+    assert response.status_code == 200
+
+
+def test_extract_trending_topics_failure(
+    client: TestClient,
+    db: Session,
+) -> None:
+    user, headers = _create_user_with_auth(client=client, db=db)
+
+    from app.services.agentic.schemas import ScrapedBatchReport
+
+    mock_report = ScrapedBatchReport(
+        scraped_topics=[],
+        persisted_topic_count=0,
+        status="unrecoverable",
+        error="CAPTCHA challenge encountered",
+    )
+
+    with (
+        patch(
+            "app.services.browser.manager.BrowserManager.session_exists",
+            return_value=True,
+        ),
+        patch(
+            "app.services.agentic.scraping_graph.scrape_trends_with_graph",
+            return_value=mock_report,
+        ),
+    ):
+        response = client.post(
+            f"{settings.API_V1_STR}/trending/extract",
+            headers=headers,
+        )
+
+    assert response.status_code == 500
+    assert "CAPTCHA" in response.json()["detail"]
+
+
 def test_draft_from_trending_topic_success(
     client: TestClient,
     db: Session,

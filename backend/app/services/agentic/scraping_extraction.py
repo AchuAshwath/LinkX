@@ -50,6 +50,14 @@ def _load_selectors() -> dict[str, Any]:
                 "timeline_post", "[data-testid='tweet']"
             ),
         }
+    selectors.setdefault(
+        "link_heuristic",
+        {
+            "must_contain_newline": False,
+            "exclude_texts": ["Show more", "Subscribe"],
+            "exclude_prefix": "@",
+        },
+    )
     return selectors
 
 
