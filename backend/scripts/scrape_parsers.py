@@ -4,12 +4,19 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
 
 from rebrowser_playwright.async_api import Error as PlaywrightError
 
 logger = logging.getLogger(__name__)
+
+TIME_UNITS: tuple[tuple[str, Callable[[int], timedelta]], ...] = (
+    ("hour", lambda n: timedelta(hours=n)),
+    ("minute", lambda n: timedelta(minutes=n)),
+    ("day", lambda n: timedelta(days=n)),
+)
 
 
 async def _expand_tweet(locator: Any) -> None:
@@ -98,33 +105,27 @@ def parse_title_metadata(raw_title: str) -> dict[str, Any]:
     if not parts:
         return {"topic_title": raw_title, "raw_title_block": raw_title}
 
-    time_ago: str | None = None
-    category: str | None = None
-    post_count: str | None = None
-    clean_title: str = parts[0]
-    extra_lines: list[str] = []
+    if len(parts) == 1:
+        return {"topic_title": parts[0], "raw_title_block": raw_title}
 
-    if len(parts) >= 2:
-        if _is_prefixed_topic_header(parts[0]):
-            clean_title, category, post_count, extra_lines = _parse_prefixed_topic(
-                parts
-            )
-        else:
-            clean_title, category, post_count, time_ago, extra_lines = (
-                _parse_dot_separated_topic(parts)
-            )
+    if _is_prefixed_topic_header(parts[0]):
+        title, cat, post_cnt, extra = _parse_prefixed_topic(parts)
+        time_ago = None
+    else:
+        title, cat, post_cnt, time_ago, extra = _parse_dot_separated_topic(parts)
 
     return {
-        "topic_title": clean_title,
+        "topic_title": title,
         "time_ago": time_ago,
-        "category": category,
-        "post_count": post_count,
-        "extra_metadata": extra_lines or None,
+        "category": cat,
+        "post_count": post_cnt,
+        "extra_metadata": extra or None,
         "raw_title_block": raw_title,
     }
 
 
 def parse_post_count(count_str: str | None) -> int | None:
+    """Parse post count string like '150K posts' into integer."""
     if not count_str:
         return None
     clean = (
@@ -137,6 +138,33 @@ def parse_post_count(count_str: str | None) -> int | None:
     if not clean:
         return None
     try:
+        multiplier = 1000 if "k" in clean else (1000000 if "m" in clean else 1)
+        num_str = clean.replace("k", "").replace("m", "")
+        return int(float(num_str) * multiplier) if multiplier > 1 else int(clean)
+    except ValueError:
+        return None
+
+
+def parse_relative_time(time_str: str | None, base_time: datetime) -> datetime | None:
+    """Parse relative human time string into datetime."""
+    if not time_str:
+        return None
+    clean = time_str.lower().strip()
+    if "yesterday" in clean:
+        return base_time - timedelta(days=1)
+
+    for unit, delta_fn in TIME_UNITS:
+        if unit in clean:
+            match = re.search(r"(\d+)", clean)
+            qty = int(match.group(1)) if match else 1
+            return base_time - delta_fn(qty)
+    return None
+
+
+def _parse_single_metric(val: str) -> int | None:
+    """Parse integer metric with optional k/m suffix."""
+    clean = val.lower().replace(",", "").strip()
+    try:
         if "k" in clean:
             return int(float(clean.replace("k", "")) * 1000)
         if "m" in clean:
@@ -146,48 +174,15 @@ def parse_post_count(count_str: str | None) -> int | None:
         return None
 
 
-def parse_relative_time(time_str: str | None, base_time: datetime) -> datetime | None:
-    if not time_str:
-        return None
-    clean = time_str.lower().strip()
-    try:
-        if "hour" in clean:
-            match = re.search(r"(\d+)", clean)
-            return base_time - timedelta(hours=int(match.group(1)) if match else 1)
-        if "minute" in clean:
-            match = re.search(r"(\d+)", clean)
-            return base_time - timedelta(minutes=int(match.group(1)) if match else 1)
-        if "day" in clean:
-            match = re.search(r"(\d+)", clean)
-            return base_time - timedelta(days=int(match.group(1)) if match else 1)
-        if "yesterday" in clean:
-            return base_time - timedelta(days=1)
-        return None
-    except Exception:
-        return None
-
-
 def parse_engagement_metrics(raw_text: str) -> dict[str, int | None]:
     """Parse engagement metrics from a tweet's raw inner text."""
-
-    def parse_metric(val: str) -> int | None:
-        clean = val.lower().replace(",", "").strip()
-        try:
-            if "k" in clean:
-                return int(float(clean.replace("k", "")) * 1000)
-            if "m" in clean:
-                return int(float(clean.replace("m", "")) * 1000000)
-            return int(clean)
-        except ValueError:
-            return None
-
     lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
     if len(lines) < 4:
         return {"replies": None, "retweets": None, "likes": None, "views": None}
 
     return {
-        "views": parse_metric(lines[-1]),
-        "likes": parse_metric(lines[-2]),
-        "retweets": parse_metric(lines[-3]),
-        "replies": parse_metric(lines[-4]),
+        "views": _parse_single_metric(lines[-1]),
+        "likes": _parse_single_metric(lines[-2]),
+        "retweets": _parse_single_metric(lines[-3]),
+        "replies": _parse_single_metric(lines[-4]),
     }
