@@ -74,7 +74,7 @@ def test_extract_trending_requires_x_connection(
 
 
 @pytest.mark.parametrize(
-    ("report_status", "error_msg", "expected_status"),
+    "scenario",
     [
         ("persisted", None, 200),
         ("unrecoverable", "CAPTCHA challenge encountered", 500),
@@ -83,10 +83,9 @@ def test_extract_trending_requires_x_connection(
 def test_extract_trending_topics_scenarios(
     client: TestClient,
     db: Session,
-    report_status: str,
-    error_msg: str | None,
-    expected_status: int,
+    scenario: tuple[str, str | None, int],
 ) -> None:
+    report_status, error_msg, expected_status = scenario
     _user, headers = _create_user_with_auth(client=client, db=db)
     from app.services.agentic.schemas import ScrapedBatchReport
 
