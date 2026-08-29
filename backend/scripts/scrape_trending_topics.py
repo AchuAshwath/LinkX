@@ -334,6 +334,28 @@ async def _resolve_link_href(link: Any, *, clean_title: str) -> str:
     return str(url)
 
 
+async def _parse_and_validate_link(
+    link: Any,
+    heuristic: dict[str, Any],
+    seen_titles: set[str],
+) -> tuple[str, str, str] | None:
+    """Extract and validate link title and URL, returning (url, raw_text, clean_title)."""
+    try:
+        text = await link.inner_text()
+        if not text or len(text.strip()) < 2:
+            return None
+        meta = parse_title_metadata(text)
+        clean_title = meta.get("topic_title") or text.split("\n")[0].strip()
+        if not clean_title or clean_title in seen_titles:
+            return None
+        if not _is_valid_topic_text(text, heuristic):
+            return None
+        url = await _resolve_link_href(link, clean_title=clean_title)
+        return url, text, clean_title
+    except Exception:
+        return None
+
+
 async def _extract_sidebar_links(
     sidebar: Any,
     link_selector: str,
@@ -345,26 +367,14 @@ async def _extract_sidebar_links(
     news_titles: dict[str, str] = {}
     seen_titles: set[str] = set()
 
-    for _i, link in enumerate(all_links):
-        try:
-            text = await link.inner_text()
-            if not text or len(text.strip()) < 2:
-                continue
-
-            meta = parse_title_metadata(text)
-            clean_title = meta.get("topic_title") or text.split("\n")[0].strip()
-            if not clean_title or clean_title in seen_titles:
-                continue
-
-            if not _is_valid_topic_text(text, heuristic):
-                continue
-
-            url = await _resolve_link_href(link, clean_title=clean_title)
-            seen_titles.add(clean_title)
-            news_urls.append((url, True))
-            news_titles[url] = text
-        except Exception:
+    for link in all_links:
+        parsed = await _parse_and_validate_link(link, heuristic, seen_titles)
+        if parsed is None:
             continue
+        url, text, clean_title = parsed
+        seen_titles.add(clean_title)
+        news_urls.append((url, True))
+        news_titles[url] = text
 
     return news_urls, news_titles
 
@@ -847,6 +857,22 @@ async def extract_trending_sidebar(
     return topics
 
 
+async def _navigate_to_topic_url(page: Any, topic_url: str) -> None:
+    """Navigate to topic URL if page is not already on it."""
+    page_url = getattr(page, "url", None)
+    if page_url != topic_url and hasattr(page, "goto"):
+        await page.goto(topic_url, wait_until="domcontentloaded")
+
+
+async def _wait_for_tweets_dom(page: Any, tweet_sel: str) -> None:
+    """Wait for tweets to appear in the DOM."""
+    try:
+        if hasattr(page, "locator"):
+            await page.locator(tweet_sel).first.wait_for(state="visible", timeout=6000)
+    except Exception:
+        pass
+
+
 async def extract_topic_tweets(
     page: Any,
     *,
@@ -854,19 +880,11 @@ async def extract_topic_tweets(
     selectors: dict[str, Any],
 ) -> list[TrendingTweet]:
     """Extract structured TrendingTweet models from a specific topic URL."""
-    if hasattr(page, "url") and page.url != topic_url and hasattr(page, "goto"):
-        await page.goto(topic_url, wait_until="domcontentloaded")
-
+    await _navigate_to_topic_url(page, topic_url)
     tweet_sel = selectors.get("selectors", {}).get(
         "tweet_container", "[data-testid='tweet']"
     )
-
-    # Wait for tweets to appear in the DOM
-    try:
-        if hasattr(page, "locator"):
-            await page.locator(tweet_sel).first.wait_for(state="visible", timeout=6000)
-    except Exception:
-        pass
+    await _wait_for_tweets_dom(page, tweet_sel)
 
     # Evaluate tweets on page
     raw_tweets = await page.evaluate(
