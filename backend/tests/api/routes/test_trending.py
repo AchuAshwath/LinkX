@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
@@ -70,6 +71,53 @@ def test_extract_trending_requires_x_connection(
         )
     assert response.status_code == 400
     assert "not connected" in response.json()["detail"].lower()
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        ("persisted", None, 200),
+        ("unrecoverable", "CAPTCHA challenge encountered", 500),
+    ],
+)
+def test_extract_trending_topics_scenarios(
+    client: TestClient,
+    db: Session,
+    scenario: tuple[str, str | None, int],
+) -> None:
+    report_status, error_msg, expected_status = scenario
+    _user, headers = _create_user_with_auth(client=client, db=db)
+    from app.services.agentic.schemas import ScrapedBatchReport
+
+    mock_report = ScrapedBatchReport(
+        scraped_topics=[
+            {"topic_title": "AI Breakthroughs", "topic_url": "https://x.com/123"}
+        ]
+        if report_status == "persisted"
+        else [],
+        persisted_topic_count=1 if report_status == "persisted" else 0,
+        status=report_status,
+        error=error_msg,
+    )
+
+    with (
+        patch(
+            "app.services.browser.manager.BrowserManager.session_exists",
+            return_value=True,
+        ),
+        patch(
+            "app.services.agentic.scraping_graph.scrape_trends_with_graph",
+            return_value=mock_report,
+        ),
+    ):
+        response = client.post(
+            f"{settings.API_V1_STR}/trending/extract",
+            headers=headers,
+        )
+
+    assert response.status_code == expected_status
+    if error_msg:
+        assert error_msg in response.json()["detail"]
 
 
 def test_draft_from_trending_topic_success(
