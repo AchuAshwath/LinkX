@@ -42,6 +42,62 @@ function SourceLinkRow({ src }: { src: SourceUrlPart }) {
   )
 }
 
+function WebSearchHeader({
+  isSearching,
+  expanded,
+  onToggle,
+}: {
+  isSearching: boolean
+  expanded: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label="Toggle web search details"
+      className="flex items-center gap-1.5 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer font-medium select-none"
+    >
+      {isSearching ? (
+        <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+      ) : (
+        <SquareTerminal className="size-3.5 text-muted-foreground" />
+      )}
+      <span>Ran commands, searched the web</span>
+      <ChevronDown
+        className={cn(
+          "size-3.5 text-muted-foreground transition-transform duration-200",
+          !expanded && "-rotate-90",
+        )}
+      />
+    </button>
+  )
+}
+
+function WebSearchExpandedList({
+  query,
+  sources,
+  errorText,
+}: {
+  query?: string
+  sources: SourceUrlPart[]
+  errorText?: string
+}) {
+  return (
+    <div className="mt-1 ml-1.5 flex flex-col gap-1.5 border-l border-border/50 pl-3 py-1 text-xs w-full animate-in fade-in-0 duration-150">
+      {query && <SearchQueryRow query={query} />}
+      {sources.map((src, i) => (
+        <SourceLinkRow key={src.sourceId || i} src={src} />
+      ))}
+      {errorText && (
+        <p className="py-0.5 text-xs text-destructive break-words">
+          Command failed: {errorText}
+        </p>
+      )}
+    </div>
+  )
+}
+
 export function WebSearchPart({
   part,
   sources = [],
@@ -56,40 +112,19 @@ export function WebSearchPart({
 
   return (
     <div className="my-1.5 flex flex-col items-start w-full">
-      <button
-        type="button"
-        onClick={() => setExpanded((prev) => !prev)}
-        aria-label="Toggle web search details"
-        className="flex items-center gap-1.5 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer font-medium select-none"
-      >
-        {isSearching ? (
-          <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
-        ) : (
-          <SquareTerminal className="size-3.5 text-muted-foreground" />
-        )}
-        <span>Ran commands, searched the web</span>
-        <ChevronDown
-          className={cn(
-            "size-3.5 text-muted-foreground transition-transform duration-200",
-            !expanded && "-rotate-90",
-          )}
-        />
-      </button>
-
+      <WebSearchHeader
+        isSearching={isSearching}
+        expanded={expanded}
+        onToggle={() => setExpanded((prev) => !prev)}
+      />
       {expanded && (
-        <div className="mt-1 ml-1.5 flex flex-col gap-1.5 border-l border-border/50 pl-3 py-1 text-xs w-full animate-in fade-in-0 duration-150">
-          {part.input?.query && <SearchQueryRow query={part.input.query} />}
-
-          {sources.map((src, i) => (
-            <SourceLinkRow key={src.sourceId || i} src={src} />
-          ))}
-
-          {isFailed && (
-            <p className="py-0.5 text-xs text-destructive break-words">
-              Command failed: {part.errorText || "Web search error"}
-            </p>
-          )}
-        </div>
+        <WebSearchExpandedList
+          query={part.input?.query}
+          sources={sources}
+          errorText={
+            isFailed ? part.errorText || "Web search error" : undefined
+          }
+        />
       )}
     </div>
   )
