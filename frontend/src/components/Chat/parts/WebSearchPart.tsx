@@ -3,6 +3,45 @@ import * as React from "react"
 import type { SourceUrlPart, WebSearchToolPart } from "@/components/Chat/types"
 import { cn } from "@/lib/utils"
 
+function SearchQueryRow({ query }: { query: string }) {
+  return (
+    <div className="flex items-start gap-2 text-xs text-muted-foreground leading-relaxed break-words">
+      <SquareTerminal className="size-3.5 mt-0.5 shrink-0 text-muted-foreground/80" />
+      <div className="flex-1 break-words">
+        Ran search{" "}
+        <span className="text-foreground font-medium">"{query}"</span>
+      </div>
+    </div>
+  )
+}
+
+function SourceLinkRow({ src }: { src: SourceUrlPart }) {
+  let hostname = ""
+  try {
+    hostname = new URL(src.url).hostname
+  } catch {
+    hostname = src.url
+  }
+
+  return (
+    <a
+      href={src.url}
+      target="_blank"
+      rel="noreferrer"
+      className="group flex items-start gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors leading-relaxed break-words"
+    >
+      <Globe className="size-3.5 mt-0.5 shrink-0 text-muted-foreground/80 group-hover:text-primary transition-colors" />
+      <div className="flex-1 break-words">
+        Ran fetch{" "}
+        <span className="text-foreground font-medium group-hover:text-primary group-hover:underline underline-offset-2 transition-colors">
+          {hostname}
+        </span>
+        {src.title ? ` · ${src.title}` : ""}
+      </div>
+    </a>
+  )
+}
+
 export function WebSearchPart({
   part,
   sources = [],
@@ -17,7 +56,6 @@ export function WebSearchPart({
 
   return (
     <div className="my-1.5 flex flex-col items-start w-full">
-      {/* Abstract collapsible header line */}
       <button
         type="button"
         onClick={() => setExpanded((prev) => !prev)}
@@ -38,48 +76,13 @@ export function WebSearchPart({
         />
       </button>
 
-      {/* Itemized action lines with natural word wrap and consistent system fonts */}
       {expanded && (
         <div className="mt-1 ml-1.5 flex flex-col gap-1.5 border-l border-border/50 pl-3 py-1 text-xs w-full animate-in fade-in-0 duration-150">
-          {part.input?.query && (
-            <div className="flex items-start gap-2 text-xs text-muted-foreground leading-relaxed break-words">
-              <SquareTerminal className="size-3.5 mt-0.5 shrink-0 text-muted-foreground/80" />
-              <div className="flex-1 break-words">
-                Ran search{" "}
-                <span className="text-foreground font-medium">
-                  "{part.input.query}"
-                </span>
-              </div>
-            </div>
-          )}
+          {part.input?.query && <SearchQueryRow query={part.input.query} />}
 
-          {sources.map((src, i) => {
-            let hostname = ""
-            try {
-              hostname = new URL(src.url).hostname
-            } catch {
-              hostname = src.url
-            }
-
-            return (
-              <a
-                key={src.sourceId || i}
-                href={src.url}
-                target="_blank"
-                rel="noreferrer"
-                className="group flex items-start gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors leading-relaxed break-words"
-              >
-                <Globe className="size-3.5 mt-0.5 shrink-0 text-muted-foreground/80 group-hover:text-primary transition-colors" />
-                <div className="flex-1 break-words">
-                  Ran fetch{" "}
-                  <span className="text-foreground font-medium group-hover:text-primary group-hover:underline underline-offset-2 transition-colors">
-                    {hostname}
-                  </span>
-                  {src.title ? ` · ${src.title}` : ""}
-                </div>
-              </a>
-            )
-          })}
+          {sources.map((src, i) => (
+            <SourceLinkRow key={src.sourceId || i} src={src} />
+          ))}
 
           {isFailed && (
             <p className="py-0.5 text-xs text-destructive break-words">

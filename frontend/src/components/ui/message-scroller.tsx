@@ -24,6 +24,27 @@ export function useMessageScroller() {
   return context
 }
 
+function useBottomSentinelObserver(
+  viewportRef: React.RefObject<HTMLDivElement | null>,
+  bottomRef: React.RefObject<HTMLDivElement | null>,
+  onIntersectionChange: (isIntersecting: boolean) => void,
+) {
+  React.useEffect(() => {
+    if (typeof IntersectionObserver === "undefined") return
+    const bottomEl = bottomRef.current
+    const viewportEl = viewportRef.current
+    if (!bottomEl || !viewportEl) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => onIntersectionChange(entry.isIntersecting),
+      { root: viewportEl, threshold: 0.1 },
+    )
+
+    observer.observe(bottomEl)
+    return () => observer.disconnect()
+  }, [bottomRef, viewportRef, onIntersectionChange])
+}
+
 export function MessageScrollerProvider({
   children,
 }: {
@@ -54,26 +75,7 @@ export function MessageScrollerProvider({
     }
   }, [])
 
-  // Use IntersectionObserver on bottom sentinel to track isAtBottom without scroll-thrashing
-  React.useEffect(() => {
-    if (typeof IntersectionObserver === "undefined") return
-    const bottomEl = bottomRef.current
-    const viewportEl = viewportRef.current
-    if (!bottomEl || !viewportEl) return
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        setIsAtBottom(entry.isIntersecting)
-      },
-      {
-        root: viewportEl,
-        threshold: 0.1,
-      },
-    )
-
-    observer.observe(bottomEl)
-    return () => observer.disconnect()
-  }, [])
+  useBottomSentinelObserver(viewportRef, bottomRef, setIsAtBottom)
 
   return (
     <MessageScrollerContext.Provider
@@ -145,8 +147,11 @@ export function MessageScrollerContent({
       {...props}
     >
       {children}
-      {/* Invisible bottom sentinel anchor for instant reliable intersection tracking */}
-      <div ref={bottomRef} data-slot="message-scroller-bottom-anchor" className="h-px w-full shrink-0 pointer-events-none" />
+      <div
+        ref={bottomRef}
+        data-slot="message-scroller-bottom-anchor"
+        className="h-px w-full shrink-0 pointer-events-none"
+      />
     </div>
   )
 }
@@ -183,7 +188,6 @@ export function MessageScrollerButton({
 }) {
   const { scrollToBottom, scrollToTop, isAtBottom } = useMessageScroller()
 
-  // Hide button when at the bottom
   if (direction === "end" && isAtBottom) {
     return null
   }

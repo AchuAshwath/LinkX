@@ -19,6 +19,135 @@ export interface PromptFormProps {
   className?: string
 }
 
+function AttachmentPreviewStrip({
+  images,
+  onRemove,
+}: {
+  images: { file: File; preview: string }[]
+  onRemove: (index: number) => void
+}) {
+  if (images.length === 0) return null
+
+  return (
+    <div className="flex items-center gap-2 px-3 pt-2.5 overflow-x-auto scrollbar-none">
+      {images.map((img, idx) => (
+        <div
+          key={idx}
+          className="group relative size-14 shrink-0 rounded-xl overflow-hidden border border-border bg-muted/40"
+        >
+          <img
+            src={img.preview}
+            alt="Attachment preview"
+            className="size-full object-cover"
+          />
+          <button
+            type="button"
+            onClick={() => onRemove(idx)}
+            aria-label="Remove image"
+            className="absolute right-1 top-1 flex size-4 items-center justify-center rounded-full bg-background/80 text-foreground hover:bg-destructive hover:text-destructive-foreground transition-colors cursor-pointer"
+          >
+            <X className="size-2.5" />
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ModelSelectorPill({
+  selectedModel,
+  models,
+  onSelectModel,
+}: {
+  selectedModel: string
+  models: string[]
+  onSelectModel: (m: string) => void
+}) {
+  const [open, setOpen] = React.useState(false)
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors cursor-pointer select-none"
+      >
+        <span>{selectedModel}</span>
+        <ChevronDown className="size-3 text-muted-foreground" />
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          tabIndex={-1}
+          className="absolute bottom-9 right-0 z-50 min-w-36 rounded-2xl border border-border bg-popover p-1 shadow-lg animate-in fade-in-0 zoom-in-95"
+        >
+          {models.map((m) => (
+            <button
+              type="button"
+              key={m}
+              role="menuitem"
+              onClick={() => {
+                onSelectModel(m)
+                setOpen(false)
+              }}
+              className="flex w-full items-center justify-between rounded-xl px-2.5 py-1.5 text-xs text-popover-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer font-medium"
+            >
+              <span>{m}</span>
+              {selectedModel === m && (
+                <span className="size-1.5 rounded-full bg-primary" />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PromptSubmitButton({
+  isBusy,
+  hasContent,
+  onStop,
+}: {
+  isBusy: boolean
+  hasContent: boolean
+  onStop?: () => void
+}) {
+  if (isBusy) {
+    return (
+      <InputGroupButton
+        type="button"
+        size="icon-sm"
+        variant="outline"
+        aria-label="Stop generating"
+        className="size-8 rounded-full bg-muted border-border text-foreground hover:bg-muted/80 cursor-pointer"
+        onClick={onStop}
+      >
+        <Square className="size-3.5 fill-current" />
+      </InputGroupButton>
+    )
+  }
+
+  return (
+    <InputGroupButton
+      type="submit"
+      size="icon-sm"
+      variant="default"
+      aria-label="Send message"
+      className={cn(
+        "size-8 rounded-full transition-all cursor-pointer",
+        hasContent
+          ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-2xs"
+          : "bg-muted/40 text-muted-foreground/50 opacity-40 cursor-not-allowed",
+      )}
+      disabled={!hasContent}
+    >
+      <ArrowUp className="size-4 stroke-[2.5]" />
+    </InputGroupButton>
+  )
+}
+
 export function PromptForm({
   onSubmit,
   onStop,
@@ -30,13 +159,11 @@ export function PromptForm({
 }: PromptFormProps) {
   const [input, setInput] = React.useState("")
   const [selectedModel, setSelectedModel] = React.useState(modelName)
-  const [modelMenuOpen, setModelMenuOpen] = React.useState(false)
   const [selectedImages, setSelectedImages] = React.useState<
     { file: File; preview: string }[]
   >([])
 
   const fileInputRef = React.useRef<HTMLInputElement>(null)
-
   const models = ["5.6 Luna High", "Claude 3.7 Sonnet", "GPT-4o", "DeepSeek R1"]
 
   function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -85,7 +212,6 @@ export function PromptForm({
   return (
     <form onSubmit={handleSubmit} className={className}>
       <InputGroup className="rounded-3xl border border-border/80 bg-[#121214]/95 backdrop-blur-md p-1.5 shadow-lg transition-all focus-within:border-border">
-        {/* Hidden File Input for Image Support */}
         <input
           type="file"
           ref={fileInputRef}
@@ -95,31 +221,10 @@ export function PromptForm({
           onChange={handleImageSelect}
         />
 
-        {/* Selected Images Preview Strip */}
-        {selectedImages.length > 0 && (
-          <div className="flex items-center gap-2 px-3 pt-2.5 overflow-x-auto scrollbar-none">
-            {selectedImages.map((img, idx) => (
-              <div
-                key={idx}
-                className="group relative size-14 shrink-0 rounded-xl overflow-hidden border border-border bg-muted/40"
-              >
-                <img
-                  src={img.preview}
-                  alt="Attachment preview"
-                  className="size-full object-cover"
-                />
-                <button
-                  type="button"
-                  onClick={() => handleRemoveImage(idx)}
-                  aria-label="Remove image"
-                  className="absolute right-1 top-1 flex size-4 items-center justify-center rounded-full bg-background/80 text-foreground hover:bg-destructive hover:text-destructive-foreground transition-colors cursor-pointer"
-                >
-                  <X className="size-2.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+        <AttachmentPreviewStrip
+          images={selectedImages}
+          onRemove={handleRemoveImage}
+        />
 
         <InputGroupTextarea
           placeholder={placeholder}
@@ -139,7 +244,6 @@ export function PromptForm({
         />
 
         <InputGroupAddon align="block-end" className="px-2 pb-1.5 pt-1">
-          {/* Left Actions: + (Image Attach) or custom actions */}
           <div className="flex items-center gap-1.5">
             {actions ?? (
               <button
@@ -153,47 +257,13 @@ export function PromptForm({
             )}
           </div>
 
-          {/* Right Actions: Model Select, Mic, Send Button */}
           <div className="flex items-center gap-1.5 ml-auto">
-            {/* Model Selector Pill */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setModelMenuOpen((prev) => !prev)}
-                className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors cursor-pointer select-none"
-              >
-                <span>{selectedModel}</span>
-                <ChevronDown className="size-3 text-muted-foreground" />
-              </button>
+            <ModelSelectorPill
+              selectedModel={selectedModel}
+              models={models}
+              onSelectModel={setSelectedModel}
+            />
 
-              {modelMenuOpen && (
-                <div
-                  role="menu"
-                  tabIndex={-1}
-                  className="absolute bottom-9 right-0 z-50 min-w-36 rounded-2xl border border-border bg-popover p-1 shadow-lg animate-in fade-in-0 zoom-in-95"
-                >
-                  {models.map((m) => (
-                    <button
-                      type="button"
-                      key={m}
-                      role="menuitem"
-                      onClick={() => {
-                        setSelectedModel(m)
-                        setModelMenuOpen(false)
-                      }}
-                      className="flex w-full items-center justify-between rounded-xl px-2.5 py-1.5 text-xs text-popover-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer font-medium"
-                    >
-                      <span>{m}</span>
-                      {selectedModel === m && (
-                        <span className="size-1.5 rounded-full bg-primary" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Mic Voice Input Icon (Ready for Speech Recognition API) */}
             <button
               type="button"
               aria-label="Voice input"
@@ -202,35 +272,11 @@ export function PromptForm({
               <Mic className="size-3.5" />
             </button>
 
-            {/* Submit / Stop Circular Button (Blue when active) */}
-            {isBusy ? (
-              <InputGroupButton
-                type="button"
-                size="icon-sm"
-                variant="outline"
-                aria-label="Stop generating"
-                className="size-8 rounded-full bg-muted border-border text-foreground hover:bg-muted/80 cursor-pointer"
-                onClick={onStop}
-              >
-                <Square className="size-3.5 fill-current" />
-              </InputGroupButton>
-            ) : (
-              <InputGroupButton
-                type="submit"
-                size="icon-sm"
-                variant="default"
-                aria-label="Send message"
-                className={cn(
-                  "size-8 rounded-full transition-all cursor-pointer",
-                  hasContent
-                    ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-2xs"
-                    : "bg-muted/40 text-muted-foreground/50 opacity-40 cursor-not-allowed",
-                )}
-                disabled={!hasContent}
-              >
-                <ArrowUp className="size-4 stroke-[2.5]" />
-              </InputGroupButton>
-            )}
+            <PromptSubmitButton
+              isBusy={isBusy}
+              hasContent={hasContent}
+              onStop={onStop}
+            />
           </div>
         </InputGroupAddon>
       </InputGroup>
