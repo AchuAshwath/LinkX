@@ -157,7 +157,10 @@ def parse_relative_time(time_str: str | None, base_time: datetime) -> datetime |
         if unit in clean:
             match = re.search(r"(\d+)", clean)
             qty = int(match.group(1)) if match else 1
-            return base_time - delta_fn(qty)
+            try:
+                return base_time - delta_fn(qty)
+            except OverflowError:
+                return None
     return None
 
 

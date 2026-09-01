@@ -5,7 +5,10 @@ from __future__ import annotations
 import logging
 
 from app.services.agentic.schemas import ComplianceReport
-from app.services.ai_draft import generate_ai_post_draft
+from app.services.ai_draft import (
+    _generate_fallback_template,
+    generate_ai_post_draft,
+)
 from app.services.browser.actions import normalize_post_text
 from app.services.publishing import resolve_image_path
 
@@ -110,10 +113,13 @@ async def refine_post_draft(
         f"Rewrite this post specifically for {platform} adhering to all guidelines."
     )
     try:
-        return await generate_ai_post_draft(
+        refined = await generate_ai_post_draft(
             prompt=refinement_prompt,
             platform=platform,
         )
+        if "Refinement Instructions:" in refined or "Original Post:" in refined:
+            refined = _generate_fallback_template(prompt=content, platform=platform)
+        return refined
     except Exception as e:
         logger.error(f"Error refining post draft: {e}")
         return content

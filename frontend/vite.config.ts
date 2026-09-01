@@ -10,6 +10,15 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+    dedupe: ["react", "react-dom"],
+  },
+  optimizeDeps: {
+    include: [
+      "react",
+      "react-dom",
+      "react/jsx-runtime",
+      "react/jsx-dev-runtime",
+    ],
   },
   plugins: [
     tanstackRouter({
@@ -28,13 +37,14 @@ export default defineConfig({
     cssMinify: true,
   },
   server: {
+    port: 4000,
     proxy: {
       "/api": {
-        target: "http://localhost:8000",
+        target: "http://localhost:8888",
         changeOrigin: true,
       },
       "/static": {
-        target: "http://localhost:8000",
+        target: "http://localhost:8888",
         changeOrigin: true,
       },
     },
