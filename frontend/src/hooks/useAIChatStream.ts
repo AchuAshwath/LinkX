@@ -112,13 +112,17 @@ export function useAIChatStream() {
       threadId: string,
       message: string,
       handlers: StreamEventHandlers = {},
+      model?: string,
     ) => {
       stop()
       const controller = new AbortController()
       abortControllerRef.current = controller
       setIsStreaming(true)
 
-      const token = localStorage.getItem("access_token") || ""
+      const token =
+        typeof window !== "undefined" && typeof localStorage !== "undefined"
+          ? localStorage.getItem("access_token") || ""
+          : ""
 
       try {
         const response = await fetch(`/api/v1/ai/threads/${threadId}/chat`, {
@@ -127,7 +131,7 @@ export function useAIChatStream() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ message }),
+          body: JSON.stringify({ message, model }),
           signal: controller.signal,
         })
 

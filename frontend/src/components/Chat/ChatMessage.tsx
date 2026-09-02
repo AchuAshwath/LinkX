@@ -1,5 +1,6 @@
 import { DraftArtifactCard } from "@/components/Chat/DraftArtifactCard"
 import { TextPart } from "@/components/Chat/parts/TextPart"
+import { ThoughtPart } from "@/components/Chat/parts/ThoughtPart"
 import { WebSearchPart } from "@/components/Chat/parts/WebSearchPart"
 import { ToolCallAccordion } from "@/components/Chat/ToolCallAccordion"
 import type { ChatUIMessage, SourceUrlPart } from "@/components/Chat/types"
@@ -11,7 +12,10 @@ export interface ChatMessageProps {
   isStreaming?: boolean
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+export function ChatMessage({
+  message,
+  isStreaming = false,
+}: ChatMessageProps) {
   if (message.role === "user") {
     return (
       <Message align="end">
@@ -34,11 +38,24 @@ export function ChatMessage({ message }: ChatMessageProps) {
     (part): part is SourceUrlPart => part.type === "source-url",
   )
 
+  const hasResponseStarted = message.parts.some(
+    (p) => p.type === "text" && Boolean(p.text?.trim()),
+  )
+
   return (
     <Message align="start">
       <MessageContent>
         {message.parts.map((part, index) => {
           switch (part.type) {
+            case "thought":
+              return (
+                <ThoughtPart
+                  key={`thought-${index}`}
+                  part={part}
+                  isStreaming={isStreaming && !hasResponseStarted}
+                  hasResponseStarted={hasResponseStarted}
+                />
+              )
             case "text":
               return <TextPart key={`text-${index}`} part={part} />
             case "tool-web_search":

@@ -3,6 +3,7 @@ from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 from typing import Annotated, Any
 
+import httpx
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -10,7 +11,10 @@ from sqlmodel import Session
 
 from app import crud
 from app.api.deps import CurrentUser, SessionDep
+from app.core.config import settings
 from app.models import (
+    AIModelInfo,
+    AIModelsPublic,
     ChatMessageRequest,
     ChatThread,
     ChatThreadCreate,
@@ -58,9 +62,11 @@ def _collect_stream_part(
 ) -> str:
     """Append structured message parts and return text delta if present."""
     if event_name == "thought":
-        assistant_parts.append(
-            {"type": "thought", "content": payload.get("content", "")}
-        )
+        thought_content = str(payload.get("content", ""))
+        if assistant_parts and assistant_parts[-1].get("type") == "thought":
+            assistant_parts[-1]["content"] += thought_content
+        else:
+            assistant_parts.append({"type": "thought", "content": thought_content})
     elif event_name == "text_delta":
         return str(payload.get("content", ""))
     elif event_name in {"tool_start", "tool_output"}:
@@ -85,6 +91,103 @@ def _collect_stream_part(
             }
         )
     return ""
+
+
+FRIENDLY_MODEL_NAMES: dict[str, str] = {
+    "gemini-3.6-flash-high": "Gemini 3.6 Flash",
+    "gemini-3.7-flash-high": "Gemini 3.7 Flash",
+    "gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite",
+    "gemini-3.1-pro-low": "Gemini 3.1 Pro",
+    "gemini-3-flash": "Gemini 3 Flash",
+    "claude-sonnet-4-6": "Claude 3.7 Sonnet",
+    "claude-opus-4-6-thinking": "Claude 3.7 Opus",
+    "gpt-5.6-luna": "GPT-5.6 Luna",
+    "gpt-5.6-sol": "GPT-5.6 Sol",
+    "gpt-5.6-terra": "GPT-5.6 Terra",
+    "gpt-5.4": "GPT-5.4",
+    "gpt-5.4-mini": "GPT-5.4 Mini",
+    "gpt-5.5": "GPT-5.5",
+    "gpt-oss-120b-medium": "DeepSeek R1",
+}
+
+EXCLUDED_MODELS = {
+    "gpt-image-2",
+    "gpt-image-1.5",
+    "gemini-3.1-flash-image",
+    "gpt-5.3-codex-spark",
+    "codex-auto-review",
+}
+
+
+@router.get("/models", response_model=AIModelsPublic)
+def list_ai_models() -> Any:
+    """List available AI models from the proxy/backend with friendly labels."""
+    default_model_id = settings.AI_MODEL.removeprefix("openai/")
+    models_list: list[AIModelInfo] = []
+
+    try:
+        api_key = (
+            settings.OPENAI_API_COMPATIBLE_API_KEY or settings.AI_API_KEY or "dummy-key"
+        )
+        with httpx.Client(timeout=3.0) as client:
+            resp = client.get(
+                f"{settings.AI_API_BASE}/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+            if resp.status_code == 200:
+                data = resp.json().get("data", [])
+                for item in data:
+                    mid = str(item.get("id", ""))
+                    if not mid or mid in EXCLUDED_MODELS:
+                        continue
+                    friendly_name = FRIENDLY_MODEL_NAMES.get(mid, mid)
+                    owner = str(item.get("owned_by", "")).capitalize()
+                    models_list.append(
+                        AIModelInfo(
+                            id=mid,
+                            name=friendly_name,
+                            provider=owner or None,
+                            is_default=(mid == default_model_id),
+                        )
+                    )
+    except Exception:
+        pass
+
+    if not models_list:
+        models_list = [
+            AIModelInfo(
+                id="gemini-3.6-flash-high",
+                name="Gemini 3.6 Flash",
+                provider="Google",
+                is_default=(default_model_id == "gemini-3.6-flash-high"),
+            ),
+            AIModelInfo(
+                id="claude-sonnet-4-6",
+                name="Claude 3.7 Sonnet",
+                provider="Anthropic",
+                is_default=(default_model_id == "claude-sonnet-4-6"),
+            ),
+            AIModelInfo(
+                id="gpt-5.6-luna",
+                name="GPT-5.6 Luna",
+                provider="OpenAI",
+                is_default=(default_model_id == "gpt-5.6-luna"),
+            ),
+            AIModelInfo(
+                id="gpt-5.4",
+                name="GPT-5.4",
+                provider="OpenAI",
+                is_default=(default_model_id == "gpt-5.4"),
+            ),
+            AIModelInfo(
+                id="gpt-oss-120b-medium",
+                name="DeepSeek R1",
+                provider="OpenSource",
+                is_default=(default_model_id == "gpt-oss-120b-medium"),
+            ),
+        ]
+
+    return AIModelsPublic(data=models_list, default_model=default_model_id)
 
 
 @router.post("/", response_model=ChatThreadDetail)
@@ -195,7 +298,10 @@ async def chat_stream(
 
         try:
             async for event_name, payload in default_chat_stream_runner(
-                message=body.message, thread_id=str(id)
+                message=body.message,
+                thread_id=str(id),
+                transcript=thread.transcript,
+                model=body.model,
             ):
                 delta = _collect_stream_part(
                     event_name=event_name,

@@ -1,4 +1,4 @@
-import { ArrowUp, ChevronDown, Mic, Plus, Square, X } from "lucide-react"
+import { ArrowUp, Check, ChevronDown, Mic, Plus, Square, X } from "lucide-react"
 import * as React from "react"
 
 import {
@@ -9,12 +9,23 @@ import {
 } from "@/components/ui/input-group"
 import { cn } from "@/lib/utils"
 
+export interface AIModelOption {
+  id: string
+  name: string
+  provider?: string | null
+  is_default?: boolean
+}
+
 export interface PromptFormProps {
   onSubmit: (text: string, images?: File[]) => void
   onStop?: () => void
   isBusy?: boolean
   placeholder?: string
-  modelName?: string
+  selectedModelId?: string
+  models?: (AIModelOption | string)[]
+  onSelectModel?: (modelId: string) => void
+  inputRef?: React.RefObject<HTMLTextAreaElement | null>
+  autoFocus?: boolean
   actions?: React.ReactNode
   className?: string
 }
@@ -55,47 +66,72 @@ function AttachmentPreviewStrip({
 }
 
 function ModelSelectorPill({
-  selectedModel,
+  selectedModelId,
   models,
   onSelectModel,
 }: {
-  selectedModel: string
-  models: string[]
+  selectedModelId: string
+  models: AIModelOption[]
   onSelectModel: (m: string) => void
 }) {
   const [open, setOpen] = React.useState(false)
+
+  const activeModel = models.find((m) => m.id === selectedModelId)
+  const displayLabel = activeModel ? activeModel.name : selectedModelId
+
+  React.useEffect(() => {
+    const handleOutside = () => setOpen(false)
+    if (open) {
+      document.addEventListener("click", handleOutside)
+    }
+    return () => document.removeEventListener("click", handleOutside)
+  }, [open])
 
   return (
     <div className="relative">
       <button
         type="button"
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={(e) => {
+          e.stopPropagation()
+          setOpen((prev) => !prev)
+        }}
         className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors cursor-pointer select-none"
       >
-        <span>{selectedModel}</span>
-        <ChevronDown className="size-3 text-muted-foreground" />
+        <span className="truncate max-w-[140px]">{displayLabel}</span>
+        <ChevronDown className="size-3 text-muted-foreground shrink-0" />
       </button>
 
       {open && (
         <div
           role="menu"
           tabIndex={-1}
-          className="absolute bottom-9 right-0 z-50 min-w-36 rounded-2xl border border-border bg-popover p-1 shadow-lg animate-in fade-in-0 zoom-in-95"
+          className="absolute bottom-9 right-0 z-50 min-w-44 max-h-60 overflow-y-auto rounded-2xl border border-border bg-popover p-1 shadow-lg animate-in fade-in-0 zoom-in-95"
         >
+          <div className="px-2.5 py-1 text-[10px] font-semibold uppercase text-muted-foreground tracking-wider select-none">
+            Available Models
+          </div>
           {models.map((m) => (
             <button
               type="button"
-              key={m}
+              key={m.id}
               role="menuitem"
-              onClick={() => {
-                onSelectModel(m)
+              onClick={(e) => {
+                e.stopPropagation()
+                onSelectModel(m.id)
                 setOpen(false)
               }}
-              className="flex w-full items-center justify-between rounded-xl px-2.5 py-1.5 text-xs text-popover-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer font-medium"
+              className="flex w-full items-center justify-between gap-2 rounded-xl px-2.5 py-1.5 text-xs text-popover-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer font-medium text-left"
             >
-              <span>{m}</span>
-              {selectedModel === m && (
-                <span className="size-1.5 rounded-full bg-primary" />
+              <div className="flex flex-col min-w-0">
+                <span className="truncate">{m.name}</span>
+                {m.provider && (
+                  <span className="text-[10px] text-muted-foreground">
+                    {m.provider}
+                  </span>
+                )}
+              </div>
+              {selectedModelId === m.id && (
+                <Check className="size-3.5 text-primary shrink-0 stroke-[2.5]" />
               )}
             </button>
           ))}
@@ -148,23 +184,56 @@ function PromptSubmitButton({
   )
 }
 
+const FALLBACK_MODELS: AIModelOption[] = [
+  { id: "gemini-3.6-flash-high", name: "Gemini 3.6 Flash", provider: "Google" },
+  { id: "claude-sonnet-4-6", name: "Claude 3.7 Sonnet", provider: "Anthropic" },
+  { id: "gpt-5.6-luna", name: "GPT-5.6 Luna", provider: "OpenAI" },
+  { id: "gpt-5.4", name: "GPT-5.4", provider: "OpenAI" },
+  { id: "gpt-oss-120b-medium", name: "DeepSeek R1", provider: "OpenSource" },
+]
+
 export function PromptForm({
   onSubmit,
   onStop,
   isBusy = false,
   placeholder = "Ask anything",
-  modelName = "5.6 Luna High",
+  selectedModelId,
+  models,
+  onSelectModel,
+  inputRef,
+  autoFocus = false,
   actions,
   className,
 }: PromptFormProps) {
   const [input, setInput] = React.useState("")
-  const [selectedModel, setSelectedModel] = React.useState(modelName)
+  const [localModelId, setLocalModelId] = React.useState(
+    selectedModelId || "gemini-3.6-flash-high",
+  )
   const [selectedImages, setSelectedImages] = React.useState<
     { file: File; preview: string }[]
   >([])
 
+  const internalInputRef = React.useRef<HTMLTextAreaElement>(null)
+  const effectiveInputRef = inputRef || internalInputRef
   const fileInputRef = React.useRef<HTMLInputElement>(null)
-  const models = ["5.6 Luna High", "Claude 3.7 Sonnet", "GPT-4o", "DeepSeek R1"]
+
+  const activeModelId = selectedModelId || localModelId
+
+  const normalizedModels: AIModelOption[] = React.useMemo(() => {
+    if (!models || models.length === 0) return FALLBACK_MODELS
+    return models.map((m) => (typeof m === "string" ? { id: m, name: m } : m))
+  }, [models])
+
+  React.useEffect(() => {
+    if (autoFocus) {
+      effectiveInputRef.current?.focus()
+    }
+  }, [autoFocus, effectiveInputRef])
+
+  function handleSelectModel(mId: string) {
+    setLocalModelId(mId)
+    onSelectModel?.(mId)
+  }
 
   function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files
@@ -227,6 +296,7 @@ export function PromptForm({
         />
 
         <InputGroupTextarea
+          ref={effectiveInputRef}
           placeholder={placeholder}
           value={input}
           onChange={(event) => setInput(event.target.value)}
@@ -259,9 +329,9 @@ export function PromptForm({
 
           <div className="flex items-center gap-1.5 ml-auto">
             <ModelSelectorPill
-              selectedModel={selectedModel}
-              models={models}
-              onSelectModel={setSelectedModel}
+              selectedModelId={activeModelId}
+              models={normalizedModels}
+              onSelectModel={handleSelectModel}
             />
 
             <button

@@ -3,11 +3,14 @@ import { createFileRoute } from "@tanstack/react-router"
 import {
   Archive,
   ArchiveRestore,
+  Check,
   ChevronDown,
   MoreHorizontal,
   Pencil,
+  Search,
   SquarePen,
   Trash2,
+  X,
 } from "lucide-react"
 import * as React from "react"
 import { AiThreadsService, type ChatThreadPublic } from "@/client"
@@ -175,6 +178,59 @@ function ThreadActionsMenu({
   )
 }
 
+type SortOption = "recent" | "oldest" | "title" | "messages"
+
+function SortFilterMenu({
+  sortOrder,
+  onSelectSort,
+}: {
+  sortOrder: SortOption
+  onSelectSort: (order: SortOption) => void
+}) {
+  const options: { id: SortOption; label: string }[] = [
+    { id: "recent", label: "Most Recent" },
+    { id: "oldest", label: "Oldest First" },
+    { id: "title", label: "Alphabetical (A–Z)" },
+    { id: "messages", label: "Most Messages" },
+  ]
+
+  return (
+    <div
+      role="menu"
+      tabIndex={-1}
+      className="absolute right-0 top-8 z-50 min-w-44 rounded-2xl border border-border bg-popover p-1 shadow-md animate-in fade-in-0 zoom-in-95 text-xs"
+    >
+      <div className="px-2.5 py-1.5 font-semibold text-muted-foreground text-[11px] border-b border-border/40 select-none">
+        Sort by
+      </div>
+      <div className="p-0.5 space-y-0.5">
+        {options.map((opt) => (
+          <button
+            key={opt.id}
+            type="button"
+            role="menuitem"
+            onClick={(e) => {
+              e.stopPropagation()
+              onSelectSort(opt.id)
+            }}
+            className={cn(
+              "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-xs transition-colors cursor-pointer",
+              sortOrder === opt.id
+                ? "bg-accent text-accent-foreground font-semibold"
+                : "text-popover-foreground hover:bg-accent/60 hover:text-accent-foreground font-medium",
+            )}
+          >
+            <span>{opt.label}</span>
+            {sortOrder === opt.id && (
+              <Check className="size-3.5 text-primary" />
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function ThreadListItem({
   thread,
   isActive,
@@ -337,6 +393,66 @@ function AIPage() {
   const [recentsOpen, setRecentsOpen] = React.useState(true)
   const [archivedOpen, setArchivedOpen] = React.useState(true)
 
+  const promptInputRef = React.useRef<HTMLTextAreaElement>(null)
+
+  // Fetch available AI models from backend/proxy
+  const { data: modelsData } = useQuery({
+    queryKey: ["ai-models"],
+    queryFn: () => AiThreadsService.listAiModels(),
+  })
+
+  const AI_MODEL_STORAGE_KEY = "linkx_ai_selected_model"
+
+  const [selectedModelId, setSelectedModelIdState] = React.useState<string>(
+    () => {
+      if (
+        typeof window !== "undefined" &&
+        typeof localStorage !== "undefined"
+      ) {
+        try {
+          const saved = localStorage.getItem(AI_MODEL_STORAGE_KEY)
+          if (saved) return saved
+        } catch {
+          // ignore
+        }
+      }
+      return "gemini-3.6-flash-high"
+    },
+  )
+
+  const setSelectedModelId = React.useCallback((modelId: string) => {
+    setSelectedModelIdState(modelId)
+    if (typeof window !== "undefined" && typeof localStorage !== "undefined") {
+      try {
+        localStorage.setItem(AI_MODEL_STORAGE_KEY, modelId)
+      } catch {
+        // ignore
+      }
+    }
+  }, [])
+
+  // Sync default model from backend if user has not explicitly chosen one
+  React.useEffect(() => {
+    if (!modelsData) return
+    const saved =
+      typeof window !== "undefined" && typeof localStorage !== "undefined"
+        ? localStorage.getItem(AI_MODEL_STORAGE_KEY)
+        : null
+
+    if (!saved) {
+      const defaultId = modelsData.default_model || modelsData.data?.[0]?.id
+      if (defaultId) {
+        setSelectedModelId(defaultId)
+      }
+    } else if (modelsData.data && modelsData.data.length > 0) {
+      const exists = modelsData.data.some((m) => m.id === saved)
+      if (!exists) {
+        const fallback = modelsData.default_model || modelsData.data[0].id
+        setSelectedModelId(fallback)
+      }
+    }
+  }, [modelsData, setSelectedModelId])
+
   // Confirmation dialog state for thread deletion
   const [threadToDelete, setThreadToDelete] =
     React.useState<ChatThreadPublic | null>(null)
@@ -354,10 +470,24 @@ function AIPage() {
 
   const threads = threadsData?.data ?? []
 
-  // Auto-select first thread if none selected
+  const initialLoadedRef = React.useRef(false)
+
+  // Auto-select first thread ONLY on initial mount when threads are first loaded
   React.useEffect(() => {
-    if (!activeThreadId && threads.length > 0) {
-      setActiveThreadId(threads[0].id)
+    if (threads.length > 0) {
+      if (!initialLoadedRef.current) {
+        setActiveThreadId(threads[0].id)
+        initialLoadedRef.current = true
+      } else if (
+        activeThreadId &&
+        !threads.some((t) => t.id === activeThreadId)
+      ) {
+        // If the active thread was deleted from the list, select first available thread
+        setActiveThreadId(threads[0].id)
+      }
+    } else if (activeThreadId) {
+      setActiveThreadId(null)
+      setLocalMessages([])
     }
   }, [activeThreadId, threads])
 
@@ -370,13 +500,17 @@ function AIPage() {
 
   // Synchronize local messages from persistent database transcript when not streaming
   React.useEffect(() => {
-    if (!isStreaming && activeThreadDetail?.transcript) {
-      const msgs =
-        (activeThreadDetail.transcript as { messages?: ChatUIMessage[] })
-          ?.messages || []
-      setLocalMessages(msgs)
+    if (!isStreaming) {
+      if (activeThreadDetail?.transcript) {
+        const msgs =
+          (activeThreadDetail.transcript as { messages?: ChatUIMessage[] })
+            ?.messages || []
+        setLocalMessages(msgs)
+      } else if (!activeThreadId) {
+        setLocalMessages([])
+      }
     }
-  }, [activeThreadDetail, isStreaming])
+  }, [activeThreadDetail, isStreaming, activeThreadId])
 
   // 3. Mutations for thread persistence
   const createThreadMutation = useMutation({
@@ -423,19 +557,28 @@ function AIPage() {
     },
   })
 
+  const [isSortMenuOpen, setIsSortMenuOpen] = React.useState(false)
+
   // Close menus on document click
   React.useEffect(() => {
-    const handleDocumentClick = () => setOpenMenuThreadId(null)
-    if (openMenuThreadId) {
+    const handleDocumentClick = () => {
+      setOpenMenuThreadId(null)
+      setIsSortMenuOpen(false)
+    }
+    if (openMenuThreadId || isSortMenuOpen) {
       document.addEventListener("click", handleDocumentClick)
     }
     return () => document.removeEventListener("click", handleDocumentClick)
-  }, [openMenuThreadId])
+  }, [openMenuThreadId, isSortMenuOpen])
 
   const handleNewChat = () => {
-    createThreadMutation.mutate(undefined)
+    initialLoadedRef.current = true
+    setActiveThreadId(null)
     setLocalMessages([])
     setRecentsOpen(true)
+    setTimeout(() => {
+      promptInputRef.current?.focus()
+    }, 50)
   }
 
   const handleSendMessage = async (text: string) => {
@@ -459,76 +602,89 @@ function AIPage() {
     const assistantPlaceholder: ChatUIMessage = {
       id: `asst-${Date.now()}`,
       role: "assistant",
-      parts: [],
+      parts: [{ type: "thought", content: "" }],
     }
 
     setLocalMessages((prev) => [...prev, userMessage, assistantPlaceholder])
 
-    startStream(threadId, trimmed, {
-      onThought: (content) => {
-        setLocalMessages((prev) =>
-          prev.map((msg, idx) =>
-            idx === prev.length - 1
-              ? {
-                  ...msg,
-                  parts: [
-                    ...msg.parts.filter((p) => p.type !== "thought"),
-                    { type: "thought", content },
-                  ],
-                }
-              : msg,
-          ),
-        )
+    startStream(
+      threadId,
+      trimmed,
+      {
+        onThought: (content) => {
+          setLocalMessages((prev) =>
+            prev.map((msg, idx) => {
+              if (idx !== prev.length - 1) return msg
+              const existingThought = msg.parts.find(
+                (p) => p.type === "thought",
+              )
+              const otherParts = msg.parts.filter((p) => p.type !== "thought")
+              const newContent =
+                (existingThought && "content" in existingThought
+                  ? existingThought.content
+                  : "") + content
+              return {
+                ...msg,
+                parts: [
+                  { type: "thought", content: newContent },
+                  ...otherParts,
+                ],
+              }
+            }),
+          )
+        },
+        onTextDelta: (content) => {
+          setLocalMessages((prev) =>
+            prev.map((msg, idx) => {
+              if (idx !== prev.length - 1) return msg
+              const existingTextPart = msg.parts.find((p) => p.type === "text")
+              const otherParts = msg.parts.filter((p) => p.type !== "text")
+              const newText =
+                (existingTextPart ? existingTextPart.text : "") + content
+              return {
+                ...msg,
+                parts: [...otherParts, { type: "text", text: newText }],
+              }
+            }),
+          )
+        },
+        onDraftArtifact: (artifact) => {
+          setLocalMessages((prev) =>
+            prev.map((msg, idx) =>
+              idx === prev.length - 1
+                ? {
+                    ...msg,
+                    parts: [...msg.parts, { type: "draft_artifact", artifact }],
+                  }
+                : msg,
+            ),
+          )
+        },
+        onError: (errorMsg) => {
+          setLocalMessages((prev) =>
+            prev.map((msg, idx) =>
+              idx === prev.length - 1
+                ? {
+                    ...msg,
+                    parts: [
+                      ...msg.parts,
+                      {
+                        type: "text",
+                        text: `⚠️ **Error generating response**: ${errorMsg}`,
+                      },
+                    ],
+                  }
+                : msg,
+            ),
+          )
+        },
+        onDone: () => {
+          queryClient.invalidateQueries({ queryKey: ["ai-thread", threadId] })
+          queryClient.invalidateQueries({ queryKey: ["ai-threads"] })
+        },
       },
-      onTextDelta: (content) => {
-        setLocalMessages((prev) =>
-          prev.map((msg, idx) => {
-            if (idx !== prev.length - 1) return msg
-            const existingTextPart = msg.parts.find((p) => p.type === "text")
-            const otherParts = msg.parts.filter((p) => p.type !== "text")
-            const newText =
-              (existingTextPart ? existingTextPart.text : "") + content
-            return {
-              ...msg,
-              parts: [...otherParts, { type: "text", text: newText }],
-            }
-          }),
-        )
-      },
-      onDraftArtifact: (artifact) => {
-        setLocalMessages((prev) =>
-          prev.map((msg, idx) =>
-            idx === prev.length - 1
-              ? {
-                  ...msg,
-                  parts: [...msg.parts, { type: "draft_artifact", artifact }],
-                }
-              : msg,
-          ),
-        )
-      },
-      onError: (errorMsg) => {
-        setLocalMessages((prev) =>
-          prev.map((msg, idx) =>
-            idx === prev.length - 1
-              ? {
-                  ...msg,
-                  parts: [
-                    {
-                      type: "text",
-                      text: `⚠️ **Error generating response**: ${errorMsg}`,
-                    },
-                  ],
-                }
-              : msg,
-          ),
-        )
-      },
-      onDone: () => {
-        queryClient.invalidateQueries({ queryKey: ["ai-thread", threadId] })
-        queryClient.invalidateQueries({ queryKey: ["ai-threads"] })
-      },
-    })
+      selectedModelId,
+    )
   }
 
   const handleRenameThread = (id: string, newTitle: string) => {
@@ -571,9 +727,45 @@ function AIPage() {
     handleSendMessage(`Here are my preferences:\n\n${formattedAnswers}`)
   }
 
-  const recentThreads = threads.filter((t) => !t.is_archived)
-  const archivedThreads = threads.filter((t) => t.is_archived)
-  const currentThread = threads.find((t) => t.id === activeThreadId)
+  const [sortOrder, setSortOrder] = React.useState<
+    "recent" | "oldest" | "title" | "messages"
+  >("recent")
+  const [searchQuery, setSearchQuery] = React.useState("")
+  const [isSearchOpen, setIsSearchOpen] = React.useState(false)
+
+  const processThreads = React.useCallback(
+    (threadList: ChatThreadPublic[]) => {
+      let result = [...threadList]
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase().trim()
+        result = result.filter((t) => t.title.toLowerCase().includes(query))
+      }
+      result.sort((a, b) => {
+        if (sortOrder === "recent") {
+          const aTime = new Date(a.updated_at || a.created_at || 0).getTime()
+          const bTime = new Date(b.updated_at || b.created_at || 0).getTime()
+          return bTime - aTime
+        }
+        if (sortOrder === "oldest") {
+          const aTime = new Date(a.created_at || 0).getTime()
+          const bTime = new Date(b.created_at || 0).getTime()
+          return aTime - bTime
+        }
+        if (sortOrder === "title") {
+          return a.title.localeCompare(b.title)
+        }
+        if (sortOrder === "messages") {
+          return (b.message_count ?? 0) - (a.message_count ?? 0)
+        }
+        return 0
+      })
+      return result
+    },
+    [searchQuery, sortOrder],
+  )
+
+  const recentThreads = processThreads(threads.filter((t) => !t.is_archived))
+  const archivedThreads = processThreads(threads.filter((t) => t.is_archived))
 
   return (
     <div className="flex w-full min-h-[calc(100vh-3.5rem)] lg:min-h-screen bg-background text-foreground">
@@ -588,100 +780,66 @@ function AIPage() {
 
       {/* 1. Center Column: Active Chat Feed */}
       <div className="relative mx-auto flex min-h-0 w-full flex-1 max-w-2xl border-r-0 md:border-r border-border flex-col h-[calc(100vh-3.5rem)] lg:h-screen overflow-hidden">
-        {/* Top Header */}
-        <div className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur-md px-4 py-3 flex items-center justify-between">
-          <h1 className="font-bold text-lg text-foreground tracking-tight truncate">
-            {currentThread ? currentThread.title : "New Chat"}
-          </h1>
-
-          <Button
-            size="sm"
-            onClick={handleNewChat}
-            className="md:hidden text-xs rounded-full h-8 px-3 font-semibold shadow-sm cursor-pointer"
-          >
-            New Chat
-          </Button>
-        </div>
-
-        {/* Message Feed / Empty State */}
-        <div className="relative flex-1 min-h-0">
-          {localMessages.length === 0 ? (
-            <div className="flex h-full items-center justify-center p-6 text-center pb-32">
-              <div className="flex flex-col items-center">
-                <h2 className="text-xl font-bold tracking-tight text-foreground">
-                  What would you like to create?
-                </h2>
-                <p className="text-xs text-muted-foreground mt-1.5 max-w-sm leading-relaxed">
-                  Brainstorm viral ideas, analyze trends, or draft posts with
-                  LinkX AI.
-                </p>
-                <div className="mt-6 w-full max-w-lg">
-                  <Suggestions onSelect={handleSendMessage} />
-                </div>
+        {localMessages.length === 0 ? (
+          <div className="flex flex-1 min-h-0 items-center justify-center p-6 text-center">
+            <div className="flex flex-col items-center">
+              <h2 className="text-xl font-bold tracking-tight text-foreground">
+                What would you like to create?
+              </h2>
+              <p className="text-xs text-muted-foreground mt-1.5 max-w-sm leading-relaxed">
+                Brainstorm viral ideas, analyze trends, or draft posts with
+                LinkX AI.
+              </p>
+              <div className="mt-6 w-full max-w-lg">
+                <Suggestions onSelect={handleSendMessage} />
               </div>
             </div>
-          ) : (
-            <MessageScrollerProvider>
-              <MessageScroller className="h-full">
-                <MessageScrollerViewport>
-                  <MessageScrollerContent className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 pt-6 pb-36 sm:px-6 sm:pb-40">
-                    {localMessages.map((message) => (
-                      <MessageScrollerItem
-                        key={message.id}
-                        messageId={message.id}
-                        scrollAnchor={message.role === "user"}
-                      >
-                        <ChatMessage message={message} />
-                      </MessageScrollerItem>
-                    ))}
-
-                    {pendingQuestion && (
-                      <QuestionCard
-                        part={pendingQuestion}
-                        onAnswer={handleQuestionAnswer}
+          </div>
+        ) : (
+          <MessageScrollerProvider>
+            <MessageScroller className="flex-1 min-h-0">
+              <MessageScrollerViewport>
+                <MessageScrollerContent className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-6">
+                  {localMessages.map((message, index) => (
+                    <MessageScrollerItem
+                      key={message.id}
+                      messageId={message.id}
+                      scrollAnchor={message.role === "user"}
+                    >
+                      <ChatMessage
+                        message={message}
+                        isStreaming={
+                          isStreaming && index === localMessages.length - 1
+                        }
                       />
-                    )}
+                    </MessageScrollerItem>
+                  ))}
 
-                    {isStreaming && (
-                      <MessageScrollerItem messageId="thinking">
-                        <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground font-medium animate-pulse">
-                          <span className="size-2 rounded-full bg-primary animate-ping" />
-                          Streaming response…
-                        </div>
-                      </MessageScrollerItem>
-                    )}
-                  </MessageScrollerContent>
-                </MessageScrollerViewport>
-              </MessageScroller>
+                  {pendingQuestion && (
+                    <QuestionCard
+                      part={pendingQuestion}
+                      onAnswer={handleQuestionAnswer}
+                    />
+                  )}
+                </MessageScrollerContent>
+              </MessageScrollerViewport>
+              <MessageScrollerButton />
+            </MessageScroller>
+          </MessageScrollerProvider>
+        )}
 
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col items-center bg-gradient-to-t from-background via-background/90 to-transparent pt-10 pb-4 px-4 sm:pb-6 sm:px-6">
-                <div className="pointer-events-auto mb-2">
-                  <MessageScrollerButton />
-                </div>
-                <div className="pointer-events-auto w-full max-w-2xl">
-                  <PromptForm
-                    placeholder="Ask anything"
-                    isBusy={isStreaming}
-                    onSubmit={handleSendMessage}
-                    onStop={stopStream}
-                  />
-                </div>
-              </div>
-            </MessageScrollerProvider>
-          )}
-
-          {localMessages.length === 0 && (
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col items-center pb-4 px-4 sm:pb-6 sm:px-6">
-              <div className="pointer-events-auto w-full max-w-2xl">
-                <PromptForm
-                  placeholder="Ask anything"
-                  isBusy={isStreaming}
-                  onSubmit={handleSendMessage}
-                  onStop={stopStream}
-                />
-              </div>
-            </div>
-          )}
+        {/* Docked Prompt Form at bottom */}
+        <div className="mx-auto flex w-full max-w-2xl flex-col gap-2 px-4 pb-4 shrink-0">
+          <PromptForm
+            inputRef={promptInputRef}
+            placeholder="Ask anything"
+            isBusy={isStreaming}
+            selectedModelId={selectedModelId}
+            models={modelsData?.data}
+            onSelectModel={setSelectedModelId}
+            onSubmit={handleSendMessage}
+            onStop={stopStream}
+          />
         </div>
       </div>
 
@@ -709,6 +867,50 @@ function AIPage() {
                 <Button
                   variant="ghost"
                   size="icon"
+                  aria-label="Filter chats"
+                  onClick={() => setIsSearchOpen((prev) => !prev)}
+                  className={cn(
+                    "size-7 rounded-full cursor-pointer transition-colors",
+                    isSearchOpen || searchQuery
+                      ? "bg-muted/80 text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <Search className="size-3.5" />
+                </Button>
+
+                <div className="relative">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Sort options"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setIsSortMenuOpen((prev) => !prev)
+                    }}
+                    className={cn(
+                      "size-7 rounded-full cursor-pointer transition-colors",
+                      isSortMenuOpen
+                        ? "bg-muted/80 text-foreground"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    <MoreHorizontal className="size-3.5" />
+                  </Button>
+                  {isSortMenuOpen && (
+                    <SortFilterMenu
+                      sortOrder={sortOrder}
+                      onSelectSort={(newOrder) => {
+                        setSortOrder(newOrder)
+                        setIsSortMenuOpen(false)
+                      }}
+                    />
+                  )}
+                </div>
+
+                <Button
+                  variant="ghost"
+                  size="icon"
                   aria-label="New chat"
                   onClick={handleNewChat}
                   className="size-7 text-muted-foreground hover:text-foreground rounded-full cursor-pointer"
@@ -717,6 +919,31 @@ function AIPage() {
                 </Button>
               </div>
             </div>
+
+            {(isSearchOpen || searchQuery) && (
+              <div className="px-1 py-1 animate-in fade-in-0 duration-150">
+                <div className="relative flex items-center">
+                  <Search className="absolute left-2.5 size-3 text-muted-foreground pointer-events-none" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Filter chats…"
+                    className="w-full rounded-lg bg-muted/30 border border-border/60 pl-7 pr-7 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      aria-label="Clear filter"
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2 text-muted-foreground hover:text-foreground cursor-pointer"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {recentsOpen && (
               <div className="space-y-0.5">

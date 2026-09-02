@@ -392,5 +392,18 @@ class ChatThreadsPublic(SQLModel):
     count: int
 
 
+class AIModelInfo(SQLModel):
+    id: str
+    name: str
+    provider: str | None = None
+    is_default: bool = False
+
+
+class AIModelsPublic(SQLModel):
+    data: list[AIModelInfo]
+    default_model: str
+
+
 class ChatMessageRequest(SQLModel):
     message: str = Field(min_length=1, max_length=25000)
+    model: str | None = Field(default=None, max_length=100)
