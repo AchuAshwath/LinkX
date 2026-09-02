@@ -1,10 +1,11 @@
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlmodel import Session
 
 from app import crud
@@ -23,6 +24,12 @@ from app.models import (
 from app.services.ai_chat_runner import default_chat_stream_runner, format_sse
 
 router = APIRouter(prefix="/ai/threads", tags=["ai-threads"])
+
+
+class ThreadFilters(BaseModel):
+    archived: bool | None = None
+    skip: int = 0
+    limit: int = 100
 
 
 def _get_owned_thread(
@@ -108,17 +115,15 @@ def list_chat_threads(
     *,
     session: SessionDep,
     current_user: CurrentUser,
-    archived: bool | None = None,
-    skip: int = 0,
-    limit: int = 100,
+    filters: Annotated[ThreadFilters, Query()] = ThreadFilters(),
 ) -> Any:
     """List chat threads for the current user with optional archive filter."""
     threads, count = crud.get_chat_threads(
         session=session,
         owner_id=current_user.id,
-        is_archived=archived,
-        skip=skip,
-        limit=limit,
+        is_archived=filters.archived,
+        skip=filters.skip,
+        limit=filters.limit,
     )
     return ChatThreadsPublic(data=threads, count=count)
 

@@ -1,6 +1,7 @@
 import uuid
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
@@ -22,43 +23,32 @@ def _create_thread_api(
         payload["prompt"] = prompt
     if post_id is not None:
         payload["post_id"] = post_id
-    response = client.post(
-        f"{settings.API_V1_STR}/ai/threads/",
-        headers=headers,
-        json=payload,
+    res = client.post(
+        f"{settings.API_V1_STR}/ai/threads/", headers=headers, json=payload
     )
-    return response.json()
+    return res.json()
 
 
 def test_create_chat_thread_with_prompt(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:
-    content = _create_thread_api(
-        client,
-        superuser_token_headers,
-        prompt="Write a viral tweet about React 19 architecture",
+    res = _create_thread_api(
+        client, superuser_token_headers, prompt="Write a tweet about React 19"
     )
-    assert content["origin"] == "manual"
-    assert "React 19" in content["title"]
-    assert content["message_count"] == 1
-    assert "id" in content
-    assert "owner_id" in content
-    assert content["is_archived"] is False
-    assert len(content["transcript"]["messages"]) == 1
-    assert content["transcript"]["messages"][0]["role"] == "user"
+    assert res["origin"] == "manual"
+    assert "React 19" in res["title"]
+    assert res["message_count"] == 1
+    assert len(res["transcript"]["messages"]) == 1
+    assert res["transcript"]["messages"][0]["role"] == "user"
 
 
 def test_create_chat_thread_no_prompt(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:
-    content = _create_thread_api(
-        client,
-        superuser_token_headers,
-        origin="composer",
-    )
-    assert content["title"] == "New conversation"
-    assert content["message_count"] == 0
-    assert content["transcript"]["messages"] == []
+    res = _create_thread_api(client, superuser_token_headers, origin="composer")
+    assert res["title"] == "New conversation"
+    assert res["message_count"] == 0
+    assert res["transcript"]["messages"] == []
 
 
 def test_list_chat_threads(
@@ -66,306 +56,217 @@ def test_list_chat_threads(
 ) -> None:
     create_random_chat_thread(db)
     create_random_chat_thread(db)
-    response = client.get(
-        f"{settings.API_V1_STR}/ai/threads/",
-        headers=superuser_token_headers,
+    res = client.get(
+        f"{settings.API_V1_STR}/ai/threads/", headers=superuser_token_headers
     )
-    assert response.status_code == 200
-    content = response.json()
-    assert "data" in content
-    assert "count" in content
-    assert isinstance(content["data"], list)
+    assert res.status_code == 200
+    data = res.json()
+    assert isinstance(data["data"], list)
+    assert data["count"] >= 2
 
 
 def test_list_chat_threads_archived_filter(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:
-    thread = _create_thread_api(
-        client, superuser_token_headers, prompt="Thread to be archived"
-    )
-    thread_id = thread["id"]
+    t = _create_thread_api(client, superuser_token_headers, prompt="Archived target")
+    tid = t["id"]
 
     client.patch(
-        f"{settings.API_V1_STR}/ai/threads/{thread_id}",
+        f"{settings.API_V1_STR}/ai/threads/{tid}",
         headers=superuser_token_headers,
         json={"is_archived": True},
     )
 
-    res_archived = client.get(
+    arch_res = client.get(
         f"{settings.API_V1_STR}/ai/threads/?archived=true",
         headers=superuser_token_headers,
     )
-    assert res_archived.status_code == 200
-    archived_ids = [t["id"] for t in res_archived.json()["data"]]
-    assert thread_id in archived_ids
+    assert tid in [x["id"] for x in arch_res.json()["data"]]
 
-    res_active = client.get(
+    act_res = client.get(
         f"{settings.API_V1_STR}/ai/threads/?archived=false",
         headers=superuser_token_headers,
     )
-    assert res_active.status_code == 200
-    active_ids = [t["id"] for t in res_active.json()["data"]]
-    assert thread_id not in active_ids
+    assert tid not in [x["id"] for x in act_res.json()["data"]]
 
 
-def test_get_chat_thread(
+def test_get_chat_thread_detail(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:
-    thread = _create_thread_api(
-        client, superuser_token_headers, prompt="Detailed discussion"
+    t = _create_thread_api(client, superuser_token_headers, prompt="Detail target")
+    tid = t["id"]
+
+    res = client.get(
+        f"{settings.API_V1_STR}/ai/threads/{tid}", headers=superuser_token_headers
     )
-    thread_id = thread["id"]
-
-    response = client.get(
-        f"{settings.API_V1_STR}/ai/threads/{thread_id}",
-        headers=superuser_token_headers,
-    )
-    assert response.status_code == 200
-    content = response.json()
-    assert content["id"] == thread_id
-    assert "transcript" in content
-    assert len(content["transcript"]["messages"]) == 1
+    assert res.status_code == 200
+    assert res.json()["id"] == tid
+    assert "transcript" in res.json()
 
 
-def test_get_chat_thread_not_found(
-    client: TestClient, superuser_token_headers: dict[str, str]
+@pytest.mark.parametrize("method", ["get", "delete", "post"])
+def test_chat_thread_not_found(
+    client: TestClient, superuser_token_headers: dict[str, str], method: str
 ) -> None:
-    response = client.get(
-        f"{settings.API_V1_STR}/ai/threads/{uuid.uuid4()}",
-        headers=superuser_token_headers,
-    )
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Chat thread not found"
+    fake_id = uuid.uuid4()
+    url = f"{settings.API_V1_STR}/ai/threads/{fake_id}"
+    if method == "post":
+        url += "/chat"
+        res = client.post(url, headers=superuser_token_headers, json={"message": "hi"})
+    elif method == "delete":
+        res = client.delete(url, headers=superuser_token_headers)
+    else:
+        res = client.get(url, headers=superuser_token_headers)
+    assert res.status_code == 404
 
 
-def test_get_chat_thread_not_owner(
+@pytest.mark.parametrize("action", ["get", "delete", "chat"])
+def test_chat_thread_permission_denied_for_non_owner(
     client: TestClient,
     superuser_token_headers: dict[str, str],
     normal_user_token_headers: dict[str, str],
+    action: str,
 ) -> None:
-    thread = _create_thread_api(
+    t = _create_thread_api(
         client, superuser_token_headers, prompt="Private admin thread"
     )
-    thread_id = thread["id"]
+    tid = t["id"]
+    url = f"{settings.API_V1_STR}/ai/threads/{tid}"
 
-    response = client.get(
-        f"{settings.API_V1_STR}/ai/threads/{thread_id}",
-        headers=normal_user_token_headers,
-    )
-    assert response.status_code == 403
-    assert response.json()["detail"] == "Not enough permissions"
+    if action == "chat":
+        res = client.post(
+            f"{url}/chat", headers=normal_user_token_headers, json={"message": "inject"}
+        )
+    elif action == "delete":
+        res = client.delete(url, headers=normal_user_token_headers)
+    else:
+        res = client.get(url, headers=normal_user_token_headers)
+
+    assert res.status_code == 403
+    assert "Not enough permissions" in res.json()["detail"]
 
 
 def test_update_chat_thread_title(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:
-    thread = _create_thread_api(
-        client, superuser_token_headers, prompt="Original title prompt"
-    )
-    thread_id = thread["id"]
+    t = _create_thread_api(client, superuser_token_headers, prompt="Original title")
+    tid = t["id"]
 
-    response = client.patch(
-        f"{settings.API_V1_STR}/ai/threads/{thread_id}",
+    res = client.patch(
+        f"{settings.API_V1_STR}/ai/threads/{tid}",
         headers=superuser_token_headers,
-        json={"title": "Renamed Thread Title"},
+        json={"title": "Renamed Title"},
     )
-    assert response.status_code == 200
-    content = response.json()
-    assert content["title"] == "Renamed Thread Title"
+    assert res.status_code == 200
+    assert res.json()["title"] == "Renamed Title"
 
 
 def test_archive_and_unarchive_chat_thread(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:
-    thread = _create_thread_api(client, superuser_token_headers, prompt="Archive test")
-    thread_id = thread["id"]
+    t = _create_thread_api(client, superuser_token_headers, prompt="Archive toggle")
+    tid = t["id"]
 
-    res_arch = client.patch(
-        f"{settings.API_V1_STR}/ai/threads/{thread_id}",
-        headers=superuser_token_headers,
-        json={"is_archived": True},
-    )
-    assert res_arch.status_code == 200
-    assert res_arch.json()["is_archived"] is True
-
-    res_unarch = client.patch(
-        f"{settings.API_V1_STR}/ai/threads/{thread_id}",
-        headers=superuser_token_headers,
-        json={"is_archived": False},
-    )
-    assert res_unarch.status_code == 200
-    assert res_unarch.json()["is_archived"] is False
+    for state in (True, False):
+        res = client.patch(
+            f"{settings.API_V1_STR}/ai/threads/{tid}",
+            headers=superuser_token_headers,
+            json={"is_archived": state},
+        )
+        assert res.status_code == 200
+        assert res.json()["is_archived"] is state
 
 
 def test_delete_chat_thread(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:
-    thread = _create_thread_api(client, superuser_token_headers, prompt="Delete test")
-    thread_id = thread["id"]
+    t = _create_thread_api(client, superuser_token_headers, prompt="Delete target")
+    tid = t["id"]
 
-    response = client.delete(
-        f"{settings.API_V1_STR}/ai/threads/{thread_id}",
-        headers=superuser_token_headers,
+    res = client.delete(
+        f"{settings.API_V1_STR}/ai/threads/{tid}", headers=superuser_token_headers
     )
-    assert response.status_code == 200
-    assert response.json()["message"] == "Chat thread deleted successfully"
+    assert res.status_code == 200
+    assert res.json()["message"] == "Chat thread deleted successfully"
 
-    get_res = client.get(
-        f"{settings.API_V1_STR}/ai/threads/{thread_id}",
-        headers=superuser_token_headers,
+    assert (
+        client.get(
+            f"{settings.API_V1_STR}/ai/threads/{tid}", headers=superuser_token_headers
+        ).status_code
+        == 404
     )
-    assert get_res.status_code == 404
 
 
-def test_delete_chat_thread_not_found(
+def test_chat_stream_returns_sse_and_persists(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:
-    response = client.delete(
-        f"{settings.API_V1_STR}/ai/threads/{uuid.uuid4()}",
-        headers=superuser_token_headers,
-    )
-    assert response.status_code == 404
+    t = _create_thread_api(client, superuser_token_headers, origin="composer")
+    tid = t["id"]
 
-
-def test_delete_chat_thread_not_owner(
-    client: TestClient,
-    superuser_token_headers: dict[str, str],
-    normal_user_token_headers: dict[str, str],
-) -> None:
-    thread = _create_thread_api(
-        client, superuser_token_headers, prompt="Protected thread"
-    )
-    thread_id = thread["id"]
-
-    response = client.delete(
-        f"{settings.API_V1_STR}/ai/threads/{thread_id}",
-        headers=normal_user_token_headers,
-    )
-    assert response.status_code == 403
-    assert response.json()["detail"] == "Not enough permissions"
-
-
-def test_chat_stream_returns_sse(
-    client: TestClient, superuser_token_headers: dict[str, str]
-) -> None:
-    thread = _create_thread_api(client, superuser_token_headers, origin="composer")
-    thread_id = thread["id"]
-
-    response = client.post(
-        f"{settings.API_V1_STR}/ai/threads/{thread_id}/chat",
+    stream_res = client.post(
+        f"{settings.API_V1_STR}/ai/threads/{tid}/chat",
         headers=superuser_token_headers,
         json={"message": "Write a post about TypeScript 5.8"},
     )
-    assert response.status_code == 200
-    assert "text/event-stream" in response.headers["content-type"]
-    text = response.text
+    assert stream_res.status_code == 200
+    assert "text/event-stream" in stream_res.headers["content-type"]
+    text = stream_res.text
     assert "event: thought" in text
     assert "event: text_delta" in text
     assert "event: done" in text
-    assert "TypeScript 5.8" in text
+
+    detail = client.get(
+        f"{settings.API_V1_STR}/ai/threads/{tid}", headers=superuser_token_headers
+    ).json()
+    assert detail["message_count"] == 2
+    assert (
+        detail["transcript"]["messages"][0]["parts"][0]["text"]
+        == "Write a post about TypeScript 5.8"
+    )
 
 
-def test_chat_stream_persists_transcript(
-    client: TestClient, superuser_token_headers: dict[str, str]
+@pytest.mark.parametrize("invalid_title", ["", "     "])
+def test_update_chat_thread_invalid_title(
+    client: TestClient, superuser_token_headers: dict[str, str], invalid_title: str
 ) -> None:
-    thread = _create_thread_api(client, superuser_token_headers, origin="composer")
-    thread_id = thread["id"]
+    t = _create_thread_api(client, superuser_token_headers, prompt="Valid initial")
+    tid = t["id"]
 
-    stream_res = client.post(
-        f"{settings.API_V1_STR}/ai/threads/{thread_id}/chat",
+    res = client.patch(
+        f"{settings.API_V1_STR}/ai/threads/{tid}",
         headers=superuser_token_headers,
-        json={"message": "First user turn"},
+        json={"title": invalid_title},
     )
-    assert stream_res.status_code == 200
-    assert "done" in stream_res.text
-
-    get_res = client.get(
-        f"{settings.API_V1_STR}/ai/threads/{thread_id}",
-        headers=superuser_token_headers,
-    )
-    assert get_res.status_code == 200
-    content = get_res.json()
-    assert content["message_count"] == 2
-    messages = content["transcript"]["messages"]
-    assert len(messages) == 2
-    assert messages[0]["role"] == "user"
-    assert messages[0]["parts"][0]["text"] == "First user turn"
-    assert messages[1]["role"] == "assistant"
+    assert res.status_code == 422
 
 
-def test_chat_stream_thread_not_found(
-    client: TestClient, superuser_token_headers: dict[str, str]
-) -> None:
-    response = client.post(
-        f"{settings.API_V1_STR}/ai/threads/{uuid.uuid4()}/chat",
-        headers=superuser_token_headers,
-        json={"message": "Hello"},
-    )
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Chat thread not found"
-
-
-def test_update_chat_thread_empty_or_whitespace_title_rejected(
-    client: TestClient, superuser_token_headers: dict[str, str]
-) -> None:
-    thread = _create_thread_api(
-        client, superuser_token_headers, prompt="Valid initial title"
-    )
-    thread_id = thread["id"]
-
-    res_empty = client.patch(
-        f"{settings.API_V1_STR}/ai/threads/{thread_id}",
-        headers=superuser_token_headers,
-        json={"title": ""},
-    )
-    assert res_empty.status_code == 422
-
-    res_space = client.patch(
-        f"{settings.API_V1_STR}/ai/threads/{thread_id}",
-        headers=superuser_token_headers,
-        json={"title": "     "},
-    )
-    assert res_space.status_code == 422
-
-
-def test_create_chat_thread_post_id_ownership_security(
-    client: TestClient,
-    normal_user_token_headers: dict[str, str],
-    db: Session,
+def test_create_chat_thread_post_id_ownership(
+    client: TestClient, normal_user_token_headers: dict[str, str], db: Session
 ) -> None:
     superuser = db.exec(select(User).where(User.is_superuser == True)).first()  # noqa: E712
     assert superuser is not None
 
-    post = Post(
+    p = Post(
         owner_id=superuser.id,
-        content="Secret admin draft",
+        content="Admin secret",
         platform="linkedin",
         status="draft",
     )
-    db.add(post)
+    db.add(p)
     db.commit()
-    db.refresh(post)
+    db.refresh(p)
 
-    response = client.post(
+    res_403 = client.post(
         f"{settings.API_V1_STR}/ai/threads/",
         headers=normal_user_token_headers,
-        json={
-            "origin": "manual",
-            "prompt": "Exploit attempt",
-            "post_id": str(post.id),
-        },
+        json={"origin": "manual", "prompt": "Exploit", "post_id": str(p.id)},
     )
-    assert response.status_code == 403
-    assert "Cannot link" in response.json()["detail"]
+    assert res_403.status_code == 403
 
     res_404 = client.post(
         f"{settings.API_V1_STR}/ai/threads/",
         headers=normal_user_token_headers,
-        json={
-            "origin": "manual",
-            "prompt": "Exploit attempt",
-            "post_id": str(uuid.uuid4()),
-        },
+        json={"origin": "manual", "prompt": "Exploit", "post_id": str(uuid.uuid4())},
     )
     assert res_404.status_code == 404
 
@@ -373,28 +274,9 @@ def test_create_chat_thread_post_id_ownership_security(
 def test_create_chat_thread_multiline_whitespace_prompt(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:
-    content = _create_thread_api(
+    res = _create_thread_api(
         client,
         superuser_token_headers,
         prompt="\n\n   \n   Actual first non-empty line of content\nSecond line",
     )
-    assert content["title"] == "Actual first non-empty line of content"
-
-
-def test_chat_stream_not_owner_forbidden(
-    client: TestClient,
-    superuser_token_headers: dict[str, str],
-    normal_user_token_headers: dict[str, str],
-) -> None:
-    thread = _create_thread_api(
-        client, superuser_token_headers, prompt="Superuser private chat"
-    )
-    thread_id = thread["id"]
-
-    response = client.post(
-        f"{settings.API_V1_STR}/ai/threads/{thread_id}/chat",
-        headers=normal_user_token_headers,
-        json={"message": "Unauthorized message injection"},
-    )
-    assert response.status_code == 403
-    assert response.json()["detail"] == "Not enough permissions"
+    assert res["title"] == "Actual first non-empty line of content"

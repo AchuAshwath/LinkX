@@ -21,34 +21,19 @@ interface ParsedEventData {
   message?: string
 }
 
-function dispatchSSEEvent(
-  eventName: string,
+type EventAction = (
   data: ParsedEventData,
   handlers: StreamEventHandlers,
-) {
-  switch (eventName) {
-    case "thought":
-      handlers.onThought?.(data.content || "")
-      break
-    case "text_delta":
-      handlers.onTextDelta?.(data.content || "")
-      break
-    case "tool_start":
-      if (data.name) handlers.onToolStart?.(data.name, data.input)
-      break
-    case "tool_output":
-      if (data.name) handlers.onToolOutput?.(data.name, data.output)
-      break
-    case "draft_artifact":
-      handlers.onDraftArtifact?.(data as unknown as DraftArtifact)
-      break
-    case "done":
-      handlers.onDone?.()
-      break
-    case "error":
-      handlers.onError?.(data.message || "Unknown stream error")
-      break
-  }
+) => void
+
+const EVENT_ACTIONS: Record<string, EventAction> = {
+  thought: (d, h) => h.onThought?.(d.content || ""),
+  text_delta: (d, h) => h.onTextDelta?.(d.content || ""),
+  tool_start: (d, h) => d.name && h.onToolStart?.(d.name, d.input),
+  tool_output: (d, h) => d.name && h.onToolOutput?.(d.name, d.output),
+  draft_artifact: (d, h) => h.onDraftArtifact?.(d as unknown as DraftArtifact),
+  done: (_, h) => h.onDone?.(),
+  error: (d, h) => h.onError?.(d.message || "Unknown stream error"),
 }
 
 function parseSSELines(
@@ -64,10 +49,9 @@ function parseSSELines(
     if (trimmed.startsWith("event:")) {
       eventType = trimmed.slice(6).trim()
     } else if (trimmed.startsWith("data:")) {
-      const dataStr = trimmed.slice(5).trim()
       try {
-        const parsed = JSON.parse(dataStr) as ParsedEventData
-        dispatchSSEEvent(eventType, parsed, handlers)
+        const parsed = JSON.parse(trimmed.slice(5).trim()) as ParsedEventData
+        EVENT_ACTIONS[eventType]?.(parsed, handlers)
       } catch {
         // Non-JSON SSE payload ignored
       }
