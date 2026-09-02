@@ -16,6 +16,15 @@ function normalizeModels(models?: (AIModelOption | string)[]): AIModelOption[] {
   return models.map((m) => (typeof m === "string" ? { id: m, name: m } : m))
 }
 
+function isPlainEnterPress(
+  event: React.KeyboardEvent<HTMLTextAreaElement>,
+): boolean {
+  if (event.key !== "Enter") return false
+  if (event.shiftKey) return false
+  if (event.nativeEvent.isComposing) return false
+  return true
+}
+
 export function useImageAttachments() {
   const [selectedImages, setSelectedImages] = React.useState<AttachmentImage[]>(
     [],
@@ -217,11 +226,7 @@ export function usePromptFormState({
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (
-      event.key === "Enter" &&
-      !event.shiftKey &&
-      !event.nativeEvent.isComposing
-    ) {
+    if (isPlainEnterPress(event)) {
       event.preventDefault()
       handleSubmit()
     }
