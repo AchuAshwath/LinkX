@@ -240,41 +240,43 @@ def test_update_chat_thread_invalid_title(
     assert res.status_code == 422
 
 
-@pytest.mark.parametrize("is_real_post,expected_code", [(True, 403), (False, 404)])
-def test_create_chat_thread_post_id_ownership(
-    client: TestClient,
-    normal_user_token_headers: dict[str, str],
-    db: Session,
-    is_real_post: bool,
-    expected_code: int,
+def test_create_chat_thread_post_id_forbidden(
+    client: TestClient, normal_user_token_headers: dict[str, str], db: Session
 ) -> None:
     superuser = db.exec(select(User).where(User.is_superuser == True)).first()  # noqa: E712
     assert superuser is not None
 
-    if is_real_post:
-        p = Post(
-            owner_id=superuser.id,
-            content="Secret",
-            platform="linkedin",
-            status="draft",
-        )
-        db.add(p)
-        db.commit()
-        db.refresh(p)
-        target_post_id = str(p.id)
-    else:
-        target_post_id = str(uuid.uuid4())
+    p = Post(
+        owner_id=superuser.id,
+        content="Secret",
+        platform="linkedin",
+        status="draft",
+    )
+    db.add(p)
+    db.commit()
+    db.refresh(p)
 
+    res = client.post(
+        f"{settings.API_V1_STR}/ai/threads/",
+        headers=normal_user_token_headers,
+        json={"origin": "manual", "prompt": "Exploit", "post_id": str(p.id)},
+    )
+    assert res.status_code == 403
+
+
+def test_create_chat_thread_post_id_not_found(
+    client: TestClient, normal_user_token_headers: dict[str, str]
+) -> None:
     res = client.post(
         f"{settings.API_V1_STR}/ai/threads/",
         headers=normal_user_token_headers,
         json={
             "origin": "manual",
             "prompt": "Exploit",
-            "post_id": target_post_id,
+            "post_id": str(uuid.uuid4()),
         },
     )
-    assert res.status_code == expected_code
+    assert res.status_code == 404
 
 
 def test_create_chat_thread_multiline_whitespace_prompt(
