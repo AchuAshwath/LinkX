@@ -77,17 +77,12 @@ def test_list_chat_threads_archived_filter(
         json={"is_archived": True},
     )
 
-    arch_res = client.get(
-        f"{settings.API_V1_STR}/ai/threads/?archived=true",
-        headers=superuser_token_headers,
-    )
-    assert tid in [x["id"] for x in arch_res.json()["data"]]
-
-    act_res = client.get(
-        f"{settings.API_V1_STR}/ai/threads/?archived=false",
-        headers=superuser_token_headers,
-    )
-    assert tid not in [x["id"] for x in act_res.json()["data"]]
+    for archived_val, should_contain in ((True, True), (False, False)):
+        res = client.get(
+            f"{settings.API_V1_STR}/ai/threads/?archived={str(archived_val).lower()}",
+            headers=superuser_token_headers,
+        )
+        assert (tid in [x["id"] for x in res.json()["data"]]) is should_contain
 
 
 def test_get_chat_thread_detail(
@@ -111,8 +106,9 @@ def test_chat_thread_not_found(
     fake_id = uuid.uuid4()
     url = f"{settings.API_V1_STR}/ai/threads/{fake_id}"
     if method == "post":
-        url += "/chat"
-        res = client.post(url, headers=superuser_token_headers, json={"message": "hi"})
+        res = client.post(
+            f"{url}/chat", headers=superuser_token_headers, json={"message": "hi"}
+        )
     elif method == "delete":
         res = client.delete(url, headers=superuser_token_headers)
     else:
@@ -135,7 +131,9 @@ def test_chat_thread_permission_denied_for_non_owner(
 
     if action == "chat":
         res = client.post(
-            f"{url}/chat", headers=normal_user_token_headers, json={"message": "inject"}
+            f"{url}/chat",
+            headers=normal_user_token_headers,
+            json={"message": "inject"},
         )
     elif action == "delete":
         res = client.delete(url, headers=normal_user_token_headers)
@@ -191,7 +189,8 @@ def test_delete_chat_thread(
 
     assert (
         client.get(
-            f"{settings.API_V1_STR}/ai/threads/{tid}", headers=superuser_token_headers
+            f"{settings.API_V1_STR}/ai/threads/{tid}",
+            headers=superuser_token_headers,
         ).status_code
         == 404
     )
@@ -216,7 +215,8 @@ def test_chat_stream_returns_sse_and_persists(
     assert "event: done" in text
 
     detail = client.get(
-        f"{settings.API_V1_STR}/ai/threads/{tid}", headers=superuser_token_headers
+        f"{settings.API_V1_STR}/ai/threads/{tid}",
+        headers=superuser_token_headers,
     ).json()
     assert detail["message_count"] == 2
     assert (
@@ -240,35 +240,41 @@ def test_update_chat_thread_invalid_title(
     assert res.status_code == 422
 
 
+@pytest.mark.parametrize("is_real_post,expected_code", [(True, 403), (False, 404)])
 def test_create_chat_thread_post_id_ownership(
-    client: TestClient, normal_user_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db: Session,
+    is_real_post: bool,
+    expected_code: int,
 ) -> None:
     superuser = db.exec(select(User).where(User.is_superuser == True)).first()  # noqa: E712
     assert superuser is not None
 
-    p = Post(
-        owner_id=superuser.id,
-        content="Admin secret",
-        platform="linkedin",
-        status="draft",
-    )
-    db.add(p)
-    db.commit()
-    db.refresh(p)
+    if is_real_post:
+        p = Post(
+            owner_id=superuser.id,
+            content="Secret",
+            platform="linkedin",
+            status="draft",
+        )
+        db.add(p)
+        db.commit()
+        db.refresh(p)
+        target_post_id = str(p.id)
+    else:
+        target_post_id = str(uuid.uuid4())
 
-    res_403 = client.post(
+    res = client.post(
         f"{settings.API_V1_STR}/ai/threads/",
         headers=normal_user_token_headers,
-        json={"origin": "manual", "prompt": "Exploit", "post_id": str(p.id)},
+        json={
+            "origin": "manual",
+            "prompt": "Exploit",
+            "post_id": target_post_id,
+        },
     )
-    assert res_403.status_code == 403
-
-    res_404 = client.post(
-        f"{settings.API_V1_STR}/ai/threads/",
-        headers=normal_user_token_headers,
-        json={"origin": "manual", "prompt": "Exploit", "post_id": str(uuid.uuid4())},
-    )
-    assert res_404.status_code == 404
+    assert res.status_code == expected_code
 
 
 def test_create_chat_thread_multiline_whitespace_prompt(

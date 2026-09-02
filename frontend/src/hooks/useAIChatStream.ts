@@ -60,19 +60,10 @@ function parseSSELines(
   return eventType
 }
 
-async function streamResponse(
-  response: Response,
+async function readStreamChunks(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
   handlers: StreamEventHandlers,
 ) {
-  if (!response.ok) {
-    const errText = await response.text()
-    throw new Error(errText || `Server error: ${response.status}`)
-  }
-  if (!response.body) {
-    throw new Error("No response body received from stream")
-  }
-
-  const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ""
   let currentEvent = "message"
@@ -86,7 +77,21 @@ async function streamResponse(
     buffer = lines.pop() || ""
     currentEvent = parseSSELines(lines, currentEvent, handlers)
   }
+}
 
+async function streamResponse(
+  response: Response,
+  handlers: StreamEventHandlers,
+) {
+  if (!response.ok) {
+    const err = await response.text()
+    throw new Error(err || `HTTP ${response.status}`)
+  }
+  if (!response.body) {
+    throw new Error("Missing stream response body")
+  }
+
+  await readStreamChunks(response.body.getReader(), handlers)
   handlers.onDone?.()
 }
 
