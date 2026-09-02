@@ -54,6 +54,34 @@ function updateAssistantPart(
   })
 }
 
+function useThreadTranscript({
+  activeThreadId,
+  isStreaming,
+  setLocalMessages,
+}: {
+  activeThreadId: string | null
+  isStreaming: boolean
+  setLocalMessages: React.Dispatch<React.SetStateAction<ChatUIMessage[]>>
+}) {
+  const { data: activeThreadDetail } = useQuery({
+    queryKey: ["ai-thread", activeThreadId],
+    queryFn: () => AiThreadsService.getChatThread({ id: activeThreadId! }),
+    enabled: !!activeThreadId,
+  })
+
+  React.useEffect(() => {
+    if (isStreaming) return
+    if (activeThreadId && activeThreadDetail?.transcript) {
+      const msgs =
+        (activeThreadDetail.transcript as { messages?: ChatUIMessage[] })
+          ?.messages || []
+      setLocalMessages(msgs)
+    } else if (!activeThreadId) {
+      setLocalMessages([])
+    }
+  }, [activeThreadDetail, isStreaming, activeThreadId, setLocalMessages])
+}
+
 export function useAIChatFeedState({
   threads,
   selectedModelId,
@@ -79,24 +107,7 @@ export function useAIChatFeedState({
     }
   }, [threads])
 
-  const { data: activeThreadDetail } = useQuery({
-    queryKey: ["ai-thread", activeThreadId],
-    queryFn: () => AiThreadsService.getChatThread({ id: activeThreadId! }),
-    enabled: !!activeThreadId,
-  })
-
-  React.useEffect(() => {
-    if (!isStreaming) {
-      if (activeThreadId && activeThreadDetail?.transcript) {
-        const msgs =
-          (activeThreadDetail.transcript as { messages?: ChatUIMessage[] })
-            ?.messages || []
-        setLocalMessages(msgs)
-      } else if (!activeThreadId) {
-        setLocalMessages([])
-      }
-    }
-  }, [activeThreadDetail, isStreaming, activeThreadId])
+  useThreadTranscript({ activeThreadId, isStreaming, setLocalMessages })
 
   const createThreadMutation = useMutation({
     mutationFn: (prompt?: string) =>
