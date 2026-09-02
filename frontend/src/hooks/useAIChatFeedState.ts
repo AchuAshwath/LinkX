@@ -62,6 +62,33 @@ function updateAssistantPart(
   })
 }
 
+function syncThreadMessages({
+  activeThreadId,
+  transcriptMessages,
+  threadChanged,
+  setLocalMessages,
+}: {
+  activeThreadId: string | null
+  transcriptMessages: ChatUIMessage[] | null
+  threadChanged: boolean
+  setLocalMessages: React.Dispatch<React.SetStateAction<ChatUIMessage[]>>
+}) {
+  if (!activeThreadId) {
+    setLocalMessages([])
+    return
+  }
+  if (!transcriptMessages) return
+
+  if (threadChanged) {
+    setLocalMessages(transcriptMessages)
+    return
+  }
+
+  setLocalMessages((current) =>
+    transcriptMessages.length >= current.length ? transcriptMessages : current,
+  )
+}
+
 function useThreadTranscript({
   activeThreadId,
   isStreaming,
@@ -75,7 +102,7 @@ function useThreadTranscript({
   const { data: activeThreadDetail } = useQuery({
     queryKey: ["ai-thread", activeThreadId],
     queryFn: () => AiThreadsService.getChatThread({ id: activeThreadId! }),
-    enabled: !!activeThreadId,
+    enabled: Boolean(activeThreadId),
   })
 
   React.useEffect(() => {
@@ -84,24 +111,16 @@ function useThreadTranscript({
     const threadChanged = previousThreadIdRef.current !== activeThreadId
     previousThreadIdRef.current = activeThreadId
 
-    if (activeThreadId && activeThreadDetail?.transcript) {
-      const msgs =
-        (activeThreadDetail.transcript as { messages?: ChatUIMessage[] })
-          ?.messages || []
+    const transcriptMessages =
+      (activeThreadDetail?.transcript as { messages?: ChatUIMessage[] })
+        ?.messages || null
 
-      if (threadChanged) {
-        setLocalMessages(msgs)
-      } else {
-        setLocalMessages((current) => {
-          if (msgs.length >= current.length) {
-            return msgs
-          }
-          return current
-        })
-      }
-    } else if (!activeThreadId) {
-      setLocalMessages([])
-    }
+    syncThreadMessages({
+      activeThreadId,
+      transcriptMessages,
+      threadChanged,
+      setLocalMessages,
+    })
   }, [activeThreadDetail, isStreaming, activeThreadId, setLocalMessages])
 }
 

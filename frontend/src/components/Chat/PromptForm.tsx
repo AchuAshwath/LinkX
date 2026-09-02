@@ -44,103 +44,16 @@ const FALLBACK_MODELS: AIModelOption[] = [
   { id: "gpt-oss-120b-medium", name: "DeepSeek R1", provider: "OpenSource" },
 ]
 
-export function PromptForm({
-  onSubmit,
-  onStop,
-  isBusy = false,
-  placeholder = "Ask anything",
-  selectedModelId,
-  models,
-  onSelectModel,
-  inputRef,
-  autoFocus = false,
-  actions,
-  className,
-  initialValue = "",
-  onValueChange,
-}: PromptFormProps) {
-  const [input, setInput] = React.useState(initialValue)
-  const [localModelId, setLocalModelId] = React.useState(
-    selectedModelId || "gemini-3.6-flash-high",
-  )
+function normalizeModels(models?: (AIModelOption | string)[]): AIModelOption[] {
+  if (!models || models.length === 0) return FALLBACK_MODELS
+  return models.map((m) => (typeof m === "string" ? { id: m, name: m } : m))
+}
+
+function useImageAttachments() {
   const [selectedImages, setSelectedImages] = React.useState<AttachmentImage[]>(
     [],
   )
-
-  const internalInputRef = React.useRef<HTMLTextAreaElement>(null)
-  const effectiveInputRef = inputRef || internalInputRef
   const fileInputRef = React.useRef<HTMLInputElement>(null)
-  const baseInputRef = React.useRef(initialValue)
-  const onValueChangeRef = React.useRef(onValueChange)
-
-  React.useEffect(() => {
-    onValueChangeRef.current = onValueChange
-  })
-
-  const updateInput = React.useCallback((val: string) => {
-    setInput(val)
-    baseInputRef.current = val
-    onValueChangeRef.current?.(val)
-  }, [])
-
-  const activeModelId = selectedModelId || localModelId
-
-  const normalizedModels: AIModelOption[] = React.useMemo(() => {
-    if (!models || models.length === 0) return FALLBACK_MODELS
-    return models.map((m) => (typeof m === "string" ? { id: m, name: m } : m))
-  }, [models])
-
-  const handleTranscriptChange = React.useCallback(
-    ({ transcript: voiceText }: { transcript: string }) => {
-      if (!voiceText) return
-      const base = baseInputRef.current.trim()
-      const separator = base && voiceText ? " " : ""
-      const fullText = base + separator + voiceText
-      setInput(fullText)
-      onValueChangeRef.current?.(fullText)
-    },
-    [],
-  )
-
-  const {
-    isListening: isVoiceListening,
-    isSupported: isVoiceSupported,
-    startListening,
-    stopListening: stopVoiceListening,
-    resetTranscript,
-    error: voiceError,
-  } = useSpeechRecognition({
-    onTranscriptChange: handleTranscriptChange,
-  })
-
-  const handleToggleVoice = React.useCallback(() => {
-    if (isVoiceListening) {
-      stopVoiceListening()
-      baseInputRef.current = input
-      resetTranscript()
-    } else {
-      baseInputRef.current = input
-      resetTranscript()
-      startListening()
-    }
-  }, [
-    isVoiceListening,
-    stopVoiceListening,
-    startListening,
-    resetTranscript,
-    input,
-  ])
-
-  React.useEffect(() => {
-    if (autoFocus) {
-      effectiveInputRef.current?.focus()
-    }
-  }, [autoFocus, effectiveInputRef])
-
-  function handleSelectModel(mId: string) {
-    setLocalModelId(mId)
-    onSelectModel?.(mId)
-  }
 
   function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files
@@ -167,6 +80,118 @@ export function PromptForm({
     })
   }
 
+  function clearImages() {
+    setSelectedImages([])
+  }
+
+  return {
+    selectedImages,
+    fileInputRef,
+    handleImageSelect,
+    handleRemoveImage,
+    clearImages,
+  }
+}
+
+export function PromptForm({
+  onSubmit,
+  onStop,
+  isBusy = false,
+  placeholder = "Ask anything",
+  selectedModelId,
+  models,
+  onSelectModel,
+  inputRef,
+  autoFocus = false,
+  actions,
+  className,
+  initialValue = "",
+  onValueChange,
+}: PromptFormProps) {
+  const [input, setInput] = React.useState(initialValue)
+  const [localModelId, setLocalModelId] = React.useState(
+    selectedModelId || "gemini-3.6-flash-high",
+  )
+
+  const internalInputRef = React.useRef<HTMLTextAreaElement>(null)
+  const effectiveInputRef = inputRef || internalInputRef
+  const baseInputRef = React.useRef(initialValue)
+  const onValueChangeRef = React.useRef(onValueChange)
+
+  const {
+    selectedImages,
+    fileInputRef,
+    handleImageSelect,
+    handleRemoveImage,
+    clearImages,
+  } = useImageAttachments()
+
+  React.useEffect(() => {
+    onValueChangeRef.current = onValueChange
+  })
+
+  const updateInput = React.useCallback((val: string) => {
+    setInput(val)
+    baseInputRef.current = val
+    onValueChangeRef.current?.(val)
+  }, [])
+
+  const activeModelId = selectedModelId || localModelId
+  const normalizedModels = React.useMemo(
+    () => normalizeModels(models),
+    [models],
+  )
+
+  const handleTranscriptChange = React.useCallback(
+    ({ transcript: voiceText }: { transcript: string }) => {
+      if (!voiceText) return
+      const base = baseInputRef.current.trim()
+      const separator = base && voiceText ? " " : ""
+      const fullText = base + separator + voiceText
+      setInput(fullText)
+      onValueChangeRef.current?.(fullText)
+    },
+    [],
+  )
+
+  const {
+    isListening: isVoiceListening,
+    isSupported: isVoiceSupported,
+    startListening,
+    stopListening: stopVoiceListening,
+    resetTranscript,
+    error: voiceError,
+  } = useSpeechRecognition({
+    onTranscriptChange: handleTranscriptChange,
+  })
+
+  const handleToggleVoice = React.useCallback(() => {
+    baseInputRef.current = input
+    resetTranscript()
+    if (isVoiceListening) {
+      stopVoiceListening()
+    } else {
+      startListening()
+    }
+  }, [
+    isVoiceListening,
+    stopVoiceListening,
+    startListening,
+    resetTranscript,
+    input,
+  ])
+
+  React.useEffect(() => {
+    if (autoFocus) {
+      effectiveInputRef.current?.focus()
+    }
+  }, [autoFocus, effectiveInputRef])
+
+  function handleSelectModel(mId: string) {
+    setLocalModelId(mId)
+    onSelectModel?.(mId)
+  }
+
   function handleSubmit(event?: React.FormEvent) {
     event?.preventDefault()
     if (isVoiceListening) {
@@ -176,6 +201,7 @@ export function PromptForm({
     baseInputRef.current = ""
     const text = input.trim()
     if ((!text && selectedImages.length === 0) || isBusy) return
+
     if (selectedImages.length > 0) {
       onSubmit(
         text,
@@ -185,7 +211,18 @@ export function PromptForm({
       onSubmit(text)
     }
     updateInput("")
-    setSelectedImages([])
+    clearImages()
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey &&
+      !event.nativeEvent.isComposing
+    ) {
+      event.preventDefault()
+      handleSubmit()
+    }
   }
 
   const hasContent = input.trim().length > 0 || selectedImages.length > 0
@@ -213,16 +250,7 @@ export function PromptForm({
           value={input}
           onChange={(event) => updateInput(event.target.value)}
           className="min-h-[56px] px-3.5 pt-3 text-sm text-foreground placeholder:text-muted-foreground/80 leading-relaxed"
-          onKeyDown={(event) => {
-            if (
-              event.key === "Enter" &&
-              !event.shiftKey &&
-              !event.nativeEvent.isComposing
-            ) {
-              event.preventDefault()
-              handleSubmit()
-            }
-          }}
+          onKeyDown={handleKeyDown}
         />
 
         <InputGroupAddon align="block-end" className="px-2 pb-1.5 pt-1">

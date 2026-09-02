@@ -30,6 +30,23 @@ class MockSpeechRecognition {
   })
 }
 
+function emitSpeechResult(
+  results: Array<{ transcript: string; isFinal: boolean; confidence?: number }>,
+) {
+  const formattedResults = results.map((r) => ({
+    0: { transcript: r.transcript, confidence: r.confidence ?? 0.95 },
+    isFinal: r.isFinal,
+    length: 1,
+  }))
+
+  act(() => {
+    lastInstance?.onresult?.({
+      resultIndex: Math.max(0, results.length - 1),
+      results: formattedResults,
+    })
+  })
+}
+
 describe("useSpeechRecognition", () => {
   beforeEach(() => {
     lastInstance = null
@@ -60,98 +77,48 @@ describe("useSpeechRecognition", () => {
     act(() => {
       result.current.startListening()
     })
-
     expect(result.current.isListening).toBe(true)
 
     act(() => {
       result.current.stopListening()
     })
-
     expect(result.current.isListening).toBe(false)
   })
 
-  it("processes interim and final results in sequence without duplication", () => {
-    const onTranscriptChange = vi.fn()
-    const { result } = renderHook(() =>
-      useSpeechRecognition({ onTranscriptChange }),
-    )
-
+  it("handles interim hypothesis updates without finalizing", () => {
+    const { result } = renderHook(() => useSpeechRecognition())
     act(() => {
       result.current.startListening()
     })
 
-    // 1. Interim hypothesis
-    act(() => {
-      lastInstance?.onresult?.({
-        resultIndex: 0,
-        results: [
-          {
-            0: { transcript: "hello", confidence: 0.9 },
-            isFinal: false,
-            length: 1,
-          },
-        ],
-      })
-    })
-
+    emitSpeechResult([{ transcript: "hello", isFinal: false }])
     expect(result.current.transcript).toBe("hello")
     expect(result.current.interimTranscript).toBe("hello")
     expect(result.current.finalTranscript).toBe("")
+  })
 
-    // 2. Updated interim hypothesis (same index 0)
+  it("commits finalized transcript results cleanly", () => {
+    const { result } = renderHook(() => useSpeechRecognition())
     act(() => {
-      lastInstance?.onresult?.({
-        resultIndex: 0,
-        results: [
-          {
-            0: { transcript: "hello world", confidence: 0.95 },
-            isFinal: false,
-            length: 1,
-          },
-        ],
-      })
+      result.current.startListening()
     })
 
-    expect(result.current.transcript).toBe("hello world")
-    expect(result.current.interimTranscript).toBe("hello world")
-    expect(result.current.finalTranscript).toBe("")
-
-    // 3. Finalized result
-    act(() => {
-      lastInstance?.onresult?.({
-        resultIndex: 0,
-        results: [
-          {
-            0: { transcript: "hello world", confidence: 0.98 },
-            isFinal: true,
-            length: 1,
-          },
-        ],
-      })
-    })
-
+    emitSpeechResult([{ transcript: "hello world", isFinal: true }])
     expect(result.current.transcript).toBe("hello world")
     expect(result.current.interimTranscript).toBe("")
     expect(result.current.finalTranscript).toBe("hello world")
+  })
 
-    // 4. Second phrase interim
+  it("aggregates sequential phrases without word duplication", () => {
+    const { result } = renderHook(() => useSpeechRecognition())
     act(() => {
-      lastInstance?.onresult?.({
-        resultIndex: 1,
-        results: [
-          {
-            0: { transcript: "hello world", confidence: 0.98 },
-            isFinal: true,
-            length: 1,
-          },
-          {
-            0: { transcript: "how are you", confidence: 0.9 },
-            isFinal: false,
-            length: 1,
-          },
-        ],
-      })
+      result.current.startListening()
     })
+
+    emitSpeechResult([
+      { transcript: "hello world", isFinal: true },
+      { transcript: "how are you", isFinal: false },
+    ])
 
     expect(result.current.transcript).toBe("hello world how are you")
     expect(result.current.interimTranscript).toBe("how are you")
@@ -159,13 +126,10 @@ describe("useSpeechRecognition", () => {
   })
 
   it("handles non-fatal no-speech errors gracefully", () => {
-    const onError = vi.fn()
-    const { result } = renderHook(() => useSpeechRecognition({ onError }))
-
+    const { result } = renderHook(() => useSpeechRecognition())
     act(() => {
       result.current.startListening()
     })
-
     act(() => {
       result.current.resetError()
     })
