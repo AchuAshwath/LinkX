@@ -142,6 +142,9 @@ describe("AIPage component with PostgreSQL backend persistence", () => {
     const Component = Route.options.component as React.ComponentType
     renderWithClient(<Component />)
 
+    // Wait for initial thread to load first
+    await screen.findByText("Rich Markdown & Typography")
+
     const newChatBtns = await screen.findAllByRole("button", {
       name: /new chat/i,
     })
@@ -149,7 +152,7 @@ describe("AIPage component with PostgreSQL backend persistence", () => {
 
     // Should switch to empty New Chat state
     expect(
-      screen.getByText("What would you like to create?"),
+      await screen.findByText("What would you like to create?"),
     ).toBeInTheDocument()
 
     // Clicking a suggestion creates the new chat with that prompt

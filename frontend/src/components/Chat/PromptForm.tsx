@@ -1,20 +1,22 @@
-import { ArrowUp, Check, ChevronDown, Mic, Plus, Square, X } from "lucide-react"
+import { Mic, Plus } from "lucide-react"
 import * as React from "react"
 
 import {
+  type AttachmentImage,
+  AttachmentPreviewStrip,
+} from "@/components/Chat/AttachmentPreviewStrip"
+import {
+  type AIModelOption,
+  ModelSelectorPill,
+} from "@/components/Chat/ModelSelectorPill"
+import { PromptSubmitButton } from "@/components/Chat/PromptSubmitButton"
+import {
   InputGroup,
   InputGroupAddon,
-  InputGroupButton,
   InputGroupTextarea,
 } from "@/components/ui/input-group"
-import { cn } from "@/lib/utils"
 
-export interface AIModelOption {
-  id: string
-  name: string
-  provider?: string | null
-  is_default?: boolean
-}
+export type { AIModelOption }
 
 export interface PromptFormProps {
   onSubmit: (text: string, images?: File[]) => void
@@ -28,157 +30,6 @@ export interface PromptFormProps {
   autoFocus?: boolean
   actions?: React.ReactNode
   className?: string
-}
-
-function AttachmentPreviewStrip({
-  images,
-  onRemove,
-}: {
-  images: { file: File; preview: string }[]
-  onRemove: (index: number) => void
-}) {
-  if (images.length === 0) return null
-
-  return (
-    <div className="flex items-center gap-2 px-3 pt-2.5 overflow-x-auto scrollbar-none">
-      {images.map((img, idx) => (
-        <div
-          key={idx}
-          className="group relative size-14 shrink-0 rounded-xl overflow-hidden border border-border bg-muted/40"
-        >
-          <img
-            src={img.preview}
-            alt="Attachment preview"
-            className="size-full object-cover"
-          />
-          <button
-            type="button"
-            onClick={() => onRemove(idx)}
-            aria-label="Remove image"
-            className="absolute right-1 top-1 flex size-4 items-center justify-center rounded-full bg-background/80 text-foreground hover:bg-destructive hover:text-destructive-foreground transition-colors cursor-pointer"
-          >
-            <X className="size-2.5" />
-          </button>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function ModelSelectorPill({
-  selectedModelId,
-  models,
-  onSelectModel,
-}: {
-  selectedModelId: string
-  models: AIModelOption[]
-  onSelectModel: (m: string) => void
-}) {
-  const [open, setOpen] = React.useState(false)
-
-  const activeModel = models.find((m) => m.id === selectedModelId)
-  const displayLabel = activeModel ? activeModel.name : selectedModelId
-
-  React.useEffect(() => {
-    const handleOutside = () => setOpen(false)
-    if (open) {
-      document.addEventListener("click", handleOutside)
-    }
-    return () => document.removeEventListener("click", handleOutside)
-  }, [open])
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation()
-          setOpen((prev) => !prev)
-        }}
-        className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors cursor-pointer select-none"
-      >
-        <span className="truncate max-w-[140px]">{displayLabel}</span>
-        <ChevronDown className="size-3 text-muted-foreground shrink-0" />
-      </button>
-
-      {open && (
-        <div
-          role="menu"
-          tabIndex={-1}
-          className="absolute bottom-9 right-0 z-50 min-w-44 max-h-60 overflow-y-auto rounded-2xl border border-border bg-popover p-1 shadow-lg animate-in fade-in-0 zoom-in-95"
-        >
-          {models.map((m) => (
-            <button
-              type="button"
-              key={m.id}
-              role="menuitem"
-              onClick={(e) => {
-                e.stopPropagation()
-                onSelectModel(m.id)
-                setOpen(false)
-              }}
-              className="flex w-full items-center justify-between gap-2 rounded-xl px-2.5 py-1.5 text-xs text-popover-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer font-medium text-left"
-            >
-              <div className="flex flex-col min-w-0">
-                <span className="truncate">{m.name}</span>
-                {m.provider && (
-                  <span className="text-[10px] text-muted-foreground">
-                    {m.provider}
-                  </span>
-                )}
-              </div>
-              {selectedModelId === m.id && (
-                <Check className="size-3.5 text-primary shrink-0 stroke-[2.5]" />
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function PromptSubmitButton({
-  isBusy,
-  hasContent,
-  onStop,
-}: {
-  isBusy: boolean
-  hasContent: boolean
-  onStop?: () => void
-}) {
-  if (isBusy) {
-    return (
-      <InputGroupButton
-        type="button"
-        size="icon-sm"
-        variant="outline"
-        aria-label="Stop generating"
-        className="size-8 rounded-full bg-muted border-border text-foreground hover:bg-muted/80 cursor-pointer"
-        onClick={onStop}
-      >
-        <Square className="size-3.5 fill-current" />
-      </InputGroupButton>
-    )
-  }
-
-  return (
-    <InputGroupButton
-      type="submit"
-      size="icon-sm"
-      variant="default"
-      aria-label="Send message"
-      className={cn(
-        "size-8 rounded-full transition-all cursor-pointer",
-        hasContent
-          ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-2xs"
-          : "bg-muted/40 text-muted-foreground/50 opacity-40 cursor-not-allowed",
-      )}
-      disabled={!hasContent}
-    >
-      <ArrowUp className="size-4 stroke-[2.5]" />
-    </InputGroupButton>
-  )
 }
 
 const FALLBACK_MODELS: AIModelOption[] = [
@@ -206,9 +57,9 @@ export function PromptForm({
   const [localModelId, setLocalModelId] = React.useState(
     selectedModelId || "gemini-3.6-flash-high",
   )
-  const [selectedImages, setSelectedImages] = React.useState<
-    { file: File; preview: string }[]
-  >([])
+  const [selectedImages, setSelectedImages] = React.useState<AttachmentImage[]>(
+    [],
+  )
 
   const internalInputRef = React.useRef<HTMLTextAreaElement>(null)
   const effectiveInputRef = inputRef || internalInputRef

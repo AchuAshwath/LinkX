@@ -141,6 +141,18 @@ def _consume_inside_thought(buffer: str) -> tuple[str, bool, str, bool]:
     return _consume_tag_buffer(buffer, CLOSE_THOUGHT_RE, 15, next_in_thought=False)
 
 
+def _process_buffer_step(
+    buffer: str, in_thought: bool
+) -> tuple[str, bool, str, bool, str]:
+    """Process one buffer step. Returns (emitted, is_partial, next_buffer, next_in_thought, event_type)."""
+    event_type = "thought" if in_thought else "text_delta"
+    if not in_thought:
+        emitted, is_partial, next_buf, next_state = _consume_outside_thought(buffer)
+    else:
+        emitted, is_partial, next_buf, next_state = _consume_inside_thought(buffer)
+    return emitted, is_partial, next_buf, next_state, event_type
+
+
 async def _stream_parsed_chunks(
     raw_chunks: AsyncGenerator[str, None],
     *,
@@ -153,22 +165,14 @@ async def _stream_parsed_chunks(
     async for chunk in raw_chunks:
         buffer += chunk
         while buffer:
-            event_type = "thought" if in_thought else "text_delta"
-            if not in_thought:
-                emitted, is_partial, buffer, in_thought = _consume_outside_thought(
-                    buffer
-                )
-            else:
-                emitted, is_partial, buffer, in_thought = _consume_inside_thought(
-                    buffer
-                )
-
+            emitted, is_partial, buffer, in_thought, event_type = _process_buffer_step(
+                buffer, in_thought
+            )
             if emitted:
                 async for ev in _stream_text_smoothly(
                     emitted, event_type=event_type, delay=delay
                 ):
                     yield ev
-
             if is_partial:
                 break
 
@@ -347,6 +351,15 @@ async def default_chat_stream_runner(
     yield ("done", {})
 
 
+def _clean_ai_title_response(raw_text: Any) -> str | None:
+    if not isinstance(raw_text, str):
+        return None
+    cleaned = raw_text.strip().strip("\"'`")
+    cleaned = re.sub(r"^(?:Title:\s*)", "", cleaned, flags=re.IGNORECASE).strip()
+    cleaned = cleaned.rstrip(".:;!?")
+    return cleaned if cleaned and len(cleaned) <= 60 else None
+
+
 async def generate_ai_thread_title(
     *,
     user_prompt: str,
@@ -379,15 +392,7 @@ async def generate_ai_thread_title(
             streaming=False,
         )
         res = await chat_model.ainvoke(messages)
-        raw_text = res.content
-        if isinstance(raw_text, str):
-            cleaned = raw_text.strip().strip("\"'`")
-            cleaned = re.sub(
-                r"^(?:Title:\s*)", "", cleaned, flags=re.IGNORECASE
-            ).strip()
-            cleaned = cleaned.rstrip(".:;!?")
-            if cleaned and len(cleaned) <= 60:
-                return cleaned
+        return _clean_ai_title_response(res.content)
     except Exception:
         pass
     return None
