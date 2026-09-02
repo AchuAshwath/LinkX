@@ -12,28 +12,85 @@ export interface ChatMessageProps {
   isStreaming?: boolean
 }
 
+function UserMessageBubble({ message }: { message: ChatUIMessage }) {
+  const text = message.parts
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
+    .join("")
+
+  return (
+    <Message align="end">
+      <MessageContent>
+        <Bubble align="end" variant="outline">
+          <BubbleContent className="rounded-3xl border border-border bg-background text-foreground font-normal px-5 py-3 leading-relaxed shadow-none">
+            {text}
+          </BubbleContent>
+        </Bubble>
+      </MessageContent>
+    </Message>
+  )
+}
+
+function AssistantPartRenderer({
+  part,
+  index,
+  isStreaming,
+  hasResponseStarted,
+  sources,
+}: {
+  part: ChatUIMessage["parts"][number]
+  index: number
+  isStreaming: boolean
+  hasResponseStarted: boolean
+  sources: SourceUrlPart[]
+}) {
+  switch (part.type) {
+    case "thought":
+      return (
+        <ThoughtPart
+          key={`thought-${index}`}
+          part={part}
+          isStreaming={isStreaming && !hasResponseStarted}
+          hasResponseStarted={hasResponseStarted}
+        />
+      )
+    case "text":
+      return <TextPart key={`text-${index}`} part={part} />
+    case "tool-web_search":
+      return (
+        <WebSearchPart
+          key={part.toolCallId || `search-${index}`}
+          part={part}
+          sources={sources}
+        />
+      )
+    case "tool-call":
+      return (
+        <ToolCallAccordion
+          key={part.toolCallId || `tool-${index}`}
+          toolCalls={[part.tool]}
+        />
+      )
+    case "draft_artifact":
+      return (
+        <DraftArtifactCard
+          key={part.artifact.id || `draft-${index}`}
+          artifact={part.artifact}
+        />
+      )
+    default:
+      return null
+  }
+}
+
 export function ChatMessage({
   message,
   isStreaming = false,
 }: ChatMessageProps) {
   if (message.role === "user") {
-    return (
-      <Message align="end">
-        <MessageContent>
-          <Bubble align="end" variant="outline">
-            <BubbleContent className="rounded-3xl border border-border bg-background text-foreground font-normal px-5 py-3 leading-relaxed shadow-none">
-              {message.parts
-                .filter((part) => part.type === "text")
-                .map((part) => part.text)
-                .join("")}
-            </BubbleContent>
-          </Bubble>
-        </MessageContent>
-      </Message>
-    )
+    return <UserMessageBubble message={message} />
   }
 
-  // Collect any source-url parts to pass into collapsible Web Search
   const sources = message.parts.filter(
     (part): part is SourceUrlPart => part.type === "source-url",
   )
@@ -45,45 +102,16 @@ export function ChatMessage({
   return (
     <Message align="start">
       <MessageContent>
-        {message.parts.map((part, index) => {
-          switch (part.type) {
-            case "thought":
-              return (
-                <ThoughtPart
-                  key={`thought-${index}`}
-                  part={part}
-                  isStreaming={isStreaming && !hasResponseStarted}
-                  hasResponseStarted={hasResponseStarted}
-                />
-              )
-            case "text":
-              return <TextPart key={`text-${index}`} part={part} />
-            case "tool-web_search":
-              return (
-                <WebSearchPart
-                  key={part.toolCallId || `search-${index}`}
-                  part={part}
-                  sources={sources}
-                />
-              )
-            case "tool-call":
-              return (
-                <ToolCallAccordion
-                  key={part.toolCallId || `tool-${index}`}
-                  toolCalls={[part.tool]}
-                />
-              )
-            case "draft_artifact":
-              return (
-                <DraftArtifactCard
-                  key={part.artifact.id || `draft-${index}`}
-                  artifact={part.artifact}
-                />
-              )
-            default:
-              return null
-          }
-        })}
+        {message.parts.map((part, index) => (
+          <AssistantPartRenderer
+            key={index}
+            part={part}
+            index={index}
+            isStreaming={isStreaming}
+            hasResponseStarted={hasResponseStarted}
+            sources={sources}
+          />
+        ))}
       </MessageContent>
     </Message>
   )

@@ -260,30 +260,10 @@ async def _stream_direct_openai_proxy(
                     yield parsed
 
 
-async def stream_raw_chat_completion(
-    *,
-    messages: list[BaseMessage],
-    model: str | None = None,
+async def _stream_fallback_langchain(
+    messages: list[BaseMessage], target_model: str
 ) -> AsyncGenerator[str, None]:
-    """Stream raw text tokens including reasoning/thought tags from proxy or ChatOpenAI model."""
-    target_model = model or settings.AI_MODEL
-    try:
-        formatted_msgs = _format_messages_for_openai(messages)
-        streamed_anything = False
-        async for token in _stream_direct_openai_proxy(
-            messages=formatted_msgs,
-            model_name=target_model,
-            temperature=0.7,
-            max_tokens=2000,
-        ):
-            streamed_anything = True
-            yield token
-        if streamed_anything:
-            return
-    except Exception:
-        pass
-
-    # Fallback to LangChain model client (useful for mocks and custom test runners)
+    """Fallback streaming via LangChain chat model wrapper."""
     chat_model = get_chat_model(
         model=target_model,
         temperature=0.7,
@@ -304,6 +284,33 @@ async def stream_raw_chat_completion(
             combined = "".join(str(c) for c in text if c)
             if combined:
                 yield combined
+
+
+async def stream_raw_chat_completion(
+    *,
+    messages: list[BaseMessage],
+    model: str | None = None,
+) -> AsyncGenerator[str, None]:
+    """Stream raw text tokens including reasoning/thought tags from proxy or ChatOpenAI model."""
+    target_model = model or settings.AI_MODEL
+    try:
+        formatted_msgs = _format_messages_for_openai(messages)
+        streamed = False
+        async for token in _stream_direct_openai_proxy(
+            messages=formatted_msgs,
+            model_name=target_model,
+            temperature=0.7,
+            max_tokens=2000,
+        ):
+            streamed = True
+            yield token
+        if streamed:
+            return
+    except Exception:
+        pass
+
+    async for token in _stream_fallback_langchain(messages, target_model):
+        yield token
 
 
 async def default_chat_stream_runner(

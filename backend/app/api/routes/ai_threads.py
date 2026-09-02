@@ -285,10 +285,9 @@ async def _save_assistant_turn(
     *,
     session: Session,
     thread: ChatThread,
-    user_prompt: str,
+    body: ChatMessageRequest,
     accumulated_text: str,
     assistant_parts: list[dict[str, Any]],
-    model: str | None,
 ) -> None:
     if accumulated_text:
         assistant_parts.append({"type": "text", "text": accumulated_text})
@@ -310,9 +309,9 @@ async def _save_assistant_turn(
     if thread.message_count <= 2:
         try:
             ai_title = await generate_ai_thread_title(
-                user_prompt=user_prompt,
+                user_prompt=body.message,
                 assistant_response=accumulated_text,
-                model=model,
+                model=body.model,
             )
             if ai_title:
                 thread.title = ai_title
@@ -365,10 +364,9 @@ async def chat_stream(
             await _save_assistant_turn(
                 session=session,
                 thread=thread,
-                user_prompt=body.message,
+                body=body,
                 accumulated_text=accumulated_text,
                 assistant_parts=assistant_parts,
-                model=body.model,
             )
 
         except Exception as exc:
