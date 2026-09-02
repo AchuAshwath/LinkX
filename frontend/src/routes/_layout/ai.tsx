@@ -130,6 +130,8 @@ function AIPage() {
     localMessages,
     setLocalMessages,
     pendingQuestion,
+    threadDrafts,
+    setThreadDraft,
     isStreaming,
     stopStream,
     handleSendMessage,
@@ -254,7 +256,10 @@ function AIPage() {
 
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-2 px-4 pb-4 shrink-0">
           <PromptForm
+            key={activeThreadId ?? "new-chat"}
             inputRef={promptInputRef}
+            initialValue={threadDrafts[activeThreadId ?? "new-chat"] ?? ""}
+            onValueChange={(val) => setThreadDraft(activeThreadId, val)}
             placeholder="Ask anything"
             isBusy={isStreaming}
             selectedModelId={selectedModelId}
@@ -262,6 +267,7 @@ function AIPage() {
             onSelectModel={setSelectedModelId}
             onSubmit={handleSendMessage}
             onStop={stopStream}
+            autoFocus
           />
         </div>
       </div>

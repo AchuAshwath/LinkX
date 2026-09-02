@@ -1,7 +1,11 @@
 import { ChevronDown, Loader2 } from "lucide-react"
 import * as React from "react"
+import ReactMarkdown from "react-markdown"
+import remarkBreaks from "remark-breaks"
+import remarkGfm from "remark-gfm"
 
 import type { ThoughtPart as ThoughtPartType } from "@/components/Chat/types"
+import { completeStreamingMarkdown } from "@/lib/markdown-stream"
 import { cn } from "@/lib/utils"
 
 export interface ThoughtPartProps {
@@ -30,9 +34,12 @@ function ThoughtContent({ content }: { content?: string }) {
       </span>
     )
   }
+  const formattedContent = completeStreamingMarkdown(content)
   return (
-    <div className="text-xs text-muted-foreground/80 font-normal leading-relaxed whitespace-pre-wrap">
-      {content}
+    <div className="text-xs text-muted-foreground/80 font-normal leading-relaxed [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:my-0.5 [&_code]:bg-muted/60 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_strong]:font-medium [&_strong]:text-foreground/90">
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+        {formattedContent}
+      </ReactMarkdown>
     </div>
   )
 }

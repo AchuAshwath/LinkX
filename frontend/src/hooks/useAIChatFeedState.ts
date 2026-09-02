@@ -38,12 +38,20 @@ function updateAssistantPart(
   return messages.map((msg) => {
     if (msg.id !== assistantMsgId) return msg
     const parts = [...msg.parts]
-    const lastPart = parts[parts.length - 1]
+    const lastIndex = parts.length - 1
+    const lastPart = parts[lastIndex]
+
     if (lastPart && lastPart.type === partType) {
       if (lastPart.type === "thought") {
-        lastPart.content += delta
+        parts[lastIndex] = {
+          ...lastPart,
+          content: (lastPart.content || "") + delta,
+        }
       } else {
-        lastPart.text += delta
+        parts[lastIndex] = {
+          ...lastPart,
+          text: (lastPart.text || "") + delta,
+        }
       }
     } else if (partType === "thought") {
       parts.push({ type: "thought", content: delta })
@@ -52,6 +60,33 @@ function updateAssistantPart(
     }
     return { ...msg, parts }
   })
+}
+
+function syncThreadMessages({
+  activeThreadId,
+  transcriptMessages,
+  threadChanged,
+  setLocalMessages,
+}: {
+  activeThreadId: string | null
+  transcriptMessages: ChatUIMessage[] | null
+  threadChanged: boolean
+  setLocalMessages: React.Dispatch<React.SetStateAction<ChatUIMessage[]>>
+}) {
+  if (!activeThreadId) {
+    setLocalMessages([])
+    return
+  }
+  if (!transcriptMessages) return
+
+  if (threadChanged) {
+    setLocalMessages(transcriptMessages)
+    return
+  }
+
+  setLocalMessages((current) =>
+    transcriptMessages.length >= current.length ? transcriptMessages : current,
+  )
 }
 
 function useThreadTranscript({
@@ -63,22 +98,29 @@ function useThreadTranscript({
   isStreaming: boolean
   setLocalMessages: React.Dispatch<React.SetStateAction<ChatUIMessage[]>>
 }) {
+  const previousThreadIdRef = React.useRef<string | null>(null)
   const { data: activeThreadDetail } = useQuery({
     queryKey: ["ai-thread", activeThreadId],
     queryFn: () => AiThreadsService.getChatThread({ id: activeThreadId! }),
-    enabled: !!activeThreadId,
+    enabled: Boolean(activeThreadId),
   })
 
   React.useEffect(() => {
     if (isStreaming) return
-    if (activeThreadId && activeThreadDetail?.transcript) {
-      const msgs =
-        (activeThreadDetail.transcript as { messages?: ChatUIMessage[] })
-          ?.messages || []
-      setLocalMessages(msgs)
-    } else if (!activeThreadId) {
-      setLocalMessages([])
-    }
+
+    const threadChanged = previousThreadIdRef.current !== activeThreadId
+    previousThreadIdRef.current = activeThreadId
+
+    const transcriptMessages =
+      (activeThreadDetail?.transcript as { messages?: ChatUIMessage[] })
+        ?.messages || null
+
+    syncThreadMessages({
+      activeThreadId,
+      transcriptMessages,
+      threadChanged,
+      setLocalMessages,
+    })
   }, [activeThreadDetail, isStreaming, activeThreadId, setLocalMessages])
 }
 
@@ -98,6 +140,9 @@ export function useAIChatFeedState({
   const [localMessages, setLocalMessages] = React.useState<ChatUIMessage[]>([])
   const [pendingQuestion, setPendingQuestion] =
     React.useState<AskUserToolPart | null>(null)
+  const [threadDrafts, setThreadDrafts] = React.useState<
+    Record<string, string>
+  >({})
   const initialLoadedRef = React.useRef(false)
 
   React.useEffect(() => {
@@ -108,6 +153,24 @@ export function useAIChatFeedState({
   }, [threads])
 
   useThreadTranscript({ activeThreadId, isStreaming, setLocalMessages })
+
+  const setThreadDraft = React.useCallback(
+    (threadId: string | null, text: string) => {
+      const key = threadId ?? "new-chat"
+      setThreadDrafts((prev) => ({ ...prev, [key]: text }))
+    },
+    [],
+  )
+
+  const clearThreadDraft = React.useCallback((threadId: string | null) => {
+    const key = threadId ?? "new-chat"
+    setThreadDrafts((prev) => {
+      if (!(key in prev)) return prev
+      const copy = { ...prev }
+      delete copy[key]
+      return copy
+    })
+  }, [])
 
   const createThreadMutation = useMutation({
     mutationFn: (prompt?: string) =>
@@ -124,6 +187,7 @@ export function useAIChatFeedState({
     (text: string) => {
       if (!text.trim() || isStreaming) return
 
+      clearThreadDraft(activeThreadId)
       const { userMsg, assistantMsg } = createMessageTurn(text)
       setLocalMessages((prev) => [...prev, userMsg, assistantMsg])
       setPendingQuestion(null)
@@ -169,6 +233,7 @@ export function useAIChatFeedState({
     },
     [
       activeThreadId,
+      clearThreadDraft,
       isStreaming,
       createThreadMutation,
       selectedModelId,
@@ -203,6 +268,9 @@ export function useAIChatFeedState({
     localMessages,
     setLocalMessages,
     pendingQuestion,
+    threadDrafts,
+    setThreadDraft,
+    clearThreadDraft,
     isStreaming,
     stopStream,
     handleSendMessage,

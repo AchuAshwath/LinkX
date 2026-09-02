@@ -48,15 +48,35 @@ def _extract_text_from_parts(parts: list[dict[str, Any]]) -> str:
     return "\n".join(text_chunks).strip()
 
 
+def _extract_thought_from_parts(parts: list[dict[str, Any]]) -> str:
+    """Extract concatenated thought content from message parts."""
+    thoughts = [
+        str(part.get("content", ""))
+        for part in parts
+        if part.get("type") == "thought" and part.get("content")
+    ]
+    return "\n".join(thoughts).strip()
+
+
+def _build_assistant_history_content(thought: str, text: str) -> str:
+    if thought and text:
+        return f"<thought>{thought}</thought>\n\n{text}"
+    if thought:
+        return f"<thought>{thought}</thought>"
+    return text
+
+
 def _convert_transcript_item(item: dict[str, Any]) -> BaseMessage | None:
     role = item.get("role")
-    text = _extract_text_from_parts(item.get("parts", []))
-    if not text:
+    parts = item.get("parts", [])
+    text = _extract_text_from_parts(parts)
+    thought = _extract_thought_from_parts(parts)
+    if not text and not thought:
         return None
     if role == "user":
         return HumanMessage(content=text)
     if role == "assistant":
-        return AIMessage(content=text)
+        return AIMessage(content=_build_assistant_history_content(thought, text))
     return None
 
 
@@ -100,7 +120,7 @@ async def default_chat_stream_runner(
     *,
     message: str,
     transcript: dict[str, Any] | None = None,
-    smooth_delay: float = 0.015,
+    smooth_delay: float = 0.0,
     model: str | None = None,
 ) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
     """Stream AI chat conversation tokens and thinking thoughts word-by-word."""

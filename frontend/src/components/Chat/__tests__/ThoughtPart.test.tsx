@@ -42,4 +42,21 @@ describe("ThoughtPart component", () => {
       screen.queryByText(/Selected LinkedIn hook pattern/),
     ).not.toBeInTheDocument()
   })
+
+  it("renders markdown formatting inside expanded thought content", () => {
+    const { container } = render(
+      <ThoughtPart
+        part={{
+          type: "thought",
+          content: "Here is **critical reasoning** step.",
+        }}
+        isStreaming={true}
+        hasResponseStarted={false}
+      />,
+    )
+
+    const strongEl = container.querySelector("strong")
+    expect(strongEl).toBeDefined()
+    expect(strongEl?.textContent).toBe("critical reasoning")
+  })
 })
