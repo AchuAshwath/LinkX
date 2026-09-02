@@ -37,6 +37,17 @@ function ThoughtContent({ content }: { content?: string }) {
   )
 }
 
+function shouldRenderThought(
+  hasContent: boolean,
+  isStreaming: boolean,
+  hasResponseStarted: boolean,
+): boolean {
+  if (hasContent) {
+    return true
+  }
+  return isStreaming && !hasResponseStarted
+}
+
 export function ThoughtPart({
   part,
   isStreaming = false,
@@ -54,7 +65,7 @@ export function ThoughtPart({
   )
   const hasContent = Boolean(part.content?.trim())
 
-  if (!hasContent && (!isStreaming || hasResponseStarted)) {
+  if (!shouldRenderThought(hasContent, isStreaming, hasResponseStarted)) {
     return null
   }
 

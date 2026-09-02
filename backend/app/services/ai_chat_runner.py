@@ -108,34 +108,37 @@ async def _stream_text_smoothly(
             await asyncio.sleep(delay)
 
 
-def _consume_outside_thought(buffer: str) -> tuple[str, bool, str, bool]:
-    """Parse text outside <thought> tags. Returns (emitted_text, is_partial, remaining_buffer, next_in_thought)."""
-    m_open = OPEN_THOUGHT_RE.search(buffer)
-    if m_open:
-        emitted = buffer[: m_open.start()]
-        return emitted, False, buffer[m_open.end() :], True
+def _consume_tag_buffer(
+    buffer: str,
+    tag_regex: re.Pattern[str],
+    max_partial_len: int,
+    *,
+    next_in_thought: bool,
+) -> tuple[str, bool, str, bool]:
+    """Parse text against tag pattern with partial lookahead. Returns (emitted, is_partial, remainder, in_thought)."""
+    m = tag_regex.search(buffer)
+    if m:
+        emitted = buffer[: m.start()]
+        remainder = buffer[m.end() :]
+        if not next_in_thought:
+            remainder = remainder.lstrip("\n")
+        return emitted, False, remainder, next_in_thought
 
     last_lt = buffer.rfind("<")
-    if last_lt != -1 and len(buffer) - last_lt < 12:
-        safe = buffer[:last_lt]
-        return safe, True, buffer[last_lt:], False
+    if last_lt != -1 and len(buffer) - last_lt < max_partial_len:
+        return buffer[:last_lt], True, buffer[last_lt:], not next_in_thought
 
-    return buffer, False, "", False
+    return buffer, False, "", not next_in_thought
+
+
+def _consume_outside_thought(buffer: str) -> tuple[str, bool, str, bool]:
+    """Parse text outside <thought> tags."""
+    return _consume_tag_buffer(buffer, OPEN_THOUGHT_RE, 12, next_in_thought=True)
 
 
 def _consume_inside_thought(buffer: str) -> tuple[str, bool, str, bool]:
-    """Parse text inside <thought> tags. Returns (emitted_text, is_partial, remaining_buffer, next_in_thought)."""
-    m_close = CLOSE_THOUGHT_RE.search(buffer)
-    if m_close:
-        emitted = buffer[: m_close.start()]
-        return emitted, False, buffer[m_close.end() :].lstrip("\n"), False
-
-    last_lt = buffer.rfind("<")
-    if last_lt != -1 and len(buffer) - last_lt < 15:
-        safe = buffer[:last_lt]
-        return safe, True, buffer[last_lt:], True
-
-    return buffer, False, "", True
+    """Parse text inside <thought> tags."""
+    return _consume_tag_buffer(buffer, CLOSE_THOUGHT_RE, 15, next_in_thought=False)
 
 
 async def _stream_parsed_chunks(

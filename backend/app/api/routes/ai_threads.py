@@ -58,6 +58,46 @@ def _get_owned_thread(
     return thread
 
 
+def _handle_thought_part(
+    payload: dict[str, Any], assistant_parts: list[dict[str, Any]]
+) -> None:
+    thought_content = str(payload.get("content", ""))
+    if assistant_parts and assistant_parts[-1].get("type") == "thought":
+        assistant_parts[-1]["content"] += thought_content
+    else:
+        assistant_parts.append({"type": "thought", "content": thought_content})
+
+
+def _handle_tool_part(
+    event_name: str,
+    payload: dict[str, Any],
+    assistant_parts: list[dict[str, Any]],
+) -> None:
+    part: dict[str, Any] = {
+        "type": "tool_call",
+        "name": payload.get("name"),
+        "state": "running" if event_name == "tool_start" else "completed",
+    }
+    if "input" in payload:
+        part["input"] = payload["input"]
+    if "output" in payload:
+        part["output"] = payload["output"]
+    assistant_parts.append(part)
+
+
+def _handle_draft_part(
+    payload: dict[str, Any], assistant_parts: list[dict[str, Any]]
+) -> None:
+    assistant_parts.append(
+        {
+            "type": "draft_artifact",
+            "post_id": payload.get("post_id"),
+            "content": payload.get("content"),
+            "platform": payload.get("platform"),
+        }
+    )
+
+
 def _collect_stream_part(
     *,
     event_name: str,
@@ -65,35 +105,14 @@ def _collect_stream_part(
     assistant_parts: list[dict[str, Any]],
 ) -> str:
     """Append structured message parts and return text delta if present."""
-    if event_name == "thought":
-        thought_content = str(payload.get("content", ""))
-        if assistant_parts and assistant_parts[-1].get("type") == "thought":
-            assistant_parts[-1]["content"] += thought_content
-        else:
-            assistant_parts.append({"type": "thought", "content": thought_content})
-    elif event_name == "text_delta":
+    if event_name == "text_delta":
         return str(payload.get("content", ""))
+    if event_name == "thought":
+        _handle_thought_part(payload, assistant_parts)
     elif event_name in {"tool_start", "tool_output"}:
-        state = "running" if event_name == "tool_start" else "completed"
-        part: dict[str, Any] = {
-            "type": "tool_call",
-            "name": payload.get("name"),
-            "state": state,
-        }
-        if "input" in payload:
-            part["input"] = payload["input"]
-        if "output" in payload:
-            part["output"] = payload["output"]
-        assistant_parts.append(part)
+        _handle_tool_part(event_name, payload, assistant_parts)
     elif event_name == "draft_artifact":
-        assistant_parts.append(
-            {
-                "type": "draft_artifact",
-                "post_id": payload.get("post_id"),
-                "content": payload.get("content"),
-                "platform": payload.get("platform"),
-            }
-        )
+        _handle_draft_part(payload, assistant_parts)
     return ""
 
 
