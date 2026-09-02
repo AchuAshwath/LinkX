@@ -1,4 +1,3 @@
-import asyncio
 import json
 import re
 from collections.abc import AsyncGenerator
@@ -14,6 +13,22 @@ from langchain_core.messages import (
 
 from app.core.config import settings
 from app.services.agentic.client import get_chat_model
+from app.services.ai_stream_parser import (
+    consume_inside_thought,
+    consume_outside_thought,
+    consume_tag_buffer,
+    process_buffer_step,
+    stream_parsed_chunks,
+    stream_text_smoothly,
+)
+
+# Backwards compatibility aliases for tests and internal callers
+_stream_text_smoothly = stream_text_smoothly
+_consume_tag_buffer = consume_tag_buffer
+_consume_outside_thought = consume_outside_thought
+_consume_inside_thought = consume_inside_thought
+_process_buffer_step = process_buffer_step
+_stream_parsed_chunks = stream_parsed_chunks
 
 LINKX_SYSTEM_PROMPT = """You are LinkX Copilot — an expert social media strategist, copywriter, and viral growth advisor.
 You help users craft high-performing, engaging posts for LinkedIn, X (Twitter), and cross-platform growth.
@@ -31,11 +46,6 @@ Guidelines:
 - Format responses cleanly with Markdown, clear paragraph breaks, and bullet points where helpful.
 - Respect platform constraints (X: 280 chars or 25,000 for Premium; LinkedIn: up to 3,000 chars).
 """
-
-OPEN_THOUGHT_RE = re.compile(
-    r"<(?:thought|thinking|think)(?:>|[\s\n\r>])", re.IGNORECASE
-)
-CLOSE_THOUGHT_RE = re.compile(r"</(?:thought|thinking|think)>?", re.IGNORECASE)
 
 
 def format_sse(*, event: str, data: dict[str, Any]) -> str:
@@ -99,96 +109,6 @@ def _build_message_history(
         converted = converted[-max_history_messages:]
 
     return [SystemMessage(content=LINKX_SYSTEM_PROMPT), *converted]
-
-
-async def _stream_text_smoothly(
-    text: str,
-    *,
-    event_type: str = "text_delta",
-    delay: float = 0.015,
-) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
-    """Yield deltas smoothly word-by-word preserving whitespace and formatting."""
-    tokens = re.findall(r"\S+\s*|\s+", text) or ([text] if text else [])
-    for token in tokens:
-        yield (event_type, {"content": token})
-        if delay > 0:
-            await asyncio.sleep(delay)
-
-
-def _consume_tag_buffer(
-    buffer: str,
-    tag_regex: re.Pattern[str],
-    max_partial_len: int,
-    *,
-    next_in_thought: bool,
-) -> tuple[str, bool, str, bool]:
-    """Parse text against tag pattern with partial lookahead. Returns (emitted, is_partial, remainder, in_thought)."""
-    m = tag_regex.search(buffer)
-    if m:
-        emitted = buffer[: m.start()]
-        remainder = buffer[m.end() :]
-        if not next_in_thought:
-            remainder = remainder.lstrip("\n")
-        return emitted, False, remainder, next_in_thought
-
-    last_lt = buffer.rfind("<")
-    if last_lt != -1 and len(buffer) - last_lt < max_partial_len:
-        return buffer[:last_lt], True, buffer[last_lt:], not next_in_thought
-
-    return buffer, False, "", not next_in_thought
-
-
-def _consume_outside_thought(buffer: str) -> tuple[str, bool, str, bool]:
-    """Parse text outside <thought> tags."""
-    return _consume_tag_buffer(buffer, OPEN_THOUGHT_RE, 12, next_in_thought=True)
-
-
-def _consume_inside_thought(buffer: str) -> tuple[str, bool, str, bool]:
-    """Parse text inside <thought> tags."""
-    return _consume_tag_buffer(buffer, CLOSE_THOUGHT_RE, 15, next_in_thought=False)
-
-
-def _process_buffer_step(
-    buffer: str, in_thought: bool
-) -> tuple[str, bool, str, bool, str]:
-    """Process one buffer step. Returns (emitted, is_partial, next_buffer, next_in_thought, event_type)."""
-    event_type = "thought" if in_thought else "text_delta"
-    if not in_thought:
-        emitted, is_partial, next_buf, next_state = _consume_outside_thought(buffer)
-    else:
-        emitted, is_partial, next_buf, next_state = _consume_inside_thought(buffer)
-    return emitted, is_partial, next_buf, next_state, event_type
-
-
-async def _stream_parsed_chunks(
-    raw_chunks: AsyncGenerator[str, None],
-    *,
-    delay: float = 0.015,
-) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
-    """Parse streaming raw LLM tokens for <thought> tags and route to thought or text_delta events."""
-    in_thought = False
-    buffer = ""
-
-    async for chunk in raw_chunks:
-        buffer += chunk
-        while buffer:
-            emitted, is_partial, buffer, in_thought, event_type = _process_buffer_step(
-                buffer, in_thought
-            )
-            if emitted:
-                async for ev in _stream_text_smoothly(
-                    emitted, event_type=event_type, delay=delay
-                ):
-                    yield ev
-            if is_partial:
-                break
-
-    if buffer:
-        final_event = "thought" if in_thought else "text_delta"
-        async for ev in _stream_text_smoothly(
-            buffer, event_type=final_event, delay=delay
-        ):
-            yield ev
 
 
 def _format_messages_for_openai(
@@ -346,7 +266,7 @@ async def default_chat_stream_runner(
     )
 
     try:
-        async for event in _stream_parsed_chunks(
+        async for event in stream_parsed_chunks(
             stream_raw_chat_completion(messages=messages, model=model),
             delay=smooth_delay,
         ):

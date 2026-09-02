@@ -8,6 +8,52 @@ import type {
 } from "@/components/Chat/types"
 import { useAIChatStream } from "@/hooks/useAIChatStream"
 
+function createMessageTurn(text: string): {
+  userMsg: ChatUIMessage
+  assistantMsg: ChatUIMessage
+} {
+  const userMsg: ChatUIMessage = {
+    id: `local-user-${Date.now()}`,
+    role: "user",
+    parts: [{ type: "text", text: text.trim() }],
+    createdAt: new Date().toISOString(),
+  }
+
+  const assistantMsg: ChatUIMessage = {
+    id: `local-assistant-${Date.now()}`,
+    role: "assistant",
+    parts: [],
+    createdAt: new Date().toISOString(),
+  }
+
+  return { userMsg, assistantMsg }
+}
+
+function updateAssistantPart(
+  messages: ChatUIMessage[],
+  assistantMsgId: string,
+  partType: "thought" | "text",
+  delta: string,
+): ChatUIMessage[] {
+  return messages.map((msg) => {
+    if (msg.id !== assistantMsgId) return msg
+    const parts = [...msg.parts]
+    const lastPart = parts[parts.length - 1]
+    if (lastPart && lastPart.type === partType) {
+      if (lastPart.type === "thought") {
+        lastPart.content += delta
+      } else {
+        lastPart.text += delta
+      }
+    } else if (partType === "thought") {
+      parts.push({ type: "thought", content: delta })
+    } else {
+      parts.push({ type: "text", text: delta })
+    }
+    return { ...msg, parts }
+  })
+}
+
 export function useAIChatFeedState({
   threads,
   selectedModelId,
@@ -67,21 +113,7 @@ export function useAIChatFeedState({
     (text: string) => {
       if (!text.trim() || isStreaming) return
 
-      const userMsg: ChatUIMessage = {
-        id: `local-user-${Date.now()}`,
-        role: "user",
-        parts: [{ type: "text", text: text.trim() }],
-        createdAt: new Date().toISOString(),
-      }
-
-      const assistantMsgId = `local-assistant-${Date.now()}`
-      const assistantMsg: ChatUIMessage = {
-        id: assistantMsgId,
-        role: "assistant",
-        parts: [],
-        createdAt: new Date().toISOString(),
-      }
-
+      const { userMsg, assistantMsg } = createMessageTurn(text)
       setLocalMessages((prev) => [...prev, userMsg, assistantMsg])
       setPendingQuestion(null)
 
@@ -103,36 +135,14 @@ export function useAIChatFeedState({
           targetThreadId,
           text.trim(),
           {
-            onThought: (content) => {
+            onThought: (content) =>
               setLocalMessages((prev) =>
-                prev.map((msg) => {
-                  if (msg.id !== assistantMsgId) return msg
-                  const parts = [...msg.parts]
-                  const lastPart = parts[parts.length - 1]
-                  if (lastPart && lastPart.type === "thought") {
-                    lastPart.content += content
-                  } else {
-                    parts.push({ type: "thought", content })
-                  }
-                  return { ...msg, parts }
-                }),
-              )
-            },
-            onTextDelta: (delta) => {
+                updateAssistantPart(prev, assistantMsg.id, "thought", content),
+              ),
+            onTextDelta: (delta) =>
               setLocalMessages((prev) =>
-                prev.map((msg) => {
-                  if (msg.id !== assistantMsgId) return msg
-                  const parts = [...msg.parts]
-                  const lastPart = parts[parts.length - 1]
-                  if (lastPart && lastPart.type === "text") {
-                    lastPart.text += delta
-                  } else {
-                    parts.push({ type: "text", text: delta })
-                  }
-                  return { ...msg, parts }
-                }),
-              )
-            },
+                updateAssistantPart(prev, assistantMsg.id, "text", delta),
+              ),
             onDone: () => {
               queryClient.invalidateQueries({ queryKey: ["ai-threads"] })
               queryClient.invalidateQueries({
