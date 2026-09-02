@@ -62,6 +62,48 @@ def parse_sse_line(line: str) -> str | None:
     return None
 
 
+def _build_proxy_headers() -> dict[str, str]:
+    api_key = (
+        settings.OPENAI_API_COMPATIBLE_API_KEY or settings.AI_API_KEY or "dummy-key"
+    )
+    return {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+
+def _build_proxy_payload(
+    messages: list[dict[str, str]],
+    model_name: str,
+    temperature: float,
+    max_tokens: int,
+) -> dict[str, Any]:
+    return {
+        "model": model_name.removeprefix("openai/"),
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": True,
+    }
+
+
+async def _check_proxy_response_status(response: httpx.Response) -> None:
+    if response.status_code != 200:
+        err_body = await response.aread()
+        raise RuntimeError(
+            f"Proxy HTTP {response.status_code}: {err_body.decode('utf-8', errors='ignore')}"
+        )
+
+
+async def _iterate_proxy_lines(
+    response: httpx.Response,
+) -> AsyncGenerator[str, None]:
+    async for line in response.aiter_lines():
+        parsed = parse_sse_line(line)
+        if parsed:
+            yield parsed
+
+
 async def stream_direct_openai_proxy(
     *,
     messages: list[dict[str, str]],
@@ -70,20 +112,13 @@ async def stream_direct_openai_proxy(
     max_tokens: int = 2000,
 ) -> AsyncGenerator[str, None]:
     """Stream raw tokens and thinking tags directly from OpenAI-compatible proxy."""
-    api_key = (
-        settings.OPENAI_API_COMPATIBLE_API_KEY or settings.AI_API_KEY or "dummy-key"
+    headers = _build_proxy_headers()
+    payload = _build_proxy_payload(
+        messages=messages,
+        model_name=model_name,
+        temperature=temperature,
+        max_tokens=max_tokens,
     )
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": model_name.removeprefix("openai/"),
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-        "stream": True,
-    }
     async with httpx.AsyncClient(timeout=45.0) as client:
         async with client.stream(
             "POST",
@@ -91,16 +126,9 @@ async def stream_direct_openai_proxy(
             headers=headers,
             json=payload,
         ) as response:
-            if response.status_code != 200:
-                err_body = await response.aread()
-                raise RuntimeError(
-                    f"Proxy HTTP {response.status_code}: {err_body.decode('utf-8', errors='ignore')}"
-                )
-
-            async for line in response.aiter_lines():
-                parsed = parse_sse_line(line)
-                if parsed:
-                    yield parsed
+            await _check_proxy_response_status(response)
+            async for token in _iterate_proxy_lines(response):
+                yield token
 
 
 def extract_langchain_chunk_text(chunk: Any) -> str | None:
@@ -138,6 +166,19 @@ async def stream_fallback_langchain(
             yield text
 
 
+async def _try_stream_proxy(
+    messages: list[BaseMessage], target_model: str
+) -> AsyncGenerator[str, None]:
+    formatted_msgs = format_messages_for_openai(messages)
+    async for token in stream_direct_openai_proxy(
+        messages=formatted_msgs,
+        model_name=target_model,
+        temperature=0.7,
+        max_tokens=2000,
+    ):
+        yield token
+
+
 async def stream_raw_chat_completion(
     *,
     messages: list[BaseMessage],
@@ -146,14 +187,8 @@ async def stream_raw_chat_completion(
     """Stream raw text tokens including reasoning/thought tags from proxy or ChatOpenAI model."""
     target_model = model or settings.AI_MODEL
     try:
-        formatted_msgs = format_messages_for_openai(messages)
         streamed = False
-        async for token in stream_direct_openai_proxy(
-            messages=formatted_msgs,
-            model_name=target_model,
-            temperature=0.7,
-            max_tokens=2000,
-        ):
+        async for token in _try_stream_proxy(messages, target_model):
             streamed = True
             yield token
         if streamed:
