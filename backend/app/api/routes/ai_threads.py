@@ -281,6 +281,47 @@ def delete_chat_thread(
     return Message(message="Chat thread deleted successfully")
 
 
+async def _save_assistant_turn(
+    *,
+    session: Session,
+    thread: ChatThread,
+    user_prompt: str,
+    accumulated_text: str,
+    assistant_parts: list[dict[str, Any]],
+    model: str | None,
+) -> None:
+    if accumulated_text:
+        assistant_parts.append({"type": "text", "text": accumulated_text})
+    if not assistant_parts:
+        return
+
+    assistant_msg = {
+        "id": f"msg_{uuid.uuid4().hex[:12]}",
+        "role": "assistant",
+        "parts": assistant_parts,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    crud.append_message_to_transcript(
+        session=session,
+        db_thread=thread,
+        message=assistant_msg,
+    )
+
+    if thread.message_count <= 2:
+        try:
+            ai_title = await generate_ai_thread_title(
+                user_prompt=user_prompt,
+                assistant_response=accumulated_text,
+                model=model,
+            )
+            if ai_title:
+                thread.title = ai_title
+                session.add(thread)
+                session.commit()
+        except Exception:
+            pass
+
+
 @router.post("/{id}/chat")
 async def chat_stream(
     *,
@@ -292,7 +333,6 @@ async def chat_stream(
     """Server-Sent Events streaming endpoint for AI conversation."""
     thread = _get_owned_thread(session=session, current_user=current_user, thread_id=id)
 
-    # 1. Append incoming user message to transcript immediately
     user_msg = {
         "id": f"msg_{uuid.uuid4().hex[:12]}",
         "role": "user",
@@ -322,36 +362,14 @@ async def chat_stream(
                 accumulated_text += delta
                 yield format_sse(event=event_name, data=payload)
 
-            if accumulated_text:
-                assistant_parts.append({"type": "text", "text": accumulated_text})
-
-            if assistant_parts:
-                assistant_msg = {
-                    "id": f"msg_{uuid.uuid4().hex[:12]}",
-                    "role": "assistant",
-                    "parts": assistant_parts,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                }
-                crud.append_message_to_transcript(
-                    session=session,
-                    db_thread=thread,
-                    message=assistant_msg,
-                )
-
-                # Generate high-quality AI title on the first conversation turn
-                if thread.message_count <= 2:
-                    try:
-                        ai_title = await generate_ai_thread_title(
-                            user_prompt=body.message,
-                            assistant_response=accumulated_text,
-                            model=body.model,
-                        )
-                        if ai_title:
-                            thread.title = ai_title
-                            session.add(thread)
-                            session.commit()
-                    except Exception:
-                        pass
+            await _save_assistant_turn(
+                session=session,
+                thread=thread,
+                user_prompt=body.message,
+                accumulated_text=accumulated_text,
+                assistant_parts=assistant_parts,
+                model=body.model,
+            )
 
         except Exception as exc:
             yield format_sse(event="error", data={"message": str(exc)})

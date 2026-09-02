@@ -194,6 +194,31 @@ def _format_messages_for_openai(
     return formatted
 
 
+def _extract_chunk_content(delta: dict[str, Any]) -> str | None:
+    reasoning = (
+        delta.get("reasoning_content") or delta.get("reasoning") or delta.get("thought")
+    )
+    if isinstance(reasoning, str) and reasoning:
+        return f"<thought>{reasoning}</thought>"
+    content = delta.get("content")
+    if isinstance(content, str) and content:
+        return content
+    return None
+
+
+def _parse_sse_line(line: str) -> str | None:
+    if not line.startswith("data: ") or line == "data: [DONE]":
+        return None
+    try:
+        data = json.loads(line[6:])
+        choices = data.get("choices", [])
+        if choices:
+            return _extract_chunk_content(choices[0].get("delta", {}))
+    except Exception:
+        pass
+    return None
+
+
 async def _stream_direct_openai_proxy(
     *,
     messages: list[dict[str, str]],
@@ -230,23 +255,9 @@ async def _stream_direct_openai_proxy(
                 )
 
             async for line in response.aiter_lines():
-                if not line.startswith("data: ") or line == "data: [DONE]":
-                    continue
-                try:
-                    data = json.loads(line[6:])
-                    delta = data.get("choices", [{}])[0].get("delta", {})
-                    reasoning = (
-                        delta.get("reasoning_content")
-                        or delta.get("reasoning")
-                        or delta.get("thought")
-                    )
-                    content = delta.get("content")
-                    if reasoning and isinstance(reasoning, str):
-                        yield f"<thought>{reasoning}</thought>"
-                    if content and isinstance(content, str):
-                        yield content
-                except Exception:
-                    continue
+                parsed = _parse_sse_line(line)
+                if parsed:
+                    yield parsed
 
 
 async def stream_raw_chat_completion(
