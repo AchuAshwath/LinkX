@@ -120,7 +120,7 @@ class Settings(BaseSettings):
     OPENAI_API_COMPATIBLE_BASE_URL: str = "http://127.0.0.1:8317/v1"
     AI_API_KEY: str | None = None
     AI_API_BASE: str = "http://127.0.0.1:8317/v1"
-    AI_MODEL: str = "openai/gemini-3.7-flash-high"
+    AI_MODEL: str = "openai/gemini-3.6-flash-high"
     VISION_AI_MODEL: str = "openai/gemini-3-flash"
 
     def _check_default_secret(self, var_name: str, value: str | None) -> None:

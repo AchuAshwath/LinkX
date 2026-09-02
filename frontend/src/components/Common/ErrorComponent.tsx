@@ -1,7 +1,10 @@
+import type { ErrorComponentProps } from "@tanstack/react-router"
 import { Link } from "@tanstack/react-router"
 import { Button } from "@/components/ui/button"
 
-const ErrorComponent = () => {
+const ErrorComponent = ({
+  error,
+}: Partial<ErrorComponentProps> & { error?: Error }) => {
   return (
     <div
       className="flex min-h-screen items-center justify-center flex-col p-4"
@@ -17,8 +20,13 @@ const ErrorComponent = () => {
       </div>
 
       <p className="text-lg text-muted-foreground mb-4 text-center z-10">
-        Something went wrong. Please try again.
+        {error?.message || "Something went wrong. Please try again."}
       </p>
+      {error?.stack && (
+        <pre className="max-w-2xl text-xs bg-muted/50 p-4 rounded-xl text-left overflow-auto mb-4 border text-destructive">
+          {error.stack}
+        </pre>
+      )}
       <Link to="/home">
         <Button>Go Home</Button>
       </Link>

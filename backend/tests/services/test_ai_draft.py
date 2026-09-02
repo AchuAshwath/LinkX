@@ -23,6 +23,9 @@ def test_resolve_ai_credentials_when_key_is_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "OPENAI_API_COMPATIBLE_API_KEY", None)
+    monkeypatch.setattr(settings, "AI_API_KEY", None)
+    monkeypatch.delenv("OPENAI_API_COMPATIBLE_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setattr(
         settings, "OPENAI_API_COMPATIBLE_BASE_URL", "http://127.0.0.1:8317/v1"
     )

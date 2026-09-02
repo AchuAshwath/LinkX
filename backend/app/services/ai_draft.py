@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any
 
@@ -12,23 +13,63 @@ Generate an engaging, high-converting social media post based on the user's inpu
 Do not include metadata, quotes around the entire post, or explanations. Only return the final post content."""
 
 
-def _generate_fallback_template(*, prompt: str, platform: str) -> str:
+def _extract_clean_topic(prompt: str) -> str:
+    """Extract clean subject topic from prompt, removing refinement instructions and headers."""
     cleaned = prompt.strip()
-    topic = cleaned if cleaned else "building modern software with AI and automation"
+    if not cleaned:
+        return "modern technology and AI automation"
 
-    if platform.lower() == "x":
+    if "Original Post:" in cleaned:
+        cleaned = cleaned.split("Original Post:")[1]
+    if "Refinement Instructions:" in cleaned:
+        cleaned = cleaned.split("Refinement Instructions:")[0]
+    if "Rewrite this post" in cleaned:
+        cleaned = cleaned.split("Rewrite this post")[0]
+    if "Summary:" in cleaned:
+        cleaned = cleaned.split("Summary:")[0]
+
+    cleaned = re.sub(
+        r"^(Platform:[^\n]+\n?)?(Topic/Input:\s*)?", "", cleaned, flags=re.IGNORECASE
+    )
+    cleaned = cleaned.strip(" :\n\"'")
+    cleaned = re.sub(
+        r"^Excited to share insights on\s*", "", cleaned, flags=re.IGNORECASE
+    )
+    cleaned = re.sub(r"^Most people think\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^Trending:\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = cleaned.strip(" !.\n\"'")
+
+    return cleaned if cleaned else "modern technology and AI automation"
+
+
+def _generate_fallback_template(*, prompt: str, platform: str) -> str:
+    """Generate platform-optimized social copy from topic, ensuring strict length compliance."""
+    topic = _extract_clean_topic(prompt)
+    plat = platform.lower()
+
+    if plat in ("x", "both", "linkx"):
         words = topic.split()
         tag = re.sub(r"[^a-zA-Z0-9]", "", words[0]).capitalize() if words else "Tech"
-        return (
-            f"Most people think {topic} is complicated.\n\n"
-            f"Here is the real playbook in 3 steps:\n"
-            f"1. Focus on core user value\n"
-            f"2. Automate repetitive workflows\n"
-            f"3. Iterate daily based on real signals\n\n"
-            f"What's your biggest takeaway? #{tag} #BuildInPublic"
+        headline = (
+            f"Key takeaway on {topic}:"
+            if len(topic) < 60
+            else f"{topic[:80].rstrip(' ,.-')}..."
         )
 
-    if platform.lower() == "linkedin":
+        post = (
+            f"{headline}\n\n"
+            f"• Prioritize core user value\n"
+            f"• Automate workflows\n"
+            f"• Iterate daily\n\n"
+            f"#{tag} #Tech"
+        )
+        if len(post) > 275:
+            post = f"{headline}\n\nDeliver real value with agile iteration.\n\n#{tag} #Tech"
+        if len(post) > 275:
+            post = f"{post[:270].rstrip(' ,.-')}..."
+        return post
+
+    if plat == "linkedin":
         return (
             f"The biggest shift happening in {topic} right now:\n\n"
             f"Teams that move fast aren't working longer hours.\n"
@@ -42,18 +83,24 @@ def _generate_fallback_template(*, prompt: str, platform: str) -> str:
         )
 
     return (
-        f"Excited to share insights on {topic}!\n\n"
-        f"Leveraging intelligent tooling and streamlined workflows makes all the difference.\n\n"
-        f"Key takeaway: Keep building, keep iterating, and focus on delivering real value.\n\n"
+        f"Insights on {topic}:\n\n"
+        f"Intelligent workflows and continuous iteration drive outsized impact.\n\n"
         f"#Productivity #Automation #Tech"
     )
 
 
 def _resolve_ai_credentials() -> tuple[str | None, str, str]:
     """Resolve OpenAI-compatible API key, API base URL, and Model from settings."""
-    api_key = settings.OPENAI_API_COMPATIBLE_API_KEY
-    api_base = settings.OPENAI_API_COMPATIBLE_BASE_URL
+    api_key = (
+        settings.OPENAI_API_COMPATIBLE_API_KEY
+        or settings.AI_API_KEY
+        or os.environ.get("OPENAI_API_COMPATIBLE_API_KEY")
+        or os.environ.get("OPENAI_API_KEY")
+    )
+    api_base = settings.OPENAI_API_COMPATIBLE_BASE_URL or settings.AI_API_BASE
     model = settings.AI_MODEL
+    if api_base and not model.startswith("openai/"):
+        model = f"openai/{model}"
     return api_key, api_base, model
 
 

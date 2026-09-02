@@ -40,6 +40,7 @@ from scripts.scrape_models import (
 )
 from scripts.scrape_parsers import (
     _clean_category,
+    _expand_tweet,
     extract_tweet_data,
     parse_engagement_metrics,
     parse_post_count,
@@ -60,6 +61,7 @@ __all__ = [
     "TopicProcessContext",
     "TopicRecordPayload",
     "_clean_category",
+    "_expand_tweet",
     "extract_topic_tweets",
     "extract_trending_sidebar",
     "extract_tweet_data",
