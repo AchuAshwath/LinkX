@@ -1,8 +1,10 @@
 import uuid
 from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from langchain_core.messages import AIMessageChunk
 from sqlmodel import Session, select
 
 from app.core.config import settings
@@ -34,9 +36,8 @@ def test_create_chat_thread_variations(
         client, superuser_token_headers, prompt="Write a tweet about React 19"
     )
     assert res1["origin"] == "manual"
-    assert "React 19" in res1["title"]
-    assert res1["message_count"] == 1
-    assert len(res1["transcript"]["messages"]) == 1
+    assert res1["message_count"] == 0
+    assert len(res1["transcript"]["messages"]) == 0
 
     # 2. Without prompt
     res2 = _create_thread(client, superuser_token_headers, origin="composer")
@@ -217,19 +218,40 @@ def test_create_chat_thread_post_id_validation(
 def test_chat_stream_returns_sse_and_persists(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:
+    async def fake_astream(messages: Any):  # noqa: ARG001
+        yield AIMessageChunk(
+            content="<thought>Strategy: TypeScript 5.8 update</thought>\nTypeScript 5.8 brings "
+        )
+        yield AIMessageChunk(content="major performance upgrades!")
+
+    mock_model = MagicMock()
+    mock_model.astream = fake_astream
+
     t = _create_thread(client, superuser_token_headers, origin="composer")
     tid = t["id"]
 
-    stream_res = client.post(
-        f"{settings.API_V1_STR}/ai/threads/{tid}/chat",
-        headers=superuser_token_headers,
-        json={"message": "Write a post about TypeScript 5.8"},
-    )
+    with (
+        patch(
+            "app.services.ai_completion_client.stream_direct_openai_proxy",
+            side_effect=ConnectionError("proxy down"),
+        ),
+        patch(
+            "app.services.ai_completion_client.get_chat_model",
+            return_value=mock_model,
+        ),
+    ):
+        stream_res = client.post(
+            f"{settings.API_V1_STR}/ai/threads/{tid}/chat",
+            headers=superuser_token_headers,
+            json={"message": "Write a post about TypeScript 5.8"},
+        )
     assert stream_res.status_code == 200
     assert "text/event-stream" in stream_res.headers["content-type"]
     text = stream_res.text
     assert "event: thought" in text
     assert "event: text_delta" in text
+    assert '"TypeScript "' in text
+    assert '"upgrades!"' in text
     assert "event: done" in text
 
     detail = client.get(
@@ -237,7 +259,28 @@ def test_chat_stream_returns_sse_and_persists(
         headers=superuser_token_headers,
     ).json()
     assert detail["message_count"] == 2
+    assert "TypeScript 5.8" in detail["title"]
+    assert detail["title"] != "New conversation"
     assert (
         detail["transcript"]["messages"][0]["parts"][0]["text"]
         == "Write a post about TypeScript 5.8"
     )
+    assert (
+        detail["transcript"]["messages"][1]["parts"][1]["text"]
+        == "TypeScript 5.8 brings major performance upgrades!"
+    )
+
+
+def test_list_ai_models(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    res = client.get(
+        f"{settings.API_V1_STR}/ai/threads/models",
+        headers=superuser_token_headers,
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert "data" in data
+    assert "default_model" in data
+    assert len(data["data"]) > 0
+    assert any(m["id"] == "gemini-3.6-flash-high" for m in data["data"])

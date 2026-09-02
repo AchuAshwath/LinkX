@@ -1,8 +1,9 @@
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
-from typing import Annotated, Any
+from typing import Annotated, Any, NamedTuple
 
+import httpx
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -10,7 +11,10 @@ from sqlmodel import Session
 
 from app import crud
 from app.api.deps import CurrentUser, SessionDep
+from app.core.config import settings
 from app.models import (
+    AIModelInfo,
+    AIModelsPublic,
     ChatMessageRequest,
     ChatThread,
     ChatThreadCreate,
@@ -21,7 +25,11 @@ from app.models import (
     Message,
     Post,
 )
-from app.services.ai_chat_runner import default_chat_stream_runner, format_sse
+from app.services.ai_chat_runner import (
+    default_chat_stream_runner,
+    format_sse,
+    generate_ai_thread_title,
+)
 
 router = APIRouter(prefix="/ai/threads", tags=["ai-threads"])
 
@@ -50,6 +58,46 @@ def _get_owned_thread(
     return thread
 
 
+def _handle_thought_part(
+    payload: dict[str, Any], assistant_parts: list[dict[str, Any]]
+) -> None:
+    thought_content = str(payload.get("content", ""))
+    if assistant_parts and assistant_parts[-1].get("type") == "thought":
+        assistant_parts[-1]["content"] += thought_content
+    else:
+        assistant_parts.append({"type": "thought", "content": thought_content})
+
+
+def _handle_tool_part(
+    event_name: str,
+    payload: dict[str, Any],
+    assistant_parts: list[dict[str, Any]],
+) -> None:
+    part: dict[str, Any] = {
+        "type": "tool_call",
+        "name": payload.get("name"),
+        "state": "running" if event_name == "tool_start" else "completed",
+    }
+    if "input" in payload:
+        part["input"] = payload["input"]
+    if "output" in payload:
+        part["output"] = payload["output"]
+    assistant_parts.append(part)
+
+
+def _handle_draft_part(
+    payload: dict[str, Any], assistant_parts: list[dict[str, Any]]
+) -> None:
+    assistant_parts.append(
+        {
+            "type": "draft_artifact",
+            "post_id": payload.get("post_id"),
+            "content": payload.get("content"),
+            "platform": payload.get("platform"),
+        }
+    )
+
+
 def _collect_stream_part(
     *,
     event_name: str,
@@ -57,34 +105,100 @@ def _collect_stream_part(
     assistant_parts: list[dict[str, Any]],
 ) -> str:
     """Append structured message parts and return text delta if present."""
-    if event_name == "thought":
-        assistant_parts.append(
-            {"type": "thought", "content": payload.get("content", "")}
-        )
-    elif event_name == "text_delta":
+    if event_name == "text_delta":
         return str(payload.get("content", ""))
+    if event_name == "thought":
+        _handle_thought_part(payload, assistant_parts)
     elif event_name in {"tool_start", "tool_output"}:
-        state = "running" if event_name == "tool_start" else "completed"
-        part: dict[str, Any] = {
-            "type": "tool_call",
-            "name": payload.get("name"),
-            "state": state,
-        }
-        if "input" in payload:
-            part["input"] = payload["input"]
-        if "output" in payload:
-            part["output"] = payload["output"]
-        assistant_parts.append(part)
+        _handle_tool_part(event_name, payload, assistant_parts)
     elif event_name == "draft_artifact":
-        assistant_parts.append(
-            {
-                "type": "draft_artifact",
-                "post_id": payload.get("post_id"),
-                "content": payload.get("content"),
-                "platform": payload.get("platform"),
-            }
-        )
+        _handle_draft_part(payload, assistant_parts)
     return ""
+
+
+FRIENDLY_MODEL_NAMES: dict[str, str] = {
+    "gemini-3.6-flash-high": "Gemini 3.6 Flash",
+    "gemini-3.7-flash-high": "Gemini 3.7 Flash",
+    "gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite",
+    "gemini-3.1-pro-low": "Gemini 3.1 Pro",
+    "gemini-3-flash": "Gemini 3 Flash",
+    "claude-sonnet-4-6": "Claude 3.7 Sonnet",
+    "claude-opus-4-6-thinking": "Claude 3.7 Opus",
+    "gpt-5.6-luna": "GPT-5.6 Luna",
+    "gpt-5.6-sol": "GPT-5.6 Sol",
+    "gpt-5.6-terra": "GPT-5.6 Terra",
+    "gpt-5.4": "GPT-5.4",
+    "gpt-5.4-mini": "GPT-5.4 Mini",
+    "gpt-5.5": "GPT-5.5",
+    "gpt-oss-120b-medium": "DeepSeek R1",
+}
+
+EXCLUDED_MODELS = {
+    "gpt-image-2",
+    "gpt-image-1.5",
+    "gemini-3.1-flash-image",
+    "gpt-5.3-codex-spark",
+    "codex-auto-review",
+}
+
+
+FALLBACK_MODEL_OPTIONS: list[tuple[str, str, str]] = [
+    ("gemini-3.6-flash-high", "Gemini 3.6 Flash", "Google"),
+    ("claude-sonnet-4-6", "Claude 3.7 Sonnet", "Anthropic"),
+    ("gpt-5.6-luna", "GPT-5.6 Luna", "OpenAI"),
+    ("gpt-5.4", "GPT-5.4", "OpenAI"),
+    ("gpt-oss-120b-medium", "DeepSeek R1", "OpenSource"),
+]
+
+
+def _build_fallback_models(default_model_id: str) -> list[AIModelInfo]:
+    return [
+        AIModelInfo(
+            id=mid,
+            name=name,
+            provider=provider,
+            is_default=(mid == default_model_id),
+        )
+        for mid, name, provider in FALLBACK_MODEL_OPTIONS
+    ]
+
+
+def _fetch_models_from_proxy(default_model_id: str) -> list[AIModelInfo]:
+    api_key = (
+        settings.OPENAI_API_COMPATIBLE_API_KEY or settings.AI_API_KEY or "dummy-key"
+    )
+    with httpx.Client(timeout=3.0) as client:
+        resp = client.get(
+            f"{settings.AI_API_BASE}/models",
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+        if resp.status_code != 200:
+            return []
+        items = resp.json().get("data", [])
+        return [
+            AIModelInfo(
+                id=str(item["id"]),
+                name=FRIENDLY_MODEL_NAMES.get(str(item["id"]), str(item["id"])),
+                provider=str(item.get("owned_by", "")).capitalize() or None,
+                is_default=(str(item["id"]) == default_model_id),
+            )
+            for item in items
+            if item.get("id") and str(item["id"]) not in EXCLUDED_MODELS
+        ]
+
+
+@router.get("/models", response_model=AIModelsPublic)
+def list_ai_models() -> Any:
+    """List available AI models from the proxy/backend with friendly labels."""
+    default_model_id = settings.AI_MODEL.removeprefix("openai/")
+    try:
+        models = _fetch_models_from_proxy(default_model_id)
+        if models:
+            return AIModelsPublic(data=models, default_model=default_model_id)
+    except Exception:
+        pass
+    fallback = _build_fallback_models(default_model_id)
+    return AIModelsPublic(data=fallback, default_model=default_model_id)
 
 
 @router.post("/", response_model=ChatThreadDetail)
@@ -167,6 +281,52 @@ def delete_chat_thread(
     return Message(message="Chat thread deleted successfully")
 
 
+class AssistantTurnPayload(NamedTuple):
+    body: ChatMessageRequest
+    accumulated_text: str
+    assistant_parts: list[dict[str, Any]]
+
+
+async def _save_assistant_turn(
+    *,
+    session: Session,
+    thread: ChatThread,
+    payload: AssistantTurnPayload,
+) -> None:
+    if payload.accumulated_text:
+        payload.assistant_parts.append(
+            {"type": "text", "text": payload.accumulated_text}
+        )
+    if not payload.assistant_parts:
+        return
+
+    assistant_msg = {
+        "id": f"msg_{uuid.uuid4().hex[:12]}",
+        "role": "assistant",
+        "parts": payload.assistant_parts,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    crud.append_message_to_transcript(
+        session=session,
+        db_thread=thread,
+        message=assistant_msg,
+    )
+
+    if thread.message_count <= 2:
+        try:
+            ai_title = await generate_ai_thread_title(
+                user_prompt=payload.body.message,
+                assistant_response=payload.accumulated_text,
+                model=payload.body.model,
+            )
+            if ai_title:
+                thread.title = ai_title
+                session.add(thread)
+                session.commit()
+        except Exception:
+            pass
+
+
 @router.post("/{id}/chat")
 async def chat_stream(
     *,
@@ -178,7 +338,6 @@ async def chat_stream(
     """Server-Sent Events streaming endpoint for AI conversation."""
     thread = _get_owned_thread(session=session, current_user=current_user, thread_id=id)
 
-    # 1. Append incoming user message to transcript immediately
     user_msg = {
         "id": f"msg_{uuid.uuid4().hex[:12]}",
         "role": "user",
@@ -195,7 +354,9 @@ async def chat_stream(
 
         try:
             async for event_name, payload in default_chat_stream_runner(
-                message=body.message, thread_id=str(id)
+                message=body.message,
+                transcript=thread.transcript,
+                model=body.model,
             ):
                 delta = _collect_stream_part(
                     event_name=event_name,
@@ -205,21 +366,15 @@ async def chat_stream(
                 accumulated_text += delta
                 yield format_sse(event=event_name, data=payload)
 
-            if accumulated_text:
-                assistant_parts.append({"type": "text", "text": accumulated_text})
-
-            if assistant_parts:
-                assistant_msg = {
-                    "id": f"msg_{uuid.uuid4().hex[:12]}",
-                    "role": "assistant",
-                    "parts": assistant_parts,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                }
-                crud.append_message_to_transcript(
-                    session=session,
-                    db_thread=thread,
-                    message=assistant_msg,
-                )
+            await _save_assistant_turn(
+                session=session,
+                thread=thread,
+                payload=AssistantTurnPayload(
+                    body=body,
+                    accumulated_text=accumulated_text,
+                    assistant_parts=assistant_parts,
+                ),
+            )
 
         except Exception as exc:
             yield format_sse(event="error", data={"message": str(exc)})

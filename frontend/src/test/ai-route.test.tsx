@@ -110,7 +110,9 @@ describe("AIPage component with PostgreSQL backend persistence", () => {
     renderWithClient(<Component />)
 
     await waitFor(() => {
-      expect(screen.getAllByText(/New Chat/i).length).toBeGreaterThanOrEqual(1)
+      expect(
+        screen.getAllByLabelText(/New Chat/i).length,
+      ).toBeGreaterThanOrEqual(1)
       expect(
         screen.getAllByText("Rich Markdown & Typography").length,
       ).toBeGreaterThanOrEqual(1)
@@ -136,14 +138,26 @@ describe("AIPage component with PostgreSQL backend persistence", () => {
     })
   })
 
-  it("can create a new chat via backend mutation", async () => {
+  it("can switch to new chat view and create a new chat on message", async () => {
     const Component = Route.options.component as React.ComponentType
     renderWithClient(<Component />)
+
+    // Wait for initial thread to load first
+    await screen.findByText("Rich Markdown & Typography")
 
     const newChatBtns = await screen.findAllByRole("button", {
       name: /new chat/i,
     })
     fireEvent.click(newChatBtns[0])
+
+    // Should switch to empty New Chat state
+    expect(
+      await screen.findByText("What would you like to create?"),
+    ).toBeInTheDocument()
+
+    // Clicking a suggestion creates the new chat with that prompt
+    const suggestionBtn = screen.getByText("Viral Launch Post")
+    fireEvent.click(suggestionBtn)
 
     await waitFor(() => {
       expect(AiThreadsService.createChatThread).toHaveBeenCalled()

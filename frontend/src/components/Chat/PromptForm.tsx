@@ -1,170 +1,87 @@
-import { ArrowUp, ChevronDown, Mic, Plus, Square, X } from "lucide-react"
+import { Mic, Plus } from "lucide-react"
 import * as React from "react"
 
 import {
+  type AttachmentImage,
+  AttachmentPreviewStrip,
+} from "@/components/Chat/AttachmentPreviewStrip"
+import {
+  type AIModelOption,
+  ModelSelectorPill,
+} from "@/components/Chat/ModelSelectorPill"
+import { PromptSubmitButton } from "@/components/Chat/PromptSubmitButton"
+import {
   InputGroup,
   InputGroupAddon,
-  InputGroupButton,
   InputGroupTextarea,
 } from "@/components/ui/input-group"
-import { cn } from "@/lib/utils"
+
+export type { AIModelOption }
 
 export interface PromptFormProps {
   onSubmit: (text: string, images?: File[]) => void
   onStop?: () => void
   isBusy?: boolean
   placeholder?: string
-  modelName?: string
+  selectedModelId?: string
+  models?: (AIModelOption | string)[]
+  onSelectModel?: (modelId: string) => void
+  inputRef?: React.RefObject<HTMLTextAreaElement | null>
+  autoFocus?: boolean
   actions?: React.ReactNode
   className?: string
 }
 
-function AttachmentPreviewStrip({
-  images,
-  onRemove,
-}: {
-  images: { file: File; preview: string }[]
-  onRemove: (index: number) => void
-}) {
-  if (images.length === 0) return null
-
-  return (
-    <div className="flex items-center gap-2 px-3 pt-2.5 overflow-x-auto scrollbar-none">
-      {images.map((img, idx) => (
-        <div
-          key={idx}
-          className="group relative size-14 shrink-0 rounded-xl overflow-hidden border border-border bg-muted/40"
-        >
-          <img
-            src={img.preview}
-            alt="Attachment preview"
-            className="size-full object-cover"
-          />
-          <button
-            type="button"
-            onClick={() => onRemove(idx)}
-            aria-label="Remove image"
-            className="absolute right-1 top-1 flex size-4 items-center justify-center rounded-full bg-background/80 text-foreground hover:bg-destructive hover:text-destructive-foreground transition-colors cursor-pointer"
-          >
-            <X className="size-2.5" />
-          </button>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function ModelSelectorPill({
-  selectedModel,
-  models,
-  onSelectModel,
-}: {
-  selectedModel: string
-  models: string[]
-  onSelectModel: (m: string) => void
-}) {
-  const [open, setOpen] = React.useState(false)
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((prev) => !prev)}
-        className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors cursor-pointer select-none"
-      >
-        <span>{selectedModel}</span>
-        <ChevronDown className="size-3 text-muted-foreground" />
-      </button>
-
-      {open && (
-        <div
-          role="menu"
-          tabIndex={-1}
-          className="absolute bottom-9 right-0 z-50 min-w-36 rounded-2xl border border-border bg-popover p-1 shadow-lg animate-in fade-in-0 zoom-in-95"
-        >
-          {models.map((m) => (
-            <button
-              type="button"
-              key={m}
-              role="menuitem"
-              onClick={() => {
-                onSelectModel(m)
-                setOpen(false)
-              }}
-              className="flex w-full items-center justify-between rounded-xl px-2.5 py-1.5 text-xs text-popover-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer font-medium"
-            >
-              <span>{m}</span>
-              {selectedModel === m && (
-                <span className="size-1.5 rounded-full bg-primary" />
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function PromptSubmitButton({
-  isBusy,
-  hasContent,
-  onStop,
-}: {
-  isBusy: boolean
-  hasContent: boolean
-  onStop?: () => void
-}) {
-  if (isBusy) {
-    return (
-      <InputGroupButton
-        type="button"
-        size="icon-sm"
-        variant="outline"
-        aria-label="Stop generating"
-        className="size-8 rounded-full bg-muted border-border text-foreground hover:bg-muted/80 cursor-pointer"
-        onClick={onStop}
-      >
-        <Square className="size-3.5 fill-current" />
-      </InputGroupButton>
-    )
-  }
-
-  return (
-    <InputGroupButton
-      type="submit"
-      size="icon-sm"
-      variant="default"
-      aria-label="Send message"
-      className={cn(
-        "size-8 rounded-full transition-all cursor-pointer",
-        hasContent
-          ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-2xs"
-          : "bg-muted/40 text-muted-foreground/50 opacity-40 cursor-not-allowed",
-      )}
-      disabled={!hasContent}
-    >
-      <ArrowUp className="size-4 stroke-[2.5]" />
-    </InputGroupButton>
-  )
-}
+const FALLBACK_MODELS: AIModelOption[] = [
+  { id: "gemini-3.6-flash-high", name: "Gemini 3.6 Flash", provider: "Google" },
+  { id: "claude-sonnet-4-6", name: "Claude 3.7 Sonnet", provider: "Anthropic" },
+  { id: "gpt-5.6-luna", name: "GPT-5.6 Luna", provider: "OpenAI" },
+  { id: "gpt-5.4", name: "GPT-5.4", provider: "OpenAI" },
+  { id: "gpt-oss-120b-medium", name: "DeepSeek R1", provider: "OpenSource" },
+]
 
 export function PromptForm({
   onSubmit,
   onStop,
   isBusy = false,
   placeholder = "Ask anything",
-  modelName = "5.6 Luna High",
+  selectedModelId,
+  models,
+  onSelectModel,
+  inputRef,
+  autoFocus = false,
   actions,
   className,
 }: PromptFormProps) {
   const [input, setInput] = React.useState("")
-  const [selectedModel, setSelectedModel] = React.useState(modelName)
-  const [selectedImages, setSelectedImages] = React.useState<
-    { file: File; preview: string }[]
-  >([])
+  const [localModelId, setLocalModelId] = React.useState(
+    selectedModelId || "gemini-3.6-flash-high",
+  )
+  const [selectedImages, setSelectedImages] = React.useState<AttachmentImage[]>(
+    [],
+  )
 
+  const internalInputRef = React.useRef<HTMLTextAreaElement>(null)
+  const effectiveInputRef = inputRef || internalInputRef
   const fileInputRef = React.useRef<HTMLInputElement>(null)
-  const models = ["5.6 Luna High", "Claude 3.7 Sonnet", "GPT-4o", "DeepSeek R1"]
+
+  const activeModelId = selectedModelId || localModelId
+
+  const normalizedModels: AIModelOption[] = React.useMemo(() => {
+    if (!models || models.length === 0) return FALLBACK_MODELS
+    return models.map((m) => (typeof m === "string" ? { id: m, name: m } : m))
+  }, [models])
+
+  React.useEffect(() => {
+    if (autoFocus) {
+      effectiveInputRef.current?.focus()
+    }
+  }, [autoFocus, effectiveInputRef])
+
+  function handleSelectModel(mId: string) {
+    setLocalModelId(mId)
+    onSelectModel?.(mId)
+  }
 
   function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files
@@ -227,6 +144,7 @@ export function PromptForm({
         />
 
         <InputGroupTextarea
+          ref={effectiveInputRef}
           placeholder={placeholder}
           value={input}
           onChange={(event) => setInput(event.target.value)}
@@ -259,9 +177,9 @@ export function PromptForm({
 
           <div className="flex items-center gap-1.5 ml-auto">
             <ModelSelectorPill
-              selectedModel={selectedModel}
-              models={models}
-              onSelectModel={setSelectedModel}
+              selectedModelId={activeModelId}
+              models={normalizedModels}
+              onSelectModel={handleSelectModel}
             />
 
             <button

@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -293,30 +294,47 @@ def get_social_account(
 # --- AI Chat Threads ---
 
 
+PREFIX_RE = re.compile(
+    r"^(?:please\s+|can\s+you\s+|could\s+you\s+|help\s+me\s+|write\s+(?:a|an)\s+|generate\s+(?:a|an)\s+|create\s+(?:a|an)\s+)",
+    flags=re.IGNORECASE,
+)
+
+
+def _strip_conversational_prefix(text: str) -> str:
+    cleaned = PREFIX_RE.sub("", text).strip()
+    return cleaned[0].upper() + cleaned[1:] if cleaned else ""
+
+
+def _truncate_title(text: str, max_length: int = 50) -> str:
+    if len(text) <= max_length:
+        return text
+    truncated = text[:max_length]
+    last_space = truncated.rfind(" ")
+    return (truncated[:last_space] if last_space > 20 else truncated) + "…"
+
+
+def generate_thread_title(prompt: str) -> str:
+    """Generate a clean, human-friendly 3-6 word conversation title from user prompt."""
+    lines = [line.strip() for line in prompt.splitlines() if line.strip()]
+    if not lines:
+        return "New conversation"
+
+    cleaned = re.sub(r"\s+", " ", lines[0]).strip()
+    if not cleaned:
+        return "New conversation"
+
+    title = _strip_conversational_prefix(cleaned)
+    return _truncate_title(title) if title else "New conversation"
+
+
 def create_chat_thread(
     *, session: Session, thread_in: ChatThreadCreate, owner_id: uuid.UUID
 ) -> ChatThread:
-    """Create a new chat thread, auto-generating title and initial transcript if prompt provided."""
+    """Create a new chat thread, auto-generating initial title if prompt provided."""
     prompt_text = thread_in.prompt.strip() if thread_in.prompt else None
-    if prompt_text:
-        lines = [line.strip() for line in prompt_text.splitlines() if line.strip()]
-        first_line = lines[0] if lines else "New conversation"
-        title = first_line[:60] + ("…" if len(first_line) > 60 else "")
-        transcript: dict[str, Any] = {
-            "messages": [
-                {
-                    "id": f"msg_{uuid.uuid4().hex[:12]}",
-                    "role": "user",
-                    "parts": [{"type": "text", "text": prompt_text}],
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                }
-            ]
-        }
-        message_count = 1
-    else:
-        title = "New conversation"
-        transcript = {"messages": []}
-        message_count = 0
+    title = generate_thread_title(prompt_text) if prompt_text else "New conversation"
+    transcript: dict[str, Any] = {"messages": []}
+    message_count = 0
 
     db_thread = ChatThread(
         owner_id=owner_id,
@@ -399,11 +417,23 @@ def delete_chat_thread(*, session: Session, thread_id: uuid.UUID) -> None:
 def append_message_to_transcript(
     *, session: Session, db_thread: ChatThread, message: dict[str, Any]
 ) -> ChatThread:
-    """Append a message to the thread's JSONB transcript and update message count."""
+    """Append a message to the thread's JSONB transcript and update message count & title."""
     current_transcript = dict(db_thread.transcript or {})
     messages = list(current_transcript.get("messages", []))
     messages.append(message)
     current_transcript["messages"] = messages
+
+    # Auto-generate title from first user message if thread still has default title
+    if (
+        db_thread.title in ("New conversation", "New Chat", "Untitled", "")
+        and message.get("role") == "user"
+    ):
+        parts = message.get("parts", [])
+        text_content = " ".join(
+            p.get("text", "") for p in parts if p.get("type") == "text"
+        ).strip()
+        if text_content:
+            db_thread.title = generate_thread_title(text_content)
 
     db_thread.transcript = current_transcript
     db_thread.message_count = len(messages)

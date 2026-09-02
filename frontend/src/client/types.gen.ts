@@ -11,6 +11,18 @@ export type AIDraftResponse = {
     post_id?: (string | null);
 };
 
+export type AIModelInfo = {
+    id: string;
+    name: string;
+    provider?: (string | null);
+    is_default?: boolean;
+};
+
+export type AIModelsPublic = {
+    data: Array<AIModelInfo>;
+    default_model: string;
+};
+
 export type Body_login_login_access_token = {
     grant_type?: (string | null);
     username: string;
@@ -26,6 +38,7 @@ export type Body_posts_upload_media = {
 
 export type ChatMessageRequest = {
     message: string;
+    model?: (string | null);
 };
 
 export type ChatThreadCreate = {
@@ -274,6 +287,8 @@ export type XVerifyResponse = {
 };
 
 export type AdminReadSchedulerStatusResponse = (unknown);
+
+export type AiThreadsListAiModelsResponse = (AIModelsPublic);
 
 export type AiThreadsCreateChatThreadData = {
     requestBody: ChatThreadCreate;

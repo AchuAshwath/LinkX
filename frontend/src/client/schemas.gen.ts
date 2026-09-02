@@ -55,6 +55,57 @@ export const AIDraftResponseSchema = {
     title: 'AIDraftResponse'
 } as const;
 
+export const AIModelInfoSchema = {
+    properties: {
+        id: {
+            type: 'string',
+            title: 'Id'
+        },
+        name: {
+            type: 'string',
+            title: 'Name'
+        },
+        provider: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Provider'
+        },
+        is_default: {
+            type: 'boolean',
+            title: 'Is Default',
+            default: false
+        }
+    },
+    type: 'object',
+    required: ['id', 'name'],
+    title: 'AIModelInfo'
+} as const;
+
+export const AIModelsPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/AIModelInfo'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        default_model: {
+            type: 'string',
+            title: 'Default Model'
+        }
+    },
+    type: 'object',
+    required: ['data', 'default_model'],
+    title: 'AIModelsPublic'
+} as const;
+
 export const Body_login_login_access_tokenSchema = {
     properties: {
         grant_type: {
@@ -132,6 +183,18 @@ export const ChatMessageRequestSchema = {
             maxLength: 25000,
             minLength: 1,
             title: 'Message'
+        },
+        model: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Model'
         }
     },
     type: 'object',

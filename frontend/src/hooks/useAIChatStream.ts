@@ -53,7 +53,7 @@ function parseSSELines(
         const parsed = JSON.parse(trimmed.slice(5).trim()) as ParsedEventData
         EVENT_ACTIONS[eventType]?.(parsed, handlers)
       } catch {
-        // Non-JSON SSE payload ignored
+        // Non-JSON payload ignored
       }
     }
   }
@@ -95,6 +95,40 @@ async function streamResponse(
   handlers.onDone?.()
 }
 
+function getAuthToken(): string {
+  if (typeof window !== "undefined" && typeof localStorage !== "undefined") {
+    return localStorage.getItem("access_token") || ""
+  }
+  return ""
+}
+
+async function executeChatStreamRequest({
+  threadId,
+  message,
+  handlers,
+  model,
+  signal,
+}: {
+  threadId: string
+  message: string
+  handlers: StreamEventHandlers
+  model?: string
+  signal: AbortSignal
+}) {
+  const token = getAuthToken()
+  const response = await fetch(`/api/v1/ai/threads/${threadId}/chat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ message, model }),
+    signal,
+  })
+
+  await streamResponse(response, handlers)
+}
+
 export function useAIChatStream() {
   const [isStreaming, setIsStreaming] = React.useState(false)
   const abortControllerRef = React.useRef<AbortController | null>(null)
@@ -112,26 +146,21 @@ export function useAIChatStream() {
       threadId: string,
       message: string,
       handlers: StreamEventHandlers = {},
+      model?: string,
     ) => {
       stop()
       const controller = new AbortController()
       abortControllerRef.current = controller
       setIsStreaming(true)
 
-      const token = localStorage.getItem("access_token") || ""
-
       try {
-        const response = await fetch(`/api/v1/ai/threads/${threadId}/chat`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ message }),
+        await executeChatStreamRequest({
+          threadId,
+          message,
+          handlers,
+          model,
           signal: controller.signal,
         })
-
-        await streamResponse(response, handlers)
       } catch (err: unknown) {
         if (err instanceof Error && err.name === "AbortError") {
           return
