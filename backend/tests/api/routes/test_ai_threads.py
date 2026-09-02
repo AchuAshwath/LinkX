@@ -16,13 +16,10 @@ def _create_thread(
     *,
     prompt: str | None = None,
     origin: str = "manual",
-    post_id: str | None = None,
 ) -> dict[str, Any]:
     body: dict[str, Any] = {"origin": origin}
     if prompt is not None:
         body["prompt"] = prompt
-    if post_id is not None:
-        body["post_id"] = post_id
     response = client.post(
         f"{settings.API_V1_STR}/ai/threads/", headers=headers, json=body
     )
