@@ -355,7 +355,6 @@ async def chat_stream(
         try:
             async for event_name, payload in default_chat_stream_runner(
                 message=body.message,
-                thread_id=str(id),
                 transcript=thread.transcript,
                 model=body.model,
             ):

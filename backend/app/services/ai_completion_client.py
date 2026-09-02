@@ -13,20 +13,22 @@ from langchain_core.messages import (
 from app.core.config import settings
 from app.services.agentic.client import get_chat_model
 
+MESSAGE_ROLE_MAP: dict[type[BaseMessage], str] = {
+    SystemMessage: "system",
+    HumanMessage: "user",
+    AIMessage: "assistant",
+}
+
 
 def format_messages_for_openai(
     messages: list[BaseMessage],
 ) -> list[dict[str, str]]:
     """Format LangChain BaseMessage objects into OpenAI messages format."""
-    formatted: list[dict[str, str]] = []
-    for msg in messages:
-        if isinstance(msg, SystemMessage):
-            formatted.append({"role": "system", "content": str(msg.content)})
-        elif isinstance(msg, HumanMessage):
-            formatted.append({"role": "user", "content": str(msg.content)})
-        elif isinstance(msg, AIMessage):
-            formatted.append({"role": "assistant", "content": str(msg.content)})
-    return formatted
+    return [
+        {"role": role, "content": str(msg.content)}
+        for msg in messages
+        if (role := MESSAGE_ROLE_MAP.get(type(msg))) is not None
+    ]
 
 
 def extract_chunk_content(delta: dict[str, Any]) -> str | None:
@@ -37,9 +39,7 @@ def extract_chunk_content(delta: dict[str, Any]) -> str | None:
     if isinstance(reasoning, str) and reasoning:
         return f"<thought>{reasoning}</thought>"
     content = delta.get("content")
-    if isinstance(content, str) and content:
-        return content
-    return None
+    return str(content) if isinstance(content, str) and content else None
 
 
 def parse_sse_line(line: str) -> str | None:
@@ -100,12 +100,10 @@ async def stream_direct_openai_proxy(
 def extract_langchain_chunk_text(chunk: Any) -> str | None:
     """Extract string content from LangChain stream chunk."""
     text = chunk.content
-    if isinstance(text, str) and text:
-        return text
+    if isinstance(text, str):
+        return text or None
     if isinstance(text, list):
-        combined = "".join(str(c) for c in text if c)
-        if combined:
-            return combined
+        return "".join(str(c) for c in text if c) or None
     return None
 
 

@@ -153,7 +153,6 @@ async def test_default_chat_stream_runner_success() -> None:
         events = []
         async for ev, data in default_chat_stream_runner(
             message="Test prompt",
-            thread_id="test-id",
             smooth_delay=0,
         ):
             events.append((ev, data))
@@ -185,7 +184,6 @@ async def test_default_chat_stream_runner_error() -> None:
         events = []
         async for ev, data in default_chat_stream_runner(
             message="Test prompt",
-            thread_id="test-id",
             smooth_delay=0,
         ):
             events.append((ev, data))

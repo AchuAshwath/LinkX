@@ -99,7 +99,6 @@ def _build_message_history(
 async def default_chat_stream_runner(
     *,
     message: str,
-    thread_id: str,  # noqa: ARG001
     transcript: dict[str, Any] | None = None,
     smooth_delay: float = 0.015,
     model: str | None = None,
