@@ -1,6 +1,6 @@
 from collections.abc import AsyncGenerator
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from langchain_core.messages import (
@@ -189,3 +189,20 @@ async def test_default_chat_stream_runner_error() -> None:
     assert len(error_event) == 1
     assert "LLM error" in error_event[0]["message"]
     assert events[-1] == ("done", {})
+
+
+@pytest.mark.anyio
+async def test_generate_ai_thread_title_success() -> None:
+    from app.services.ai_chat_runner import generate_ai_thread_title
+
+    mock_res = MagicMock()
+    mock_res.content = '  "TypeScript 5.8 Deep Dive"  '
+    mock_model = MagicMock()
+    mock_model.ainvoke = AsyncMock(return_value=mock_res)
+
+    with patch("app.services.ai_chat_runner.get_chat_model", return_value=mock_model):
+        title = await generate_ai_thread_title(
+            user_prompt="Explain TypeScript 5.8 features",
+            assistant_response="TypeScript 5.8 introduces granular checks...",
+        )
+    assert title == "TypeScript 5.8 Deep Dive"

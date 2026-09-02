@@ -321,3 +321,49 @@ async def default_chat_stream_runner(
         yield ("error", {"message": f"LLM error: {exc}"})
 
     yield ("done", {})
+
+
+async def generate_ai_thread_title(
+    *,
+    user_prompt: str,
+    assistant_response: str,
+    model: str | None = None,
+) -> str | None:
+    """Use lightweight LLM invocation to produce a crisp 3-5 word conversation title."""
+    try:
+        messages: list[BaseMessage] = [
+            SystemMessage(
+                content=(
+                    "You are a thread naming assistant. Create a concise 3 to 5 word title "
+                    "that summarizes the user's intent. Return ONLY the title in Title Case. "
+                    "Do not include quotes, periods, prefixes like 'Title:', or extra commentary."
+                )
+            ),
+            HumanMessage(
+                content=(
+                    f"User: {user_prompt[:250]}\n"
+                    f"Assistant: {assistant_response[:250]}\n\n"
+                    "Title:"
+                )
+            ),
+        ]
+        target_model = model or settings.AI_MODEL
+        chat_model = get_chat_model(
+            model=target_model,
+            temperature=0.3,
+            max_tokens=25,
+            streaming=False,
+        )
+        res = await chat_model.ainvoke(messages)
+        raw_text = res.content
+        if isinstance(raw_text, str):
+            cleaned = raw_text.strip().strip("\"'`")
+            cleaned = re.sub(
+                r"^(?:Title:\s*)", "", cleaned, flags=re.IGNORECASE
+            ).strip()
+            cleaned = cleaned.rstrip(".:;!?")
+            if cleaned and len(cleaned) <= 60:
+                return cleaned
+    except Exception:
+        pass
+    return None

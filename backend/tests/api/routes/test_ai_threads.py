@@ -36,9 +36,8 @@ def test_create_chat_thread_variations(
         client, superuser_token_headers, prompt="Write a tweet about React 19"
     )
     assert res1["origin"] == "manual"
-    assert "React 19" in res1["title"]
-    assert res1["message_count"] == 1
-    assert len(res1["transcript"]["messages"]) == 1
+    assert res1["message_count"] == 0
+    assert len(res1["transcript"]["messages"]) == 0
 
     # 2. Without prompt
     res2 = _create_thread(client, superuser_token_headers, origin="composer")

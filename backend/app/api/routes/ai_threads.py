@@ -25,7 +25,11 @@ from app.models import (
     Message,
     Post,
 )
-from app.services.ai_chat_runner import default_chat_stream_runner, format_sse
+from app.services.ai_chat_runner import (
+    default_chat_stream_runner,
+    format_sse,
+    generate_ai_thread_title,
+)
 
 router = APIRouter(prefix="/ai/threads", tags=["ai-threads"])
 
@@ -326,6 +330,21 @@ async def chat_stream(
                     db_thread=thread,
                     message=assistant_msg,
                 )
+
+                # Generate high-quality AI title on the first conversation turn
+                if thread.message_count <= 2:
+                    try:
+                        ai_title = await generate_ai_thread_title(
+                            user_prompt=body.message,
+                            assistant_response=accumulated_text,
+                            model=body.model,
+                        )
+                        if ai_title:
+                            thread.title = ai_title
+                            session.add(thread)
+                            session.commit()
+                    except Exception:
+                        pass
 
         except Exception as exc:
             yield format_sse(event="error", data={"message": str(exc)})

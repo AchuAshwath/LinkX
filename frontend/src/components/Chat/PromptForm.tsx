@@ -107,9 +107,6 @@ function ModelSelectorPill({
           tabIndex={-1}
           className="absolute bottom-9 right-0 z-50 min-w-44 max-h-60 overflow-y-auto rounded-2xl border border-border bg-popover p-1 shadow-lg animate-in fade-in-0 zoom-in-95"
         >
-          <div className="px-2.5 py-1 text-[10px] font-semibold uppercase text-muted-foreground tracking-wider select-none">
-            Available Models
-          </div>
           {models.map((m) => (
             <button
               type="button"

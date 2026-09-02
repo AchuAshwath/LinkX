@@ -112,6 +112,88 @@ function DeleteThreadConfirmDialog({
   )
 }
 
+function RenameThreadDialog({
+  thread,
+  isOpen,
+  isPending,
+  onClose,
+  onConfirm,
+}: {
+  thread: ChatThreadPublic | null
+  isOpen: boolean
+  isPending: boolean
+  onClose: () => void
+  onConfirm: (newTitle: string) => void
+}) {
+  const [titleInput, setTitleInput] = React.useState("")
+
+  React.useEffect(() => {
+    if (thread) {
+      setTitleInput(thread.title)
+    }
+  }, [thread])
+
+  if (!thread) return null
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const trimmed = titleInput.trim()
+    if (trimmed) {
+      onConfirm(trimmed)
+    }
+  }
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <form onSubmit={handleSubmit}>
+          <DialogHeader>
+            <DialogTitle>Rename Chat</DialogTitle>
+            <DialogDescription>
+              Enter a new title for this conversation.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4">
+            <input
+              type="text"
+              autoFocus
+              value={titleInput}
+              onChange={(e) => setTitleInput(e.target.value)}
+              placeholder="Chat title"
+              disabled={isPending}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition-colors placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+
+          <DialogFooter className="gap-2.5 sm:gap-2.5">
+            <DialogClose asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isPending}
+                onClick={onClose}
+                className="cursor-pointer"
+              >
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={isPending || !titleInput.trim()}
+              className="font-semibold cursor-pointer"
+            >
+              {isPending ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function ThreadActionsMenu({
   isArchived,
   onToggleArchive,
@@ -234,28 +316,18 @@ function SortFilterMenu({
 function ThreadListItem({
   thread,
   isActive,
-  isEditing,
-  editTitleInput,
   isMenuOpen,
   onSelect,
   onStartRename,
-  onRenameSubmit,
-  onRenameCancel,
-  onEditTitleChange,
   onToggleArchive,
   onDelete,
   onToggleMenu,
 }: {
   thread: ChatThreadPublic
   isActive: boolean
-  isEditing: boolean
-  editTitleInput: string
   isMenuOpen: boolean
   onSelect: () => void
   onStartRename: () => void
-  onRenameSubmit: (newTitle: string) => void
-  onRenameCancel: () => void
-  onEditTitleChange: (val: string) => void
   onToggleArchive: () => void
   onDelete: () => void
   onToggleMenu: () => void
@@ -276,43 +348,22 @@ function ThreadListItem({
             : "text-muted-foreground hover:bg-muted/30 hover:text-foreground",
       )}
     >
-      {isEditing ? (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            onRenameSubmit(editTitleInput)
-          }}
-          className="flex-1 mr-1"
+      <button
+        type="button"
+        onClick={onSelect}
+        className="flex flex-1 items-center truncate text-left cursor-pointer min-w-0 pr-2 focus:outline-none py-1 select-none"
+      >
+        <span
+          className={cn(
+            "truncate w-full",
+            isArchived
+              ? "text-xs text-muted-foreground font-normal group-hover:text-foreground"
+              : "text-xs text-foreground font-medium",
+          )}
         >
-          <input
-            type="text"
-            value={editTitleInput}
-            onChange={(e) => onEditTitleChange(e.target.value)}
-            onBlur={() => onRenameSubmit(editTitleInput)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") onRenameCancel()
-            }}
-            className="w-full bg-background border border-input rounded-full px-3 py-0.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring"
-          />
-        </form>
-      ) : (
-        <button
-          type="button"
-          onClick={onSelect}
-          className="flex flex-1 items-center truncate text-left cursor-pointer min-w-0 pr-2 focus:outline-none py-1 select-none"
-        >
-          <span
-            className={cn(
-              "truncate w-full",
-              isArchived
-                ? "text-xs text-muted-foreground font-normal group-hover:text-foreground"
-                : "text-xs text-foreground font-medium",
-            )}
-          >
-            {thread.title}
-          </span>
-        </button>
-      )}
+          {thread.title}
+        </span>
+      </button>
 
       <div className="flex items-center gap-0.5 shrink-0">
         {isArchived ? (
@@ -383,10 +434,8 @@ function AIPage() {
   const [activeThreadId, setActiveThreadId] = React.useState<string | null>(
     null,
   )
-  const [editingThreadId, setEditingThreadId] = React.useState<string | null>(
-    null,
-  )
-  const [editTitleInput, setEditTitleInput] = React.useState("")
+  const [threadToRename, setThreadToRename] =
+    React.useState<ChatThreadPublic | null>(null)
   const [openMenuThreadId, setOpenMenuThreadId] = React.useState<string | null>(
     null,
   )
@@ -474,22 +523,11 @@ function AIPage() {
 
   // Auto-select first thread ONLY on initial mount when threads are first loaded
   React.useEffect(() => {
-    if (threads.length > 0) {
-      if (!initialLoadedRef.current) {
-        setActiveThreadId(threads[0].id)
-        initialLoadedRef.current = true
-      } else if (
-        activeThreadId &&
-        !threads.some((t) => t.id === activeThreadId)
-      ) {
-        // If the active thread was deleted from the list, select first available thread
-        setActiveThreadId(threads[0].id)
-      }
-    } else if (activeThreadId) {
-      setActiveThreadId(null)
-      setLocalMessages([])
+    if (threads.length > 0 && !initialLoadedRef.current) {
+      setActiveThreadId(threads[0].id)
+      initialLoadedRef.current = true
     }
-  }, [activeThreadId, threads])
+  }, [threads])
 
   // 2. Fetch active thread detail with full JSONB transcript
   const { data: activeThreadDetail } = useQuery({
@@ -687,12 +725,15 @@ function AIPage() {
     )
   }
 
-  const handleRenameThread = (id: string, newTitle: string) => {
-    const trimmed = newTitle.trim()
-    if (trimmed) {
-      updateThreadMutation.mutate({ id, title: trimmed })
+  const handleConfirmRename = (newTitle: string) => {
+    if (threadToRename) {
+      updateThreadMutation.mutate(
+        { id: threadToRename.id, title: newTitle },
+        {
+          onSuccess: () => setThreadToRename(null),
+        },
+      )
     }
-    setEditingThreadId(null)
   }
 
   const handleToggleArchive = (thread: ChatThreadPublic) => {
@@ -769,6 +810,15 @@ function AIPage() {
 
   return (
     <div className="flex w-full min-h-[calc(100vh-3.5rem)] lg:min-h-screen bg-background text-foreground">
+      {/* Rename Thread Popup Dialog */}
+      <RenameThreadDialog
+        thread={threadToRename}
+        isOpen={Boolean(threadToRename)}
+        isPending={updateThreadMutation.isPending}
+        onClose={() => setThreadToRename(null)}
+        onConfirm={handleConfirmRename}
+      />
+
       {/* Delete Thread Confirmation Dialog */}
       <DeleteThreadConfirmDialog
         thread={threadToDelete}
@@ -961,26 +1011,17 @@ function AIPage() {
                       key={thread.id}
                       thread={thread}
                       isActive={thread.id === activeThreadId}
-                      isEditing={editingThreadId === thread.id}
-                      editTitleInput={editTitleInput}
                       isMenuOpen={openMenuThreadId === thread.id}
                       onSelect={() => {
                         if (thread.id !== activeThreadId) {
                           stopStream()
                           setActiveThreadId(thread.id)
-                          setEditingThreadId(null)
                         }
                       }}
                       onStartRename={() => {
                         setOpenMenuThreadId(null)
-                        setEditingThreadId(thread.id)
-                        setEditTitleInput(thread.title)
+                        setThreadToRename(thread)
                       }}
-                      onRenameSubmit={(title) =>
-                        handleRenameThread(thread.id, title)
-                      }
-                      onRenameCancel={() => setEditingThreadId(null)}
-                      onEditTitleChange={setEditTitleInput}
                       onToggleArchive={() => handleToggleArchive(thread)}
                       onDelete={() => handleOpenDeleteDialog(thread)}
                       onToggleMenu={() =>
@@ -1025,26 +1066,17 @@ function AIPage() {
                       key={thread.id}
                       thread={thread}
                       isActive={thread.id === activeThreadId}
-                      isEditing={editingThreadId === thread.id}
-                      editTitleInput={editTitleInput}
                       isMenuOpen={openMenuThreadId === thread.id}
                       onSelect={() => {
                         if (thread.id !== activeThreadId) {
                           stopStream()
                           setActiveThreadId(thread.id)
-                          setEditingThreadId(null)
                         }
                       }}
                       onStartRename={() => {
                         setOpenMenuThreadId(null)
-                        setEditingThreadId(thread.id)
-                        setEditTitleInput(thread.title)
+                        setThreadToRename(thread)
                       }}
-                      onRenameSubmit={(title) =>
-                        handleRenameThread(thread.id, title)
-                      }
-                      onRenameCancel={() => setEditingThreadId(null)}
-                      onEditTitleChange={setEditTitleInput}
                       onToggleArchive={() => handleToggleArchive(thread)}
                       onDelete={() => handleOpenDeleteDialog(thread)}
                       onToggleMenu={() =>

@@ -330,25 +330,11 @@ def generate_thread_title(prompt: str) -> str:
 def create_chat_thread(
     *, session: Session, thread_in: ChatThreadCreate, owner_id: uuid.UUID
 ) -> ChatThread:
-    """Create a new chat thread, auto-generating title and initial transcript if prompt provided."""
+    """Create a new chat thread, auto-generating initial title if prompt provided."""
     prompt_text = thread_in.prompt.strip() if thread_in.prompt else None
-    if prompt_text:
-        title = generate_thread_title(prompt_text)
-        transcript: dict[str, Any] = {
-            "messages": [
-                {
-                    "id": f"msg_{uuid.uuid4().hex[:12]}",
-                    "role": "user",
-                    "parts": [{"type": "text", "text": prompt_text}],
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                }
-            ]
-        }
-        message_count = 1
-    else:
-        title = "New conversation"
-        transcript = {"messages": []}
-        message_count = 0
+    title = generate_thread_title(prompt_text) if prompt_text else "New conversation"
+    transcript: dict[str, Any] = {"messages": []}
+    message_count = 0
 
     db_thread = ChatThread(
         owner_id=owner_id,
