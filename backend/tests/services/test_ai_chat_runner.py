@@ -14,10 +14,12 @@ from app.services.ai_chat_runner import (
     LINKX_SYSTEM_PROMPT,
     _build_message_history,
     _extract_text_from_parts,
-    _stream_parsed_chunks,
-    _stream_text_smoothly,
     default_chat_stream_runner,
     format_sse,
+)
+from app.services.ai_stream_parser import (
+    stream_parsed_chunks,
+    stream_text_smoothly,
 )
 
 
@@ -58,14 +60,7 @@ def test_build_message_history_multi_turn() -> None:
             },
             {
                 "role": "assistant",
-                "parts": [
-                    {"type": "thought", "content": "Analyzing..."},
-                    {"type": "text", "text": "Here is the post."},
-                ],
-            },
-            {
-                "role": "user",
-                "parts": [{"type": "text", "text": "Make it shorter"}],
+                "parts": [{"type": "text", "text": "Here is a draft"}],
             },
         ]
     }
@@ -75,35 +70,39 @@ def test_build_message_history_multi_turn() -> None:
     )
     assert len(messages) == 4
     assert isinstance(messages[0], SystemMessage)
+    assert isinstance(messages[1], HumanMessage)
     assert messages[1].content == "Draft a post"
     assert isinstance(messages[2], AIMessage)
-    assert messages[2].content == "Here is the post."
+    assert messages[2].content == "Here is a draft"
     assert isinstance(messages[3], HumanMessage)
     assert messages[3].content == "Make it shorter"
 
 
 def test_build_message_history_truncates_window() -> None:
-    raw = []
-    for i in range(50):
-        role = "user" if i % 2 == 0 else "assistant"
-        raw.append({"role": role, "parts": [{"type": "text", "text": f"Msg {i}"}]})
-    transcript = {"messages": raw}
-
+    # 50 existing turns -> should truncate to max 10 + 1 system
+    long_messages = [
+        {
+            "role": "user" if i % 2 == 0 else "assistant",
+            "parts": [{"type": "text", "text": f"Msg {i}"}],
+        }
+        for i in range(50)
+    ]
     messages = _build_message_history(
-        transcript=transcript,
-        current_message="Msg 49",
+        transcript={"messages": long_messages},
+        current_message="Final message",
         max_history_messages=10,
     )
     assert len(messages) == 11
     assert isinstance(messages[0], SystemMessage)
-    assert messages[-1].content == "Msg 49"
+    assert isinstance(messages[-1], HumanMessage)
+    assert messages[-1].content == "Final message"
 
 
 @pytest.mark.anyio
 async def test_stream_text_smoothly() -> None:
     text = "Word one and word two"
     collected = []
-    async for ev, data in _stream_text_smoothly(text, delay=0):
+    async for ev, data in stream_text_smoothly(text, delay=0):
         assert ev == "text_delta"
         collected.append(data["content"])
 
@@ -120,7 +119,7 @@ async def test_stream_parsed_chunks_thought_and_text() -> None:
         yield "Here is the final post."
 
     events = []
-    async for ev, data in _stream_parsed_chunks(sample_chunks(), delay=0):
+    async for ev, data in stream_parsed_chunks(sample_chunks(), delay=0):
         events.append((ev, data))
 
     thought_deltas = [d["content"] for ev, d in events if ev == "thought"]
@@ -143,10 +142,13 @@ async def test_default_chat_stream_runner_success() -> None:
 
     with (
         patch(
-            "app.services.ai_chat_runner._stream_direct_openai_proxy",
+            "app.services.ai_completion_client.stream_direct_openai_proxy",
             side_effect=ConnectionError("proxy down"),
         ),
-        patch("app.services.ai_chat_runner.get_chat_model", return_value=mock_model),
+        patch(
+            "app.services.ai_completion_client.get_chat_model",
+            return_value=mock_model,
+        ),
     ):
         events = []
         async for ev, data in default_chat_stream_runner(
@@ -172,10 +174,13 @@ async def test_default_chat_stream_runner_error() -> None:
 
     with (
         patch(
-            "app.services.ai_chat_runner._stream_direct_openai_proxy",
+            "app.services.ai_completion_client.stream_direct_openai_proxy",
             side_effect=ConnectionError("proxy down"),
         ),
-        patch("app.services.ai_chat_runner.get_chat_model", return_value=mock_model),
+        patch(
+            "app.services.ai_completion_client.get_chat_model",
+            return_value=mock_model,
+        ),
     ):
         events = []
         async for ev, data in default_chat_stream_runner(

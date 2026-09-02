@@ -3,7 +3,6 @@ import re
 from collections.abc import AsyncGenerator
 from typing import Any
 
-import httpx
 from langchain_core.messages import (
     AIMessage,
     BaseMessage,
@@ -13,22 +12,8 @@ from langchain_core.messages import (
 
 from app.core.config import settings
 from app.services.agentic.client import get_chat_model
-from app.services.ai_stream_parser import (
-    consume_inside_thought,
-    consume_outside_thought,
-    consume_tag_buffer,
-    process_buffer_step,
-    stream_parsed_chunks,
-    stream_text_smoothly,
-)
-
-# Backwards compatibility aliases for tests and internal callers
-_stream_text_smoothly = stream_text_smoothly
-_consume_tag_buffer = consume_tag_buffer
-_consume_outside_thought = consume_outside_thought
-_consume_inside_thought = consume_inside_thought
-_process_buffer_step = process_buffer_step
-_stream_parsed_chunks = stream_parsed_chunks
+from app.services.ai_completion_client import stream_raw_chat_completion
+from app.services.ai_stream_parser import stream_parsed_chunks
 
 LINKX_SYSTEM_PROMPT = """You are LinkX Copilot — an expert social media strategist, copywriter, and viral growth advisor.
 You help users craft high-performing, engaging posts for LinkedIn, X (Twitter), and cross-platform growth.
@@ -109,146 +94,6 @@ def _build_message_history(
         converted = converted[-max_history_messages:]
 
     return [SystemMessage(content=LINKX_SYSTEM_PROMPT), *converted]
-
-
-def _format_messages_for_openai(
-    messages: list[BaseMessage],
-) -> list[dict[str, str]]:
-    formatted: list[dict[str, str]] = []
-    for msg in messages:
-        if isinstance(msg, SystemMessage):
-            formatted.append({"role": "system", "content": str(msg.content)})
-        elif isinstance(msg, HumanMessage):
-            formatted.append({"role": "user", "content": str(msg.content)})
-        elif isinstance(msg, AIMessage):
-            formatted.append({"role": "assistant", "content": str(msg.content)})
-    return formatted
-
-
-def _extract_chunk_content(delta: dict[str, Any]) -> str | None:
-    reasoning = (
-        delta.get("reasoning_content") or delta.get("reasoning") or delta.get("thought")
-    )
-    if isinstance(reasoning, str) and reasoning:
-        return f"<thought>{reasoning}</thought>"
-    content = delta.get("content")
-    if isinstance(content, str) and content:
-        return content
-    return None
-
-
-def _parse_sse_line(line: str) -> str | None:
-    if not line.startswith("data: ") or line == "data: [DONE]":
-        return None
-    try:
-        data = json.loads(line[6:])
-        choices = data.get("choices", [])
-        if choices:
-            return _extract_chunk_content(choices[0].get("delta", {}))
-    except Exception:
-        pass
-    return None
-
-
-async def _stream_direct_openai_proxy(
-    *,
-    messages: list[dict[str, str]],
-    model_name: str,
-    temperature: float = 0.7,
-    max_tokens: int = 2000,
-) -> AsyncGenerator[str, None]:
-    """Stream raw tokens and thinking tags directly from OpenAI-compatible proxy."""
-    api_key = (
-        settings.OPENAI_API_COMPATIBLE_API_KEY or settings.AI_API_KEY or "dummy-key"
-    )
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": model_name.removeprefix("openai/"),
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-        "stream": True,
-    }
-    async with httpx.AsyncClient(timeout=45.0) as client:
-        async with client.stream(
-            "POST",
-            f"{settings.AI_API_BASE}/chat/completions",
-            headers=headers,
-            json=payload,
-        ) as response:
-            if response.status_code != 200:
-                err_body = await response.aread()
-                raise RuntimeError(
-                    f"Proxy HTTP {response.status_code}: {err_body.decode('utf-8', errors='ignore')}"
-                )
-
-            async for line in response.aiter_lines():
-                parsed = _parse_sse_line(line)
-                if parsed:
-                    yield parsed
-
-
-def _extract_langchain_chunk_text(chunk: Any) -> str | None:
-    text = chunk.content
-    if isinstance(text, str) and text:
-        return text
-    if isinstance(text, list):
-        combined = "".join(str(c) for c in text if c)
-        if combined:
-            return combined
-    return None
-
-
-async def _stream_fallback_langchain(
-    messages: list[BaseMessage], target_model: str
-) -> AsyncGenerator[str, None]:
-    """Fallback streaming via LangChain chat model wrapper."""
-    chat_model = get_chat_model(
-        model=target_model,
-        temperature=0.7,
-        max_tokens=2000,
-        streaming=True,
-    )
-    async for chunk in chat_model.astream(messages):
-        reasoning = chunk.additional_kwargs.get(
-            "reasoning_content"
-        ) or chunk.additional_kwargs.get("thought")
-        if reasoning and isinstance(reasoning, str):
-            yield f"<thought>{reasoning}</thought>"
-
-        text = _extract_langchain_chunk_text(chunk)
-        if text:
-            yield text
-
-
-async def stream_raw_chat_completion(
-    *,
-    messages: list[BaseMessage],
-    model: str | None = None,
-) -> AsyncGenerator[str, None]:
-    """Stream raw text tokens including reasoning/thought tags from proxy or ChatOpenAI model."""
-    target_model = model or settings.AI_MODEL
-    try:
-        formatted_msgs = _format_messages_for_openai(messages)
-        streamed = False
-        async for token in _stream_direct_openai_proxy(
-            messages=formatted_msgs,
-            model_name=target_model,
-            temperature=0.7,
-            max_tokens=2000,
-        ):
-            streamed = True
-            yield token
-        if streamed:
-            return
-    except Exception:
-        pass
-
-    async for token in _stream_fallback_langchain(messages, target_model):
-        yield token
 
 
 async def default_chat_stream_runner(

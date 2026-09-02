@@ -232,10 +232,13 @@ def test_chat_stream_returns_sse_and_persists(
 
     with (
         patch(
-            "app.services.ai_chat_runner._stream_direct_openai_proxy",
+            "app.services.ai_completion_client.stream_direct_openai_proxy",
             side_effect=ConnectionError("proxy down"),
         ),
-        patch("app.services.ai_chat_runner.get_chat_model", return_value=mock_model),
+        patch(
+            "app.services.ai_completion_client.get_chat_model",
+            return_value=mock_model,
+        ),
     ):
         stream_res = client.post(
             f"{settings.API_V1_STR}/ai/threads/{tid}/chat",
