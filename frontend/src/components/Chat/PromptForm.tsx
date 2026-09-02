@@ -93,54 +93,14 @@ function useImageAttachments() {
   }
 }
 
-export function PromptForm({
-  onSubmit,
-  onStop,
-  isBusy = false,
-  placeholder = "Ask anything",
-  selectedModelId,
-  models,
-  onSelectModel,
-  inputRef,
-  autoFocus = false,
-  actions,
-  className,
-  initialValue = "",
-  onValueChange,
-}: PromptFormProps) {
-  const [input, setInput] = React.useState(initialValue)
-  const [localModelId, setLocalModelId] = React.useState(
-    selectedModelId || "gemini-3.6-flash-high",
-  )
-
-  const internalInputRef = React.useRef<HTMLTextAreaElement>(null)
-  const effectiveInputRef = inputRef || internalInputRef
-  const baseInputRef = React.useRef(initialValue)
-  const onValueChangeRef = React.useRef(onValueChange)
-
-  const {
-    selectedImages,
-    fileInputRef,
-    handleImageSelect,
-    handleRemoveImage,
-    clearImages,
-  } = useImageAttachments()
-
-  React.useEffect(() => {
-    onValueChangeRef.current = onValueChange
-  })
-
-  const updateInput = React.useCallback((val: string) => {
-    setInput(val)
-    baseInputRef.current = val
-    onValueChangeRef.current?.(val)
-  }, [])
-
-  const activeModelId = selectedModelId || localModelId
-  const normalizedModels = React.useMemo(
-    () => normalizeModels(models),
-    [models],
-  )
+function usePromptVoiceInput({
+  input,
+  updateInput,
+}: {
+  input: string
+  updateInput: (val: string) => void
+}) {
+  const baseInputRef = React.useRef(input)
 
   const handleTranscriptChange = React.useCallback(
     ({ transcript: voiceText }: { transcript: string }) => {
@@ -148,10 +108,9 @@ export function PromptForm({
       const base = baseInputRef.current.trim()
       const separator = base && voiceText ? " " : ""
       const fullText = base + separator + voiceText
-      setInput(fullText)
-      onValueChangeRef.current?.(fullText)
+      updateInput(fullText)
     },
-    [],
+    [updateInput],
   )
 
   const {
@@ -181,24 +140,87 @@ export function PromptForm({
     input,
   ])
 
+  function stopAndReset() {
+    if (isVoiceListening) {
+      stopVoiceListening()
+    }
+    resetTranscript()
+    baseInputRef.current = ""
+  }
+
+  return {
+    isVoiceListening,
+    isVoiceSupported,
+    voiceError,
+    handleToggleVoice,
+    stopAndReset,
+  }
+}
+
+export function PromptForm({
+  onSubmit,
+  onStop,
+  isBusy = false,
+  placeholder = "Ask anything",
+  selectedModelId,
+  models,
+  onSelectModel,
+  inputRef,
+  autoFocus = false,
+  actions,
+  className,
+  initialValue = "",
+  onValueChange,
+}: PromptFormProps) {
+  const [input, setInput] = React.useState(initialValue)
+  const [localModelId, setLocalModelId] = React.useState(
+    selectedModelId || "gemini-3.6-flash-high",
+  )
+
+  const internalInputRef = React.useRef<HTMLTextAreaElement>(null)
+  const effectiveInputRef = inputRef || internalInputRef
+  const onValueChangeRef = React.useRef(onValueChange)
+
+  const {
+    selectedImages,
+    fileInputRef,
+    handleImageSelect,
+    handleRemoveImage,
+    clearImages,
+  } = useImageAttachments()
+
+  React.useEffect(() => {
+    onValueChangeRef.current = onValueChange
+  })
+
+  const updateInput = React.useCallback((val: string) => {
+    setInput(val)
+    onValueChangeRef.current?.(val)
+  }, [])
+
+  const {
+    isVoiceListening,
+    isVoiceSupported,
+    voiceError,
+    handleToggleVoice,
+    stopAndReset,
+  } = usePromptVoiceInput({ input, updateInput })
+
+  const activeModelId = selectedModelId || localModelId
+  const normalizedModels = React.useMemo(
+    () => normalizeModels(models),
+    [models],
+  )
+
   React.useEffect(() => {
     if (autoFocus) {
       effectiveInputRef.current?.focus()
     }
   }, [autoFocus, effectiveInputRef])
 
-  function handleSelectModel(mId: string) {
-    setLocalModelId(mId)
-    onSelectModel?.(mId)
-  }
-
   function handleSubmit(event?: React.FormEvent) {
     event?.preventDefault()
-    if (isVoiceListening) {
-      stopVoiceListening()
-    }
-    resetTranscript()
-    baseInputRef.current = ""
+    stopAndReset()
     const text = input.trim()
     if ((!text && selectedImages.length === 0) || isBusy) return
 
@@ -271,7 +293,10 @@ export function PromptForm({
             <ModelSelectorPill
               selectedModelId={activeModelId}
               models={normalizedModels}
-              onSelectModel={handleSelectModel}
+              onSelectModel={(mId) => {
+                setLocalModelId(mId)
+                onSelectModel?.(mId)
+              }}
             />
 
             <VoiceInputButton
