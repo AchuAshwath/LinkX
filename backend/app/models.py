@@ -330,3 +330,67 @@ class TrendingTopicPublic(SQLModel):
 class TrendingTopicsPublic(SQLModel):
     data: list[TrendingTopicPublic]
     count: int
+
+
+# --- AI Chat Threads & Conversations ---
+
+
+class ChatThreadBase(SQLModel):
+    title: str = Field(max_length=200)
+    origin: str = Field(
+        default="manual", max_length=20
+    )  # "composer" | "trending" | "manual"
+
+
+class ChatThreadCreate(SQLModel):
+    origin: str = Field(default="manual", max_length=20)
+    prompt: str | None = Field(default=None, max_length=25000)
+    post_id: uuid.UUID | None = None
+    topic_keyword: str | None = Field(default=None, max_length=200)
+
+
+class ChatThreadUpdate(SQLModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    is_archived: bool | None = None
+
+
+class ChatThread(TimestampedUUIDModel, ChatThreadBase, table=True):
+    __tablename__ = "chat_thread"
+
+    owner_id: uuid.UUID = Field(
+        foreign_key="user.id", nullable=False, ondelete="CASCADE"
+    )
+    post_id: uuid.UUID | None = Field(
+        default=None, foreign_key="post.id", nullable=True, ondelete="SET NULL"
+    )
+    topic_keyword: str | None = Field(default=None, max_length=200)
+    message_count: int = Field(default=0)
+    is_archived: bool = Field(default=False)
+    transcript: dict[str, Any] = Field(
+        default_factory=lambda: {"messages": []},
+        sa_column=Column(JSONB),
+    )
+
+
+class ChatThreadPublic(ChatThreadBase):
+    id: uuid.UUID
+    owner_id: uuid.UUID
+    post_id: uuid.UUID | None = None
+    topic_keyword: str | None = None
+    message_count: int = 0
+    is_archived: bool = False
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class ChatThreadDetail(ChatThreadPublic):
+    transcript: dict[str, Any] = Field(default_factory=lambda: {"messages": []})
+
+
+class ChatThreadsPublic(SQLModel):
+    data: list[ChatThreadPublic]
+    count: int
+
+
+class ChatMessageRequest(SQLModel):
+    message: str = Field(min_length=1, max_length=25000)

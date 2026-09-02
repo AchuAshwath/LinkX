@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { AdminReadSchedulerStatusResponse, AuthLinkedinConfigCheckResponse, AuthLinkedinAuthorizeResponse, AuthLinkedinCallbackData, AuthLinkedinCallbackResponse, AuthXStatusResponse, AuthXVerifyResponse, AuthXConnectData, AuthXConnectResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, LinkedinLinkedinStatusResponse, LinkedinLinkedinDisconnectResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PostsUploadMediaData, PostsUploadMediaResponse, PostsGenerateAiDraftData, PostsGenerateAiDraftResponse, PostsReadPostsData, PostsReadPostsResponse, PostsCreateNewPostData, PostsCreateNewPostResponse, PostsReadPostData, PostsReadPostResponse, PostsUpdateExistingPostData, PostsUpdateExistingPostResponse, PostsDeleteExistingPostData, PostsDeleteExistingPostResponse, PostsPublishExistingPostData, PostsPublishExistingPostResponse, PostsRetryFailedPostData, PostsRetryFailedPostResponse, PrivateCreateUserData, PrivateCreateUserResponse, TrendingGetTrendingResponse, TrendingExtractTrendingTopicsData, TrendingExtractTrendingTopicsResponse, TrendingDraftFromTrendingTopicData, TrendingDraftFromTrendingTopicResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
+import type { AdminReadSchedulerStatusResponse, AiThreadsCreateChatThreadData, AiThreadsCreateChatThreadResponse, AiThreadsListChatThreadsData, AiThreadsListChatThreadsResponse, AiThreadsGetChatThreadData, AiThreadsGetChatThreadResponse, AiThreadsUpdateChatThreadData, AiThreadsUpdateChatThreadResponse, AiThreadsDeleteChatThreadData, AiThreadsDeleteChatThreadResponse, AiThreadsChatStreamData, AiThreadsChatStreamResponse, AuthLinkedinConfigCheckResponse, AuthLinkedinAuthorizeResponse, AuthLinkedinCallbackData, AuthLinkedinCallbackResponse, AuthXStatusResponse, AuthXVerifyResponse, AuthXConnectData, AuthXConnectResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, LinkedinLinkedinStatusResponse, LinkedinLinkedinDisconnectResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PostsUploadMediaData, PostsUploadMediaResponse, PostsGenerateAiDraftData, PostsGenerateAiDraftResponse, PostsReadPostsData, PostsReadPostsResponse, PostsCreateNewPostData, PostsCreateNewPostResponse, PostsReadPostData, PostsReadPostResponse, PostsUpdateExistingPostData, PostsUpdateExistingPostResponse, PostsDeleteExistingPostData, PostsDeleteExistingPostResponse, PostsPublishExistingPostData, PostsPublishExistingPostResponse, PostsRetryFailedPostData, PostsRetryFailedPostResponse, PrivateCreateUserData, PrivateCreateUserResponse, TrendingGetTrendingResponse, TrendingExtractTrendingTopicsData, TrendingExtractTrendingTopicsResponse, TrendingDraftFromTrendingTopicData, TrendingDraftFromTrendingTopicResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
 
 export class AdminService {
     /**
@@ -15,6 +15,143 @@ export class AdminService {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/api/v1/admin/scheduler/status'
+        });
+    }
+}
+
+export class AiThreadsService {
+    /**
+     * Create Chat Thread
+     * Create a new AI chat conversation thread.
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns ChatThreadDetail Successful Response
+     * @throws ApiError
+     */
+    public static createChatThread(data: AiThreadsCreateChatThreadData): CancelablePromise<AiThreadsCreateChatThreadResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/ai/threads/',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * List Chat Threads
+     * List chat threads for the current user with optional archive filter.
+     * @param data The data for the request.
+     * @param data.archived
+     * @param data.skip
+     * @param data.limit
+     * @returns ChatThreadsPublic Successful Response
+     * @throws ApiError
+     */
+    public static listChatThreads(data: AiThreadsListChatThreadsData = {}): CancelablePromise<AiThreadsListChatThreadsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/ai/threads/',
+            query: {
+                archived: data.archived,
+                skip: data.skip,
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Get Chat Thread
+     * Get a chat thread by ID including full JSON transcript.
+     * @param data The data for the request.
+     * @param data.id
+     * @returns ChatThreadDetail Successful Response
+     * @throws ApiError
+     */
+    public static getChatThread(data: AiThreadsGetChatThreadData): CancelablePromise<AiThreadsGetChatThreadResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/ai/threads/{id}',
+            path: {
+                id: data.id
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Update Chat Thread
+     * Update chat thread metadata (title, archive status).
+     * @param data The data for the request.
+     * @param data.id
+     * @param data.requestBody
+     * @returns ChatThreadPublic Successful Response
+     * @throws ApiError
+     */
+    public static updateChatThread(data: AiThreadsUpdateChatThreadData): CancelablePromise<AiThreadsUpdateChatThreadResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/ai/threads/{id}',
+            path: {
+                id: data.id
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Delete Chat Thread
+     * Delete a chat thread.
+     * @param data The data for the request.
+     * @param data.id
+     * @returns Message Successful Response
+     * @throws ApiError
+     */
+    public static deleteChatThread(data: AiThreadsDeleteChatThreadData): CancelablePromise<AiThreadsDeleteChatThreadResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/ai/threads/{id}',
+            path: {
+                id: data.id
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Chat Stream
+     * Server-Sent Events streaming endpoint for AI conversation.
+     * @param data The data for the request.
+     * @param data.id
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static chatStream(data: AiThreadsChatStreamData): CancelablePromise<AiThreadsChatStreamResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/ai/threads/{id}/chat',
+            path: {
+                id: data.id
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
         });
     }
 }

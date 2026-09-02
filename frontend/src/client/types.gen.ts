@@ -24,6 +24,56 @@ export type Body_posts_upload_media = {
     file: (Blob | File);
 };
 
+export type ChatMessageRequest = {
+    message: string;
+};
+
+export type ChatThreadCreate = {
+    origin?: string;
+    prompt?: (string | null);
+    post_id?: (string | null);
+    topic_keyword?: (string | null);
+};
+
+export type ChatThreadDetail = {
+    title: string;
+    origin?: string;
+    id: string;
+    owner_id: string;
+    post_id?: (string | null);
+    topic_keyword?: (string | null);
+    message_count?: number;
+    is_archived?: boolean;
+    created_at?: (string | null);
+    updated_at?: (string | null);
+    transcript?: {
+        [key: string]: unknown;
+    };
+};
+
+export type ChatThreadPublic = {
+    title: string;
+    origin?: string;
+    id: string;
+    owner_id: string;
+    post_id?: (string | null);
+    topic_keyword?: (string | null);
+    message_count?: number;
+    is_archived?: boolean;
+    created_at?: (string | null);
+    updated_at?: (string | null);
+};
+
+export type ChatThreadsPublic = {
+    data: Array<ChatThreadPublic>;
+    count: number;
+};
+
+export type ChatThreadUpdate = {
+    title?: (string | null);
+    is_archived?: (boolean | null);
+};
+
 export type HTTPValidationError = {
     detail?: Array<ValidationError>;
 };
@@ -224,6 +274,46 @@ export type XVerifyResponse = {
 };
 
 export type AdminReadSchedulerStatusResponse = (unknown);
+
+export type AiThreadsCreateChatThreadData = {
+    requestBody: ChatThreadCreate;
+};
+
+export type AiThreadsCreateChatThreadResponse = (ChatThreadDetail);
+
+export type AiThreadsListChatThreadsData = {
+    archived?: (boolean | null);
+    limit?: number;
+    skip?: number;
+};
+
+export type AiThreadsListChatThreadsResponse = (ChatThreadsPublic);
+
+export type AiThreadsGetChatThreadData = {
+    id: string;
+};
+
+export type AiThreadsGetChatThreadResponse = (ChatThreadDetail);
+
+export type AiThreadsUpdateChatThreadData = {
+    id: string;
+    requestBody: ChatThreadUpdate;
+};
+
+export type AiThreadsUpdateChatThreadResponse = (ChatThreadPublic);
+
+export type AiThreadsDeleteChatThreadData = {
+    id: string;
+};
+
+export type AiThreadsDeleteChatThreadResponse = (Message);
+
+export type AiThreadsChatStreamData = {
+    id: string;
+    requestBody: ChatMessageRequest;
+};
+
+export type AiThreadsChatStreamResponse = (unknown);
 
 export type AuthLinkedinConfigCheckResponse = ({
     [key: string]: unknown;

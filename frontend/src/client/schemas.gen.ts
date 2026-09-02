@@ -125,6 +125,296 @@ export const Body_posts_upload_mediaSchema = {
     title: 'Body_posts-upload_media'
 } as const;
 
+export const ChatMessageRequestSchema = {
+    properties: {
+        message: {
+            type: 'string',
+            maxLength: 25000,
+            minLength: 1,
+            title: 'Message'
+        }
+    },
+    type: 'object',
+    required: ['message'],
+    title: 'ChatMessageRequest'
+} as const;
+
+export const ChatThreadCreateSchema = {
+    properties: {
+        origin: {
+            type: 'string',
+            maxLength: 20,
+            title: 'Origin',
+            default: 'manual'
+        },
+        prompt: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 25000
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Prompt'
+        },
+        post_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Post Id'
+        },
+        topic_keyword: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 200
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Topic Keyword'
+        }
+    },
+    type: 'object',
+    title: 'ChatThreadCreate'
+} as const;
+
+export const ChatThreadDetailSchema = {
+    properties: {
+        title: {
+            type: 'string',
+            maxLength: 200,
+            title: 'Title'
+        },
+        origin: {
+            type: 'string',
+            maxLength: 20,
+            title: 'Origin',
+            default: 'manual'
+        },
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        owner_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Owner Id'
+        },
+        post_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Post Id'
+        },
+        topic_keyword: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Topic Keyword'
+        },
+        message_count: {
+            type: 'integer',
+            title: 'Message Count',
+            default: 0
+        },
+        is_archived: {
+            type: 'boolean',
+            title: 'Is Archived',
+            default: false
+        },
+        created_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Created At'
+        },
+        updated_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Updated At'
+        },
+        transcript: {
+            additionalProperties: true,
+            type: 'object',
+            title: 'Transcript'
+        }
+    },
+    type: 'object',
+    required: ['title', 'id', 'owner_id'],
+    title: 'ChatThreadDetail'
+} as const;
+
+export const ChatThreadPublicSchema = {
+    properties: {
+        title: {
+            type: 'string',
+            maxLength: 200,
+            title: 'Title'
+        },
+        origin: {
+            type: 'string',
+            maxLength: 20,
+            title: 'Origin',
+            default: 'manual'
+        },
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        owner_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Owner Id'
+        },
+        post_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Post Id'
+        },
+        topic_keyword: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Topic Keyword'
+        },
+        message_count: {
+            type: 'integer',
+            title: 'Message Count',
+            default: 0
+        },
+        is_archived: {
+            type: 'boolean',
+            title: 'Is Archived',
+            default: false
+        },
+        created_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Created At'
+        },
+        updated_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Updated At'
+        }
+    },
+    type: 'object',
+    required: ['title', 'id', 'owner_id'],
+    title: 'ChatThreadPublic'
+} as const;
+
+export const ChatThreadUpdateSchema = {
+    properties: {
+        title: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 200,
+                    minLength: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Title'
+        },
+        is_archived: {
+            anyOf: [
+                {
+                    type: 'boolean'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Is Archived'
+        }
+    },
+    type: 'object',
+    title: 'ChatThreadUpdate'
+} as const;
+
+export const ChatThreadsPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/ChatThreadPublic'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count'],
+    title: 'ChatThreadsPublic'
+} as const;
+
 export const HTTPValidationErrorSchema = {
     properties: {
         detail: {
