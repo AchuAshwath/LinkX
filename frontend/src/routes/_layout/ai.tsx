@@ -463,40 +463,45 @@ function AIPage() {
         activeThreadId={activeThreadId}
         openMenuThreadId={openMenuThreadId}
         isLoading={isThreadsLoading}
-        sortOrder={sortOrder}
-        searchQuery={searchQuery}
-        isSearchOpen={isSearchOpen}
-        isSortMenuOpen={isSortMenuOpen}
-        recentsOpen={recentsOpen}
-        archivedOpen={archivedOpen}
-        onSelectThread={(threadId) => {
-          if (threadId !== activeThreadId) {
-            stopStream()
-            setActiveThreadId(threadId)
-          }
+        filters={{
+          searchQuery,
+          isSearchOpen,
+          sortOrder,
+          isSortMenuOpen,
+          recentsOpen,
+          archivedOpen,
         }}
-        onNewChat={handleNewChat}
-        onStartRename={(t) => {
-          setOpenMenuThreadId(null)
-          setThreadToRename(t)
+        filterHandlers={{
+          onToggleSearch: () => setIsSearchOpen((prev) => !prev),
+          onSearchChange: setSearchQuery,
+          onToggleSortMenu: () => setIsSortMenuOpen((prev) => !prev),
+          onSelectSortOrder: (newOrder) => {
+            setSortOrder(newOrder)
+            setIsSortMenuOpen(false)
+          },
+          onToggleRecents: () => setRecentsOpen((prev) => !prev),
+          onToggleArchived: () => setArchivedOpen((prev) => !prev),
+          onNewChat: handleNewChat,
         }}
-        onToggleArchive={handleToggleArchive}
-        onDeleteThread={(t) => {
-          setOpenMenuThreadId(null)
-          setThreadToDelete(t)
+        actions={{
+          onSelect: (threadId) => {
+            if (threadId !== activeThreadId) {
+              stopStream()
+              setActiveThreadId(threadId)
+            }
+          },
+          onStartRename: (t) => {
+            setOpenMenuThreadId(null)
+            setThreadToRename(t)
+          },
+          onToggleArchive: handleToggleArchive,
+          onDelete: (t) => {
+            setOpenMenuThreadId(null)
+            setThreadToDelete(t)
+          },
+          onToggleMenu: (id) =>
+            setOpenMenuThreadId((prev) => (prev === id ? null : id)),
         }}
-        onToggleMenu={(id) =>
-          setOpenMenuThreadId((prev) => (prev === id ? null : id))
-        }
-        onToggleSearch={() => setIsSearchOpen((prev) => !prev)}
-        onSearchChange={setSearchQuery}
-        onToggleSortMenu={() => setIsSortMenuOpen((prev) => !prev)}
-        onSelectSortOrder={(newOrder) => {
-          setSortOrder(newOrder)
-          setIsSortMenuOpen(false)
-        }}
-        onToggleRecents={() => setRecentsOpen((prev) => !prev)}
-        onToggleArchived={() => setArchivedOpen((prev) => !prev)}
       />
     </div>
   )

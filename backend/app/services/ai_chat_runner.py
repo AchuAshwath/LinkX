@@ -53,28 +53,21 @@ def _extract_text_from_parts(parts: list[dict[str, Any]]) -> str:
     return "\n".join(text_chunks).strip()
 
 
-def _build_message_history(
-    *,
-    transcript: dict[str, Any] | None,
-    current_message: str,
-    max_history_messages: int = 40,
-) -> list[BaseMessage]:
-    """Convert JSONB transcript messages into LangChain BaseMessage objects."""
-    messages: list[BaseMessage] = [SystemMessage(content=LINKX_SYSTEM_PROMPT)]
-    raw_messages = (transcript or {}).get("messages", [])
+def _convert_transcript_item(item: dict[str, Any]) -> BaseMessage | None:
+    role = item.get("role")
+    text = _extract_text_from_parts(item.get("parts", []))
+    if not text:
+        return None
+    if role == "user":
+        return HumanMessage(content=text)
+    if role == "assistant":
+        return AIMessage(content=text)
+    return None
 
-    converted: list[BaseMessage] = []
-    for item in raw_messages:
-        role = item.get("role")
-        parts = item.get("parts", [])
-        text = _extract_text_from_parts(parts)
-        if not text:
-            continue
-        if role == "user":
-            converted.append(HumanMessage(content=text))
-        elif role == "assistant":
-            converted.append(AIMessage(content=text))
 
+def _ensure_latest_human_message(
+    converted: list[BaseMessage], current_message: str
+) -> None:
     if (
         not converted
         or not isinstance(converted[-1], HumanMessage)
@@ -82,11 +75,25 @@ def _build_message_history(
     ):
         converted.append(HumanMessage(content=current_message))
 
+
+def _build_message_history(
+    *,
+    transcript: dict[str, Any] | None,
+    current_message: str,
+    max_history_messages: int = 40,
+) -> list[BaseMessage]:
+    """Convert JSONB transcript messages into LangChain BaseMessage objects."""
+    raw_messages = (transcript or {}).get("messages", [])
+    converted = [
+        msg
+        for item in raw_messages
+        if (msg := _convert_transcript_item(item)) is not None
+    ]
+    _ensure_latest_human_message(converted, current_message)
     if len(converted) > max_history_messages:
         converted = converted[-max_history_messages:]
 
-    messages.extend(converted)
-    return messages
+    return [SystemMessage(content=LINKX_SYSTEM_PROMPT), *converted]
 
 
 async def _stream_text_smoothly(

@@ -17,6 +17,14 @@ import { cn } from "@/lib/utils"
 
 export type SortOption = "recent" | "oldest" | "title" | "messages"
 
+export interface ThreadItemActions {
+  onSelect: (id: string) => void
+  onStartRename: (thread: ChatThreadPublic) => void
+  onToggleArchive: (thread: ChatThreadPublic) => void
+  onDelete: (thread: ChatThreadPublic) => void
+  onToggleMenu: (id: string) => void
+}
+
 function ThreadActionsMenu({
   isArchived,
   onToggleArchive,
@@ -138,20 +146,12 @@ export function ThreadListItem({
   thread,
   isActive,
   isMenuOpen,
-  onSelect,
-  onStartRename,
-  onToggleArchive,
-  onDelete,
-  onToggleMenu,
+  actions,
 }: {
   thread: ChatThreadPublic
   isActive: boolean
   isMenuOpen: boolean
-  onSelect: () => void
-  onStartRename: () => void
-  onToggleArchive: () => void
-  onDelete: () => void
-  onToggleMenu: () => void
+  actions: ThreadItemActions
 }) {
   const isArchived = Boolean(thread.is_archived)
 
@@ -171,7 +171,7 @@ export function ThreadListItem({
     >
       <button
         type="button"
-        onClick={onSelect}
+        onClick={() => actions.onSelect(thread.id)}
         className="flex flex-1 items-center truncate text-left cursor-pointer min-w-0 pr-2 focus:outline-none py-1 select-none"
       >
         <span
@@ -195,7 +195,7 @@ export function ThreadListItem({
             className="size-6 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 rounded-full shrink-0 transition-opacity text-muted-foreground hover:text-destructive cursor-pointer"
             onClick={(e) => {
               e.stopPropagation()
-              onDelete()
+              actions.onDelete(thread)
             }}
           >
             <Trash2 className="size-3" />
@@ -208,7 +208,7 @@ export function ThreadListItem({
             className="size-6 opacity-0 group-hover:opacity-100 hover:bg-muted/60 rounded-full shrink-0 transition-opacity text-muted-foreground hover:text-foreground cursor-pointer"
             onClick={(e) => {
               e.stopPropagation()
-              onToggleArchive()
+              actions.onToggleArchive(thread)
             }}
           >
             <Archive className="size-3" />
@@ -228,7 +228,7 @@ export function ThreadListItem({
             )}
             onClick={(e) => {
               e.stopPropagation()
-              onToggleMenu()
+              actions.onToggleMenu(thread.id)
             }}
           >
             <MoreHorizontal className="size-3" />
@@ -237,9 +237,9 @@ export function ThreadListItem({
           {isMenuOpen && (
             <ThreadActionsMenu
               isArchived={isArchived}
-              onToggleArchive={onToggleArchive}
-              onStartRename={onStartRename}
-              onDelete={onDelete}
+              onToggleArchive={() => actions.onToggleArchive(thread)}
+              onStartRename={() => actions.onStartRename(thread)}
+              onDelete={() => actions.onDelete(thread)}
             />
           )}
         </div>
@@ -248,30 +248,208 @@ export function ThreadListItem({
   )
 }
 
-export interface AIThreadsSidebarProps {
-  recentThreads: ChatThreadPublic[]
-  archivedThreads: ChatThreadPublic[]
+function SidebarFilterInput({
+  searchQuery,
+  onSearchChange,
+}: {
+  searchQuery: string
+  onSearchChange: (q: string) => void
+}) {
+  return (
+    <div className="px-1 py-1 animate-in fade-in-0 duration-150">
+      <div className="relative flex items-center">
+        <Search className="absolute left-2.5 size-3 text-muted-foreground pointer-events-none" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder="Filter chats…"
+          className="w-full rounded-lg bg-muted/30 border border-border/60 pl-7 pr-7 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            aria-label="Clear filter"
+            onClick={() => onSearchChange("")}
+            className="absolute right-2 text-muted-foreground hover:text-foreground cursor-pointer"
+          >
+            <X className="size-3" />
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function SidebarControlsHeader({
+  isOpen,
+  isSearchOpen,
+  isSortMenuOpen,
+  searchQuery,
+  sortOrder,
+  onToggleRecents,
+  onToggleSearch,
+  onToggleSortMenu,
+  onSelectSortOrder,
+  onNewChat,
+}: {
+  isOpen: boolean
+  isSearchOpen: boolean
+  isSortMenuOpen: boolean
+  searchQuery: string
+  sortOrder: SortOption
+  onToggleRecents: () => void
+  onToggleSearch: () => void
+  onToggleSortMenu: () => void
+  onSelectSortOrder: (o: SortOption) => void
+  onNewChat: () => void
+}) {
+  return (
+    <div className="flex items-center justify-between px-2 py-1">
+      <button
+        type="button"
+        onClick={onToggleRecents}
+        className="flex items-center gap-1.5 text-sm font-semibold text-foreground hover:text-muted-foreground transition-colors cursor-pointer select-none"
+      >
+        <span>Recents</span>
+        <ChevronDown
+          className={cn(
+            "size-3.5 text-muted-foreground transition-transform duration-200",
+            !isOpen && "-rotate-90",
+          )}
+        />
+      </button>
+
+      <div className="flex items-center gap-0.5">
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Filter chats"
+          onClick={onToggleSearch}
+          className={cn(
+            "size-7 rounded-full cursor-pointer transition-colors",
+            isSearchOpen || searchQuery
+              ? "bg-muted/80 text-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Search className="size-3.5" />
+        </Button>
+
+        <div className="relative">
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Sort options"
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleSortMenu()
+            }}
+            className={cn(
+              "size-7 rounded-full cursor-pointer transition-colors",
+              isSortMenuOpen
+                ? "bg-muted/80 text-foreground"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <MoreHorizontal className="size-3.5" />
+          </Button>
+          {isSortMenuOpen && (
+            <SortFilterMenu
+              sortOrder={sortOrder}
+              onSelectSort={onSelectSortOrder}
+            />
+          )}
+        </div>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="New chat"
+          onClick={onNewChat}
+          className="size-7 text-muted-foreground hover:text-foreground rounded-full cursor-pointer"
+        >
+          <SquarePen className="size-3.5" />
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function ThreadListSection({
+  threads,
+  activeThreadId,
+  openMenuThreadId,
+  isLoading,
+  emptyMessage,
+  actions,
+}: {
+  threads: ChatThreadPublic[]
   activeThreadId: string | null
   openMenuThreadId: string | null
   isLoading: boolean
-  sortOrder: SortOption
+  emptyMessage: string
+  actions: ThreadItemActions
+}) {
+  if (isLoading) {
+    return (
+      <p className="px-3 py-1.5 text-xs text-muted-foreground animate-pulse">
+        Loading chats…
+      </p>
+    )
+  }
+
+  if (threads.length === 0) {
+    return (
+      <p className="px-3 py-1.5 text-xs text-muted-foreground">
+        {emptyMessage}
+      </p>
+    )
+  }
+
+  return (
+    <div className="space-y-0.5">
+      {threads.map((thread) => (
+        <ThreadListItem
+          key={thread.id}
+          thread={thread}
+          isActive={thread.id === activeThreadId}
+          isMenuOpen={openMenuThreadId === thread.id}
+          actions={actions}
+        />
+      ))}
+    </div>
+  )
+}
+
+export interface SidebarFilterState {
   searchQuery: string
   isSearchOpen: boolean
+  sortOrder: SortOption
   isSortMenuOpen: boolean
   recentsOpen: boolean
   archivedOpen: boolean
-  onSelectThread: (threadId: string) => void
-  onNewChat: () => void
-  onStartRename: (thread: ChatThreadPublic) => void
-  onToggleArchive: (thread: ChatThreadPublic) => void
-  onDeleteThread: (thread: ChatThreadPublic) => void
-  onToggleMenu: (threadId: string) => void
+}
+
+export interface SidebarFilterHandlers {
   onToggleSearch: () => void
   onSearchChange: (q: string) => void
   onToggleSortMenu: () => void
   onSelectSortOrder: (order: SortOption) => void
   onToggleRecents: () => void
   onToggleArchived: () => void
+  onNewChat: () => void
+}
+
+export interface AIThreadsSidebarProps {
+  recentThreads: ChatThreadPublic[]
+  archivedThreads: ChatThreadPublic[]
+  activeThreadId: string | null
+  openMenuThreadId: string | null
+  isLoading: boolean
+  filters: SidebarFilterState
+  filterHandlers: SidebarFilterHandlers
+  actions: ThreadItemActions
 }
 
 export function AIThreadsSidebar({
@@ -280,193 +458,72 @@ export function AIThreadsSidebar({
   activeThreadId,
   openMenuThreadId,
   isLoading,
-  sortOrder,
-  searchQuery,
-  isSearchOpen,
-  isSortMenuOpen,
-  recentsOpen,
-  archivedOpen,
-  onSelectThread,
-  onNewChat,
-  onStartRename,
-  onToggleArchive,
-  onDeleteThread,
-  onToggleMenu,
-  onToggleSearch,
-  onSearchChange,
-  onToggleSortMenu,
-  onSelectSortOrder,
-  onToggleRecents,
-  onToggleArchived,
+  filters,
+  filterHandlers,
+  actions,
 }: AIThreadsSidebarProps) {
   return (
     <div className="hidden w-80 md:block shrink-0">
       <div className="sticky top-0 self-start p-4 flex flex-col gap-4">
-        {/* Recents Section */}
         <div className="flex flex-col gap-1">
-          <div className="flex items-center justify-between px-2 py-1">
-            <button
-              type="button"
-              onClick={onToggleRecents}
-              className="flex items-center gap-1.5 text-sm font-semibold text-foreground hover:text-muted-foreground transition-colors cursor-pointer select-none"
-            >
-              <span>Recents</span>
-              <ChevronDown
-                className={cn(
-                  "size-3.5 text-muted-foreground transition-transform duration-200",
-                  !recentsOpen && "-rotate-90",
-                )}
-              />
-            </button>
+          <SidebarControlsHeader
+            isOpen={filters.recentsOpen}
+            isSearchOpen={filters.isSearchOpen}
+            isSortMenuOpen={filters.isSortMenuOpen}
+            searchQuery={filters.searchQuery}
+            sortOrder={filters.sortOrder}
+            onToggleRecents={filterHandlers.onToggleRecents}
+            onToggleSearch={filterHandlers.onToggleSearch}
+            onToggleSortMenu={filterHandlers.onToggleSortMenu}
+            onSelectSortOrder={filterHandlers.onSelectSortOrder}
+            onNewChat={filterHandlers.onNewChat}
+          />
 
-            <div className="flex items-center gap-0.5">
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Filter chats"
-                onClick={onToggleSearch}
-                className={cn(
-                  "size-7 rounded-full cursor-pointer transition-colors",
-                  isSearchOpen || searchQuery
-                    ? "bg-muted/80 text-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <Search className="size-3.5" />
-              </Button>
-
-              <div className="relative">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Sort options"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onToggleSortMenu()
-                  }}
-                  className={cn(
-                    "size-7 rounded-full cursor-pointer transition-colors",
-                    isSortMenuOpen
-                      ? "bg-muted/80 text-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  <MoreHorizontal className="size-3.5" />
-                </Button>
-                {isSortMenuOpen && (
-                  <SortFilterMenu
-                    sortOrder={sortOrder}
-                    onSelectSort={onSelectSortOrder}
-                  />
-                )}
-              </div>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="New chat"
-                onClick={onNewChat}
-                className="size-7 text-muted-foreground hover:text-foreground rounded-full cursor-pointer"
-              >
-                <SquarePen className="size-3.5" />
-              </Button>
-            </div>
-          </div>
-
-          {(isSearchOpen || searchQuery) && (
-            <div className="px-1 py-1 animate-in fade-in-0 duration-150">
-              <div className="relative flex items-center">
-                <Search className="absolute left-2.5 size-3 text-muted-foreground pointer-events-none" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => onSearchChange(e.target.value)}
-                  placeholder="Filter chats…"
-                  className="w-full rounded-lg bg-muted/30 border border-border/60 pl-7 pr-7 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    aria-label="Clear filter"
-                    onClick={() => onSearchChange("")}
-                    className="absolute right-2 text-muted-foreground hover:text-foreground cursor-pointer"
-                  >
-                    <X className="size-3" />
-                  </button>
-                )}
-              </div>
-            </div>
+          {(filters.isSearchOpen || filters.searchQuery) && (
+            <SidebarFilterInput
+              searchQuery={filters.searchQuery}
+              onSearchChange={filterHandlers.onSearchChange}
+            />
           )}
 
-          {recentsOpen && (
-            <div className="space-y-0.5">
-              {isLoading ? (
-                <p className="px-3 py-1.5 text-xs text-muted-foreground animate-pulse">
-                  Loading chats…
-                </p>
-              ) : recentThreads.length === 0 ? (
-                <p className="px-3 py-1.5 text-xs text-muted-foreground">
-                  No recent chats
-                </p>
-              ) : (
-                recentThreads.map((thread) => (
-                  <ThreadListItem
-                    key={thread.id}
-                    thread={thread}
-                    isActive={thread.id === activeThreadId}
-                    isMenuOpen={openMenuThreadId === thread.id}
-                    onSelect={() => onSelectThread(thread.id)}
-                    onStartRename={() => onStartRename(thread)}
-                    onToggleArchive={() => onToggleArchive(thread)}
-                    onDelete={() => onDeleteThread(thread)}
-                    onToggleMenu={() => onToggleMenu(thread.id)}
-                  />
-                ))
-              )}
-            </div>
+          {filters.recentsOpen && (
+            <ThreadListSection
+              threads={recentThreads}
+              activeThreadId={activeThreadId}
+              openMenuThreadId={openMenuThreadId}
+              isLoading={isLoading}
+              emptyMessage="No recent chats"
+              actions={actions}
+            />
           )}
         </div>
 
-        {/* Archived Section */}
         <div className="flex flex-col gap-1 border-t border-border/40 pt-2.5">
           <div className="flex items-center justify-between px-2 py-1">
             <button
               type="button"
-              onClick={onToggleArchived}
+              onClick={filterHandlers.onToggleArchived}
               className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer select-none"
             >
               <span>Archived</span>
               <ChevronDown
                 className={cn(
                   "size-3.5 text-muted-foreground transition-transform duration-200",
-                  !archivedOpen && "-rotate-90",
+                  !filters.archivedOpen && "-rotate-90",
                 )}
               />
             </button>
           </div>
 
-          {archivedOpen && (
-            <div className="space-y-0.5">
-              {archivedThreads.length === 0 ? (
-                <p className="px-3 py-1.5 text-xs text-muted-foreground">
-                  No archived chats
-                </p>
-              ) : (
-                archivedThreads.map((thread) => (
-                  <ThreadListItem
-                    key={thread.id}
-                    thread={thread}
-                    isActive={thread.id === activeThreadId}
-                    isMenuOpen={openMenuThreadId === thread.id}
-                    onSelect={() => onSelectThread(thread.id)}
-                    onStartRename={() => onStartRename(thread)}
-                    onToggleArchive={() => onToggleArchive(thread)}
-                    onDelete={() => onDeleteThread(thread)}
-                    onToggleMenu={() => onToggleMenu(thread.id)}
-                  />
-                ))
-              )}
-            </div>
+          {filters.archivedOpen && (
+            <ThreadListSection
+              threads={archivedThreads}
+              activeThreadId={activeThreadId}
+              openMenuThreadId={openMenuThreadId}
+              isLoading={isLoading}
+              emptyMessage="No archived chats"
+              actions={actions}
+            />
           )}
         </div>
       </div>
