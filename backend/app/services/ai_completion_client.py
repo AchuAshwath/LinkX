@@ -31,12 +31,18 @@ def format_messages_for_openai(
     ]
 
 
+def _extract_reasoning(data: dict[str, Any]) -> str | None:
+    for key in ("reasoning_content", "reasoning", "thought"):
+        val = data.get(key)
+        if isinstance(val, str) and val:
+            return val
+    return None
+
+
 def extract_chunk_content(delta: dict[str, Any]) -> str | None:
     """Extract text or thought from OpenAI streaming chunk delta."""
-    reasoning = (
-        delta.get("reasoning_content") or delta.get("reasoning") or delta.get("thought")
-    )
-    if isinstance(reasoning, str) and reasoning:
+    reasoning = _extract_reasoning(delta)
+    if reasoning:
         return f"<thought>{reasoning}</thought>"
     content = delta.get("content")
     return str(content) if isinstance(content, str) and content else None
@@ -51,7 +57,7 @@ def parse_sse_line(line: str) -> str | None:
         choices = data.get("choices", [])
         if choices:
             return extract_chunk_content(choices[0].get("delta", {}))
-    except Exception:
+    except (json.JSONDecodeError, KeyError, IndexError):
         pass
     return None
 
@@ -107,6 +113,11 @@ def extract_langchain_chunk_text(chunk: Any) -> str | None:
     return None
 
 
+def _extract_langchain_reasoning(chunk: Any) -> str | None:
+    kwargs = chunk.additional_kwargs or {}
+    return _extract_reasoning(kwargs)
+
+
 async def stream_fallback_langchain(
     messages: list[BaseMessage], target_model: str
 ) -> AsyncGenerator[str, None]:
@@ -118,10 +129,8 @@ async def stream_fallback_langchain(
         streaming=True,
     )
     async for chunk in chat_model.astream(messages):
-        reasoning = chunk.additional_kwargs.get(
-            "reasoning_content"
-        ) or chunk.additional_kwargs.get("thought")
-        if reasoning and isinstance(reasoning, str):
+        reasoning = _extract_langchain_reasoning(chunk)
+        if reasoning:
             yield f"<thought>{reasoning}</thought>"
 
         text = extract_langchain_chunk_text(chunk)
