@@ -1,4 +1,4 @@
-import { Mic, Plus } from "lucide-react"
+import { Plus } from "lucide-react"
 import * as React from "react"
 
 import {
@@ -10,11 +10,13 @@ import {
   ModelSelectorPill,
 } from "@/components/Chat/ModelSelectorPill"
 import { PromptSubmitButton } from "@/components/Chat/PromptSubmitButton"
+import { VoiceInputButton } from "@/components/Chat/VoiceInputButton"
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupTextarea,
 } from "@/components/ui/input-group"
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition"
 
 export type { AIModelOption }
 
@@ -30,6 +32,8 @@ export interface PromptFormProps {
   autoFocus?: boolean
   actions?: React.ReactNode
   className?: string
+  initialValue?: string
+  onValueChange?: (value: string) => void
 }
 
 const FALLBACK_MODELS: AIModelOption[] = [
@@ -52,8 +56,10 @@ export function PromptForm({
   autoFocus = false,
   actions,
   className,
+  initialValue = "",
+  onValueChange,
 }: PromptFormProps) {
-  const [input, setInput] = React.useState("")
+  const [input, setInput] = React.useState(initialValue)
   const [localModelId, setLocalModelId] = React.useState(
     selectedModelId || "gemini-3.6-flash-high",
   )
@@ -64,6 +70,18 @@ export function PromptForm({
   const internalInputRef = React.useRef<HTMLTextAreaElement>(null)
   const effectiveInputRef = inputRef || internalInputRef
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const baseInputRef = React.useRef(initialValue)
+  const onValueChangeRef = React.useRef(onValueChange)
+
+  React.useEffect(() => {
+    onValueChangeRef.current = onValueChange
+  })
+
+  const updateInput = React.useCallback((val: string) => {
+    setInput(val)
+    baseInputRef.current = val
+    onValueChangeRef.current?.(val)
+  }, [])
 
   const activeModelId = selectedModelId || localModelId
 
@@ -71,6 +89,47 @@ export function PromptForm({
     if (!models || models.length === 0) return FALLBACK_MODELS
     return models.map((m) => (typeof m === "string" ? { id: m, name: m } : m))
   }, [models])
+
+  const handleTranscriptChange = React.useCallback(
+    ({ transcript: voiceText }: { transcript: string }) => {
+      if (!voiceText) return
+      const base = baseInputRef.current.trim()
+      const separator = base && voiceText ? " " : ""
+      const fullText = base + separator + voiceText
+      setInput(fullText)
+      onValueChangeRef.current?.(fullText)
+    },
+    [],
+  )
+
+  const {
+    isListening: isVoiceListening,
+    isSupported: isVoiceSupported,
+    startListening,
+    stopListening: stopVoiceListening,
+    resetTranscript,
+    error: voiceError,
+  } = useSpeechRecognition({
+    onTranscriptChange: handleTranscriptChange,
+  })
+
+  const handleToggleVoice = React.useCallback(() => {
+    if (isVoiceListening) {
+      stopVoiceListening()
+      baseInputRef.current = input
+      resetTranscript()
+    } else {
+      baseInputRef.current = input
+      resetTranscript()
+      startListening()
+    }
+  }, [
+    isVoiceListening,
+    stopVoiceListening,
+    startListening,
+    resetTranscript,
+    input,
+  ])
 
   React.useEffect(() => {
     if (autoFocus) {
@@ -110,6 +169,11 @@ export function PromptForm({
 
   function handleSubmit(event?: React.FormEvent) {
     event?.preventDefault()
+    if (isVoiceListening) {
+      stopVoiceListening()
+    }
+    resetTranscript()
+    baseInputRef.current = ""
     const text = input.trim()
     if ((!text && selectedImages.length === 0) || isBusy) return
     if (selectedImages.length > 0) {
@@ -120,7 +184,7 @@ export function PromptForm({
     } else {
       onSubmit(text)
     }
-    setInput("")
+    updateInput("")
     setSelectedImages([])
   }
 
@@ -128,7 +192,7 @@ export function PromptForm({
 
   return (
     <form onSubmit={handleSubmit} className={className}>
-      <InputGroup className="rounded-3xl border border-border/80 bg-[#121214]/95 backdrop-blur-md p-1.5 shadow-lg transition-all focus-within:border-border">
+      <InputGroup className="rounded-3xl border border-border/70 bg-[#121214]/95 backdrop-blur-md p-1.5 shadow-lg transition-all focus-within:border-border/70 focus-within:ring-0 focus-within:ring-offset-0 focus-within:outline-none focus:outline-none focus:ring-0 focus-within:!ring-0 focus-within:!border-border/70">
         <input
           type="file"
           ref={fileInputRef}
@@ -147,7 +211,7 @@ export function PromptForm({
           ref={effectiveInputRef}
           placeholder={placeholder}
           value={input}
-          onChange={(event) => setInput(event.target.value)}
+          onChange={(event) => updateInput(event.target.value)}
           className="min-h-[56px] px-3.5 pt-3 text-sm text-foreground placeholder:text-muted-foreground/80 leading-relaxed"
           onKeyDown={(event) => {
             if (
@@ -182,13 +246,13 @@ export function PromptForm({
               onSelectModel={handleSelectModel}
             />
 
-            <button
-              type="button"
-              aria-label="Voice input"
-              className="flex size-7 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors cursor-pointer"
-            >
-              <Mic className="size-3.5" />
-            </button>
+            <VoiceInputButton
+              isListening={isVoiceListening}
+              isSupported={isVoiceSupported}
+              onToggle={handleToggleVoice}
+              error={voiceError}
+              disabled={isBusy}
+            />
 
             <PromptSubmitButton
               isBusy={isBusy}
