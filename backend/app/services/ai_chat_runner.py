@@ -65,14 +65,19 @@ def _convert_transcript_item(item: dict[str, Any]) -> BaseMessage | None:
     return None
 
 
+def _is_latest_message_matching(
+    converted: list[BaseMessage], current_message: str
+) -> bool:
+    if not converted:
+        return False
+    last = converted[-1]
+    return isinstance(last, HumanMessage) and last.content == current_message
+
+
 def _ensure_latest_human_message(
     converted: list[BaseMessage], current_message: str
 ) -> None:
-    if (
-        not converted
-        or not isinstance(converted[-1], HumanMessage)
-        or converted[-1].content != current_message
-    ):
+    if not _is_latest_message_matching(converted, current_message):
         converted.append(HumanMessage(content=current_message))
 
 

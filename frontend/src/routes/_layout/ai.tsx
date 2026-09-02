@@ -2,29 +2,19 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import * as React from "react"
 import { AiThreadsService, type ChatThreadPublic } from "@/client"
+import { AIChatFeed } from "@/components/Chat/AIChatFeed"
 import {
   AIThreadsSidebar,
   type SortOption,
 } from "@/components/Chat/AIThreadsSidebar"
-import { ChatMessage } from "@/components/Chat/ChatMessage"
 import { DeleteThreadConfirmDialog } from "@/components/Chat/DeleteThreadConfirmDialog"
 import { PromptForm } from "@/components/Chat/PromptForm"
-import { QuestionCard } from "@/components/Chat/QuestionCard"
 import { RenameThreadDialog } from "@/components/Chat/RenameThreadDialog"
-import { Suggestions } from "@/components/Chat/Suggestions"
 import type {
   AskUserAnswer,
   AskUserToolPart,
   ChatUIMessage,
 } from "@/components/Chat/types"
-import {
-  MessageScroller,
-  MessageScrollerButton,
-  MessageScrollerContent,
-  MessageScrollerItem,
-  MessageScrollerProvider,
-  MessageScrollerViewport,
-} from "@/components/ui/message-scroller"
 import { useAIChatStream } from "@/hooks/useAIChatStream"
 
 export const Route = createFileRoute("/_layout/ai")({
@@ -65,18 +55,11 @@ function filterAndSortThreads(
   result.sort((a, b) => {
     const timeA = a.created_at ? new Date(a.created_at).getTime() : 0
     const timeB = b.created_at ? new Date(b.created_at).getTime() : 0
-    if (sortOrder === "recent") {
-      return timeB - timeA
-    }
-    if (sortOrder === "oldest") {
-      return timeA - timeB
-    }
-    if (sortOrder === "title") {
-      return a.title.localeCompare(b.title)
-    }
-    if (sortOrder === "messages") {
+    if (sortOrder === "recent") return timeB - timeA
+    if (sortOrder === "oldest") return timeA - timeB
+    if (sortOrder === "title") return a.title.localeCompare(b.title)
+    if (sortOrder === "messages")
       return (b.message_count ?? 0) - (a.message_count ?? 0)
-    }
     return 0
   })
   return result
@@ -394,53 +377,13 @@ function AIPage() {
 
       {/* 1. Center Column: Active Chat Feed */}
       <div className="relative mx-auto flex min-h-0 w-full flex-1 max-w-2xl border-r-0 md:border-r border-border flex-col h-[calc(100vh-3.5rem)] lg:h-screen overflow-hidden">
-        {localMessages.length === 0 ? (
-          <div className="flex flex-1 min-h-0 items-center justify-center p-6 text-center">
-            <div className="flex flex-col items-center">
-              <h2 className="text-xl font-bold tracking-tight text-foreground">
-                What would you like to create?
-              </h2>
-              <p className="text-xs text-muted-foreground mt-1.5 max-w-sm leading-relaxed">
-                Brainstorm viral ideas, analyze trends, or draft posts with
-                LinkX AI.
-              </p>
-              <div className="mt-6 w-full max-w-lg">
-                <Suggestions onSelect={handleSendMessage} />
-              </div>
-            </div>
-          </div>
-        ) : (
-          <MessageScrollerProvider>
-            <MessageScroller className="flex-1 min-h-0">
-              <MessageScrollerViewport>
-                <MessageScrollerContent className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-6">
-                  {localMessages.map((message, index) => (
-                    <MessageScrollerItem
-                      key={message.id}
-                      messageId={message.id}
-                      scrollAnchor={message.role === "user"}
-                    >
-                      <ChatMessage
-                        message={message}
-                        isStreaming={
-                          isStreaming && index === localMessages.length - 1
-                        }
-                      />
-                    </MessageScrollerItem>
-                  ))}
-
-                  {pendingQuestion && (
-                    <QuestionCard
-                      part={pendingQuestion}
-                      onAnswer={handleQuestionAnswer}
-                    />
-                  )}
-                </MessageScrollerContent>
-              </MessageScrollerViewport>
-              <MessageScrollerButton />
-            </MessageScroller>
-          </MessageScrollerProvider>
-        )}
+        <AIChatFeed
+          localMessages={localMessages}
+          isStreaming={isStreaming}
+          pendingQuestion={pendingQuestion}
+          onSendMessage={handleSendMessage}
+          onQuestionAnswer={handleQuestionAnswer}
+        />
 
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-2 px-4 pb-4 shrink-0">
           <PromptForm
