@@ -5,11 +5,13 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import StreamingResponse
+from sqlmodel import Session
 
 from app import crud
 from app.api.deps import CurrentUser, SessionDep
 from app.models import (
     ChatMessageRequest,
+    ChatThread,
     ChatThreadCreate,
     ChatThreadDetail,
     ChatThreadPublic,
@@ -21,6 +23,61 @@ from app.models import (
 from app.services.ai_chat_runner import default_chat_stream_runner, format_sse
 
 router = APIRouter(prefix="/ai/threads", tags=["ai-threads"])
+
+
+def _get_owned_thread(
+    *, session: Session, current_user: CurrentUser, thread_id: uuid.UUID
+) -> ChatThread:
+    """Fetch thread and verify user ownership or superuser status."""
+    thread = crud.get_chat_thread(session=session, thread_id=thread_id)
+    if not thread:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chat thread not found",
+        )
+    if not current_user.is_superuser and thread.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions",
+        )
+    return thread
+
+
+def _collect_stream_part(
+    *,
+    event_name: str,
+    payload: dict[str, Any],
+    assistant_parts: list[dict[str, Any]],
+) -> str:
+    """Append structured message parts and return text delta if present."""
+    if event_name == "thought":
+        assistant_parts.append(
+            {"type": "thought", "content": payload.get("content", "")}
+        )
+    elif event_name == "text_delta":
+        return str(payload.get("content", ""))
+    elif event_name in {"tool_start", "tool_output"}:
+        state = "running" if event_name == "tool_start" else "completed"
+        part: dict[str, Any] = {
+            "type": "tool_call",
+            "name": payload.get("name"),
+            "state": state,
+        }
+        if "input" in payload:
+            part["input"] = payload["input"]
+        if "output" in payload:
+            part["output"] = payload["output"]
+        assistant_parts.append(part)
+    elif event_name == "draft_artifact":
+        assistant_parts.append(
+            {
+                "type": "draft_artifact",
+                "post_id": payload.get("post_id"),
+                "content": payload.get("content"),
+                "platform": payload.get("platform"),
+            }
+        )
+    return ""
 
 
 @router.post("/", response_model=ChatThreadDetail)
@@ -41,10 +98,9 @@ def create_chat_thread(
                 detail="Cannot link thread to another user's post",
             )
 
-    thread = crud.create_chat_thread(
+    return crud.create_chat_thread(
         session=session, thread_in=thread_in, owner_id=current_user.id
     )
-    return thread
 
 
 @router.get("/", response_model=ChatThreadsPublic)
@@ -72,18 +128,7 @@ def get_chat_thread(
     *, session: SessionDep, current_user: CurrentUser, id: uuid.UUID
 ) -> Any:
     """Get a chat thread by ID including full JSON transcript."""
-    thread = crud.get_chat_thread(session=session, thread_id=id)
-    if not thread:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Chat thread not found",
-        )
-    if not current_user.is_superuser and thread.owner_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions",
-        )
-    return thread
+    return _get_owned_thread(session=session, current_user=current_user, thread_id=id)
 
 
 @router.patch("/{id}", response_model=ChatThreadPublic)
@@ -95,17 +140,7 @@ def update_chat_thread(
     thread_in: ChatThreadUpdate,
 ) -> Any:
     """Update chat thread metadata (title, archive status)."""
-    thread = crud.get_chat_thread(session=session, thread_id=id)
-    if not thread:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Chat thread not found",
-        )
-    if not current_user.is_superuser and thread.owner_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions",
-        )
+    thread = _get_owned_thread(session=session, current_user=current_user, thread_id=id)
     try:
         return crud.update_chat_thread(
             session=session, db_thread=thread, thread_in=thread_in
@@ -122,17 +157,7 @@ def delete_chat_thread(
     *, session: SessionDep, current_user: CurrentUser, id: uuid.UUID
 ) -> Message:
     """Delete a chat thread."""
-    thread = crud.get_chat_thread(session=session, thread_id=id)
-    if not thread:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Chat thread not found",
-        )
-    if not current_user.is_superuser and thread.owner_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions",
-        )
+    _get_owned_thread(session=session, current_user=current_user, thread_id=id)
     crud.delete_chat_thread(session=session, thread_id=id)
     return Message(message="Chat thread deleted successfully")
 
@@ -146,17 +171,7 @@ async def chat_stream(
     body: ChatMessageRequest,
 ) -> StreamingResponse:
     """Server-Sent Events streaming endpoint for AI conversation."""
-    thread = crud.get_chat_thread(session=session, thread_id=id)
-    if not thread:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Chat thread not found",
-        )
-    if not current_user.is_superuser and thread.owner_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions",
-        )
+    thread = _get_owned_thread(session=session, current_user=current_user, thread_id=id)
 
     # 1. Append incoming user message to transcript immediately
     user_msg = {
@@ -177,47 +192,17 @@ async def chat_stream(
             async for event_name, payload in default_chat_stream_runner(
                 message=body.message, thread_id=str(id)
             ):
-                if event_name == "thought":
-                    assistant_parts.append(
-                        {"type": "thought", "content": payload.get("content", "")}
-                    )
-                elif event_name == "text_delta":
-                    accumulated_text += payload.get("content", "")
-                elif event_name == "tool_start":
-                    assistant_parts.append(
-                        {
-                            "type": "tool_call",
-                            "name": payload.get("name"),
-                            "input": payload.get("input"),
-                            "state": "running",
-                        }
-                    )
-                elif event_name == "tool_output":
-                    assistant_parts.append(
-                        {
-                            "type": "tool_call",
-                            "name": payload.get("name"),
-                            "output": payload.get("output"),
-                            "state": "completed",
-                        }
-                    )
-                elif event_name == "draft_artifact":
-                    assistant_parts.append(
-                        {
-                            "type": "draft_artifact",
-                            "post_id": payload.get("post_id"),
-                            "content": payload.get("content"),
-                            "platform": payload.get("platform"),
-                        }
-                    )
-
+                delta = _collect_stream_part(
+                    event_name=event_name,
+                    payload=payload,
+                    assistant_parts=assistant_parts,
+                )
+                accumulated_text += delta
                 yield format_sse(event=event_name, data=payload)
 
-            # Add final text part to assistant message if text was streamed
             if accumulated_text:
                 assistant_parts.append({"type": "text", "text": accumulated_text})
 
-            # Append completed assistant message to transcript
             if assistant_parts:
                 assistant_msg = {
                     "id": f"msg_{uuid.uuid4().hex[:12]}",

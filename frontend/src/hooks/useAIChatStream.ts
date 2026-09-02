@@ -11,6 +11,101 @@ export interface StreamEventHandlers {
   onError?: (error: string) => void
 }
 
+interface ParsedEventData {
+  content?: string
+  name?: string
+  input?: unknown
+  output?: unknown
+  post_id?: string
+  platform?: string
+  message?: string
+}
+
+function dispatchSSEEvent(
+  eventName: string,
+  data: ParsedEventData,
+  handlers: StreamEventHandlers,
+) {
+  switch (eventName) {
+    case "thought":
+      handlers.onThought?.(data.content || "")
+      break
+    case "text_delta":
+      handlers.onTextDelta?.(data.content || "")
+      break
+    case "tool_start":
+      if (data.name) handlers.onToolStart?.(data.name, data.input)
+      break
+    case "tool_output":
+      if (data.name) handlers.onToolOutput?.(data.name, data.output)
+      break
+    case "draft_artifact":
+      handlers.onDraftArtifact?.(data as unknown as DraftArtifact)
+      break
+    case "done":
+      handlers.onDone?.()
+      break
+    case "error":
+      handlers.onError?.(data.message || "Unknown stream error")
+      break
+  }
+}
+
+function parseSSELines(
+  lines: string[],
+  currentEvent: string,
+  handlers: StreamEventHandlers,
+): string {
+  let eventType = currentEvent
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+
+    if (trimmed.startsWith("event:")) {
+      eventType = trimmed.slice(6).trim()
+    } else if (trimmed.startsWith("data:")) {
+      const dataStr = trimmed.slice(5).trim()
+      try {
+        const parsed = JSON.parse(dataStr) as ParsedEventData
+        dispatchSSEEvent(eventType, parsed, handlers)
+      } catch {
+        // Non-JSON SSE payload ignored
+      }
+    }
+  }
+  return eventType
+}
+
+async function streamResponse(
+  response: Response,
+  handlers: StreamEventHandlers,
+) {
+  if (!response.ok) {
+    const errText = await response.text()
+    throw new Error(errText || `Server error: ${response.status}`)
+  }
+  if (!response.body) {
+    throw new Error("No response body received from stream")
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ""
+  let currentEvent = "message"
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split("\n")
+    buffer = lines.pop() || ""
+    currentEvent = parseSSELines(lines, currentEvent, handlers)
+  }
+
+  handlers.onDone?.()
+}
+
 export function useAIChatStream() {
   const [isStreaming, setIsStreaming] = React.useState(false)
   const abortControllerRef = React.useRef<AbortController | null>(null)
@@ -47,77 +142,9 @@ export function useAIChatStream() {
           signal: controller.signal,
         })
 
-        if (!response.ok) {
-          const errText = await response.text()
-          throw new Error(errText || `Server error: ${response.status}`)
-        }
-
-        if (!response.body) {
-          throw new Error("No response body received from stream")
-        }
-
-        const reader = response.body.getReader()
-        const decoder = new TextDecoder()
-        let buffer = ""
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split("\n")
-          buffer = lines.pop() || ""
-
-          let currentEvent = "message"
-          for (const line of lines) {
-            const trimmed = line.trim()
-            if (!trimmed) continue
-
-            if (trimmed.startsWith("event:")) {
-              currentEvent = trimmed.slice(6).trim()
-            } else if (trimmed.startsWith("data:")) {
-              const dataStr = trimmed.slice(5).trim()
-              try {
-                const parsed = JSON.parse(dataStr)
-
-                if (currentEvent === "thought" && handlers.onThought) {
-                  handlers.onThought(parsed.content || "")
-                } else if (
-                  currentEvent === "text_delta" &&
-                  handlers.onTextDelta
-                ) {
-                  handlers.onTextDelta(parsed.content || "")
-                } else if (
-                  currentEvent === "tool_start" &&
-                  handlers.onToolStart
-                ) {
-                  handlers.onToolStart(parsed.name, parsed.input)
-                } else if (
-                  currentEvent === "tool_output" &&
-                  handlers.onToolOutput
-                ) {
-                  handlers.onToolOutput(parsed.name, parsed.output)
-                } else if (
-                  currentEvent === "draft_artifact" &&
-                  handlers.onDraftArtifact
-                ) {
-                  handlers.onDraftArtifact(parsed)
-                } else if (currentEvent === "done" && handlers.onDone) {
-                  handlers.onDone()
-                } else if (currentEvent === "error" && handlers.onError) {
-                  handlers.onError(parsed.message || "Unknown stream error")
-                }
-              } catch {
-                // If not JSON, ignore or pass as raw text
-              }
-            }
-          }
-        }
-
-        handlers.onDone?.()
+        await streamResponse(response, handlers)
       } catch (err: unknown) {
         if (err instanceof Error && err.name === "AbortError") {
-          // Stream cancelled by user
           return
         }
         const errMsg = err instanceof Error ? err.message : "Streaming failed"
