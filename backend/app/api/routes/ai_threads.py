@@ -123,75 +123,63 @@ EXCLUDED_MODELS = {
 }
 
 
+FALLBACK_MODEL_OPTIONS: list[tuple[str, str, str]] = [
+    ("gemini-3.6-flash-high", "Gemini 3.6 Flash", "Google"),
+    ("claude-sonnet-4-6", "Claude 3.7 Sonnet", "Anthropic"),
+    ("gpt-5.6-luna", "GPT-5.6 Luna", "OpenAI"),
+    ("gpt-5.4", "GPT-5.4", "OpenAI"),
+    ("gpt-oss-120b-medium", "DeepSeek R1", "OpenSource"),
+]
+
+
+def _build_fallback_models(default_model_id: str) -> list[AIModelInfo]:
+    return [
+        AIModelInfo(
+            id=mid,
+            name=name,
+            provider=provider,
+            is_default=(mid == default_model_id),
+        )
+        for mid, name, provider in FALLBACK_MODEL_OPTIONS
+    ]
+
+
+def _fetch_models_from_proxy(default_model_id: str) -> list[AIModelInfo]:
+    api_key = (
+        settings.OPENAI_API_COMPATIBLE_API_KEY or settings.AI_API_KEY or "dummy-key"
+    )
+    with httpx.Client(timeout=3.0) as client:
+        resp = client.get(
+            f"{settings.AI_API_BASE}/models",
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+        if resp.status_code != 200:
+            return []
+        items = resp.json().get("data", [])
+        return [
+            AIModelInfo(
+                id=str(item["id"]),
+                name=FRIENDLY_MODEL_NAMES.get(str(item["id"]), str(item["id"])),
+                provider=str(item.get("owned_by", "")).capitalize() or None,
+                is_default=(str(item["id"]) == default_model_id),
+            )
+            for item in items
+            if item.get("id") and str(item["id"]) not in EXCLUDED_MODELS
+        ]
+
+
 @router.get("/models", response_model=AIModelsPublic)
 def list_ai_models() -> Any:
     """List available AI models from the proxy/backend with friendly labels."""
     default_model_id = settings.AI_MODEL.removeprefix("openai/")
-    models_list: list[AIModelInfo] = []
-
     try:
-        api_key = (
-            settings.OPENAI_API_COMPATIBLE_API_KEY or settings.AI_API_KEY or "dummy-key"
-        )
-        with httpx.Client(timeout=3.0) as client:
-            resp = client.get(
-                f"{settings.AI_API_BASE}/models",
-                headers={"Authorization": f"Bearer {api_key}"},
-            )
-            if resp.status_code == 200:
-                data = resp.json().get("data", [])
-                for item in data:
-                    mid = str(item.get("id", ""))
-                    if not mid or mid in EXCLUDED_MODELS:
-                        continue
-                    friendly_name = FRIENDLY_MODEL_NAMES.get(mid, mid)
-                    owner = str(item.get("owned_by", "")).capitalize()
-                    models_list.append(
-                        AIModelInfo(
-                            id=mid,
-                            name=friendly_name,
-                            provider=owner or None,
-                            is_default=(mid == default_model_id),
-                        )
-                    )
+        models = _fetch_models_from_proxy(default_model_id)
+        if models:
+            return AIModelsPublic(data=models, default_model=default_model_id)
     except Exception:
         pass
-
-    if not models_list:
-        models_list = [
-            AIModelInfo(
-                id="gemini-3.6-flash-high",
-                name="Gemini 3.6 Flash",
-                provider="Google",
-                is_default=(default_model_id == "gemini-3.6-flash-high"),
-            ),
-            AIModelInfo(
-                id="claude-sonnet-4-6",
-                name="Claude 3.7 Sonnet",
-                provider="Anthropic",
-                is_default=(default_model_id == "claude-sonnet-4-6"),
-            ),
-            AIModelInfo(
-                id="gpt-5.6-luna",
-                name="GPT-5.6 Luna",
-                provider="OpenAI",
-                is_default=(default_model_id == "gpt-5.6-luna"),
-            ),
-            AIModelInfo(
-                id="gpt-5.4",
-                name="GPT-5.4",
-                provider="OpenAI",
-                is_default=(default_model_id == "gpt-5.4"),
-            ),
-            AIModelInfo(
-                id="gpt-oss-120b-medium",
-                name="DeepSeek R1",
-                provider="OpenSource",
-                is_default=(default_model_id == "gpt-oss-120b-medium"),
-            ),
-        ]
-
-    return AIModelsPublic(data=models_list, default_model=default_model_id)
+    fallback = _build_fallback_models(default_model_id)
+    return AIModelsPublic(data=fallback, default_model=default_model_id)
 
 
 @router.post("/", response_model=ChatThreadDetail)

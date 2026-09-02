@@ -11,6 +11,32 @@ export interface ThoughtPartProps {
   className?: string
 }
 
+function resolveExpandedState(
+  manualExpanded: boolean | null,
+  isStreaming: boolean,
+  hasResponseStarted: boolean,
+): boolean {
+  if (manualExpanded !== null) {
+    return manualExpanded
+  }
+  return isStreaming && !hasResponseStarted
+}
+
+function ThoughtContent({ content }: { content?: string }) {
+  if (!content) {
+    return (
+      <span className="italic text-muted-foreground/60 text-xs">
+        Analyzing prompt and formulating steps…
+      </span>
+    )
+  }
+  return (
+    <div className="text-xs text-muted-foreground/80 font-normal leading-relaxed whitespace-pre-wrap">
+      {content}
+    </div>
+  )
+}
+
 export function ThoughtPart({
   part,
   isStreaming = false,
@@ -21,12 +47,11 @@ export function ThoughtPart({
     null,
   )
 
-  // Auto-expand while thinking is actively streaming before response starts; auto-collapse once response starts
-  const isExpanded =
-    manualExpanded !== null
-      ? manualExpanded
-      : isStreaming && !hasResponseStarted
-
+  const isExpanded = resolveExpandedState(
+    manualExpanded,
+    isStreaming,
+    hasResponseStarted,
+  )
   const hasContent = Boolean(part.content?.trim())
 
   if (!hasContent && (!isStreaming || hasResponseStarted)) {
@@ -55,15 +80,7 @@ export function ThoughtPart({
 
       {isExpanded && (
         <div className="mt-1 ml-1.5 flex flex-col gap-1.5 border-l border-border/50 pl-3 py-1 text-xs w-full animate-in fade-in-0 duration-150">
-          {part.content ? (
-            <div className="text-xs text-muted-foreground/80 font-normal leading-relaxed whitespace-pre-wrap">
-              {part.content}
-            </div>
-          ) : (
-            <span className="italic text-muted-foreground/60 text-xs">
-              Analyzing prompt and formulating steps…
-            </span>
-          )}
+          <ThoughtContent content={part.content} />
         </div>
       )}
     </div>

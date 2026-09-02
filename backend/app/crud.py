@@ -294,37 +294,37 @@ def get_social_account(
 # --- AI Chat Threads ---
 
 
+PREFIX_RE = re.compile(
+    r"^(?:please\s+|can\s+you\s+|could\s+you\s+|help\s+me\s+|write\s+(?:a|an)\s+|generate\s+(?:a|an)\s+|create\s+(?:a|an)\s+)",
+    flags=re.IGNORECASE,
+)
+
+
+def _strip_conversational_prefix(text: str) -> str:
+    cleaned = PREFIX_RE.sub("", text).strip()
+    return cleaned[0].upper() + cleaned[1:] if cleaned else ""
+
+
+def _truncate_title(text: str, max_length: int = 50) -> str:
+    if len(text) <= max_length:
+        return text
+    truncated = text[:max_length]
+    last_space = truncated.rfind(" ")
+    return (truncated[:last_space] if last_space > 20 else truncated) + "…"
+
+
 def generate_thread_title(prompt: str) -> str:
     """Generate a clean, human-friendly 3-6 word conversation title from user prompt."""
     lines = [line.strip() for line in prompt.splitlines() if line.strip()]
     if not lines:
         return "New conversation"
 
-    first_line = lines[0]
-    cleaned = re.sub(r"\s+", " ", first_line).strip()
+    cleaned = re.sub(r"\s+", " ", lines[0]).strip()
     if not cleaned:
         return "New conversation"
 
-    # Remove common conversational prefixes
-    cleaned = re.sub(
-        r"^(?:please\s+|can\s+you\s+|could\s+you\s+|help\s+me\s+|write\s+(?:a|an)\s+|generate\s+(?:a|an)\s+|create\s+(?:a|an)\s+)",
-        "",
-        cleaned,
-        flags=re.IGNORECASE,
-    ).strip()
-
-    if cleaned:
-        cleaned = cleaned[0].upper() + cleaned[1:]
-
-    if len(cleaned) > 50:
-        truncated = cleaned[:50]
-        last_space = truncated.rfind(" ")
-        if last_space > 20:
-            cleaned = truncated[:last_space] + "…"
-        else:
-            cleaned = truncated + "…"
-
-    return cleaned or "New conversation"
+    title = _strip_conversational_prefix(cleaned)
+    return _truncate_title(title) if title else "New conversation"
 
 
 def create_chat_thread(

@@ -108,6 +108,36 @@ async def _stream_text_smoothly(
             await asyncio.sleep(delay)
 
 
+def _consume_outside_thought(buffer: str) -> tuple[str, bool, str, bool]:
+    """Parse text outside <thought> tags. Returns (emitted_text, is_partial, remaining_buffer, next_in_thought)."""
+    m_open = OPEN_THOUGHT_RE.search(buffer)
+    if m_open:
+        emitted = buffer[: m_open.start()]
+        return emitted, False, buffer[m_open.end() :], True
+
+    last_lt = buffer.rfind("<")
+    if last_lt != -1 and len(buffer) - last_lt < 12:
+        safe = buffer[:last_lt]
+        return safe, True, buffer[last_lt:], False
+
+    return buffer, False, "", False
+
+
+def _consume_inside_thought(buffer: str) -> tuple[str, bool, str, bool]:
+    """Parse text inside <thought> tags. Returns (emitted_text, is_partial, remaining_buffer, next_in_thought)."""
+    m_close = CLOSE_THOUGHT_RE.search(buffer)
+    if m_close:
+        emitted = buffer[: m_close.start()]
+        return emitted, False, buffer[m_close.end() :].lstrip("\n"), False
+
+    last_lt = buffer.rfind("<")
+    if last_lt != -1 and len(buffer) - last_lt < 15:
+        safe = buffer[:last_lt]
+        return safe, True, buffer[last_lt:], True
+
+    return buffer, False, "", True
+
+
 async def _stream_parsed_chunks(
     raw_chunks: AsyncGenerator[str, None],
     *,
@@ -120,63 +150,29 @@ async def _stream_parsed_chunks(
     async for chunk in raw_chunks:
         buffer += chunk
         while buffer:
+            event_type = "thought" if in_thought else "text_delta"
             if not in_thought:
-                m_open = OPEN_THOUGHT_RE.search(buffer)
-                if m_open:
-                    prefix = buffer[: m_open.start()]
-                    if prefix:
-                        async for ev in _stream_text_smoothly(
-                            prefix, event_type="text_delta", delay=delay
-                        ):
-                            yield ev
-                    in_thought = True
-                    buffer = buffer[m_open.end() :]
-                elif "<" in buffer and len(buffer) - buffer.rfind("<") < 12:
-                    safe = buffer[: buffer.rfind("<")]
-                    if safe:
-                        async for ev in _stream_text_smoothly(
-                            safe, event_type="text_delta", delay=delay
-                        ):
-                            yield ev
-                        buffer = buffer[len(safe) :]
-                    break
-                else:
-                    async for ev in _stream_text_smoothly(
-                        buffer, event_type="text_delta", delay=delay
-                    ):
-                        yield ev
-                    buffer = ""
+                emitted, is_partial, buffer, in_thought = _consume_outside_thought(
+                    buffer
+                )
             else:
-                m_close = CLOSE_THOUGHT_RE.search(buffer)
-                if m_close:
-                    thought = buffer[: m_close.start()]
-                    if thought:
-                        async for ev in _stream_text_smoothly(
-                            thought, event_type="thought", delay=delay
-                        ):
-                            yield ev
-                    in_thought = False
-                    buffer = buffer[m_close.end() :].lstrip("\n")
-                elif "<" in buffer and len(buffer) - buffer.rfind("<") < 15:
-                    safe = buffer[: buffer.rfind("<")]
-                    if safe:
-                        async for ev in _stream_text_smoothly(
-                            safe, event_type="thought", delay=delay
-                        ):
-                            yield ev
-                        buffer = buffer[len(safe) :]
-                    break
-                else:
-                    async for ev in _stream_text_smoothly(
-                        buffer, event_type="thought", delay=delay
-                    ):
-                        yield ev
-                    buffer = ""
+                emitted, is_partial, buffer, in_thought = _consume_inside_thought(
+                    buffer
+                )
+
+            if emitted:
+                async for ev in _stream_text_smoothly(
+                    emitted, event_type=event_type, delay=delay
+                ):
+                    yield ev
+
+            if is_partial:
+                break
 
     if buffer:
-        event_type = "thought" if in_thought else "text_delta"
+        final_event = "thought" if in_thought else "text_delta"
         async for ev in _stream_text_smoothly(
-            buffer, event_type=event_type, delay=delay
+            buffer, event_type=final_event, delay=delay
         ):
             yield ev
 
