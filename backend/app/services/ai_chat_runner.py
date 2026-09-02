@@ -108,12 +108,7 @@ async def _stream_text_smoothly(
     delay: float = 0.015,
 ) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
     """Yield deltas smoothly word-by-word preserving whitespace and formatting."""
-    tokens = re.findall(r"\S+\s*|\s+", text)
-    if not tokens:
-        if text:
-            yield (event_type, {"content": text})
-        return
-
+    tokens = re.findall(r"\S+\s*|\s+", text) or ([text] if text else [])
     for token in tokens:
         yield (event_type, {"content": token})
         if delay > 0:
