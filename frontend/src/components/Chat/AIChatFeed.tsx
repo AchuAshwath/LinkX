@@ -62,11 +62,7 @@ export function AIChatFeed({
         <MessageScrollerViewport>
           <MessageScrollerContent className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-6">
             {localMessages.map((message, index) => (
-              <MessageScrollerItem
-                key={message.id}
-                messageId={message.id}
-                scrollAnchor={message.role === "user"}
-              >
+              <MessageScrollerItem key={message.id} messageId={message.id}>
                 <ChatMessage
                   message={message}
                   isStreaming={
