@@ -83,6 +83,11 @@ export interface DraftArtifactPart {
   artifact: DraftArtifact
 }
 
+export interface ThoughtPart {
+  type: "thought"
+  content: string
+}
+
 export type ChatMessagePart =
   | TextMessagePart
   | SourceUrlPart
@@ -90,6 +95,7 @@ export type ChatMessagePart =
   | WebSearchToolPart
   | ToolCallPart
   | DraftArtifactPart
+  | ThoughtPart
 
 export interface ChatUIMessage {
   id: string

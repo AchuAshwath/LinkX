@@ -7,6 +7,9 @@ from sqlmodel import Session, col, delete, func, select
 
 from app.core.security import get_password_hash, verify_password
 from app.models import (
+    ChatThread,
+    ChatThreadCreate,
+    ChatThreadUpdate,
     Item,
     ItemCreate,
     Post,
@@ -285,3 +288,127 @@ def get_social_account(
         SocialAccount.platform == platform,
     )
     return session.exec(stmt).first()
+
+
+# --- AI Chat Threads ---
+
+
+def create_chat_thread(
+    *, session: Session, thread_in: ChatThreadCreate, owner_id: uuid.UUID
+) -> ChatThread:
+    """Create a new chat thread, auto-generating title and initial transcript if prompt provided."""
+    prompt_text = thread_in.prompt.strip() if thread_in.prompt else None
+    if prompt_text:
+        lines = [line.strip() for line in prompt_text.splitlines() if line.strip()]
+        first_line = lines[0] if lines else "New conversation"
+        title = first_line[:60] + ("…" if len(first_line) > 60 else "")
+        transcript: dict[str, Any] = {
+            "messages": [
+                {
+                    "id": f"msg_{uuid.uuid4().hex[:12]}",
+                    "role": "user",
+                    "parts": [{"type": "text", "text": prompt_text}],
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
+            ]
+        }
+        message_count = 1
+    else:
+        title = "New conversation"
+        transcript = {"messages": []}
+        message_count = 0
+
+    db_thread = ChatThread(
+        owner_id=owner_id,
+        title=title,
+        origin=thread_in.origin,
+        post_id=thread_in.post_id,
+        topic_keyword=thread_in.topic_keyword,
+        message_count=message_count,
+        is_archived=False,
+        transcript=transcript,
+    )
+    session.add(db_thread)
+    session.commit()
+    session.refresh(db_thread)
+    return db_thread
+
+
+def get_chat_thread(*, session: Session, thread_id: uuid.UUID) -> ChatThread | None:
+    """Get a chat thread by ID."""
+    return session.get(ChatThread, thread_id)
+
+
+def get_chat_threads(
+    *,
+    session: Session,
+    owner_id: uuid.UUID,
+    is_archived: bool | None = None,
+    skip: int = 0,
+    limit: int = 100,
+) -> tuple[list[ChatThread], int]:
+    """Get chat threads for a user with optional archive filter."""
+    statement = select(ChatThread).where(ChatThread.owner_id == owner_id)
+    count_statement = (
+        select(func.count())
+        .select_from(ChatThread)
+        .where(ChatThread.owner_id == owner_id)
+    )
+
+    if is_archived is not None:
+        statement = statement.where(ChatThread.is_archived == is_archived)
+        count_statement = count_statement.where(ChatThread.is_archived == is_archived)
+
+    statement = (
+        statement.order_by(col(ChatThread.updated_at).desc().nulls_last())
+        .offset(skip)
+        .limit(limit)
+    )
+    count = session.exec(count_statement).one()
+    threads = list(session.exec(statement).all())
+    return threads, count
+
+
+def update_chat_thread(
+    *, session: Session, db_thread: ChatThread, thread_in: ChatThreadUpdate
+) -> ChatThread:
+    """Update chat thread metadata (title, archive status)."""
+    update_data = thread_in.model_dump(exclude_unset=True)
+    if "title" in update_data and update_data["title"] is not None:
+        trimmed_title = update_data["title"].strip()
+        if not trimmed_title:
+            raise ValueError("Title cannot be empty or whitespace only")
+        update_data["title"] = trimmed_title
+
+    db_thread.sqlmodel_update(update_data)
+    db_thread.updated_at = datetime.now(timezone.utc)
+    session.add(db_thread)
+    session.commit()
+    session.refresh(db_thread)
+    return db_thread
+
+
+def delete_chat_thread(*, session: Session, thread_id: uuid.UUID) -> None:
+    """Delete a chat thread."""
+    thread = session.get(ChatThread, thread_id)
+    if thread:
+        session.delete(thread)
+        session.commit()
+
+
+def append_message_to_transcript(
+    *, session: Session, db_thread: ChatThread, message: dict[str, Any]
+) -> ChatThread:
+    """Append a message to the thread's JSONB transcript and update message count."""
+    current_transcript = dict(db_thread.transcript or {})
+    messages = list(current_transcript.get("messages", []))
+    messages.append(message)
+    current_transcript["messages"] = messages
+
+    db_thread.transcript = current_transcript
+    db_thread.message_count = len(messages)
+    db_thread.updated_at = datetime.now(timezone.utc)
+    session.add(db_thread)
+    session.commit()
+    session.refresh(db_thread)
+    return db_thread

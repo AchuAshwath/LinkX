@@ -1,109 +1,160 @@
-import { fireEvent, render, screen } from "@testing-library/react"
-import { describe, expect, it } from "vitest"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+import { AiThreadsService } from "@/client"
 import { Route } from "@/routes/_layout/ai"
 
-describe("AIPage component", () => {
-  it("renders AIPage with Rich Markdown showcase thread", () => {
-    const Component = Route.options.component as React.ComponentType
-    render(<Component />)
+// Mock AiThreadsService
+vi.mock("@/client", async () => {
+  const actual = await vi.importActual("@/client")
+  return {
+    ...actual,
+    AiThreadsService: {
+      listChatThreads: vi.fn(),
+      getChatThread: vi.fn(),
+      createChatThread: vi.fn(),
+      updateChatThread: vi.fn(),
+      deleteChatThread: vi.fn(),
+    },
+  }
+})
 
-    expect(screen.getAllByText(/New Chat/i).length).toBeGreaterThanOrEqual(1)
+function renderWithClient(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+      },
+    },
+  })
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+  )
+}
+
+describe("AIPage component with PostgreSQL backend persistence", () => {
+  const mockThreads = [
+    {
+      id: "thread-1",
+      title: "Rich Markdown & Typography",
+      origin: "manual",
+      message_count: 2,
+      is_archived: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      owner_id: "user-1",
+    },
+    {
+      id: "thread-archived",
+      title: "Archived Discussion",
+      origin: "composer",
+      message_count: 1,
+      is_archived: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      owner_id: "user-1",
+    },
+  ]
+
+  const mockThreadDetail = {
+    ...mockThreads[0],
+    transcript: {
+      messages: [
+        {
+          id: "m-101",
+          role: "user",
+          parts: [{ type: "text", text: "Showcase markdown capabilities" }],
+        },
+        {
+          id: "m-102",
+          role: "assistant",
+          parts: [
+            {
+              type: "text",
+              text: "Launching Next-Gen Social Growth with LinkX",
+            },
+          ],
+        },
+      ],
+    },
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(AiThreadsService.listChatThreads).mockResolvedValue({
+      data: mockThreads,
+      count: mockThreads.length,
+    })
+    vi.mocked(AiThreadsService.getChatThread).mockResolvedValue(
+      mockThreadDetail,
+    )
+    vi.mocked(AiThreadsService.createChatThread).mockResolvedValue({
+      id: "thread-new",
+      title: "New conversation",
+      origin: "composer",
+      message_count: 0,
+      is_archived: false,
+      transcript: { messages: [] },
+      owner_id: "user-1",
+    })
+    vi.mocked(AiThreadsService.updateChatThread).mockResolvedValue(
+      mockThreads[0],
+    )
+    vi.mocked(AiThreadsService.deleteChatThread).mockResolvedValue({
+      message: "Chat thread deleted successfully",
+    })
+  })
+
+  it("renders AIPage with persistent threads from backend", async () => {
+    const Component = Route.options.component as React.ComponentType
+    renderWithClient(<Component />)
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/New Chat/i).length).toBeGreaterThanOrEqual(1)
+      expect(
+        screen.getAllByText("Rich Markdown & Typography").length,
+      ).toBeGreaterThanOrEqual(1)
+    })
+
     expect(
-      screen.getAllByText("Rich Markdown & Typography").length,
-    ).toBeGreaterThanOrEqual(1)
-    expect(
-      screen.getByText(/Launching Next-Gen Social Growth with LinkX/),
+      await screen.findByText(/Launching Next-Gen Social Growth with LinkX/),
     ).toBeInTheDocument()
     expect(screen.getByPlaceholderText("Ask anything")).toBeInTheDocument()
   })
 
-  it("can switch to Web Search & Citations thread and expand tool call", () => {
+  it("can switch to another thread and load its transcript", async () => {
     const Component = Route.options.component as React.ComponentType
-    render(<Component />)
+    renderWithClient(<Component />)
 
-    const searchThread = screen.getByText("Web Search & Citations")
-    fireEvent.click(searchThread)
+    const archivedThreadBtn = await screen.findByText("Archived Discussion")
+    fireEvent.click(archivedThreadBtn)
 
-    expect(
-      screen.getByText(/Research Summary: AI Agent Frameworks/),
-    ).toBeInTheDocument()
-
-    // Abstract collapsible Web Search button
-    const webSearchBtn = screen.getByRole("button", {
-      name: /toggle web search details/i,
+    await waitFor(() => {
+      expect(AiThreadsService.getChatThread).toHaveBeenCalledWith({
+        id: "thread-archived",
+      })
     })
-    expect(webSearchBtn).toBeInTheDocument()
-
-    // Click to expand tool call details
-    fireEvent.click(webSearchBtn)
-    expect(screen.getByText(/Ran search/i)).toBeInTheDocument()
   })
 
-  it("can switch to Interactive Questionnaire thread and complete slideshow", () => {
+  it("can create a new chat via backend mutation", async () => {
     const Component = Route.options.component as React.ComponentType
-    render(<Component />)
+    renderWithClient(<Component />)
 
-    const questionThread = screen.getByText("Interactive Questionnaire (HITL)")
-    fireEvent.click(questionThread)
-
-    // Slide 1
-    expect(
-      screen.getByText(
-        "What is your primary growth objective for the next 30 days?",
-      ),
-    ).toBeInTheDocument()
-
-    const choice1 = screen.getByText("Brand Awareness & Founder Audience")
-    fireEvent.click(choice1)
-
-    const nextBtn = screen.getByRole("button", { name: /next/i })
-    fireEvent.click(nextBtn)
-
-    // Slide 2
-    expect(
-      screen.getByText(
-        "Which content style resonates best with your audience?",
-      ),
-    ).toBeInTheDocument()
-
-    const choice2 = screen.getByText("Deep Technical Teardowns & Architecture")
-    fireEvent.click(choice2)
-
-    const answerBtn = screen.getByRole("button", { name: /answer/i })
-    fireEvent.click(answerBtn)
-
-    expect(screen.getByText(/Here are my preferences/)).toBeInTheDocument()
-  })
-
-  it("can switch to Conversational Post Refinement thread", () => {
-    const Component = Route.options.component as React.ComponentType
-    render(<Component />)
-
-    const refineThread = screen.getByText("Conversational Post Refinement")
-    fireEvent.click(refineThread)
-
-    expect(
-      screen.getByText(/Most developers write code to execute/),
-    ).toBeInTheDocument()
-  })
-
-  it("can create a new chat", () => {
-    const Component = Route.options.component as React.ComponentType
-    render(<Component />)
-
-    const newChatBtns = screen.getAllByRole("button", { name: /new chat/i })
+    const newChatBtns = await screen.findAllByRole("button", {
+      name: /new chat/i,
+    })
     fireEvent.click(newChatBtns[0])
 
-    expect(
-      screen.getByText("What would you like to create?"),
-    ).toBeInTheDocument()
+    await waitFor(() => {
+      expect(AiThreadsService.createChatThread).toHaveBeenCalled()
+    })
   })
 
-  it("can rename a thread via kebab menu", () => {
+  it("can rename a thread via kebab menu and persist to backend", async () => {
     const Component = Route.options.component as React.ComponentType
-    render(<Component />)
+    renderWithClient(<Component />)
 
-    const kebabButtons = screen.getAllByRole("button", {
+    const kebabButtons = await screen.findAllByRole("button", {
       name: /thread options/i,
     })
     fireEvent.click(kebabButtons[0])
@@ -113,18 +164,21 @@ describe("AIPage component", () => {
 
     const editInput = screen.getByDisplayValue("Rich Markdown & Typography")
     fireEvent.change(editInput, { target: { value: "Renamed Thread Title" } })
-    fireEvent.blur(editInput)
+    fireEvent.submit(editInput.closest("form")!)
 
-    expect(
-      screen.getAllByText("Renamed Thread Title").length,
-    ).toBeGreaterThanOrEqual(1)
+    await waitFor(() => {
+      expect(AiThreadsService.updateChatThread).toHaveBeenCalledWith({
+        id: "thread-1",
+        requestBody: { title: "Renamed Thread Title" },
+      })
+    })
   })
 
-  it("shows Archive button on recent threads and Delete button on archived threads", () => {
+  it("shows Archive button on recent threads and Delete button on archived threads", async () => {
     const Component = Route.options.component as React.ComponentType
-    render(<Component />)
+    renderWithClient(<Component />)
 
-    const archiveButtons = screen.getAllByRole("button", {
+    const archiveButtons = await screen.findAllByRole("button", {
       name: /archive thread/i,
     })
     expect(archiveButtons.length).toBeGreaterThanOrEqual(1)
@@ -134,17 +188,33 @@ describe("AIPage component", () => {
     })
     expect(deleteButtons.length).toBeGreaterThanOrEqual(1)
 
-    // Archive the first recent thread
+    // Archive the recent thread
     fireEvent.click(archiveButtons[0])
-
-    // Open kebab menu on an archived thread
-    const kebabButtons = screen.getAllByRole("button", {
-      name: /thread options/i,
+    await waitFor(() => {
+      expect(AiThreadsService.updateChatThread).toHaveBeenCalledWith({
+        id: "thread-1",
+        requestBody: { is_archived: true },
+      })
     })
-    fireEvent.click(kebabButtons[kebabButtons.length - 1])
 
+    // Click delete on the archived thread (opens confirmation dialog)
+    fireEvent.click(deleteButtons[0])
+
+    // Verify modal appeared
     expect(
-      screen.getByRole("menuitem", { name: /unarchive/i }),
+      await screen.findByText(/This will permanently delete/i),
     ).toBeInTheDocument()
+
+    // Confirm deletion inside modal
+    const confirmDeleteBtn = screen.getByRole("button", {
+      name: /^delete chat$/i,
+    })
+    fireEvent.click(confirmDeleteBtn)
+
+    await waitFor(() => {
+      expect(AiThreadsService.deleteChatThread).toHaveBeenCalledWith({
+        id: "thread-archived",
+      })
+    })
   })
 })
