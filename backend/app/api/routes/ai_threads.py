@@ -1,7 +1,7 @@
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
-from typing import Annotated, Any
+from typing import Annotated, Any, NamedTuple
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, status
@@ -281,23 +281,29 @@ def delete_chat_thread(
     return Message(message="Chat thread deleted successfully")
 
 
+class AssistantTurnPayload(NamedTuple):
+    body: ChatMessageRequest
+    accumulated_text: str
+    assistant_parts: list[dict[str, Any]]
+
+
 async def _save_assistant_turn(
     *,
     session: Session,
     thread: ChatThread,
-    body: ChatMessageRequest,
-    accumulated_text: str,
-    assistant_parts: list[dict[str, Any]],
+    payload: AssistantTurnPayload,
 ) -> None:
-    if accumulated_text:
-        assistant_parts.append({"type": "text", "text": accumulated_text})
-    if not assistant_parts:
+    if payload.accumulated_text:
+        payload.assistant_parts.append(
+            {"type": "text", "text": payload.accumulated_text}
+        )
+    if not payload.assistant_parts:
         return
 
     assistant_msg = {
         "id": f"msg_{uuid.uuid4().hex[:12]}",
         "role": "assistant",
-        "parts": assistant_parts,
+        "parts": payload.assistant_parts,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     crud.append_message_to_transcript(
@@ -309,9 +315,9 @@ async def _save_assistant_turn(
     if thread.message_count <= 2:
         try:
             ai_title = await generate_ai_thread_title(
-                user_prompt=body.message,
-                assistant_response=accumulated_text,
-                model=body.model,
+                user_prompt=payload.body.message,
+                assistant_response=payload.accumulated_text,
+                model=payload.body.model,
             )
             if ai_title:
                 thread.title = ai_title
@@ -364,9 +370,11 @@ async def chat_stream(
             await _save_assistant_turn(
                 session=session,
                 thread=thread,
-                body=body,
-                accumulated_text=accumulated_text,
-                assistant_parts=assistant_parts,
+                payload=AssistantTurnPayload(
+                    body=body,
+                    accumulated_text=accumulated_text,
+                    assistant_parts=assistant_parts,
+                ),
             )
 
         except Exception as exc:

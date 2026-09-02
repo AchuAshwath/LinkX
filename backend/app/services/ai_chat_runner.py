@@ -260,6 +260,17 @@ async def _stream_direct_openai_proxy(
                     yield parsed
 
 
+def _extract_langchain_chunk_text(chunk: Any) -> str | None:
+    text = chunk.content
+    if isinstance(text, str) and text:
+        return text
+    if isinstance(text, list):
+        combined = "".join(str(c) for c in text if c)
+        if combined:
+            return combined
+    return None
+
+
 async def _stream_fallback_langchain(
     messages: list[BaseMessage], target_model: str
 ) -> AsyncGenerator[str, None]:
@@ -277,13 +288,9 @@ async def _stream_fallback_langchain(
         if reasoning and isinstance(reasoning, str):
             yield f"<thought>{reasoning}</thought>"
 
-        text = chunk.content
-        if isinstance(text, str) and text:
+        text = _extract_langchain_chunk_text(chunk)
+        if text:
             yield text
-        elif isinstance(text, list):
-            combined = "".join(str(c) for c in text if c)
-            if combined:
-                yield combined
 
 
 async def stream_raw_chat_completion(

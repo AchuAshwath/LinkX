@@ -31,6 +31,39 @@ function UserMessageBubble({ message }: { message: ChatUIMessage }) {
   )
 }
 
+function renderToolOrDraftPart(
+  part: ChatUIMessage["parts"][number],
+  index: number,
+  sources: SourceUrlPart[],
+) {
+  if (part.type === "tool-web_search") {
+    return (
+      <WebSearchPart
+        key={part.toolCallId || `search-${index}`}
+        part={part}
+        sources={sources}
+      />
+    )
+  }
+  if (part.type === "tool-call") {
+    return (
+      <ToolCallAccordion
+        key={part.toolCallId || `tool-${index}`}
+        toolCalls={[part.tool]}
+      />
+    )
+  }
+  if (part.type === "draft_artifact") {
+    return (
+      <DraftArtifactCard
+        key={part.artifact.id || `draft-${index}`}
+        artifact={part.artifact}
+      />
+    )
+  }
+  return null
+}
+
 function AssistantPartRenderer({
   part,
   index,
@@ -44,43 +77,20 @@ function AssistantPartRenderer({
   hasResponseStarted: boolean
   sources: SourceUrlPart[]
 }) {
-  switch (part.type) {
-    case "thought":
-      return (
-        <ThoughtPart
-          key={`thought-${index}`}
-          part={part}
-          isStreaming={isStreaming && !hasResponseStarted}
-          hasResponseStarted={hasResponseStarted}
-        />
-      )
-    case "text":
-      return <TextPart key={`text-${index}`} part={part} />
-    case "tool-web_search":
-      return (
-        <WebSearchPart
-          key={part.toolCallId || `search-${index}`}
-          part={part}
-          sources={sources}
-        />
-      )
-    case "tool-call":
-      return (
-        <ToolCallAccordion
-          key={part.toolCallId || `tool-${index}`}
-          toolCalls={[part.tool]}
-        />
-      )
-    case "draft_artifact":
-      return (
-        <DraftArtifactCard
-          key={part.artifact.id || `draft-${index}`}
-          artifact={part.artifact}
-        />
-      )
-    default:
-      return null
+  if (part.type === "thought") {
+    return (
+      <ThoughtPart
+        key={`thought-${index}`}
+        part={part}
+        isStreaming={isStreaming && !hasResponseStarted}
+        hasResponseStarted={hasResponseStarted}
+      />
+    )
   }
+  if (part.type === "text") {
+    return <TextPart key={`text-${index}`} part={part} />
+  }
+  return renderToolOrDraftPart(part, index, sources)
 }
 
 export function ChatMessage({
