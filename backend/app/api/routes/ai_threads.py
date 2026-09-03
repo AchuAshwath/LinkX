@@ -330,22 +330,21 @@ async def _save_assistant_turn(
             pass
 
 
+VALID_IMAGE_SCHEMES = ("data:image/", "http://", "https://")
+
+
+def _is_valid_image_url(url: Any) -> bool:
+    if not isinstance(url, str):
+        return False
+    trimmed = url.strip()
+    return any(trimmed.startswith(scheme) for scheme in VALID_IMAGE_SCHEMES)
+
+
 def _sanitize_image_urls(images: list[str] | None) -> list[str]:
     """Filter and sanitize valid image data URLs or HTTP/HTTPS image links."""
     if not images:
         return []
-    clean: list[str] = []
-    for img in images:
-        if not img or not isinstance(img, str):
-            continue
-        trimmed = img.strip()
-        if (
-            trimmed.startswith("data:image/")
-            or trimmed.startswith("http://")
-            or trimmed.startswith("https://")
-        ):
-            clean.append(trimmed)
-    return clean
+    return [img.strip() for img in images if _is_valid_image_url(img)]
 
 
 def _build_user_message_dict(

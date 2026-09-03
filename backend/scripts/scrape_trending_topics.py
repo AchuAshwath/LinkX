@@ -114,24 +114,33 @@ def _should_skip_link(
     return not _is_valid_topic_text(text, heuristic)
 
 
-async def _resolve_link_href(link: Any, *, clean_title: str) -> str:
-    """Resolve href attribute or construct search query URL."""
+def _extract_trend_id_from_testid(testid: Any) -> str | None:
+    if not isinstance(testid, str):
+        return None
+    prefix = "news_sidebar_article_"
+    if not testid.startswith(prefix):
+        return None
+    raw_b64 = testid[len(prefix) :]
+    padded_b64 = raw_b64 + "=" * (-len(raw_b64) % 4)
     try:
-        if hasattr(link, "get_attribute"):
-            testid = await link.get_attribute("data-testid")
-            if (
-                testid
-                and isinstance(testid, str)
-                and testid.startswith("news_sidebar_article_")
-            ):
-                raw_b64 = testid[len("news_sidebar_article_") :]
-                padded_b64 = raw_b64 + "=" * (-len(raw_b64) % 4)
-                decoded = base64.b64decode(padded_b64).decode("utf-8", errors="ignore")
-                if ":" in decoded:
-                    trend_id = decoded.split(":")[-1]
-                    return f"https://x.com/i/trending/{trend_id}"
+        decoded = base64.b64decode(padded_b64).decode("utf-8", errors="ignore")
+        if ":" in decoded:
+            return decoded.split(":")[-1]
     except Exception:
         pass
+    return None
+
+
+async def _resolve_link_href(link: Any, *, clean_title: str) -> str:
+    """Resolve href attribute or construct search query URL."""
+    if hasattr(link, "get_attribute"):
+        try:
+            testid = await link.get_attribute("data-testid")
+            trend_id = _extract_trend_id_from_testid(testid)
+            if trend_id:
+                return f"https://x.com/i/trending/{trend_id}"
+        except Exception:
+            pass
 
     url = await link.get_attribute("href") if hasattr(link, "get_attribute") else None
     if not url:
@@ -563,65 +572,24 @@ async def scrape_trending_topics(
     return result
 
 
-async def _is_page_blocked(page: Any) -> bool:
-    """Check if current page state is logged out or blocked by captcha."""
-    state = await detect_page_state(page)
-    return state in {"logged_out", "captcha"}
-
-
-async def _has_sidebar_trends(page: Any) -> bool:
-    """Check if sidebar trends or news articles are present in DOM."""
-    if not hasattr(page, "locator"):
-        return False
-    try:
-        count = await page.locator(
-            "[data-testid^='news_sidebar_article'], [data-testid='trend']"
-        ).count()
-        return count > 0
-    except Exception:
-        return False
-
-
-async def _wait_for_sidebar_or_ready(page: Any, max_polls: int = 8) -> bool:
-    """Poll during SPA hydration until trends appear or state is verified OK."""
-    for _ in range(max_polls):
-        await asyncio.sleep(0.5)
-        if await _is_page_blocked(page):
-            return False
-        if await _has_sidebar_trends(page):
-            return True
-        if await detect_page_state(page) == "ok":
-            return True
-    return False
-
-
-async def _safe_goto(page: Any, url: str) -> None:
-    """Safely navigate to URL without throwing unhandled exceptions."""
-    try:
-        await page.goto(url, wait_until="domcontentloaded")
-    except Exception as exc:
-        logger.warning(f"Error navigating to {url}: {exc}")
-
-
 async def navigate_to_trends(
     page: Any, *, target_url: str = "https://x.com/home"
 ) -> bool:
     """Navigate to X.com home (with explore fallback) and verify authenticated page state."""
-    curr_url = getattr(page, "url", "")
-    if isinstance(curr_url, str) and curr_url and not curr_url.startswith("about:"):
-        if await _is_page_blocked(page):
-            return False
+    state = await detect_page_state(page)
+    if state in {"logged_out", "captcha"}:
+        return False
 
-    await _safe_goto(page, target_url)
-    if await _wait_for_sidebar_or_ready(page, max_polls=8):
+    await page.goto(target_url, wait_until="domcontentloaded")
+    post_state = await detect_page_state(page)
+    if post_state == "ok":
         return True
 
     if target_url != "https://x.com/explore":
-        logger.info("Retrying navigation with explore fallback...")
-        await _safe_goto(page, "https://x.com/explore")
-        return await _wait_for_sidebar_or_ready(page, max_polls=6)
+        await page.goto("https://x.com/explore", wait_until="domcontentloaded")
+        post_state = await detect_page_state(page)
 
-    return False
+    return post_state not in {"logged_out", "rate_limited", "captcha"}
 
 
 def _format_trend_url(identifier: str, *, is_url: bool, topic_title: str) -> str:

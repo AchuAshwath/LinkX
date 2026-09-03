@@ -175,7 +175,6 @@ async def default_chat_stream_runner(
     *,
     message: str,
     transcript: dict[str, Any] | None = None,
-    smooth_delay: float = 0.0,
     model: str | None = None,
     images: list[str] | None = None,
 ) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
@@ -189,7 +188,7 @@ async def default_chat_stream_runner(
     try:
         async for event in stream_parsed_chunks(
             stream_raw_chat_completion(messages=messages, model=model),
-            delay=smooth_delay,
+            delay=0.0,
         ):
             yield event
 

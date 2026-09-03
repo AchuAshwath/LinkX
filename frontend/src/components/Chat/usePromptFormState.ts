@@ -3,13 +3,7 @@ import type { AIModelOption } from "@/components/Chat/ModelSelectorPill"
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition"
 import { useImageAttachments } from "./useImageAttachments"
 
-const FALLBACK_MODELS: AIModelOption[] = [
-  { id: "gemini-3.6-flash-high", name: "Gemini 3.6 Flash", provider: "Google" },
-  { id: "claude-sonnet-4-6", name: "Claude 3.7 Sonnet", provider: "Anthropic" },
-  { id: "gpt-5.6-luna", name: "GPT-5.6 Luna", provider: "OpenAI" },
-  { id: "gpt-5.4", name: "GPT-5.4", provider: "OpenAI" },
-  { id: "gpt-oss-120b-medium", name: "DeepSeek R1", provider: "OpenSource" },
-]
+const FALLBACK_MODELS: AIModelOption[] = []
 
 function normalizeModels(models?: (AIModelOption | string)[]): AIModelOption[] {
   if (!models || models.length === 0) return FALLBACK_MODELS
@@ -115,9 +109,13 @@ export function usePromptFormState({
   inputRef,
 }: UsePromptFormStateProps) {
   const [input, setInput] = React.useState(initialValue)
-  const [localModelId, setLocalModelId] = React.useState(
-    selectedModelId || "gemini-3.6-flash-high",
-  )
+  const [localModelId, setLocalModelId] = React.useState(selectedModelId || "")
+
+  React.useEffect(() => {
+    if (selectedModelId) {
+      setLocalModelId(selectedModelId)
+    }
+  }, [selectedModelId])
 
   const internalInputRef = React.useRef<HTMLTextAreaElement>(null)
   const effectiveInputRef = inputRef || internalInputRef

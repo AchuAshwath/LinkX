@@ -145,17 +145,20 @@ function handleComposerKeyDown({
   onAiDraftSubmit?: () => void
   handleSubmit: (action: "draft" | "schedule" | "post") => void
 }) {
-  const isCmdEnter = (event.metaKey || event.ctrlKey) && event.key === "Enter"
-  const isPlainEnterInAi = event.key === "Enter" && !event.shiftKey && isAiMode
+  if (event.key !== "Enter") return
 
-  if (isCmdEnter) {
+  const isModifier = event.metaKey || event.ctrlKey
+  if (isModifier) {
     event.preventDefault()
     if (isAiMode && onAiDraftSubmit) {
       onAiDraftSubmit()
-    } else {
-      handleSubmit(scheduledAt || isScheduleOpen ? "schedule" : "post")
+      return
     }
-  } else if (isPlainEnterInAi && onAiDraftSubmit) {
+    handleSubmit(scheduledAt || isScheduleOpen ? "schedule" : "post")
+    return
+  }
+
+  if (isAiMode && !event.shiftKey && onAiDraftSubmit) {
     event.preventDefault()
     onAiDraftSubmit()
   }

@@ -281,8 +281,9 @@ def test_list_ai_models(
     assert res.status_code == 200
     data = res.json()
     assert "data" in data
-    assert "default_model" in data
-    assert any(m["id"] == "gpt-5.6-luna" for m in data["data"])
+    expected_default = settings.AI_MODEL.removeprefix("openai/")
+    assert data["default_model"] == expected_default
+    assert any(m["id"] == expected_default for m in data["data"])
     assert not any("gemini" in m["id"].lower() for m in data["data"])
 
 
