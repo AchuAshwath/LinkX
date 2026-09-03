@@ -30,12 +30,10 @@ export function PencilSparklesIcon({
 
 export function getAiDraftButtonTitle(
   isAiGenerating: boolean,
-  isContentEmpty: boolean,
   isAiMode: boolean,
 ): string {
   if (isAiGenerating) return "Drafting post in background with AI..."
-  if (!isContentEmpty) return "Draft with AI"
-  if (isAiMode) return "AI Draft Mode Active (click to toggle off)"
+  if (isAiMode) return "Disable AI Draft Mode"
   return "Draft with AI"
 }
 
@@ -43,13 +41,11 @@ export function AiDraftButton({
   isAiMode,
   isAiGenerating,
   isSubmitting,
-  isContentEmpty,
   onClick,
 }: {
   isAiMode: boolean
   isAiGenerating: boolean
   isSubmitting: boolean
-  isContentEmpty: boolean
   onClick: () => void
 }) {
   const label = isAiGenerating
@@ -58,7 +54,7 @@ export function AiDraftButton({
       ? "Disable AI Draft Mode"
       : "Draft with AI"
 
-  const title = getAiDraftButtonTitle(isAiGenerating, isContentEmpty, isAiMode)
+  const title = getAiDraftButtonTitle(isAiGenerating, isAiMode)
   const modeClass = isAiMode
     ? "text-primary bg-primary/20 ring-1 ring-primary/40 shadow-xs"
     : "text-muted-foreground hover:text-primary hover:bg-primary/10"

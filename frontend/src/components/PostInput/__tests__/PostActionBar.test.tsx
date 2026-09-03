@@ -30,7 +30,7 @@ describe("PostActionBar - Draft with AI Button", () => {
     expect(onAiDraftSubmit).not.toHaveBeenCalled()
   })
 
-  it("triggers onAiDraftSubmit directly when content is NOT empty and ai-draft-btn is clicked", () => {
+  it("toggles AI mode when ai-draft-btn is clicked even if content is not empty", () => {
     const onToggleAiMode = vi.fn()
     const onAiDraftSubmit = vi.fn()
 
@@ -53,8 +53,8 @@ describe("PostActionBar - Draft with AI Button", () => {
     const aiButton = screen.getByTestId("ai-draft-btn")
     fireEvent.click(aiButton)
 
-    expect(onAiDraftSubmit).toHaveBeenCalledTimes(1)
-    expect(onToggleAiMode).not.toHaveBeenCalled()
+    expect(onToggleAiMode).toHaveBeenCalledTimes(1)
+    expect(onAiDraftSubmit).not.toHaveBeenCalled()
   })
 
   it("disables button and displays loader when isAiGenerating is true", () => {

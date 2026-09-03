@@ -13,6 +13,7 @@ import { MediaThumbnail } from "./MediaThumbnail"
 import { PostActionBar } from "./PostActionBar"
 import { formatDateTime } from "./PostSchedulePicker"
 import { useComposerDragDrop } from "./useComposerDragDrop"
+import { useComposerKeyboard } from "./useComposerKeyboard"
 import { useComposerSubmission } from "./useComposerSubmission"
 import { usePostForm } from "./usePostForm"
 
@@ -130,44 +131,6 @@ interface PostInputFormBodyProps {
   setIsScheduleOpen: (open: boolean) => void
 }
 
-function handleComposerKeyDown({
-  event,
-  isAiMode,
-  scheduledAt,
-  isScheduleOpen,
-  onAiDraftSubmit,
-  handleSubmit,
-}: {
-  event: React.KeyboardEvent<HTMLTextAreaElement>
-  isAiMode: boolean
-  scheduledAt?: Date
-  isScheduleOpen: boolean
-  onAiDraftSubmit?: () => void
-  handleSubmit: (action: "draft" | "schedule" | "post") => void
-}) {
-  if (event.key !== "Enter") return
-
-  const isModifier = event.metaKey || event.ctrlKey
-  if (isModifier) {
-    event.preventDefault()
-    if (isAiMode && onAiDraftSubmit) {
-      onAiDraftSubmit()
-      return
-    }
-    handleSubmit(scheduledAt || isScheduleOpen ? "schedule" : "post")
-    return
-  }
-
-  if (isAiMode) {
-    if (!event.shiftKey) {
-      if (onAiDraftSubmit) {
-        event.preventDefault()
-        onAiDraftSubmit()
-      }
-    }
-  }
-}
-
 function PostInputFormBody({
   username,
   channel,
@@ -194,16 +157,13 @@ function PostInputFormBody({
   isScheduleOpen,
   setIsScheduleOpen,
 }: PostInputFormBodyProps) {
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    handleComposerKeyDown({
-      event,
-      isAiMode,
-      scheduledAt,
-      isScheduleOpen,
-      onAiDraftSubmit,
-      handleSubmit,
-    })
-  }
+  const handleKeyDown = useComposerKeyboard({
+    isAiMode,
+    scheduledAt,
+    isScheduleOpen,
+    onAiDraftSubmit,
+    handleSubmit,
+  })
 
   return (
     <div className="flex-1 min-w-0">

@@ -36,9 +36,9 @@ function ScheduleAndMediaControls({
   isScheduleOpen,
   isScheduled,
   isSubmitting,
-  isContentEmpty,
   isAiGenerating,
   isAiMode,
+  isContentEmpty,
   scheduledAt,
   onScheduleChange,
   onToggleSchedule,
@@ -47,7 +47,7 @@ function ScheduleAndMediaControls({
   onToggleAiMode,
   onAiDraftSubmit,
 }: LeftControlsProps) {
-  const handleAiDraftClick = () => {
+  const handleAiClick = () => {
     if (!isContentEmpty && onAiDraftSubmit) {
       onAiDraftSubmit()
     } else {
@@ -75,8 +75,7 @@ function ScheduleAndMediaControls({
         isAiMode={Boolean(isAiMode)}
         isAiGenerating={Boolean(isAiGenerating)}
         isSubmitting={isSubmitting}
-        isContentEmpty={Boolean(isContentEmpty)}
-        onClick={handleAiDraftClick}
+        onClick={handleAiClick}
       />
     </>
   )
@@ -345,14 +344,12 @@ export const PostActionBar = React.memo(function PostActionBar({
         isSubmitting={isSubmitting}
         isAiGenerating={isAiGenerating}
         isAiMode={isAiMode}
-        isContentEmpty={isContentEmpty}
         scheduledAt={scheduledAt}
         onScheduleChange={onScheduleChange}
         onToggleSchedule={onToggleSchedule}
         onActionTypeChange={onActionTypeChange}
         onImageClick={onImageClick}
         onToggleAiMode={onToggleAiMode}
-        onAiDraftSubmit={onAiDraftSubmit}
       />
 
       <ActionButtonsGroup

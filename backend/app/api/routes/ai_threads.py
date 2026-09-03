@@ -117,15 +117,12 @@ def _collect_stream_part(
 
 
 FRIENDLY_MODEL_NAMES: dict[str, str] = {
-    "gpt-5.6-luna": "ChatGPT Luna",
-    "gpt-5.6-sol": "GPT-5.6 Sol",
-    "gpt-5.6-terra": "GPT-5.6 Terra",
-    "gpt-5.4": "GPT-5.4",
-    "gpt-5.4-mini": "GPT-5.4 Mini",
-    "gpt-5.5": "GPT-5.5",
-    "claude-sonnet-4-6": "Claude 3.7 Sonnet",
-    "claude-opus-4-6-thinking": "Claude 3.7 Opus",
-    "gpt-oss-120b-medium": "DeepSeek R1",
+    "gpt-5.6-luna": "5.6 Luna",
+    "gpt-5.6-sol": "5.6 Sol",
+    "gpt-5.6-terra": "5.6 Terra",
+    "gpt-5.4": "5.4",
+    "gpt-5.4-mini": "5.4 Mini",
+    "gpt-5.5": "5.5",
 }
 
 EXCLUDED_MODELS = {
@@ -143,11 +140,11 @@ def _build_fallback_models(default_model_id: str) -> list[AIModelInfo]:
             FRIENDLY_MODEL_NAMES.get(default_model_id, default_model_id),
             "OpenAI",
         ),
-        ("gpt-5.4", "GPT-5.4", "OpenAI"),
-        ("gpt-5.4-mini", "GPT-5.4 Mini", "OpenAI"),
-        ("gpt-5.5", "GPT-5.5", "OpenAI"),
-        ("gpt-5.6-sol", "GPT-5.6 Sol", "OpenAI"),
-        ("gpt-5.6-terra", "GPT-5.6 Terra", "OpenAI"),
+        ("gpt-5.4", "5.4", "OpenAI"),
+        ("gpt-5.4-mini", "5.4 Mini", "OpenAI"),
+        ("gpt-5.5", "5.5", "OpenAI"),
+        ("gpt-5.6-sol", "5.6 Sol", "OpenAI"),
+        ("gpt-5.6-terra", "5.6 Terra", "OpenAI"),
     ]
     seen: set[str] = set()
     result: list[AIModelInfo] = []
@@ -163,6 +160,18 @@ def _build_fallback_models(default_model_id: str) -> list[AIModelInfo]:
                 )
             )
     return result
+
+
+def _is_allowed_proxy_model(item: dict[str, Any]) -> bool:
+    raw_id = item.get("id")
+    if not raw_id:
+        return False
+    model_id = str(raw_id)
+    if model_id in EXCLUDED_MODELS:
+        return False
+    if model_id.lower().startswith("gemini"):
+        return False
+    return str(item.get("owned_by", "")).lower() != "antigravity"
 
 
 def _fetch_models_from_proxy(default_model_id: str) -> list[AIModelInfo]:
@@ -185,10 +194,7 @@ def _fetch_models_from_proxy(default_model_id: str) -> list[AIModelInfo]:
                 is_default=(str(item["id"]) == default_model_id),
             )
             for item in items
-            if item.get("id")
-            and str(item["id"]) not in EXCLUDED_MODELS
-            and not str(item["id"]).lower().startswith("gemini")
-            and str(item.get("owned_by", "")).lower() != "antigravity"
+            if _is_allowed_proxy_model(item)
         ]
 
 
