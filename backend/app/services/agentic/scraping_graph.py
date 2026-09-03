@@ -497,16 +497,20 @@ def _make_abort_scraped_batch_report(
     )
 
 
+def _resolve_report_status(*, raw_status: Any, error: Any, persisted_count: int) -> str:
+    if error and persisted_count == 0:
+        return str(raw_status) if raw_status in ("error", "unrecoverable") else "error"
+    return str(raw_status or "persisted")
+
+
 def _format_scraped_batch_report(*, final_state: dict[str, Any]) -> ScrapedBatchReport:
     """Format and validate final ScrapedBatchReport from completed graph state."""
     raw_status = final_state.get("status")
     error = final_state.get("error")
     persisted_count = int(final_state.get("persisted_topic_count", 0))
-
-    if error and persisted_count == 0:
-        status = raw_status if raw_status in ("error", "unrecoverable") else "error"
-    else:
-        status = raw_status or "persisted"
+    status = _resolve_report_status(
+        raw_status=raw_status, error=error, persisted_count=persisted_count
+    )
 
     return ScrapedBatchReport(
         scraped_topics=final_state.get("scraped_topics", []),

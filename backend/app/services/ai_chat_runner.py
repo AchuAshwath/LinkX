@@ -98,20 +98,31 @@ def _build_human_message_content(
     return content
 
 
+def _convert_user_turn(text: str, images: list[str]) -> HumanMessage | None:
+    if not text and not images:
+        return None
+    return HumanMessage(content=_build_human_message_content(text, images))
+
+
+def _convert_assistant_turn(thought: str, text: str) -> AIMessage | None:
+    if not text and not thought:
+        return None
+    return AIMessage(content=_build_assistant_history_content(thought, text))
+
+
 def _convert_transcript_item(item: dict[str, Any]) -> BaseMessage | None:
     role = item.get("role")
     parts = item.get("parts", [])
-    text = _extract_text_from_parts(parts)
-    thought = _extract_thought_from_parts(parts)
-    images = _extract_images_from_parts(parts)
-
-    if not text and not thought and not images:
-        return None
     if role == "user":
-        content = _build_human_message_content(text, images)
-        return HumanMessage(content=content)
+        return _convert_user_turn(
+            text=_extract_text_from_parts(parts),
+            images=_extract_images_from_parts(parts),
+        )
     if role == "assistant":
-        return AIMessage(content=_build_assistant_history_content(thought, text))
+        return _convert_assistant_turn(
+            thought=_extract_thought_from_parts(parts),
+            text=_extract_text_from_parts(parts),
+        )
     return None
 
 

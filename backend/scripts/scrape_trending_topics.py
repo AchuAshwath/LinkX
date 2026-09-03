@@ -563,56 +563,65 @@ async def scrape_trending_topics(
     return result
 
 
+async def _is_page_blocked(page: Any) -> bool:
+    """Check if current page state is logged out or blocked by captcha."""
+    state = await detect_page_state(page)
+    return state in {"logged_out", "captcha"}
+
+
+async def _has_sidebar_trends(page: Any) -> bool:
+    """Check if sidebar trends or news articles are present in DOM."""
+    if not hasattr(page, "locator"):
+        return False
+    try:
+        count = await page.locator(
+            "[data-testid^='news_sidebar_article'], [data-testid='trend']"
+        ).count()
+        return count > 0
+    except Exception:
+        return False
+
+
+async def _wait_for_sidebar_or_ready(page: Any, max_polls: int = 8) -> bool:
+    """Poll during SPA hydration until trends appear or state is verified OK."""
+    for _ in range(max_polls):
+        await asyncio.sleep(0.5)
+        if await _is_page_blocked(page):
+            return False
+        if await _has_sidebar_trends(page):
+            return True
+        if await detect_page_state(page) == "ok":
+            return True
+    return False
+
+
+async def _safe_goto(page: Any, url: str) -> None:
+    """Safely navigate to URL without throwing unhandled exceptions."""
+    try:
+        await page.goto(url, wait_until="domcontentloaded")
+    except Exception as exc:
+        logger.warning(f"Error navigating to {url}: {exc}")
+
+
 async def navigate_to_trends(
     page: Any, *, target_url: str = "https://x.com/home"
 ) -> bool:
     """Navigate to X.com home (with explore fallback) and verify authenticated page state."""
     curr_url = getattr(page, "url", "")
     if isinstance(curr_url, str) and curr_url and not curr_url.startswith("about:"):
-        state = await detect_page_state(page)
-        if state in {"logged_out", "captcha"}:
+        if await _is_page_blocked(page):
             return False
 
-    try:
-        await page.goto(target_url, wait_until="domcontentloaded")
-    except Exception as nav_err:
-        logger.warning(f"Error navigating to {target_url}: {nav_err}")
+    await _safe_goto(page, target_url)
+    if await _wait_for_sidebar_or_ready(page, max_polls=8):
+        return True
 
-    # Twitter SPA renders a transient skeleton during initial hydration; check for sidebar trends
-    for _ in range(8):
-        await asyncio.sleep(0.5)
-        post_state = await detect_page_state(page)
-        if post_state in {"logged_out", "captcha"}:
-            return False
-        if hasattr(page, "locator"):
-            try:
-                trend_count = await page.locator(
-                    "[data-testid^='news_sidebar_article'], [data-testid='trend']"
-                ).count()
-                if trend_count > 0:
-                    return True
-            except Exception:
-                pass
-        if post_state == "ok":
-            return True
-
-    # Fallback to explore if sidebar didn't load on target_url
     if target_url != "https://x.com/explore":
-        try:
-            logger.info("Retrying navigation with explore fallback...")
-            await page.goto("https://x.com/explore", wait_until="domcontentloaded")
-            for _ in range(6):
-                await asyncio.sleep(0.5)
-                post_state = await detect_page_state(page)
-                if post_state == "ok":
-                    return True
-                if post_state in {"logged_out", "captcha"}:
-                    return False
-        except Exception as fallback_err:
-            logger.warning(f"Explore fallback failed: {fallback_err}")
+        logger.info("Retrying navigation with explore fallback...")
+        await _safe_goto(page, "https://x.com/explore")
+        return await _wait_for_sidebar_or_ready(page, max_polls=6)
 
-    post_state = await detect_page_state(page)
-    return post_state not in {"logged_out", "rate_limited", "captcha"}
+    return False
 
 
 def _format_trend_url(identifier: str, *, is_url: bool, topic_title: str) -> str:

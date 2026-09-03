@@ -51,13 +51,69 @@ interface LeftControlsProps {
   onAiDraftSubmit?: () => void
 }
 
+function getAiDraftButtonTitle(
+  isAiGenerating: boolean,
+  isContentEmpty: boolean,
+  isAiMode: boolean,
+): string {
+  if (isAiGenerating) return "Drafting post in background with AI..."
+  if (!isContentEmpty) return "Draft with AI"
+  if (isAiMode) return "AI Draft Mode Active (click to toggle off)"
+  return "Draft with AI"
+}
+
+function AiDraftButton({
+  isAiMode,
+  isAiGenerating,
+  isSubmitting,
+  isContentEmpty,
+  onClick,
+}: {
+  isAiMode: boolean
+  isAiGenerating: boolean
+  isSubmitting: boolean
+  isContentEmpty: boolean
+  onClick: () => void
+}) {
+  const label = isAiGenerating
+    ? "Generating AI Draft..."
+    : isAiMode
+      ? "Disable AI Draft Mode"
+      : "Draft with AI"
+
+  const title = getAiDraftButtonTitle(isAiGenerating, isContentEmpty, isAiMode)
+  const modeClass = isAiMode
+    ? "text-primary bg-primary/20 ring-1 ring-primary/40 shadow-xs"
+    : "text-muted-foreground hover:text-primary hover:bg-primary/10"
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className={`h-8.5 w-8.5 rounded-full transition-colors duration-150 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 ${modeClass}`}
+      aria-label={label}
+      title={title}
+      onClick={onClick}
+      disabled={isSubmitting || isAiGenerating}
+      data-testid="ai-draft-btn"
+    >
+      {isAiGenerating ? (
+        <Loader2 className="h-4.5 w-4.5 animate-spin text-primary" />
+      ) : (
+        <PencilSparklesIcon className="h-4.5 w-4.5" />
+      )}
+    </Button>
+  )
+}
+
 function ScheduleAndMediaControls({
   isScheduleOpen,
   isScheduled,
   isSubmitting,
+  isContentEmpty,
   isAiGenerating,
   isAiMode,
-  isContentEmpty,
   scheduledAt,
   onScheduleChange,
   onToggleSchedule,
@@ -90,41 +146,13 @@ function ScheduleAndMediaControls({
         <ImageIcon className="h-4.5 w-4.5" />
       </Button>
 
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className={`h-8.5 w-8.5 rounded-full transition-colors duration-150 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 ${
-          isAiMode
-            ? "text-primary bg-primary/20 ring-1 ring-primary/40 shadow-xs"
-            : "text-muted-foreground hover:text-primary hover:bg-primary/10"
-        }`}
-        aria-label={
-          isAiGenerating
-            ? "Generating AI Draft..."
-            : isAiMode
-              ? "Disable AI Draft Mode"
-              : "Draft with AI"
-        }
-        title={
-          isAiGenerating
-            ? "Drafting post in background with AI..."
-            : !isContentEmpty
-              ? "Draft with AI"
-              : isAiMode
-                ? "AI Draft Mode Active (click to toggle off)"
-                : "Draft with AI"
-        }
+      <AiDraftButton
+        isAiMode={Boolean(isAiMode)}
+        isAiGenerating={Boolean(isAiGenerating)}
+        isSubmitting={isSubmitting}
+        isContentEmpty={Boolean(isContentEmpty)}
         onClick={handleAiDraftClick}
-        disabled={isSubmitting || isAiGenerating}
-        data-testid="ai-draft-btn"
-      >
-        {isAiGenerating ? (
-          <Loader2 className="h-4.5 w-4.5 animate-spin text-primary" />
-        ) : (
-          <PencilSparklesIcon className="h-4.5 w-4.5" />
-        )}
-      </Button>
+      />
     </>
   )
 

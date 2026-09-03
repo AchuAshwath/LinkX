@@ -130,6 +130,37 @@ interface PostInputFormBodyProps {
   setIsScheduleOpen: (open: boolean) => void
 }
 
+function handleComposerKeyDown({
+  event,
+  isAiMode,
+  scheduledAt,
+  isScheduleOpen,
+  onAiDraftSubmit,
+  handleSubmit,
+}: {
+  event: React.KeyboardEvent<HTMLTextAreaElement>
+  isAiMode: boolean
+  scheduledAt?: Date
+  isScheduleOpen: boolean
+  onAiDraftSubmit?: () => void
+  handleSubmit: (action: "draft" | "schedule" | "post") => void
+}) {
+  const isCmdEnter = (event.metaKey || event.ctrlKey) && event.key === "Enter"
+  const isPlainEnterInAi = event.key === "Enter" && !event.shiftKey && isAiMode
+
+  if (isCmdEnter) {
+    event.preventDefault()
+    if (isAiMode && onAiDraftSubmit) {
+      onAiDraftSubmit()
+    } else {
+      handleSubmit(scheduledAt || isScheduleOpen ? "schedule" : "post")
+    }
+  } else if (isPlainEnterInAi && onAiDraftSubmit) {
+    event.preventDefault()
+    onAiDraftSubmit()
+  }
+}
+
 function PostInputFormBody({
   username,
   channel,
@@ -157,22 +188,14 @@ function PostInputFormBody({
   setIsScheduleOpen,
 }: PostInputFormBodyProps) {
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-      event.preventDefault()
-      if (isAiMode && onAiDraftSubmit) {
-        onAiDraftSubmit()
-      } else {
-        handleSubmit(scheduledAt || isScheduleOpen ? "schedule" : "post")
-      }
-    } else if (
-      event.key === "Enter" &&
-      !event.shiftKey &&
-      isAiMode &&
-      onAiDraftSubmit
-    ) {
-      event.preventDefault()
-      onAiDraftSubmit()
-    }
+    handleComposerKeyDown({
+      event,
+      isAiMode,
+      scheduledAt,
+      isScheduleOpen,
+      onAiDraftSubmit,
+      handleSubmit,
+    })
   }
 
   return (

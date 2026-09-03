@@ -282,8 +282,8 @@ def test_list_ai_models(
     data = res.json()
     assert "data" in data
     assert "default_model" in data
-    assert len(data["data"]) > 0
-    assert any(m["id"] == "gemini-3.6-flash-high" for m in data["data"])
+    assert any(m["id"] == "gpt-5.6-luna" for m in data["data"])
+    assert not any("gemini" in m["id"].lower() for m in data["data"])
 
 
 def test_chat_stream_with_multimodal_images_persists(

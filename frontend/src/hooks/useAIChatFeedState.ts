@@ -144,6 +144,44 @@ function useThreadTranscript({
   }, [activeThreadDetail, isStreaming, activeThreadId, setLocalMessages])
 }
 
+async function convertFilesToDataUrls(files?: File[]): Promise<string[]> {
+  if (!files || files.length === 0) return []
+  try {
+    return await Promise.all(files.map(fileToDataUrl))
+  } catch {
+    return []
+  }
+}
+
+function buildStreamHandlers({
+  assistantMsgId,
+  targetThreadId,
+  setLocalMessages,
+  queryClient,
+}: {
+  assistantMsgId: string
+  targetThreadId: string
+  setLocalMessages: React.Dispatch<React.SetStateAction<ChatUIMessage[]>>
+  queryClient: ReturnType<typeof useQueryClient>
+}) {
+  return {
+    onThought: (content: string) =>
+      setLocalMessages((prev) =>
+        updateAssistantPart(prev, assistantMsgId, "thought", content),
+      ),
+    onTextDelta: (delta: string) =>
+      setLocalMessages((prev) =>
+        updateAssistantPart(prev, assistantMsgId, "text", delta),
+      ),
+    onDone: () => {
+      queryClient.invalidateQueries({ queryKey: ["ai-threads"] })
+      queryClient.invalidateQueries({
+        queryKey: ["ai-thread", targetThreadId],
+      })
+    },
+  }
+}
+
 export function useAIChatFeedState({
   threads,
   selectedModelId,
@@ -209,15 +247,7 @@ export function useAIChatFeedState({
       const hasImages = Boolean(attachedImages && attachedImages.length > 0)
       if ((!trimmedText && !hasImages) || isStreaming) return
 
-      let base64Images: string[] = []
-      if (hasImages && attachedImages) {
-        try {
-          base64Images = await Promise.all(attachedImages.map(fileToDataUrl))
-        } catch {
-          base64Images = []
-        }
-      }
-
+      const base64Images = await convertFilesToDataUrls(attachedImages)
       clearThreadDraft(activeThreadId)
       const promptText =
         trimmedText || (hasImages ? "Analyze the attached image(s)" : "")
@@ -239,25 +269,17 @@ export function useAIChatFeedState({
         }
       }
 
+      const handlers = buildStreamHandlers({
+        assistantMsgId: assistantMsg.id,
+        targetThreadId,
+        setLocalMessages,
+        queryClient,
+      })
+
       startStream(
         targetThreadId,
         promptText,
-        {
-          onThought: (content) =>
-            setLocalMessages((prev) =>
-              updateAssistantPart(prev, assistantMsg.id, "thought", content),
-            ),
-          onTextDelta: (delta) =>
-            setLocalMessages((prev) =>
-              updateAssistantPart(prev, assistantMsg.id, "text", delta),
-            ),
-          onDone: () => {
-            queryClient.invalidateQueries({ queryKey: ["ai-threads"] })
-            queryClient.invalidateQueries({
-              queryKey: ["ai-thread", targetThreadId],
-            })
-          },
-        },
+        handlers,
         selectedModelId,
         base64Images.length > 0 ? base64Images : undefined,
       )

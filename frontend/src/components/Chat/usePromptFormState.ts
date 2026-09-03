@@ -1,7 +1,7 @@
 import * as React from "react"
-import type { AttachmentImage } from "@/components/Chat/AttachmentPreviewStrip"
 import type { AIModelOption } from "@/components/Chat/ModelSelectorPill"
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition"
+import { useImageAttachments } from "./useImageAttachments"
 
 const FALLBACK_MODELS: AIModelOption[] = [
   { id: "gemini-3.6-flash-high", name: "Gemini 3.6 Flash", provider: "Google" },
@@ -25,79 +25,7 @@ function isPlainEnterPress(
   return true
 }
 
-const MAX_IMAGE_COUNT = 5
-const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024 // 10 MB
-
-export function useImageAttachments() {
-  const [selectedImages, setSelectedImages] = React.useState<AttachmentImage[]>(
-    [],
-  )
-  const fileInputRef = React.useRef<HTMLInputElement>(null)
-
-  function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files
-    if (!files || files.length === 0) return
-
-    const validFiles: File[] = []
-    for (const file of Array.from(files)) {
-      if (!file.type.startsWith("image/")) continue
-      if (file.size > MAX_IMAGE_SIZE_BYTES) continue
-      validFiles.push(file)
-    }
-
-    const availableSlots = Math.max(0, MAX_IMAGE_COUNT - selectedImages.length)
-    const allowedFiles = validFiles.slice(0, availableSlots)
-
-    const newImages = allowedFiles.map((file) => ({
-      file,
-      preview: URL.createObjectURL(file),
-    }))
-
-    setSelectedImages((prev) => [...prev, ...newImages])
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ""
-    }
-  }
-
-  function handleRemoveImage(index: number) {
-    setSelectedImages((prev) => {
-      const target = prev[index]
-      if (target?.preview) {
-        URL.revokeObjectURL(target.preview)
-      }
-      return prev.filter((_, i) => i !== index)
-    })
-  }
-
-  function clearImages() {
-    setSelectedImages((prev) => {
-      for (const img of prev) {
-        if (img.preview) {
-          URL.revokeObjectURL(img.preview)
-        }
-      }
-      return []
-    })
-  }
-
-  React.useEffect(() => {
-    return () => {
-      for (const img of selectedImages) {
-        if (img.preview) {
-          URL.revokeObjectURL(img.preview)
-        }
-      }
-    }
-  }, [selectedImages])
-
-  return {
-    selectedImages,
-    fileInputRef,
-    handleImageSelect,
-    handleRemoveImage,
-    clearImages,
-  }
-}
+export { useImageAttachments } from "./useImageAttachments"
 
 export function usePromptVoiceInput({
   input,

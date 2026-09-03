@@ -117,50 +117,51 @@ def _collect_stream_part(
 
 
 FRIENDLY_MODEL_NAMES: dict[str, str] = {
-    "gemini-3.6-flash-high": "Gemini 3.6 Flash",
-    "gemini-3.7-flash-high": "Gemini 3.7 Flash",
-    "gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite",
-    "gemini-3.1-pro-low": "Gemini 3.1 Pro",
-    "gemini-3-flash": "Gemini 3 Flash",
-    "claude-sonnet-4-6": "Claude 3.7 Sonnet",
-    "claude-opus-4-6-thinking": "Claude 3.7 Opus",
-    "gpt-5.6-luna": "GPT-5.6 Luna",
+    "gpt-5.6-luna": "ChatGPT Luna",
     "gpt-5.6-sol": "GPT-5.6 Sol",
     "gpt-5.6-terra": "GPT-5.6 Terra",
     "gpt-5.4": "GPT-5.4",
     "gpt-5.4-mini": "GPT-5.4 Mini",
     "gpt-5.5": "GPT-5.5",
+    "claude-sonnet-4-6": "Claude 3.7 Sonnet",
+    "claude-opus-4-6-thinking": "Claude 3.7 Opus",
     "gpt-oss-120b-medium": "DeepSeek R1",
 }
 
 EXCLUDED_MODELS = {
     "gpt-image-2",
     "gpt-image-1.5",
-    "gemini-3.1-flash-image",
     "gpt-5.3-codex-spark",
     "codex-auto-review",
 }
 
 
-FALLBACK_MODEL_OPTIONS: list[tuple[str, str, str]] = [
-    ("gemini-3.6-flash-high", "Gemini 3.6 Flash", "Google"),
-    ("claude-sonnet-4-6", "Claude 3.7 Sonnet", "Anthropic"),
-    ("gpt-5.6-luna", "GPT-5.6 Luna", "OpenAI"),
-    ("gpt-5.4", "GPT-5.4", "OpenAI"),
-    ("gpt-oss-120b-medium", "DeepSeek R1", "OpenSource"),
-]
-
-
 def _build_fallback_models(default_model_id: str) -> list[AIModelInfo]:
-    return [
-        AIModelInfo(
-            id=mid,
-            name=name,
-            provider=provider,
-            is_default=(mid == default_model_id),
-        )
-        for mid, name, provider in FALLBACK_MODEL_OPTIONS
+    known_candidates: list[tuple[str, str, str]] = [
+        (
+            default_model_id,
+            FRIENDLY_MODEL_NAMES.get(default_model_id, default_model_id),
+            "OpenAI",
+        ),
+        ("gpt-5.4", "GPT-5.4", "OpenAI"),
+        ("gpt-5.4-mini", "GPT-5.4 Mini", "OpenAI"),
+        ("claude-sonnet-4-6", "Claude 3.7 Sonnet", "Anthropic"),
+        ("gpt-oss-120b-medium", "DeepSeek R1", "OpenSource"),
     ]
+    seen: set[str] = set()
+    result: list[AIModelInfo] = []
+    for mid, name, provider in known_candidates:
+        if mid and mid not in seen:
+            seen.add(mid)
+            result.append(
+                AIModelInfo(
+                    id=mid,
+                    name=name,
+                    provider=provider,
+                    is_default=(mid == default_model_id),
+                )
+            )
+    return result
 
 
 def _fetch_models_from_proxy(default_model_id: str) -> list[AIModelInfo]:
@@ -183,7 +184,9 @@ def _fetch_models_from_proxy(default_model_id: str) -> list[AIModelInfo]:
                 is_default=(str(item["id"]) == default_model_id),
             )
             for item in items
-            if item.get("id") and str(item["id"]) not in EXCLUDED_MODELS
+            if item.get("id")
+            and str(item["id"]) not in EXCLUDED_MODELS
+            and not str(item["id"]).lower().startswith("gemini")
         ]
 
 
@@ -327,6 +330,41 @@ async def _save_assistant_turn(
             pass
 
 
+def _sanitize_image_urls(images: list[str] | None) -> list[str]:
+    """Filter and sanitize valid image data URLs or HTTP/HTTPS image links."""
+    if not images:
+        return []
+    clean: list[str] = []
+    for img in images:
+        if not img or not isinstance(img, str):
+            continue
+        trimmed = img.strip()
+        if (
+            trimmed.startswith("data:image/")
+            or trimmed.startswith("http://")
+            or trimmed.startswith("https://")
+        ):
+            clean.append(trimmed)
+    return clean
+
+
+def _build_user_message_dict(
+    message_text: str, clean_images: list[str]
+) -> dict[str, Any]:
+    """Construct transcript user message turn."""
+    user_parts: list[dict[str, Any]] = []
+    if message_text:
+        user_parts.append({"type": "text", "text": message_text})
+    for img in clean_images:
+        user_parts.append({"type": "image_url", "image_url": {"url": img}})
+    return {
+        "id": f"msg_{uuid.uuid4().hex[:12]}",
+        "role": "user",
+        "parts": user_parts,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @router.post("/{id}/chat")
 async def chat_stream(
     *,
@@ -339,40 +377,19 @@ async def chat_stream(
     thread = _get_owned_thread(session=session, current_user=current_user, thread_id=id)
 
     message_text = body.message.strip()
-    clean_images: list[str] = [
-        img.strip()
-        for img in (body.images or [])
-        if img
-        and img.strip()
-        and (
-            img.strip().startswith("data:image/")
-            or img.strip().startswith("http://")
-            or img.strip().startswith("https://")
-        )
-    ]
+    clean_images = _sanitize_image_urls(body.images)
     if not message_text and not clean_images:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Message content or at least one image is required",
         )
 
-    effective_prompt = message_text or "Analyze the attached image(s)"
-
-    user_parts: list[dict[str, Any]] = []
-    if message_text:
-        user_parts.append({"type": "text", "text": message_text})
-    for img in clean_images:
-        user_parts.append({"type": "image_url", "image_url": {"url": img}})
-
-    user_msg = {
-        "id": f"msg_{uuid.uuid4().hex[:12]}",
-        "role": "user",
-        "parts": user_parts,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
+    user_msg = _build_user_message_dict(message_text, clean_images)
     crud.append_message_to_transcript(
         session=session, db_thread=thread, message=user_msg
     )
+
+    effective_prompt = message_text or "Analyze the attached image(s)"
 
     async def event_generator() -> AsyncGenerator[str, None]:
         accumulated_text = ""
