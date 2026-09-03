@@ -142,6 +142,20 @@ async function resolveTargetThreadId(
   }
 }
 
+function resolvePromptText(trimmedText: string, hasImages: boolean): string {
+  if (trimmedText) return trimmedText
+  return hasImages ? "Analyze the attached image(s)" : ""
+}
+
+function shouldSkipMessageSend(
+  trimmedText: string,
+  hasImages: boolean,
+  isStreaming: boolean,
+): boolean {
+  if (isStreaming) return true
+  return !trimmedText && !hasImages
+}
+
 export function useChatTurnSender({
   activeThreadId,
   selectedModelId,
@@ -171,12 +185,11 @@ export function useChatTurnSender({
     async (text: string, attachedImages?: File[]) => {
       const trimmedText = text.trim()
       const hasImages = Boolean(attachedImages && attachedImages.length > 0)
-      if ((!trimmedText && !hasImages) || isStreaming) return
+      if (shouldSkipMessageSend(trimmedText, hasImages, isStreaming)) return
 
       const base64Images = await convertFilesToDataUrls(attachedImages)
       clearThreadDraft(activeThreadId)
-      const promptText =
-        trimmedText || (hasImages ? "Analyze the attached image(s)" : "")
+      const promptText = resolvePromptText(trimmedText, hasImages)
       const { userMsg, assistantMsg } = createMessageTurn(
         promptText,
         base64Images,
@@ -199,12 +212,13 @@ export function useChatTurnSender({
         queryClient,
       })
 
+      const imagesPayload = base64Images.length > 0 ? base64Images : undefined
       startStream(
         targetThreadId,
         promptText,
         handlers,
         selectedModelId,
-        base64Images.length > 0 ? base64Images : undefined,
+        imagesPayload,
       )
     },
     [

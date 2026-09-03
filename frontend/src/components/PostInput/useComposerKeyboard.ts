@@ -8,6 +8,30 @@ export interface UseComposerKeyboardProps {
   handleSubmit: (action: "draft" | "schedule" | "post") => void
 }
 
+function handleModifierEnter(
+  event: React.KeyboardEvent<HTMLTextAreaElement>,
+  isAiMode: boolean,
+  onAiDraftSubmit?: () => void,
+  onSubmitAction?: () => void,
+): void {
+  event.preventDefault()
+  if (isAiMode && onAiDraftSubmit) {
+    onAiDraftSubmit()
+    return
+  }
+  onSubmitAction?.()
+}
+
+function handlePlainEnterInAi(
+  event: React.KeyboardEvent<HTMLTextAreaElement>,
+  onAiDraftSubmit?: () => void,
+): void {
+  if (event.shiftKey) return
+  if (!onAiDraftSubmit) return
+  event.preventDefault()
+  onAiDraftSubmit()
+}
+
 export function useComposerKeyboard({
   isAiMode = false,
   scheduledAt,
@@ -19,20 +43,16 @@ export function useComposerKeyboard({
     (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (event.key !== "Enter") return
 
-      const isModifier = event.metaKey || event.ctrlKey
-      if (isModifier) {
-        event.preventDefault()
-        if (isAiMode && onAiDraftSubmit) {
-          onAiDraftSubmit()
-          return
-        }
-        handleSubmit(scheduledAt || isScheduleOpen ? "schedule" : "post")
+      if (event.metaKey || event.ctrlKey) {
+        const action = scheduledAt || isScheduleOpen ? "schedule" : "post"
+        handleModifierEnter(event, isAiMode, onAiDraftSubmit, () =>
+          handleSubmit(action),
+        )
         return
       }
 
-      if (isAiMode && !event.shiftKey && onAiDraftSubmit) {
-        event.preventDefault()
-        onAiDraftSubmit()
+      if (isAiMode) {
+        handlePlainEnterInAi(event, onAiDraftSubmit)
       }
     },
     [isAiMode, scheduledAt, isScheduleOpen, onAiDraftSubmit, handleSubmit],

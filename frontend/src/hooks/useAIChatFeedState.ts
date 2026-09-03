@@ -97,6 +97,35 @@ function useThreadDrafts() {
   return { threadDrafts, setThreadDraft, clearThreadDraft }
 }
 
+function useInitialActiveThread(
+  threads: ChatThreadPublic[],
+  setActiveThreadId: (id: string) => void,
+) {
+  const initialLoadedRef = React.useRef(false)
+  React.useEffect(() => {
+    if (threads.length > 0 && !initialLoadedRef.current) {
+      setActiveThreadId(threads[0].id)
+      initialLoadedRef.current = true
+    }
+  }, [threads, setActiveThreadId])
+}
+
+function useCreateThreadMutation(
+  queryClient: ReturnType<typeof useQueryClient>,
+  setActiveThreadId: (id: string) => void,
+) {
+  return useMutation({
+    mutationFn: (prompt?: string) =>
+      AiThreadsService.createChatThread({
+        requestBody: { origin: "composer", prompt },
+      }),
+    onSuccess: (newThread) => {
+      queryClient.invalidateQueries({ queryKey: ["ai-threads"] })
+      setActiveThreadId(newThread.id)
+    },
+  })
+}
+
 export function useAIChatFeedState({
   threads,
   selectedModelId,
@@ -114,27 +143,13 @@ export function useAIChatFeedState({
   const [localMessages, setLocalMessages] = React.useState<ChatUIMessage[]>([])
   const [pendingQuestion, setPendingQuestion] =
     React.useState<AskUserToolPart | null>(null)
-  const initialLoadedRef = React.useRef(false)
 
-  React.useEffect(() => {
-    if (threads.length > 0 && !initialLoadedRef.current) {
-      setActiveThreadId(threads[0].id)
-      initialLoadedRef.current = true
-    }
-  }, [threads])
-
+  useInitialActiveThread(threads, setActiveThreadId)
   useThreadTranscript({ activeThreadId, isStreaming, setLocalMessages })
-
-  const createThreadMutation = useMutation({
-    mutationFn: (prompt?: string) =>
-      AiThreadsService.createChatThread({
-        requestBody: { origin: "composer", prompt },
-      }),
-    onSuccess: (newThread) => {
-      queryClient.invalidateQueries({ queryKey: ["ai-threads"] })
-      setActiveThreadId(newThread.id)
-    },
-  })
+  const createThreadMutation = useCreateThreadMutation(
+    queryClient,
+    setActiveThreadId,
+  )
 
   const handleSendMessage = useChatTurnSender({
     activeThreadId,
