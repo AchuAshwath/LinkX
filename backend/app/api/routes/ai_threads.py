@@ -338,10 +338,16 @@ async def chat_stream(
     """Server-Sent Events streaming endpoint for AI conversation."""
     thread = _get_owned_thread(session=session, current_user=current_user, thread_id=id)
 
+    user_parts: list[dict[str, Any]] = [{"type": "text", "text": body.message}]
+    if body.images:
+        for img in body.images:
+            if img:
+                user_parts.append({"type": "image_url", "image_url": {"url": img}})
+
     user_msg = {
         "id": f"msg_{uuid.uuid4().hex[:12]}",
         "role": "user",
-        "parts": [{"type": "text", "text": body.message}],
+        "parts": user_parts,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     crud.append_message_to_transcript(
@@ -357,6 +363,7 @@ async def chat_stream(
                 message=body.message,
                 transcript=thread.transcript,
                 model=body.model,
+                images=body.images,
             ):
                 delta = _collect_stream_part(
                     event_name=event_name,

@@ -284,3 +284,55 @@ def test_list_ai_models(
     assert "default_model" in data
     assert len(data["data"]) > 0
     assert any(m["id"] == "gemini-3.6-flash-high" for m in data["data"])
+
+
+def test_chat_stream_with_multimodal_images_persists(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    async def fake_astream(messages: Any):  # noqa: ARG001
+        # Check that the last message content was parsed into multimodal list
+        last = messages[-1]
+        assert isinstance(last.content, list)
+        assert last.content[0]["text"] == "Analyze this chart"
+        assert "data:image/png;base64" in last.content[1]["image_url"]["url"]
+        yield AIMessageChunk(content="This chart shows 40% growth!")
+
+    mock_model = MagicMock()
+    mock_model.astream = fake_astream
+
+    t = _create_thread(client, superuser_token_headers, origin="composer")
+    tid = t["id"]
+
+    with (
+        patch(
+            "app.services.ai_completion_client.stream_direct_openai_proxy",
+            side_effect=ConnectionError("proxy down"),
+        ),
+        patch(
+            "app.services.ai_completion_client.get_chat_model",
+            return_value=mock_model,
+        ),
+    ):
+        stream_res = client.post(
+            f"{settings.API_V1_STR}/ai/threads/{tid}/chat",
+            headers=superuser_token_headers,
+            json={
+                "message": "Analyze this chart",
+                "images": [
+                    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+                ],
+            },
+        )
+    assert stream_res.status_code == 200
+    assert "text/event-stream" in stream_res.headers["content-type"]
+    assert "growth!" in stream_res.text
+
+    detail = client.get(
+        f"{settings.API_V1_STR}/ai/threads/{tid}",
+        headers=superuser_token_headers,
+    ).json()
+    user_parts = detail["transcript"]["messages"][0]["parts"]
+    assert len(user_parts) == 2
+    assert user_parts[0] == {"type": "text", "text": "Analyze this chart"}
+    assert user_parts[1]["type"] == "image_url"
+    assert "data:image/png;base64" in user_parts[1]["image_url"]["url"]

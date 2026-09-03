@@ -22,13 +22,18 @@ MESSAGE_ROLE_MAP: dict[type[BaseMessage], str] = {
 
 def format_messages_for_openai(
     messages: list[BaseMessage],
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     """Format LangChain BaseMessage objects into OpenAI messages format."""
-    return [
-        {"role": role, "content": str(msg.content)}
-        for msg in messages
-        if (role := MESSAGE_ROLE_MAP.get(type(msg))) is not None
-    ]
+    formatted: list[dict[str, Any]] = []
+    for msg in messages:
+        role = MESSAGE_ROLE_MAP.get(type(msg))
+        if role is None:
+            continue
+        if isinstance(msg.content, list):
+            formatted.append({"role": role, "content": msg.content})
+        else:
+            formatted.append({"role": role, "content": str(msg.content)})
+    return formatted
 
 
 def _extract_reasoning(data: dict[str, Any]) -> str | None:

@@ -195,6 +195,20 @@ export const ChatMessageRequestSchema = {
                 }
             ],
             title: 'Model'
+        },
+        images: {
+            anyOf: [
+                {
+                    items: {
+                        type: 'string'
+                    },
+                    type: 'array'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Images'
         }
     },
     type: 'object',

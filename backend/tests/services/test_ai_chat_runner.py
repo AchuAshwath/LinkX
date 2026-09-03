@@ -209,3 +209,65 @@ async def test_generate_ai_thread_title_success() -> None:
             assistant_response="TypeScript 5.8 introduces granular checks...",
         )
     assert title == "TypeScript 5.8 Deep Dive"
+
+
+def test_build_message_history_with_images() -> None:
+    images = ["data:image/png;base64,abc123", "https://example.com/photo.jpg"]
+    messages = _build_message_history(
+        transcript=None,
+        current_message="Check these charts",
+        images=images,
+    )
+    assert len(messages) == 2
+    assert isinstance(messages[0], SystemMessage)
+    last_msg = messages[1]
+    assert isinstance(last_msg, HumanMessage)
+    assert isinstance(last_msg.content, list)
+    assert last_msg.content[0] == {"type": "text", "text": "Check these charts"}
+    assert last_msg.content[1] == {
+        "type": "image_url",
+        "image_url": {"url": "data:image/png;base64,abc123"},
+    }
+    assert last_msg.content[2] == {
+        "type": "image_url",
+        "image_url": {"url": "https://example.com/photo.jpg"},
+    }
+
+
+def test_build_message_history_transcript_with_image_parts() -> None:
+    transcript = {
+        "messages": [
+            {
+                "role": "user",
+                "parts": [
+                    {"type": "text", "text": "Previous prompt"},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": "https://example.com/old.png"},
+                    },
+                ],
+            },
+            {
+                "role": "assistant",
+                "parts": [
+                    {"type": "text", "text": "Looks like an architecture diagram"}
+                ],
+            },
+        ]
+    }
+    messages = _build_message_history(
+        transcript=transcript,
+        current_message="Can you improve it?",
+    )
+    assert len(messages) == 4
+    first_human = messages[1]
+    assert isinstance(first_human, HumanMessage)
+    assert isinstance(first_human.content, list)
+    assert first_human.content[0] == {"type": "text", "text": "Previous prompt"}
+    assert first_human.content[1] == {
+        "type": "image_url",
+        "image_url": {"url": "https://example.com/old.png"},
+    }
+    assert isinstance(messages[2], AIMessage)
+    assert isinstance(messages[3], HumanMessage)
+    assert messages[3].content == "Can you improve it?"
