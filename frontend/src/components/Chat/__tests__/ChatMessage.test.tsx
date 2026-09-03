@@ -89,4 +89,21 @@ describe("ChatMessage component", () => {
     expect(screen.getByText(/TechCrunch Article/i)).toBeInTheDocument()
     expect(screen.getByText(/techcrunch\.com/i)).toBeInTheDocument()
   })
+
+  it("renders user attached image thumbnails", () => {
+    const message: ChatUIMessage = {
+      id: "msg-5",
+      role: "user",
+      parts: [
+        { type: "text", text: "Look at this preview" },
+        { type: "image_url", url: "https://example.com/chart.png" },
+      ],
+    }
+
+    render(<ChatMessage message={message} />)
+    expect(screen.getByText("Look at this preview")).toBeInTheDocument()
+    const img = screen.getByAltText("Attachment 1")
+    expect(img).toBeInTheDocument()
+    expect(img).toHaveAttribute("src", "https://example.com/chart.png")
+  })
 })

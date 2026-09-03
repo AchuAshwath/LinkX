@@ -84,4 +84,35 @@ describe("PromptForm component", () => {
     )
     expect(screen.getByText("Upload Image")).toBeInTheDocument()
   })
+
+  it("submits attached images alongside prompt text", () => {
+    window.URL.createObjectURL = vi.fn().mockReturnValue("blob:preview-1")
+    window.URL.revokeObjectURL = vi.fn()
+
+    const handleSubmit = vi.fn()
+    const { container } = render(
+      <PromptForm
+        onSubmit={handleSubmit}
+        onStop={vi.fn()}
+        isBusy={false}
+        placeholder="Ask anything…"
+      />,
+    )
+
+    const file = new File(["dummy content"], "chart.png", { type: "image/png" })
+    const fileInput = container.querySelector(
+      "input[type='file']",
+    ) as HTMLInputElement
+    expect(fileInput).toBeInTheDocument()
+
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    const textarea = screen.getByPlaceholderText("Ask anything…")
+    fireEvent.change(textarea, { target: { value: "Analyze this chart" } })
+
+    const sendBtn = screen.getByLabelText("Send message")
+    fireEvent.click(sendBtn)
+
+    expect(handleSubmit).toHaveBeenCalledWith("Analyze this chart", [file])
+  })
 })
