@@ -24,15 +24,35 @@ function extractTextParts(parts: ChatUIMessage["parts"]): string {
     .trim()
 }
 
+function isValidImageUrl(url: string): boolean {
+  if (!url) return false
+  const trimmed = url.trim().toLowerCase()
+  return (
+    trimmed.startsWith("data:image/") ||
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("blob:") ||
+    trimmed.startsWith("/")
+  )
+}
+
 function extractImageUrls(parts: ChatUIMessage["parts"]): string[] {
   const urls: string[] = []
   for (const p of parts) {
     if (p.type === "image_url" || p.type === "image") {
-      const url =
-        (p as { url?: string }).url ||
-        (p as { image_url?: { url: string } }).image_url?.url
-      if (url) {
-        urls.push(url)
+      let rawUrl = ""
+      if ("url" in p && typeof p.url === "string") {
+        rawUrl = p.url
+      } else if (
+        "image_url" in p &&
+        p.image_url &&
+        typeof p.image_url === "object" &&
+        "url" in p.image_url
+      ) {
+        rawUrl = String(p.image_url.url || "")
+      }
+      if (rawUrl && isValidImageUrl(rawUrl)) {
+        urls.push(rawUrl)
       }
     }
   }
@@ -61,6 +81,9 @@ function UserMessageBubble({ message }: { message: ChatUIMessage }) {
                     src={url}
                     alt={`Attachment ${idx + 1}`}
                     className="max-h-48 max-w-xs object-cover rounded-2xl border border-border/80 shadow-sm"
+                    onError={(e) => {
+                      ;(e.currentTarget as HTMLElement).style.display = "none"
+                    }}
                   />
                 ))}
               </div>

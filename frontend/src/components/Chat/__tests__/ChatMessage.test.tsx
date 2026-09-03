@@ -106,4 +106,37 @@ describe("ChatMessage component", () => {
     expect(img).toBeInTheDocument()
     expect(img).toHaveAttribute("src", "https://example.com/chart.png")
   })
+
+  it("filters out unsafe image URL schemes", () => {
+    const message: ChatUIMessage = {
+      id: "msg-unsafe",
+      role: "user",
+      parts: [
+        { type: "text", text: "Malicious test" },
+        { type: "image_url", url: "javascript:alert(1)" },
+      ],
+    }
+
+    render(<ChatMessage message={message} />)
+    expect(screen.queryByAltText("Attachment 1")).not.toBeInTheDocument()
+  })
+
+  it("hides broken images on error", () => {
+    const message: ChatUIMessage = {
+      id: "msg-broken",
+      role: "user",
+      parts: [
+        { type: "text", text: "Broken preview" },
+        { type: "image_url", url: "https://example.com/broken.png" },
+      ],
+    }
+
+    render(<ChatMessage message={message} />)
+    const img = screen.getByAltText("Attachment 1")
+    expect(img).toBeVisible()
+
+    // Trigger image loading error
+    fireEvent.error(img)
+    expect(img).toHaveStyle({ display: "none" })
+  })
 })

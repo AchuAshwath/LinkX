@@ -188,3 +188,37 @@ def test_draft_from_trending_topic_not_found(
         headers=headers,
     )
     assert response.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_resolve_link_href_variations() -> None:
+    import base64
+    from unittest.mock import AsyncMock, MagicMock
+
+    from scripts.scrape_trending_topics import _resolve_link_href
+
+    # 1. Padded base64 trend ID: AiTrend:987654321
+    b64_padded = base64.b64encode(b"AiTrend:987654321").decode("utf-8")
+    mock_link_padded = MagicMock()
+    mock_link_padded.get_attribute = AsyncMock(
+        return_value=f"news_sidebar_article_{b64_padded}"
+    )
+    resolved = await _resolve_link_href(mock_link_padded, clean_title="Tech News")
+    assert resolved == "https://x.com/i/trending/987654321"
+
+    # 2. Unpadded base64 (stripped "=" padding)
+    b64_unpadded = b64_padded.rstrip("=")
+    mock_link_unpadded = MagicMock()
+    mock_link_unpadded.get_attribute = AsyncMock(
+        return_value=f"news_sidebar_article_{b64_unpadded}"
+    )
+    resolved2 = await _resolve_link_href(mock_link_unpadded, clean_title="Tech News")
+    assert resolved2 == "https://x.com/i/trending/987654321"
+
+    # 3. Standard href fallback
+    mock_link_href = MagicMock()
+    mock_link_href.get_attribute = AsyncMock(
+        side_effect=lambda attr: "/search?q=AI" if attr == "href" else None
+    )
+    resolved3 = await _resolve_link_href(mock_link_href, clean_title="AI")
+    assert resolved3 == "/search?q=AI"

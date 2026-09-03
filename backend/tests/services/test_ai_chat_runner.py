@@ -271,3 +271,22 @@ def test_build_message_history_transcript_with_image_parts() -> None:
     assert isinstance(messages[2], AIMessage)
     assert isinstance(messages[3], HumanMessage)
     assert messages[3].content == "Can you improve it?"
+
+
+def test_extract_images_from_parts_variations() -> None:
+    from app.services.ai_chat_runner import _extract_images_from_parts
+
+    parts = [
+        {"type": "text", "text": "Some text"},
+        {"type": "image_url", "image_url": {"url": "https://example.com/dict.png"}},
+        {"type": "image_url", "image_url": "https://example.com/string.png"},
+        {"type": "image", "url": "https://example.com/direct.png"},
+        {"type": "image_url", "image_url": None},
+        {"type": "other", "url": "https://example.com/ignored.png"},
+    ]
+    extracted = _extract_images_from_parts(parts)
+    assert extracted == [
+        "https://example.com/dict.png",
+        "https://example.com/string.png",
+        "https://example.com/direct.png",
+    ]

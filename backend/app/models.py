@@ -405,6 +405,6 @@ class AIModelsPublic(SQLModel):
 
 
 class ChatMessageRequest(SQLModel):
-    message: str = Field(min_length=1, max_length=25000)
+    message: str = Field(default="", max_length=25000)
     model: str | None = Field(default=None, max_length=100)
-    images: list[str] | None = Field(default=None)
+    images: list[str] | None = Field(default=None, max_length=10)

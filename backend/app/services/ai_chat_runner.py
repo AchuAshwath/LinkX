@@ -75,6 +75,8 @@ def _extract_images_from_parts(parts: list[dict[str, Any]]) -> list[str]:
             url = ""
             if isinstance(part.get("image_url"), dict):
                 url = str(part["image_url"].get("url", "")).strip()
+            elif isinstance(part.get("image_url"), str):
+                url = str(part.get("image_url", "")).strip()
             elif part.get("url"):
                 url = str(part.get("url", "")).strip()
             if url:

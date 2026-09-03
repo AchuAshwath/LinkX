@@ -181,8 +181,8 @@ export const ChatMessageRequestSchema = {
         message: {
             type: 'string',
             maxLength: 25000,
-            minLength: 1,
-            title: 'Message'
+            title: 'Message',
+            default: ''
         },
         model: {
             anyOf: [
@@ -202,7 +202,8 @@ export const ChatMessageRequestSchema = {
                     items: {
                         type: 'string'
                     },
-                    type: 'array'
+                    type: 'array',
+                    maxItems: 10
                 },
                 {
                     type: 'null'
@@ -212,7 +213,6 @@ export const ChatMessageRequestSchema = {
         }
     },
     type: 'object',
-    required: ['message'],
     title: 'ChatMessageRequest'
 } as const;
 

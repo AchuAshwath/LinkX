@@ -25,6 +25,9 @@ function isPlainEnterPress(
   return true
 }
 
+const MAX_IMAGE_COUNT = 5
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024 // 10 MB
+
 export function useImageAttachments() {
   const [selectedImages, setSelectedImages] = React.useState<AttachmentImage[]>(
     [],
@@ -35,7 +38,17 @@ export function useImageAttachments() {
     const files = e.target.files
     if (!files || files.length === 0) return
 
-    const newImages = Array.from(files).map((file) => ({
+    const validFiles: File[] = []
+    for (const file of Array.from(files)) {
+      if (!file.type.startsWith("image/")) continue
+      if (file.size > MAX_IMAGE_SIZE_BYTES) continue
+      validFiles.push(file)
+    }
+
+    const availableSlots = Math.max(0, MAX_IMAGE_COUNT - selectedImages.length)
+    const allowedFiles = validFiles.slice(0, availableSlots)
+
+    const newImages = allowedFiles.map((file) => ({
       file,
       preview: URL.createObjectURL(file),
     }))
@@ -49,7 +62,7 @@ export function useImageAttachments() {
   function handleRemoveImage(index: number) {
     setSelectedImages((prev) => {
       const target = prev[index]
-      if (target) {
+      if (target?.preview) {
         URL.revokeObjectURL(target.preview)
       }
       return prev.filter((_, i) => i !== index)
@@ -57,8 +70,25 @@ export function useImageAttachments() {
   }
 
   function clearImages() {
-    setSelectedImages([])
+    setSelectedImages((prev) => {
+      for (const img of prev) {
+        if (img.preview) {
+          URL.revokeObjectURL(img.preview)
+        }
+      }
+      return []
+    })
   }
+
+  React.useEffect(() => {
+    return () => {
+      for (const img of selectedImages) {
+        if (img.preview) {
+          URL.revokeObjectURL(img.preview)
+        }
+      }
+    }
+  }, [selectedImages])
 
   return {
     selectedImages,

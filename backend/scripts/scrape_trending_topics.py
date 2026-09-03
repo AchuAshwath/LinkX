@@ -125,7 +125,8 @@ async def _resolve_link_href(link: Any, *, clean_title: str) -> str:
                 and testid.startswith("news_sidebar_article_")
             ):
                 raw_b64 = testid[len("news_sidebar_article_") :]
-                decoded = base64.b64decode(raw_b64).decode("utf-8")
+                padded_b64 = raw_b64 + "=" * (-len(raw_b64) % 4)
+                decoded = base64.b64decode(padded_b64).decode("utf-8", errors="ignore")
                 if ":" in decoded:
                     trend_id = decoded.split(":")[-1]
                     return f"https://x.com/i/trending/{trend_id}"
