@@ -29,12 +29,10 @@ def test_resolve_ai_credentials_when_key_is_none(
     monkeypatch.setattr(
         settings, "OPENAI_API_COMPATIBLE_BASE_URL", "http://127.0.0.1:8317/v1"
     )
-    monkeypatch.setattr(settings, "AI_MODEL", "openai/gemini-3.7-flash-high")
-
     api_key, api_base, model = _resolve_ai_credentials()
     assert api_key is None
     assert api_base == "http://127.0.0.1:8317/v1"
-    assert model == "openai/gemini-3.7-flash-high"
+    assert model == settings.AI_MODEL
 
 
 @pytest.mark.anyio
@@ -83,13 +81,12 @@ async def test_generate_ai_post_draft_with_custom_model_override(
         mock_acompletion.return_value = mock_response
 
         content = await generate_ai_post_draft(
-            prompt="Prompt", model="openai/gemini-3.1-pro-preview"
+            prompt="Prompt", model="openai/test-override-model"
         )
 
         assert content == "Custom Model Output"
         assert (
-            mock_acompletion.call_args.kwargs["model"]
-            == "openai/gemini-3.1-pro-preview"
+            mock_acompletion.call_args.kwargs["model"] == "openai/test-override-model"
         )
 
 

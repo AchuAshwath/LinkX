@@ -437,6 +437,15 @@ def _route_after_session_check(state: ScrapingGraphState) -> str:
     return "scrape_explore_trends"
 
 
+def _route_after_trends_scraped(state: ScrapingGraphState) -> str:
+    """Route after explore scraping: abort if error or no topics scraped."""
+    if state.get("status") in ("error", "unrecoverable") or not state.get(
+        "scraped_topics"
+    ):
+        return END
+    return "extract_topic_timelines"
+
+
 def build_scraping_graph() -> Any:
     """Compile LangGraph StateGraph for trending topics scraping and extraction."""
     workflow = StateGraph(ScrapingGraphState)
@@ -454,7 +463,14 @@ def build_scraping_graph() -> Any:
             "scrape_explore_trends": "scrape_explore_trends",
         },
     )
-    workflow.add_edge("scrape_explore_trends", "extract_topic_timelines")
+    workflow.add_conditional_edges(
+        "scrape_explore_trends",
+        _route_after_trends_scraped,
+        {
+            END: END,
+            "extract_topic_timelines": "extract_topic_timelines",
+        },
+    )
     workflow.add_edge("extract_topic_timelines", "persist_scraped_batch")
     workflow.add_edge("persist_scraped_batch", END)
     return workflow.compile()
@@ -481,19 +497,32 @@ def _make_abort_scraped_batch_report(
     )
 
 
+def _resolve_report_status(*, raw_status: Any, error: Any, persisted_count: int) -> str:
+    if error and persisted_count == 0:
+        return str(raw_status) if raw_status in ("error", "unrecoverable") else "error"
+    return str(raw_status or "persisted")
+
+
 def _format_scraped_batch_report(*, final_state: dict[str, Any]) -> ScrapedBatchReport:
     """Format and validate final ScrapedBatchReport from completed graph state."""
+    raw_status = final_state.get("status")
+    error = final_state.get("error")
+    persisted_count = int(final_state.get("persisted_topic_count", 0))
+    status = _resolve_report_status(
+        raw_status=raw_status, error=error, persisted_count=persisted_count
+    )
+
     return ScrapedBatchReport(
         scraped_topics=final_state.get("scraped_topics", []),
         topic_tweets_map=final_state.get("topic_tweets_map", {}),
         topic_summaries=final_state.get("topic_summaries", {}),
         failed_topics=final_state.get("failed_topics", []),
-        persisted_topic_count=int(final_state.get("persisted_topic_count", 0)),
+        persisted_topic_count=persisted_count,
         persisted_tweet_count=int(final_state.get("persisted_tweet_count", 0)),
         page_state=final_state.get("page_state", "ok"),
         session_recovery=final_state.get("session_recovery"),
-        status=final_state.get("status", "persisted"),
-        error=final_state.get("error"),
+        status=status,
+        error=error,
     )
 
 

@@ -281,6 +281,163 @@ def test_list_ai_models(
     assert res.status_code == 200
     data = res.json()
     assert "data" in data
-    assert "default_model" in data
-    assert len(data["data"]) > 0
-    assert any(m["id"] == "gemini-3.6-flash-high" for m in data["data"])
+    expected_default = settings.AI_MODEL.removeprefix("openai/")
+    assert data["default_model"] == expected_default
+    assert any(m["id"] == expected_default for m in data["data"])
+    assert not any("gemini" in m["id"].lower() for m in data["data"])
+
+
+def test_chat_stream_with_multimodal_images_persists(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    async def fake_astream(messages: Any):  # noqa: ARG001
+        # Check that the last message content was parsed into multimodal list
+        last = messages[-1]
+        assert isinstance(last.content, list)
+        assert last.content[0]["text"] == "Analyze this chart"
+        assert "data:image/png;base64" in last.content[1]["image_url"]["url"]
+        yield AIMessageChunk(content="This chart shows 40% growth!")
+
+    mock_model = MagicMock()
+    mock_model.astream = fake_astream
+
+    t = _create_thread(client, superuser_token_headers, origin="composer")
+    tid = t["id"]
+
+    with (
+        patch(
+            "app.services.ai_completion_client.stream_direct_openai_proxy",
+            side_effect=ConnectionError("proxy down"),
+        ),
+        patch(
+            "app.services.ai_completion_client.get_chat_model",
+            return_value=mock_model,
+        ),
+    ):
+        stream_res = client.post(
+            f"{settings.API_V1_STR}/ai/threads/{tid}/chat",
+            headers=superuser_token_headers,
+            json={
+                "message": "Analyze this chart",
+                "images": [
+                    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+                ],
+            },
+        )
+    assert stream_res.status_code == 200
+    assert "text/event-stream" in stream_res.headers["content-type"]
+    assert "growth!" in stream_res.text
+
+    detail = client.get(
+        f"{settings.API_V1_STR}/ai/threads/{tid}",
+        headers=superuser_token_headers,
+    ).json()
+    user_parts = detail["transcript"]["messages"][0]["parts"]
+    assert len(user_parts) == 2
+    assert user_parts[0] == {"type": "text", "text": "Analyze this chart"}
+    assert user_parts[1]["type"] == "image_url"
+    assert "data:image/png;base64" in user_parts[1]["image_url"]["url"]
+
+
+def test_chat_stream_rejects_empty_message_without_images(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    t = _create_thread(client, superuser_token_headers)
+    tid = t["id"]
+    res = client.post(
+        f"{settings.API_V1_STR}/ai/threads/{tid}/chat",
+        headers=superuser_token_headers,
+        json={"message": "   ", "images": []},
+    )
+    assert res.status_code == 422
+    assert "at least one image" in res.json()["detail"].lower()
+
+
+def test_chat_stream_accepts_empty_message_with_valid_images(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    async def fake_astream(messages: Any):  # noqa: ARG001
+        last = messages[-1]
+        assert isinstance(last.content, list)
+        assert last.content[0]["text"] == "Analyze the attached image(s)"
+        yield AIMessageChunk(content="Looks like a clear blue sky.")
+
+    mock_model = MagicMock()
+    mock_model.astream = fake_astream
+
+    t = _create_thread(client, superuser_token_headers)
+    tid = t["id"]
+
+    with (
+        patch(
+            "app.services.ai_completion_client.stream_direct_openai_proxy",
+            side_effect=ConnectionError("proxy down"),
+        ),
+        patch(
+            "app.services.ai_completion_client.get_chat_model",
+            return_value=mock_model,
+        ),
+    ):
+        res = client.post(
+            f"{settings.API_V1_STR}/ai/threads/{tid}/chat",
+            headers=superuser_token_headers,
+            json={
+                "message": "",
+                "images": ["https://example.com/sky.png"],
+            },
+        )
+    assert res.status_code == 200
+    assert "sky." in res.text
+
+
+def test_chat_stream_filters_malformed_image_schemes(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    async def fake_astream(messages: Any):  # noqa: ARG001
+        last = messages[-1]
+        assert isinstance(last.content, list)
+        # Should have only kept the valid https:// URL, dropping javascript: and file:
+        assert len(last.content) == 2
+        assert last.content[1]["image_url"]["url"] == "https://example.com/valid.jpg"
+        yield AIMessageChunk(content="Safe response")
+
+    mock_model = MagicMock()
+    mock_model.astream = fake_astream
+
+    t = _create_thread(client, superuser_token_headers)
+    tid = t["id"]
+
+    with (
+        patch(
+            "app.services.ai_completion_client.stream_direct_openai_proxy",
+            side_effect=ConnectionError("proxy down"),
+        ),
+        patch(
+            "app.services.ai_completion_client.get_chat_model",
+            return_value=mock_model,
+        ),
+    ):
+        res = client.post(
+            f"{settings.API_V1_STR}/ai/threads/{tid}/chat",
+            headers=superuser_token_headers,
+            json={
+                "message": "Check this",
+                "images": [
+                    "javascript:alert(1)",
+                    "file:///etc/passwd",
+                    "https://example.com/valid.jpg",
+                ],
+            },
+        )
+    assert res.status_code == 200
+    assert '"Safe "' in res.text
+    assert '"response"' in res.text
+
+    detail = client.get(
+        f"{settings.API_V1_STR}/ai/threads/{tid}",
+        headers=superuser_token_headers,
+    ).json()
+    parts = detail["transcript"]["messages"][0]["parts"]
+    assert len(parts) == 2
+    assert parts[0]["text"] == "Check this"
+    assert parts[1]["image_url"]["url"] == "https://example.com/valid.jpg"

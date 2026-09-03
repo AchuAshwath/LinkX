@@ -37,8 +37,9 @@ export type Body_posts_upload_media = {
 };
 
 export type ChatMessageRequest = {
-    message: string;
+    message?: string;
     model?: (string | null);
+    images?: (Array<(string)> | null);
 };
 
 export type ChatThreadCreate = {

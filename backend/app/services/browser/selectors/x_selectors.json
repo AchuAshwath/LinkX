@@ -14,8 +14,15 @@
     "notifications": "a[href*=\"/notifications\"]"
   },
   "feed": {
-    "news_trends": "[data-testid=\"trend\"]",
+    "todays_news": "[data-testid^=\"news_sidebar_article\"]",
+    "news_trends": "[data-testid^=\"news_sidebar_article\"], [data-testid=\"trend\"]",
     "timeline_post": "[data-testid=\"tweet\"]"
+  },
+  "sidebar": {
+    "container": "[data-testid=\"sidebarColumn\"], [data-testid=\"primaryColumn\"], main[role=\"main\"]",
+    "todays_news": "[data-testid^=\"news_sidebar_article\"]",
+    "trends": "[data-testid=\"trend\"]",
+    "sidebar_link": "[data-testid^=\"news_sidebar_article\"], [data-testid=\"trend\"], a[href*=\"/search?q=\"]"
   },
   "overlays": {
     "sheet_dialog": "[data-testid=\"sheetDialog\"]",

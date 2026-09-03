@@ -1,7 +1,10 @@
 import * as React from "react"
-import type { AttachmentImage } from "@/components/Chat/AttachmentPreviewStrip"
 import type { AIModelOption } from "@/components/Chat/ModelSelectorPill"
-import { useSpeechRecognition } from "@/hooks/useSpeechRecognition"
+import { useImageAttachments } from "./useImageAttachments"
+import { usePromptVoiceInput } from "./usePromptVoiceInput"
+
+export { useImageAttachments } from "./useImageAttachments"
+export { usePromptVoiceInput } from "./usePromptVoiceInput"
 
 const FALLBACK_MODELS: AIModelOption[] = [
   { id: "gemini-3.6-flash-high", name: "Gemini 3.6 Flash", provider: "Google" },
@@ -23,114 +26,6 @@ function isPlainEnterPress(
   if (event.shiftKey) return false
   if (event.nativeEvent.isComposing) return false
   return true
-}
-
-export function useImageAttachments() {
-  const [selectedImages, setSelectedImages] = React.useState<AttachmentImage[]>(
-    [],
-  )
-  const fileInputRef = React.useRef<HTMLInputElement>(null)
-
-  function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files
-    if (!files || files.length === 0) return
-
-    const newImages = Array.from(files).map((file) => ({
-      file,
-      preview: URL.createObjectURL(file),
-    }))
-
-    setSelectedImages((prev) => [...prev, ...newImages])
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ""
-    }
-  }
-
-  function handleRemoveImage(index: number) {
-    setSelectedImages((prev) => {
-      const target = prev[index]
-      if (target) {
-        URL.revokeObjectURL(target.preview)
-      }
-      return prev.filter((_, i) => i !== index)
-    })
-  }
-
-  function clearImages() {
-    setSelectedImages([])
-  }
-
-  return {
-    selectedImages,
-    fileInputRef,
-    handleImageSelect,
-    handleRemoveImage,
-    clearImages,
-  }
-}
-
-export function usePromptVoiceInput({
-  input,
-  updateInput,
-}: {
-  input: string
-  updateInput: (val: string) => void
-}) {
-  const baseInputRef = React.useRef(input)
-
-  const handleTranscriptChange = React.useCallback(
-    ({ transcript: voiceText }: { transcript: string }) => {
-      if (!voiceText) return
-      const base = baseInputRef.current.trim()
-      const separator = base && voiceText ? " " : ""
-      const fullText = base + separator + voiceText
-      updateInput(fullText)
-    },
-    [updateInput],
-  )
-
-  const {
-    isListening: isVoiceListening,
-    isSupported: isVoiceSupported,
-    startListening,
-    stopListening: stopVoiceListening,
-    resetTranscript,
-    error: voiceError,
-  } = useSpeechRecognition({
-    onTranscriptChange: handleTranscriptChange,
-  })
-
-  const handleToggleVoice = React.useCallback(() => {
-    baseInputRef.current = input
-    resetTranscript()
-    if (isVoiceListening) {
-      stopVoiceListening()
-    } else {
-      startListening()
-    }
-  }, [
-    isVoiceListening,
-    stopVoiceListening,
-    startListening,
-    resetTranscript,
-    input,
-  ])
-
-  function stopAndReset() {
-    if (isVoiceListening) {
-      stopVoiceListening()
-    }
-    resetTranscript()
-    baseInputRef.current = ""
-  }
-
-  return {
-    isVoiceListening,
-    isVoiceSupported,
-    voiceError,
-    handleToggleVoice,
-    stopAndReset,
-  }
 }
 
 export interface UsePromptFormStateProps {
@@ -157,9 +52,13 @@ export function usePromptFormState({
   inputRef,
 }: UsePromptFormStateProps) {
   const [input, setInput] = React.useState(initialValue)
-  const [localModelId, setLocalModelId] = React.useState(
-    selectedModelId || "gemini-3.6-flash-high",
-  )
+  const [localModelId, setLocalModelId] = React.useState(selectedModelId || "")
+
+  React.useEffect(() => {
+    if (selectedModelId) {
+      setLocalModelId(selectedModelId)
+    }
+  }, [selectedModelId])
 
   const internalInputRef = React.useRef<HTMLTextAreaElement>(null)
   const effectiveInputRef = inputRef || internalInputRef

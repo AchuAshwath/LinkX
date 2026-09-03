@@ -4,58 +4,17 @@ import * as React from "react"
 import type { Platform } from "@/components/Common/PlatformSelector"
 import { Button } from "@/components/ui/button"
 import {
+  AiDraftButton,
+  getAiDraftButtonTitle,
+  PencilSparklesIcon,
+} from "./AiDraftButton"
+import {
   CharacterLimitCircle,
   isCharacterLimitExceeded,
 } from "./CharacterLimitCircle"
 import { PostSchedulePicker } from "./PostSchedulePicker"
 
-function PencilSparklesIcon({
-  className,
-  ...props
-}: React.ComponentProps<"svg">) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-      {...props}
-    >
-      <title>Draft with AI</title>
-      <path d="M17.7 3.3a2.4 2.4 0 0 1 3.4 3.4L9.5 18.3 4 19.5l1.2-5.5z" />
-      <path d="m15 6 3 3" />
-      <path d="M4 2c0 1.5-1 2.5-2.5 2.5C3 4.5 4 5.5 4 7c0-1.5 1-2.5 2.5-2.5C5 4.5 4 3.5 4 2z" />
-      <path d="M20 16c0 1-.7 1.7-1.7 1.7 1 0 1.7.7 1.7 1.7 0-1 .7-1.7 1.7-1.7-1 0-1.7-.7-1.7-1.7z" />
-    </svg>
-  )
-}
-
-export interface PostActionBarProps {
-  isSubmitting: boolean
-  isContentEmpty: boolean
-  canPublishOrSchedule?: boolean
-  currentLength?: number
-  platform?: Platform
-  isXPremium?: boolean
-  isAiGenerating?: boolean
-  onActionTypeChange: (type: "draft" | "schedule" | "post") => void
-  onImageClick?: () => void
-  onDraftClick: () => void
-  onAiDraftClick?: () => void
-  onScheduleClick: () => void
-  onPostClick: () => void
-  onCancelClick?: () => void
-  showCancel?: boolean
-  scheduledAt?: Date | undefined
-  onScheduleChange?: (date: Date | undefined) => void
-  isScheduleOpen: boolean
-  onToggleSchedule: (open: boolean) => void
-}
+export { AiDraftButton, PencilSparklesIcon, getAiDraftButtonTitle }
 
 interface LeftControlsProps {
   isScheduleOpen: boolean
@@ -63,12 +22,14 @@ interface LeftControlsProps {
   isSubmitting: boolean
   isAiGenerating?: boolean
   isAiMode?: boolean
+  isContentEmpty?: boolean
   scheduledAt?: Date | undefined
   onScheduleChange?: (date: Date | undefined) => void
   onToggleSchedule: (open: boolean) => void
   onActionTypeChange: (type: "draft" | "schedule" | "post") => void
   onImageClick?: () => void
   onToggleAiMode?: () => void
+  onAiDraftSubmit?: () => void
 }
 
 function ScheduleAndMediaControls({
@@ -77,13 +38,23 @@ function ScheduleAndMediaControls({
   isSubmitting,
   isAiGenerating,
   isAiMode,
+  isContentEmpty,
   scheduledAt,
   onScheduleChange,
   onToggleSchedule,
   onActionTypeChange,
   onImageClick,
   onToggleAiMode,
+  onAiDraftSubmit,
 }: LeftControlsProps) {
+  const handleAiClick = () => {
+    if (!isContentEmpty && onAiDraftSubmit) {
+      onAiDraftSubmit()
+    } else {
+      onToggleAiMode?.()
+    }
+  }
+
   const mediaAndAiButtons = (
     <>
       <Button
@@ -100,27 +71,12 @@ function ScheduleAndMediaControls({
         <ImageIcon className="h-4.5 w-4.5" />
       </Button>
 
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className={`h-8.5 w-8.5 rounded-full transition-colors duration-150 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 ${
-          isAiMode
-            ? "text-primary bg-primary/20 ring-1 ring-primary/40 shadow-xs"
-            : "text-muted-foreground hover:text-primary hover:bg-primary/10"
-        }`}
-        aria-label={isAiMode ? "Disable AI Draft Mode" : "Draft with AI"}
-        title={
-          isAiMode
-            ? "AI Draft Mode Active (click to toggle off)"
-            : "Draft with AI"
-        }
-        onClick={onToggleAiMode}
-        disabled={isSubmitting || isAiGenerating}
-        data-testid="ai-draft-btn"
-      >
-        <PencilSparklesIcon className="h-4.5 w-4.5" />
-      </Button>
+      <AiDraftButton
+        isAiMode={Boolean(isAiMode)}
+        isAiGenerating={Boolean(isAiGenerating)}
+        isSubmitting={isSubmitting}
+        onClick={handleAiClick}
+      />
     </>
   )
 

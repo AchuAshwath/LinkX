@@ -6,6 +6,7 @@ on status without parsing log output.
 """
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -113,19 +114,59 @@ def _should_skip_link(
     return not _is_valid_topic_text(text, heuristic)
 
 
+def _extract_trend_id_from_testid(testid: Any) -> str | None:
+    if not isinstance(testid, str):
+        return None
+    prefix = "news_sidebar_article_"
+    if not testid.startswith(prefix):
+        return None
+    raw_b64 = testid[len(prefix) :]
+    padded_b64 = raw_b64 + "=" * (-len(raw_b64) % 4)
+    try:
+        decoded = base64.b64decode(padded_b64).decode("utf-8", errors="ignore")
+        if ":" in decoded:
+            return decoded.split(":")[-1]
+    except Exception:
+        pass
+    return None
+
+
+async def _extract_article_trend_url(link: Any) -> str | None:
+    """Extract trending URL from data-testid if article container."""
+    if not hasattr(link, "get_attribute"):
+        return None
+    try:
+        testid = await link.get_attribute("data-testid")
+        trend_id = _extract_trend_id_from_testid(testid)
+        return f"https://x.com/i/trending/{trend_id}" if trend_id else None
+    except Exception:
+        return None
+
+
+async def _extract_nested_link_href(link: Any) -> str | None:
+    """Extract href from nested anchor element."""
+    if not hasattr(link, "locator"):
+        return None
+    try:
+        nested_a = link.locator("a[href*='/search?q='], a[href*='/i/trending/']").first
+        if await nested_a.count() > 0:
+            return await nested_a.get_attribute("href")
+    except Exception:
+        pass
+    return None
+
+
 async def _resolve_link_href(link: Any, *, clean_title: str) -> str:
     """Resolve href attribute or construct search query URL."""
-    url = await link.get_attribute("href")
+    article_url = await _extract_article_trend_url(link)
+    if article_url:
+        return article_url
+
+    url = await link.get_attribute("href") if hasattr(link, "get_attribute") else None
     if not url:
-        try:
-            nested_a = link.locator("a[href*='/search?q=']").first
-            if await nested_a.count() > 0:
-                url = await nested_a.get_attribute("href")
-        except Exception:
-            pass
-    if not url:
-        url = f"/search?q={urllib.parse.quote(clean_title)}"
-    return str(url)
+        url = await _extract_nested_link_href(link)
+
+    return url or f"/search?q={urllib.parse.quote(clean_title)}"
 
 
 async def _parse_and_validate_link(
@@ -544,14 +585,22 @@ async def scrape_trending_topics(
 
 
 async def navigate_to_trends(
-    page: Any, *, target_url: str = "https://x.com/explore"
+    page: Any, *, target_url: str = "https://x.com/home"
 ) -> bool:
-    """Navigate to X.com explore/trends and verify authenticated page state."""
+    """Navigate to X.com home (with explore fallback) and verify authenticated page state."""
     state = await detect_page_state(page)
-    if state in {"logged_out", "rate_limited", "captcha"}:
+    if state in {"logged_out", "captcha"}:
         return False
+
     await page.goto(target_url, wait_until="domcontentloaded")
     post_state = await detect_page_state(page)
+    if post_state == "ok":
+        return True
+
+    if target_url != "https://x.com/explore":
+        await page.goto("https://x.com/explore", wait_until="domcontentloaded")
+        post_state = await detect_page_state(page)
+
     return post_state not in {"logged_out", "rate_limited", "captcha"}
 
 
@@ -569,12 +618,12 @@ def _format_trend_url(identifier: str, *, is_url: bool, topic_title: str) -> str
 
 
 async def _wait_for_trends_dom(page: Any) -> None:
-    """Wait for trend elements to appear in the DOM."""
+    """Wait for trend or news article elements to appear in the DOM."""
     try:
         if hasattr(page, "locator"):
-            await page.locator("[data-testid='trend']").first.wait_for(
-                state="visible", timeout=10000
-            )
+            await page.locator(
+                "[data-testid^='news_sidebar_article'], [data-testid='trend']"
+            ).first.wait_for(state="visible", timeout=10000)
     except Exception as e:
         logger.debug(f"Wait for trend element timed out or skipped: {e}")
 
@@ -611,8 +660,9 @@ async def extract_trending_sidebar(
     """Extract structured TrendingTopic models from the X.com sidebar."""
     sidebar_link_sel = (
         selectors.get("selectors", {}).get("sidebar_link")
+        or selectors.get("sidebar", {}).get("sidebar_link")
         or selectors.get("feed", {}).get("news_trends")
-        or "[data-testid='trend'], a[href*='/search?q='], [data-testid^='news_sidebar_article']"
+        or "[data-testid^='news_sidebar_article'], [data-testid='trend'], a[href*='/search?q=']"
     )
     heuristic = selectors.get("link_heuristic", {"must_contain_newline": False})
 

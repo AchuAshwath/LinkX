@@ -7,60 +7,7 @@ import type {
   ChatUIMessage,
 } from "@/components/Chat/types"
 import { useAIChatStream } from "@/hooks/useAIChatStream"
-
-function createMessageTurn(text: string): {
-  userMsg: ChatUIMessage
-  assistantMsg: ChatUIMessage
-} {
-  const userMsg: ChatUIMessage = {
-    id: `local-user-${Date.now()}`,
-    role: "user",
-    parts: [{ type: "text", text: text.trim() }],
-    createdAt: new Date().toISOString(),
-  }
-
-  const assistantMsg: ChatUIMessage = {
-    id: `local-assistant-${Date.now()}`,
-    role: "assistant",
-    parts: [],
-    createdAt: new Date().toISOString(),
-  }
-
-  return { userMsg, assistantMsg }
-}
-
-function updateAssistantPart(
-  messages: ChatUIMessage[],
-  assistantMsgId: string,
-  partType: "thought" | "text",
-  delta: string,
-): ChatUIMessage[] {
-  return messages.map((msg) => {
-    if (msg.id !== assistantMsgId) return msg
-    const parts = [...msg.parts]
-    const lastIndex = parts.length - 1
-    const lastPart = parts[lastIndex]
-
-    if (lastPart && lastPart.type === partType) {
-      if (lastPart.type === "thought") {
-        parts[lastIndex] = {
-          ...lastPart,
-          content: (lastPart.content || "") + delta,
-        }
-      } else {
-        parts[lastIndex] = {
-          ...lastPart,
-          text: (lastPart.text || "") + delta,
-        }
-      }
-    } else if (partType === "thought") {
-      parts.push({ type: "thought", content: delta })
-    } else {
-      parts.push({ type: "text", text: delta })
-    }
-    return { ...msg, parts }
-  })
-}
+import { useChatTurnSender } from "@/hooks/useChatTurnSender"
 
 function syncThreadMessages({
   activeThreadId,
@@ -124,35 +71,10 @@ function useThreadTranscript({
   }, [activeThreadDetail, isStreaming, activeThreadId, setLocalMessages])
 }
 
-export function useAIChatFeedState({
-  threads,
-  selectedModelId,
-}: {
-  threads: ChatThreadPublic[]
-  selectedModelId: string
-}) {
-  const queryClient = useQueryClient()
-  const { isStreaming, startStream, stop: stopStream } = useAIChatStream()
-
-  const [activeThreadId, setActiveThreadId] = React.useState<string | null>(
-    null,
-  )
-  const [localMessages, setLocalMessages] = React.useState<ChatUIMessage[]>([])
-  const [pendingQuestion, setPendingQuestion] =
-    React.useState<AskUserToolPart | null>(null)
+function useThreadDrafts() {
   const [threadDrafts, setThreadDrafts] = React.useState<
     Record<string, string>
   >({})
-  const initialLoadedRef = React.useRef(false)
-
-  React.useEffect(() => {
-    if (threads.length > 0 && !initialLoadedRef.current) {
-      setActiveThreadId(threads[0].id)
-      initialLoadedRef.current = true
-    }
-  }, [threads])
-
-  useThreadTranscript({ activeThreadId, isStreaming, setLocalMessages })
 
   const setThreadDraft = React.useCallback(
     (threadId: string | null, text: string) => {
@@ -172,7 +94,27 @@ export function useAIChatFeedState({
     })
   }, [])
 
-  const createThreadMutation = useMutation({
+  return { threadDrafts, setThreadDraft, clearThreadDraft }
+}
+
+function useInitialActiveThread(
+  threads: ChatThreadPublic[],
+  setActiveThreadId: (id: string) => void,
+) {
+  const initialLoadedRef = React.useRef(false)
+  React.useEffect(() => {
+    if (threads.length > 0 && !initialLoadedRef.current) {
+      setActiveThreadId(threads[0].id)
+      initialLoadedRef.current = true
+    }
+  }, [threads, setActiveThreadId])
+}
+
+function useCreateThreadMutation(
+  queryClient: ReturnType<typeof useQueryClient>,
+  setActiveThreadId: (id: string) => void,
+) {
+  return useMutation({
     mutationFn: (prompt?: string) =>
       AiThreadsService.createChatThread({
         requestBody: { origin: "composer", prompt },
@@ -182,65 +124,45 @@ export function useAIChatFeedState({
       setActiveThreadId(newThread.id)
     },
   })
+}
 
-  const handleSendMessage = React.useCallback(
-    (text: string) => {
-      if (!text.trim() || isStreaming) return
+export function useAIChatFeedState({
+  threads,
+  selectedModelId,
+}: {
+  threads: ChatThreadPublic[]
+  selectedModelId: string
+}) {
+  const queryClient = useQueryClient()
+  const { isStreaming, startStream, stop: stopStream } = useAIChatStream()
+  const { threadDrafts, setThreadDraft, clearThreadDraft } = useThreadDrafts()
 
-      clearThreadDraft(activeThreadId)
-      const { userMsg, assistantMsg } = createMessageTurn(text)
-      setLocalMessages((prev) => [...prev, userMsg, assistantMsg])
-      setPendingQuestion(null)
-
-      async function execute() {
-        let targetThreadId = activeThreadId
-        if (!targetThreadId) {
-          try {
-            const newThread = await createThreadMutation.mutateAsync(
-              text.trim(),
-            )
-            targetThreadId = newThread.id
-            setActiveThreadId(newThread.id)
-          } catch {
-            return
-          }
-        }
-
-        startStream(
-          targetThreadId,
-          text.trim(),
-          {
-            onThought: (content) =>
-              setLocalMessages((prev) =>
-                updateAssistantPart(prev, assistantMsg.id, "thought", content),
-              ),
-            onTextDelta: (delta) =>
-              setLocalMessages((prev) =>
-                updateAssistantPart(prev, assistantMsg.id, "text", delta),
-              ),
-            onDone: () => {
-              queryClient.invalidateQueries({ queryKey: ["ai-threads"] })
-              queryClient.invalidateQueries({
-                queryKey: ["ai-thread", targetThreadId],
-              })
-            },
-          },
-          selectedModelId,
-        )
-      }
-
-      execute()
-    },
-    [
-      activeThreadId,
-      clearThreadDraft,
-      isStreaming,
-      createThreadMutation,
-      selectedModelId,
-      startStream,
-      queryClient,
-    ],
+  const [activeThreadId, setActiveThreadId] = React.useState<string | null>(
+    null,
   )
+  const [localMessages, setLocalMessages] = React.useState<ChatUIMessage[]>([])
+  const [pendingQuestion, setPendingQuestion] =
+    React.useState<AskUserToolPart | null>(null)
+
+  useInitialActiveThread(threads, setActiveThreadId)
+  useThreadTranscript({ activeThreadId, isStreaming, setLocalMessages })
+  const createThreadMutation = useCreateThreadMutation(
+    queryClient,
+    setActiveThreadId,
+  )
+
+  const handleSendMessage = useChatTurnSender({
+    activeThreadId,
+    selectedModelId,
+    isStreaming,
+    setActiveThreadId,
+    setLocalMessages,
+    setPendingQuestion,
+    clearThreadDraft,
+    createThreadMutation,
+    startStream,
+    queryClient,
+  })
 
   const handleQuestionAnswer = React.useCallback(
     (_toolCallId: string, answers: AskUserAnswer[]) => {

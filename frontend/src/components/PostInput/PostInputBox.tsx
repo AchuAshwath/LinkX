@@ -13,6 +13,7 @@ import { MediaThumbnail } from "./MediaThumbnail"
 import { PostActionBar } from "./PostActionBar"
 import { formatDateTime } from "./PostSchedulePicker"
 import { useComposerDragDrop } from "./useComposerDragDrop"
+import { useComposerKeyboard } from "./useComposerKeyboard"
 import { useComposerSubmission } from "./useComposerSubmission"
 import { usePostForm } from "./usePostForm"
 
@@ -156,6 +157,14 @@ function PostInputFormBody({
   isScheduleOpen,
   setIsScheduleOpen,
 }: PostInputFormBodyProps) {
+  const handleKeyDown = useComposerKeyboard({
+    isAiMode,
+    scheduledAt,
+    isScheduleOpen,
+    onAiDraftSubmit,
+    handleSubmit,
+  })
+
   return (
     <div className="flex-1 min-w-0">
       <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -174,6 +183,7 @@ function PostInputFormBody({
         ref={textareaRef}
         value={content}
         onChange={handleContentChange}
+        onKeyDown={handleKeyDown}
         placeholder={
           isAiMode
             ? "Type a topic, idea, or notes for AI to draft..."
@@ -320,6 +330,11 @@ export function PostInputBox({
     textareaRef,
   })
 
+  const handleToggleAiMode = React.useCallback(() => {
+    form.toggleAiMode()
+    setTimeout(() => textareaRef.current?.focus(), 50)
+  }, [form.toggleAiMode])
+
   return (
     <section
       aria-label={editMode ? "Edit post" : "Post composer"}
@@ -358,7 +373,7 @@ export function PostInputBox({
         isXPremium={Boolean(xStatus?.is_premium)}
         onImageClick={() => fileInputRef.current?.click()}
         handleSubmit={onSubmitHandler}
-        onToggleAiMode={form.toggleAiMode}
+        onToggleAiMode={handleToggleAiMode}
         onAiDraftSubmit={onAiDraftHandler}
         onCancel={onCancel}
         scheduledAt={form.scheduledAt}
