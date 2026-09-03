@@ -1,9 +1,18 @@
 import * as React from "react"
 import type { AIModelOption } from "@/components/Chat/ModelSelectorPill"
-import { useSpeechRecognition } from "@/hooks/useSpeechRecognition"
 import { useImageAttachments } from "./useImageAttachments"
+import { usePromptVoiceInput } from "./usePromptVoiceInput"
 
-const FALLBACK_MODELS: AIModelOption[] = []
+export { useImageAttachments } from "./useImageAttachments"
+export { usePromptVoiceInput } from "./usePromptVoiceInput"
+
+const FALLBACK_MODELS: AIModelOption[] = [
+  { id: "gemini-3.6-flash-high", name: "Gemini 3.6 Flash", provider: "Google" },
+  { id: "claude-sonnet-4-6", name: "Claude 3.7 Sonnet", provider: "Anthropic" },
+  { id: "gpt-5.6-luna", name: "GPT-5.6 Luna", provider: "OpenAI" },
+  { id: "gpt-5.4", name: "GPT-5.4", provider: "OpenAI" },
+  { id: "gpt-oss-120b-medium", name: "DeepSeek R1", provider: "OpenSource" },
+]
 
 function normalizeModels(models?: (AIModelOption | string)[]): AIModelOption[] {
   if (!models || models.length === 0) return FALLBACK_MODELS
@@ -17,72 +26,6 @@ function isPlainEnterPress(
   if (event.shiftKey) return false
   if (event.nativeEvent.isComposing) return false
   return true
-}
-
-export { useImageAttachments } from "./useImageAttachments"
-
-export function usePromptVoiceInput({
-  input,
-  updateInput,
-}: {
-  input: string
-  updateInput: (val: string) => void
-}) {
-  const baseInputRef = React.useRef(input)
-
-  const handleTranscriptChange = React.useCallback(
-    ({ transcript: voiceText }: { transcript: string }) => {
-      if (!voiceText) return
-      const base = baseInputRef.current.trim()
-      const separator = base && voiceText ? " " : ""
-      const fullText = base + separator + voiceText
-      updateInput(fullText)
-    },
-    [updateInput],
-  )
-
-  const {
-    isListening: isVoiceListening,
-    isSupported: isVoiceSupported,
-    startListening,
-    stopListening: stopVoiceListening,
-    resetTranscript,
-    error: voiceError,
-  } = useSpeechRecognition({
-    onTranscriptChange: handleTranscriptChange,
-  })
-
-  const handleToggleVoice = React.useCallback(() => {
-    baseInputRef.current = input
-    resetTranscript()
-    if (isVoiceListening) {
-      stopVoiceListening()
-    } else {
-      startListening()
-    }
-  }, [
-    isVoiceListening,
-    stopVoiceListening,
-    startListening,
-    resetTranscript,
-    input,
-  ])
-
-  function stopAndReset() {
-    if (isVoiceListening) {
-      stopVoiceListening()
-    }
-    resetTranscript()
-    baseInputRef.current = ""
-  }
-
-  return {
-    isVoiceListening,
-    isVoiceSupported,
-    voiceError,
-    handleToggleVoice,
-    stopAndReset,
-  }
 }
 
 export interface UsePromptFormStateProps {

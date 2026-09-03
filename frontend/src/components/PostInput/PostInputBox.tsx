@@ -158,9 +158,13 @@ function handleComposerKeyDown({
     return
   }
 
-  if (isAiMode && !event.shiftKey && onAiDraftSubmit) {
-    event.preventDefault()
-    onAiDraftSubmit()
+  if (isAiMode) {
+    if (!event.shiftKey) {
+      if (onAiDraftSubmit) {
+        event.preventDefault()
+        onAiDraftSubmit()
+      }
+    }
   }
 }
 

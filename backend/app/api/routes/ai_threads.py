@@ -145,8 +145,9 @@ def _build_fallback_models(default_model_id: str) -> list[AIModelInfo]:
         ),
         ("gpt-5.4", "GPT-5.4", "OpenAI"),
         ("gpt-5.4-mini", "GPT-5.4 Mini", "OpenAI"),
-        ("claude-sonnet-4-6", "Claude 3.7 Sonnet", "Anthropic"),
-        ("gpt-oss-120b-medium", "DeepSeek R1", "OpenSource"),
+        ("gpt-5.5", "GPT-5.5", "OpenAI"),
+        ("gpt-5.6-sol", "GPT-5.6 Sol", "OpenAI"),
+        ("gpt-5.6-terra", "GPT-5.6 Terra", "OpenAI"),
     ]
     seen: set[str] = set()
     result: list[AIModelInfo] = []
@@ -187,6 +188,7 @@ def _fetch_models_from_proxy(default_model_id: str) -> list[AIModelInfo]:
             if item.get("id")
             and str(item["id"]) not in EXCLUDED_MODELS
             and not str(item["id"]).lower().startswith("gemini")
+            and str(item.get("owned_by", "")).lower() != "antigravity"
         ]
 
 
