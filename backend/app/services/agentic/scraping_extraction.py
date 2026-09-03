@@ -41,10 +41,9 @@ def _load_selectors() -> dict[str, Any]:
                 "[data-testid='sidebarColumn'], [data-testid='primaryColumn'], main[role='main']"
             ),
             "sidebar_link": (
-                selectors.get("feed", {}).get(
-                    "news_trends",
-                    "[data-testid='trend'], a[href*='/search?q='], [data-testid^='news_sidebar_article']",
-                )
+                selectors.get("sidebar", {}).get("sidebar_link")
+                or selectors.get("feed", {}).get("news_trends")
+                or "[data-testid^='news_sidebar_article'], [data-testid='trend'], a[href*='/search?q=']"
             ),
             "tweet_container": selectors.get("feed", {}).get(
                 "timeline_post", "[data-testid='tweet']"

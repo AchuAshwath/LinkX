@@ -6,6 +6,7 @@ on status without parsing log output.
 """
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -115,10 +116,28 @@ def _should_skip_link(
 
 async def _resolve_link_href(link: Any, *, clean_title: str) -> str:
     """Resolve href attribute or construct search query URL."""
-    url = await link.get_attribute("href")
+    try:
+        if hasattr(link, "get_attribute"):
+            testid = await link.get_attribute("data-testid")
+            if (
+                testid
+                and isinstance(testid, str)
+                and testid.startswith("news_sidebar_article_")
+            ):
+                raw_b64 = testid[len("news_sidebar_article_") :]
+                decoded = base64.b64decode(raw_b64).decode("utf-8")
+                if ":" in decoded:
+                    trend_id = decoded.split(":")[-1]
+                    return f"https://x.com/i/trending/{trend_id}"
+    except Exception:
+        pass
+
+    url = await link.get_attribute("href") if hasattr(link, "get_attribute") else None
     if not url:
         try:
-            nested_a = link.locator("a[href*='/search?q=']").first
+            nested_a = link.locator(
+                "a[href*='/search?q='], a[href*='/i/trending/']"
+            ).first
             if await nested_a.count() > 0:
                 url = await nested_a.get_attribute("href")
         except Exception:
@@ -544,13 +563,53 @@ async def scrape_trending_topics(
 
 
 async def navigate_to_trends(
-    page: Any, *, target_url: str = "https://x.com/explore"
+    page: Any, *, target_url: str = "https://x.com/home"
 ) -> bool:
-    """Navigate to X.com explore/trends and verify authenticated page state."""
-    state = await detect_page_state(page)
-    if state in {"logged_out", "rate_limited", "captcha"}:
-        return False
-    await page.goto(target_url, wait_until="domcontentloaded")
+    """Navigate to X.com home (with explore fallback) and verify authenticated page state."""
+    curr_url = getattr(page, "url", "")
+    if isinstance(curr_url, str) and curr_url and not curr_url.startswith("about:"):
+        state = await detect_page_state(page)
+        if state in {"logged_out", "captcha"}:
+            return False
+
+    try:
+        await page.goto(target_url, wait_until="domcontentloaded")
+    except Exception as nav_err:
+        logger.warning(f"Error navigating to {target_url}: {nav_err}")
+
+    # Twitter SPA renders a transient skeleton during initial hydration; check for sidebar trends
+    for _ in range(8):
+        await asyncio.sleep(0.5)
+        post_state = await detect_page_state(page)
+        if post_state in {"logged_out", "captcha"}:
+            return False
+        if hasattr(page, "locator"):
+            try:
+                trend_count = await page.locator(
+                    "[data-testid^='news_sidebar_article'], [data-testid='trend']"
+                ).count()
+                if trend_count > 0:
+                    return True
+            except Exception:
+                pass
+        if post_state == "ok":
+            return True
+
+    # Fallback to explore if sidebar didn't load on target_url
+    if target_url != "https://x.com/explore":
+        try:
+            logger.info("Retrying navigation with explore fallback...")
+            await page.goto("https://x.com/explore", wait_until="domcontentloaded")
+            for _ in range(6):
+                await asyncio.sleep(0.5)
+                post_state = await detect_page_state(page)
+                if post_state == "ok":
+                    return True
+                if post_state in {"logged_out", "captcha"}:
+                    return False
+        except Exception as fallback_err:
+            logger.warning(f"Explore fallback failed: {fallback_err}")
+
     post_state = await detect_page_state(page)
     return post_state not in {"logged_out", "rate_limited", "captcha"}
 
@@ -569,12 +628,12 @@ def _format_trend_url(identifier: str, *, is_url: bool, topic_title: str) -> str
 
 
 async def _wait_for_trends_dom(page: Any) -> None:
-    """Wait for trend elements to appear in the DOM."""
+    """Wait for trend or news article elements to appear in the DOM."""
     try:
         if hasattr(page, "locator"):
-            await page.locator("[data-testid='trend']").first.wait_for(
-                state="visible", timeout=10000
-            )
+            await page.locator(
+                "[data-testid^='news_sidebar_article'], [data-testid='trend']"
+            ).first.wait_for(state="visible", timeout=10000)
     except Exception as e:
         logger.debug(f"Wait for trend element timed out or skipped: {e}")
 
@@ -611,8 +670,9 @@ async def extract_trending_sidebar(
     """Extract structured TrendingTopic models from the X.com sidebar."""
     sidebar_link_sel = (
         selectors.get("selectors", {}).get("sidebar_link")
+        or selectors.get("sidebar", {}).get("sidebar_link")
         or selectors.get("feed", {}).get("news_trends")
-        or "[data-testid='trend'], a[href*='/search?q='], [data-testid^='news_sidebar_article']"
+        or "[data-testid^='news_sidebar_article'], [data-testid='trend'], a[href*='/search?q=']"
     )
     heuristic = selectors.get("link_heuristic", {"must_contain_newline": False})
 
