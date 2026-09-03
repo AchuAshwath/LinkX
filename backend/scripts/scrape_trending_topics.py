@@ -131,30 +131,42 @@ def _extract_trend_id_from_testid(testid: Any) -> str | None:
     return None
 
 
+async def _extract_article_trend_url(link: Any) -> str | None:
+    """Extract trending URL from data-testid if article container."""
+    if not hasattr(link, "get_attribute"):
+        return None
+    try:
+        testid = await link.get_attribute("data-testid")
+        trend_id = _extract_trend_id_from_testid(testid)
+        return f"https://x.com/i/trending/{trend_id}" if trend_id else None
+    except Exception:
+        return None
+
+
+async def _extract_nested_link_href(link: Any) -> str | None:
+    """Extract href from nested anchor element."""
+    if not hasattr(link, "locator"):
+        return None
+    try:
+        nested_a = link.locator("a[href*='/search?q='], a[href*='/i/trending/']").first
+        if await nested_a.count() > 0:
+            return await nested_a.get_attribute("href")
+    except Exception:
+        pass
+    return None
+
+
 async def _resolve_link_href(link: Any, *, clean_title: str) -> str:
     """Resolve href attribute or construct search query URL."""
-    if hasattr(link, "get_attribute"):
-        try:
-            testid = await link.get_attribute("data-testid")
-            trend_id = _extract_trend_id_from_testid(testid)
-            if trend_id:
-                return f"https://x.com/i/trending/{trend_id}"
-        except Exception:
-            pass
+    article_url = await _extract_article_trend_url(link)
+    if article_url:
+        return article_url
 
     url = await link.get_attribute("href") if hasattr(link, "get_attribute") else None
     if not url:
-        try:
-            nested_a = link.locator(
-                "a[href*='/search?q='], a[href*='/i/trending/']"
-            ).first
-            if await nested_a.count() > 0:
-                url = await nested_a.get_attribute("href")
-        except Exception:
-            pass
-    if not url:
-        url = f"/search?q={urllib.parse.quote(clean_title)}"
-    return str(url)
+        url = await _extract_nested_link_href(link)
+
+    return url or f"/search?q={urllib.parse.quote(clean_title)}"
 
 
 async def _parse_and_validate_link(
