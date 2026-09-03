@@ -156,18 +156,7 @@ function shouldSkipMessageSend(
   return !trimmedText && !hasImages
 }
 
-export function useChatTurnSender({
-  activeThreadId,
-  selectedModelId,
-  isStreaming,
-  setActiveThreadId,
-  setLocalMessages,
-  setPendingQuestion,
-  clearThreadDraft,
-  createThreadMutation,
-  startStream,
-  queryClient,
-}: {
+export interface UseChatTurnSenderProps {
   activeThreadId: string | null
   selectedModelId: string
   isStreaming: boolean
@@ -180,7 +169,69 @@ export function useChatTurnSender({
   >
   startStream: ReturnType<typeof useAIChatStream>["startStream"]
   queryClient: ReturnType<typeof useQueryClient>
+}
+
+function appendOptimisticTurn(
+  promptText: string,
+  base64Images: string[],
+  setLocalMessages: React.Dispatch<React.SetStateAction<ChatUIMessage[]>>,
+  setPendingQuestion: (q: AskUserToolPart | null) => void,
+): { assistantMsgId: string } {
+  const { userMsg, assistantMsg } = createMessageTurn(promptText, base64Images)
+  setLocalMessages((prev) => [...prev, userMsg, assistantMsg])
+  setPendingQuestion(null)
+  return { assistantMsgId: assistantMsg.id }
+}
+
+function sendTurnStream({
+  assistantMsgId,
+  targetThreadId,
+  promptText,
+  base64Images,
+  selectedModelId,
+  setLocalMessages,
+  queryClient,
+  startStream,
+}: {
+  assistantMsgId: string
+  targetThreadId: string
+  promptText: string
+  base64Images: string[]
+  selectedModelId: string
+  setLocalMessages: React.Dispatch<React.SetStateAction<ChatUIMessage[]>>
+  queryClient: ReturnType<typeof useQueryClient>
+  startStream: ReturnType<typeof useAIChatStream>["startStream"]
 }) {
+  const handlers = buildStreamHandlers({
+    assistantMsgId,
+    targetThreadId,
+    setLocalMessages,
+    queryClient,
+  })
+  const imagesPayload = base64Images.length > 0 ? base64Images : undefined
+  startStream(
+    targetThreadId,
+    promptText,
+    handlers,
+    selectedModelId,
+    imagesPayload,
+  )
+}
+
+export function useChatTurnSender(props: UseChatTurnSenderProps) {
+  const {
+    activeThreadId,
+    selectedModelId,
+    isStreaming,
+    setActiveThreadId,
+    setLocalMessages,
+    setPendingQuestion,
+    clearThreadDraft,
+    createThreadMutation,
+    startStream,
+    queryClient,
+  } = props
+
   return React.useCallback(
     async (text: string, attachedImages?: File[]) => {
       const trimmedText = text.trim()
@@ -190,12 +241,12 @@ export function useChatTurnSender({
       const base64Images = await convertFilesToDataUrls(attachedImages)
       clearThreadDraft(activeThreadId)
       const promptText = resolvePromptText(trimmedText, hasImages)
-      const { userMsg, assistantMsg } = createMessageTurn(
+      const { assistantMsgId } = appendOptimisticTurn(
         promptText,
         base64Images,
+        setLocalMessages,
+        setPendingQuestion,
       )
-      setLocalMessages((prev) => [...prev, userMsg, assistantMsg])
-      setPendingQuestion(null)
 
       const targetThreadId = await resolveTargetThreadId(
         activeThreadId,
@@ -205,21 +256,16 @@ export function useChatTurnSender({
       )
       if (!targetThreadId) return
 
-      const handlers = buildStreamHandlers({
-        assistantMsgId: assistantMsg.id,
-        targetThreadId,
-        setLocalMessages,
-        queryClient,
-      })
-
-      const imagesPayload = base64Images.length > 0 ? base64Images : undefined
-      startStream(
+      sendTurnStream({
+        assistantMsgId,
         targetThreadId,
         promptText,
-        handlers,
+        base64Images,
         selectedModelId,
-        imagesPayload,
-      )
+        setLocalMessages,
+        queryClient,
+        startStream,
+      })
     },
     [
       activeThreadId,
