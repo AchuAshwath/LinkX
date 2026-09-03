@@ -66,34 +66,77 @@ def _build_assistant_history_content(thought: str, text: str) -> str:
     return text
 
 
+def _extract_images_from_parts(parts: list[dict[str, Any]]) -> list[str]:
+    """Extract image URLs from message parts."""
+    images: list[str] = []
+    for part in parts:
+        ptype = part.get("type")
+        if ptype in ("image_url", "image"):
+            url = ""
+            if isinstance(part.get("image_url"), dict):
+                url = str(part["image_url"].get("url", "")).strip()
+            elif isinstance(part.get("image_url"), str):
+                url = str(part.get("image_url", "")).strip()
+            elif part.get("url"):
+                url = str(part.get("url", "")).strip()
+            if url:
+                images.append(url)
+    return images
+
+
+def _build_human_message_content(
+    text: str, images: list[str] | None = None
+) -> str | list[str | dict[Any, Any]]:
+    if not images:
+        return text
+    content: list[str | dict[Any, Any]] = []
+    if text:
+        content.append({"type": "text", "text": text})
+    for img in images:
+        if img:
+            content.append({"type": "image_url", "image_url": {"url": img}})
+    return content
+
+
 def _convert_transcript_item(item: dict[str, Any]) -> BaseMessage | None:
     role = item.get("role")
     parts = item.get("parts", [])
     text = _extract_text_from_parts(parts)
     thought = _extract_thought_from_parts(parts)
-    if not text and not thought:
+    images = _extract_images_from_parts(parts)
+
+    if not text and not thought and not images:
         return None
     if role == "user":
-        return HumanMessage(content=text)
+        content = _build_human_message_content(text, images)
+        return HumanMessage(content=content)
     if role == "assistant":
         return AIMessage(content=_build_assistant_history_content(thought, text))
     return None
 
 
 def _is_latest_message_matching(
-    converted: list[BaseMessage], current_message: str
+    converted: list[BaseMessage],
+    current_message: str,
+    images: list[str] | None = None,
 ) -> bool:
     if not converted:
         return False
     last = converted[-1]
-    return isinstance(last, HumanMessage) and last.content == current_message
+    if not isinstance(last, HumanMessage):
+        return False
+    expected_content = _build_human_message_content(current_message, images)
+    return last.content == expected_content
 
 
 def _ensure_latest_human_message(
-    converted: list[BaseMessage], current_message: str
+    converted: list[BaseMessage],
+    current_message: str,
+    images: list[str] | None = None,
 ) -> None:
-    if not _is_latest_message_matching(converted, current_message):
-        converted.append(HumanMessage(content=current_message))
+    if not _is_latest_message_matching(converted, current_message, images):
+        content = _build_human_message_content(current_message, images)
+        converted.append(HumanMessage(content=content))
 
 
 def _build_message_history(
@@ -101,6 +144,7 @@ def _build_message_history(
     transcript: dict[str, Any] | None,
     current_message: str,
     max_history_messages: int = 40,
+    images: list[str] | None = None,
 ) -> list[BaseMessage]:
     """Convert JSONB transcript messages into LangChain BaseMessage objects."""
     raw_messages = (transcript or {}).get("messages", [])
@@ -109,7 +153,7 @@ def _build_message_history(
         for item in raw_messages
         if (msg := _convert_transcript_item(item)) is not None
     ]
-    _ensure_latest_human_message(converted, current_message)
+    _ensure_latest_human_message(converted, current_message, images=images)
     if len(converted) > max_history_messages:
         converted = converted[-max_history_messages:]
 
@@ -122,11 +166,13 @@ async def default_chat_stream_runner(
     transcript: dict[str, Any] | None = None,
     smooth_delay: float = 0.0,
     model: str | None = None,
+    images: list[str] | None = None,
 ) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
     """Stream AI chat conversation tokens and thinking thoughts word-by-word."""
     messages = _build_message_history(
         transcript=transcript,
         current_message=message,
+        images=images,
     )
 
     try:

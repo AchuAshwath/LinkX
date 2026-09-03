@@ -227,7 +227,7 @@ function useAiDraftMutation(
     },
     onSuccess: (_, variables) => {
       draftingStore.removeDraft(variables.draftId)
-      showSuccessToast("Draft created and saved to your drafts!")
+      showSuccessToast("Draft created! View it under Posts → Drafts.")
       queryClient.invalidateQueries({ queryKey: ["posts"] })
     },
     onError: (err, variables) => {
@@ -314,7 +314,8 @@ export function usePostForm(options?: UsePostFormOptions) {
     ...media,
     handleSubmit,
     createPostMutation,
+    aiDraftMutation,
     handleAiDraft,
-    isGeneratingAiDraft: false,
+    isGeneratingAiDraft: aiDraftMutation.isPending,
   }
 }

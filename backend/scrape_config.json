@@ -6,7 +6,7 @@
   "output_directory": "./data/scraped_trends",
   "selectors": {
     "sidebar_container": "[data-testid='sidebarColumn'], [data-testid='primaryColumn'], main[role='main']",
-    "sidebar_link": "[data-testid='trend'], a[href*='/search?q='], [data-testid^='news_sidebar_article']",
+    "sidebar_link": "[data-testid^='news_sidebar_article'], [data-testid='trend'], a[href*='/search?q=']",
 
     "tweet_container": "[data-testid='tweet']",
     "summary_selectors": [

@@ -8,14 +8,34 @@ import type {
 } from "@/components/Chat/types"
 import { useAIChatStream } from "@/hooks/useAIChatStream"
 
-function createMessageTurn(text: string): {
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+function createMessageTurn(
+  text: string,
+  imageUrls: string[] = [],
+): {
   userMsg: ChatUIMessage
   assistantMsg: ChatUIMessage
 } {
+  const parts: ChatUIMessage["parts"] = []
+  if (text.trim()) {
+    parts.push({ type: "text", text: text.trim() })
+  }
+  for (const url of imageUrls) {
+    parts.push({ type: "image_url", url })
+  }
+
   const userMsg: ChatUIMessage = {
     id: `local-user-${Date.now()}`,
     role: "user",
-    parts: [{ type: "text", text: text.trim() }],
+    parts,
     createdAt: new Date().toISOString(),
   }
 
@@ -184,52 +204,63 @@ export function useAIChatFeedState({
   })
 
   const handleSendMessage = React.useCallback(
-    (text: string) => {
-      if (!text.trim() || isStreaming) return
+    async (text: string, attachedImages?: File[]) => {
+      const trimmedText = text.trim()
+      const hasImages = Boolean(attachedImages && attachedImages.length > 0)
+      if ((!trimmedText && !hasImages) || isStreaming) return
+
+      let base64Images: string[] = []
+      if (hasImages && attachedImages) {
+        try {
+          base64Images = await Promise.all(attachedImages.map(fileToDataUrl))
+        } catch {
+          base64Images = []
+        }
+      }
 
       clearThreadDraft(activeThreadId)
-      const { userMsg, assistantMsg } = createMessageTurn(text)
+      const promptText =
+        trimmedText || (hasImages ? "Analyze the attached image(s)" : "")
+      const { userMsg, assistantMsg } = createMessageTurn(
+        promptText,
+        base64Images,
+      )
       setLocalMessages((prev) => [...prev, userMsg, assistantMsg])
       setPendingQuestion(null)
 
-      async function execute() {
-        let targetThreadId = activeThreadId
-        if (!targetThreadId) {
-          try {
-            const newThread = await createThreadMutation.mutateAsync(
-              text.trim(),
-            )
-            targetThreadId = newThread.id
-            setActiveThreadId(newThread.id)
-          } catch {
-            return
-          }
+      let targetThreadId = activeThreadId
+      if (!targetThreadId) {
+        try {
+          const newThread = await createThreadMutation.mutateAsync(promptText)
+          targetThreadId = newThread.id
+          setActiveThreadId(newThread.id)
+        } catch {
+          return
         }
-
-        startStream(
-          targetThreadId,
-          text.trim(),
-          {
-            onThought: (content) =>
-              setLocalMessages((prev) =>
-                updateAssistantPart(prev, assistantMsg.id, "thought", content),
-              ),
-            onTextDelta: (delta) =>
-              setLocalMessages((prev) =>
-                updateAssistantPart(prev, assistantMsg.id, "text", delta),
-              ),
-            onDone: () => {
-              queryClient.invalidateQueries({ queryKey: ["ai-threads"] })
-              queryClient.invalidateQueries({
-                queryKey: ["ai-thread", targetThreadId],
-              })
-            },
-          },
-          selectedModelId,
-        )
       }
 
-      execute()
+      startStream(
+        targetThreadId,
+        promptText,
+        {
+          onThought: (content) =>
+            setLocalMessages((prev) =>
+              updateAssistantPart(prev, assistantMsg.id, "thought", content),
+            ),
+          onTextDelta: (delta) =>
+            setLocalMessages((prev) =>
+              updateAssistantPart(prev, assistantMsg.id, "text", delta),
+            ),
+          onDone: () => {
+            queryClient.invalidateQueries({ queryKey: ["ai-threads"] })
+            queryClient.invalidateQueries({
+              queryKey: ["ai-thread", targetThreadId],
+            })
+          },
+        },
+        selectedModelId,
+        base64Images.length > 0 ? base64Images : undefined,
+      )
     },
     [
       activeThreadId,

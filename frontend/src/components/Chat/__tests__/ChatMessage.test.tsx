@@ -89,4 +89,54 @@ describe("ChatMessage component", () => {
     expect(screen.getByText(/TechCrunch Article/i)).toBeInTheDocument()
     expect(screen.getByText(/techcrunch\.com/i)).toBeInTheDocument()
   })
+
+  it("renders user attached image thumbnails", () => {
+    const message: ChatUIMessage = {
+      id: "msg-5",
+      role: "user",
+      parts: [
+        { type: "text", text: "Look at this preview" },
+        { type: "image_url", url: "https://example.com/chart.png" },
+      ],
+    }
+
+    render(<ChatMessage message={message} />)
+    expect(screen.getByText("Look at this preview")).toBeInTheDocument()
+    const img = screen.getByAltText("Attachment 1")
+    expect(img).toBeInTheDocument()
+    expect(img).toHaveAttribute("src", "https://example.com/chart.png")
+  })
+
+  it("filters out unsafe image URL schemes", () => {
+    const message: ChatUIMessage = {
+      id: "msg-unsafe",
+      role: "user",
+      parts: [
+        { type: "text", text: "Malicious test" },
+        { type: "image_url", url: "javascript:alert(1)" },
+      ],
+    }
+
+    render(<ChatMessage message={message} />)
+    expect(screen.queryByAltText("Attachment 1")).not.toBeInTheDocument()
+  })
+
+  it("hides broken images on error", () => {
+    const message: ChatUIMessage = {
+      id: "msg-broken",
+      role: "user",
+      parts: [
+        { type: "text", text: "Broken preview" },
+        { type: "image_url", url: "https://example.com/broken.png" },
+      ],
+    }
+
+    render(<ChatMessage message={message} />)
+    const img = screen.getByAltText("Attachment 1")
+    expect(img).toBeVisible()
+
+    // Trigger image loading error
+    fireEvent.error(img)
+    expect(img).toHaveStyle({ display: "none" })
+  })
 })

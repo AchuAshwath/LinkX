@@ -315,7 +315,7 @@ async def _save_assistant_turn(
     if thread.message_count <= 2:
         try:
             ai_title = await generate_ai_thread_title(
-                user_prompt=payload.body.message,
+                user_prompt=payload.body.message.strip() or "Image analysis",
                 assistant_response=payload.accumulated_text,
                 model=payload.body.model,
             )
@@ -338,10 +338,36 @@ async def chat_stream(
     """Server-Sent Events streaming endpoint for AI conversation."""
     thread = _get_owned_thread(session=session, current_user=current_user, thread_id=id)
 
+    message_text = body.message.strip()
+    clean_images: list[str] = [
+        img.strip()
+        for img in (body.images or [])
+        if img
+        and img.strip()
+        and (
+            img.strip().startswith("data:image/")
+            or img.strip().startswith("http://")
+            or img.strip().startswith("https://")
+        )
+    ]
+    if not message_text and not clean_images:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Message content or at least one image is required",
+        )
+
+    effective_prompt = message_text or "Analyze the attached image(s)"
+
+    user_parts: list[dict[str, Any]] = []
+    if message_text:
+        user_parts.append({"type": "text", "text": message_text})
+    for img in clean_images:
+        user_parts.append({"type": "image_url", "image_url": {"url": img}})
+
     user_msg = {
         "id": f"msg_{uuid.uuid4().hex[:12]}",
         "role": "user",
-        "parts": [{"type": "text", "text": body.message}],
+        "parts": user_parts,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     crud.append_message_to_transcript(
@@ -354,9 +380,10 @@ async def chat_stream(
 
         try:
             async for event_name, payload in default_chat_stream_runner(
-                message=body.message,
+                message=effective_prompt,
                 transcript=thread.transcript,
                 model=body.model,
+                images=clean_images or None,
             ):
                 delta = _collect_stream_part(
                     event_name=event_name,

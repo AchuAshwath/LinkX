@@ -1,4 +1,4 @@
-import { Calendar, ImageIcon, Plus } from "lucide-react"
+import { Calendar, ImageIcon, Loader2, Plus } from "lucide-react"
 import * as React from "react"
 
 import type { Platform } from "@/components/Common/PlatformSelector"
@@ -35,40 +35,20 @@ function PencilSparklesIcon({
   )
 }
 
-export interface PostActionBarProps {
-  isSubmitting: boolean
-  isContentEmpty: boolean
-  canPublishOrSchedule?: boolean
-  currentLength?: number
-  platform?: Platform
-  isXPremium?: boolean
-  isAiGenerating?: boolean
-  onActionTypeChange: (type: "draft" | "schedule" | "post") => void
-  onImageClick?: () => void
-  onDraftClick: () => void
-  onAiDraftClick?: () => void
-  onScheduleClick: () => void
-  onPostClick: () => void
-  onCancelClick?: () => void
-  showCancel?: boolean
-  scheduledAt?: Date | undefined
-  onScheduleChange?: (date: Date | undefined) => void
-  isScheduleOpen: boolean
-  onToggleSchedule: (open: boolean) => void
-}
-
 interface LeftControlsProps {
   isScheduleOpen: boolean
   isScheduled: boolean
   isSubmitting: boolean
   isAiGenerating?: boolean
   isAiMode?: boolean
+  isContentEmpty?: boolean
   scheduledAt?: Date | undefined
   onScheduleChange?: (date: Date | undefined) => void
   onToggleSchedule: (open: boolean) => void
   onActionTypeChange: (type: "draft" | "schedule" | "post") => void
   onImageClick?: () => void
   onToggleAiMode?: () => void
+  onAiDraftSubmit?: () => void
 }
 
 function ScheduleAndMediaControls({
@@ -77,13 +57,23 @@ function ScheduleAndMediaControls({
   isSubmitting,
   isAiGenerating,
   isAiMode,
+  isContentEmpty,
   scheduledAt,
   onScheduleChange,
   onToggleSchedule,
   onActionTypeChange,
   onImageClick,
   onToggleAiMode,
+  onAiDraftSubmit,
 }: LeftControlsProps) {
+  const handleAiDraftClick = () => {
+    if (!isContentEmpty && onAiDraftSubmit) {
+      onAiDraftSubmit()
+    } else {
+      onToggleAiMode?.()
+    }
+  }
+
   const mediaAndAiButtons = (
     <>
       <Button
@@ -109,17 +99,31 @@ function ScheduleAndMediaControls({
             ? "text-primary bg-primary/20 ring-1 ring-primary/40 shadow-xs"
             : "text-muted-foreground hover:text-primary hover:bg-primary/10"
         }`}
-        aria-label={isAiMode ? "Disable AI Draft Mode" : "Draft with AI"}
-        title={
-          isAiMode
-            ? "AI Draft Mode Active (click to toggle off)"
-            : "Draft with AI"
+        aria-label={
+          isAiGenerating
+            ? "Generating AI Draft..."
+            : isAiMode
+              ? "Disable AI Draft Mode"
+              : "Draft with AI"
         }
-        onClick={onToggleAiMode}
+        title={
+          isAiGenerating
+            ? "Drafting post in background with AI..."
+            : !isContentEmpty
+              ? "Draft with AI"
+              : isAiMode
+                ? "AI Draft Mode Active (click to toggle off)"
+                : "Draft with AI"
+        }
+        onClick={handleAiDraftClick}
         disabled={isSubmitting || isAiGenerating}
         data-testid="ai-draft-btn"
       >
-        <PencilSparklesIcon className="h-4.5 w-4.5" />
+        {isAiGenerating ? (
+          <Loader2 className="h-4.5 w-4.5 animate-spin text-primary" />
+        ) : (
+          <PencilSparklesIcon className="h-4.5 w-4.5" />
+        )}
       </Button>
     </>
   )
@@ -388,12 +392,14 @@ export const PostActionBar = React.memo(function PostActionBar({
         isSubmitting={isSubmitting}
         isAiGenerating={isAiGenerating}
         isAiMode={isAiMode}
+        isContentEmpty={isContentEmpty}
         scheduledAt={scheduledAt}
         onScheduleChange={onScheduleChange}
         onToggleSchedule={onToggleSchedule}
         onActionTypeChange={onActionTypeChange}
         onImageClick={onImageClick}
         onToggleAiMode={onToggleAiMode}
+        onAiDraftSubmit={onAiDraftSubmit}
       />
 
       <ActionButtonsGroup

@@ -181,8 +181,8 @@ export const ChatMessageRequestSchema = {
         message: {
             type: 'string',
             maxLength: 25000,
-            minLength: 1,
-            title: 'Message'
+            title: 'Message',
+            default: ''
         },
         model: {
             anyOf: [
@@ -195,10 +195,24 @@ export const ChatMessageRequestSchema = {
                 }
             ],
             title: 'Model'
+        },
+        images: {
+            anyOf: [
+                {
+                    items: {
+                        type: 'string'
+                    },
+                    type: 'array',
+                    maxItems: 10
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Images'
         }
     },
     type: 'object',
-    required: ['message'],
     title: 'ChatMessageRequest'
 } as const;
 

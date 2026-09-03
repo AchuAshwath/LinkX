@@ -88,8 +88,15 @@ export interface ThoughtPart {
   content: string
 }
 
+export interface ImageUrlPart {
+  type: "image_url" | "image"
+  url?: string
+  image_url?: { url: string }
+}
+
 export type ChatMessagePart =
   | TextMessagePart
+  | ImageUrlPart
   | SourceUrlPart
   | AskUserToolPart
   | WebSearchToolPart

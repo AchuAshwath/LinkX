@@ -88,8 +88,12 @@ export function useComposerSubmission({
   }
 
   return {
-    isSuccess: form.createPostMutation.isSuccess,
-    isSubmitting: form.createPostMutation.isPending || form.isUploadingMedia,
+    isSuccess:
+      form.createPostMutation.isSuccess || form.aiDraftMutation.isSuccess,
+    isSubmitting:
+      form.createPostMutation.isPending ||
+      form.isUploadingMedia ||
+      form.aiDraftMutation.isPending,
     onSubmitHandler: form.handleSubmit,
     onAiDraftHandler: form.handleAiDraft,
   }

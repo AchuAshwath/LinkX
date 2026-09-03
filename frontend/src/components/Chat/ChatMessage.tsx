@@ -24,23 +24,78 @@ function extractTextParts(parts: ChatUIMessage["parts"]): string {
     .trim()
 }
 
+function isValidImageUrl(url: string): boolean {
+  if (!url) return false
+  const trimmed = url.trim().toLowerCase()
+  return (
+    trimmed.startsWith("data:image/") ||
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("blob:") ||
+    trimmed.startsWith("/")
+  )
+}
+
+function extractImageUrls(parts: ChatUIMessage["parts"]): string[] {
+  const urls: string[] = []
+  for (const p of parts) {
+    if (p.type === "image_url" || p.type === "image") {
+      let rawUrl = ""
+      if ("url" in p && typeof p.url === "string") {
+        rawUrl = p.url
+      } else if (
+        "image_url" in p &&
+        p.image_url &&
+        typeof p.image_url === "object" &&
+        "url" in p.image_url
+      ) {
+        rawUrl = String(p.image_url.url || "")
+      }
+      if (rawUrl && isValidImageUrl(rawUrl)) {
+        urls.push(rawUrl)
+      }
+    }
+  }
+  return urls
+}
+
 function getMessageTimestamp(message: ChatUIMessage): string | undefined {
   return message.createdAt || (message as { created_at?: string }).created_at
 }
 
 function UserMessageBubble({ message }: { message: ChatUIMessage }) {
   const text = extractTextParts(message.parts)
+  const imageUrls = extractImageUrls(message.parts)
   const createdAt = getMessageTimestamp(message)
 
   return (
     <div className="group relative flex flex-col items-end w-full">
       <Message align="end">
         <MessageContent>
-          <Bubble align="end" variant="outline">
-            <BubbleContent className="rounded-3xl border border-border bg-background text-foreground font-normal px-5 py-3 leading-relaxed shadow-none">
-              {text}
-            </BubbleContent>
-          </Bubble>
+          <div className="flex flex-col items-end gap-2 max-w-full">
+            {imageUrls.length > 0 && (
+              <div className="flex flex-wrap justify-end gap-2 max-w-sm">
+                {imageUrls.map((url, idx) => (
+                  <img
+                    key={idx}
+                    src={url}
+                    alt={`Attachment ${idx + 1}`}
+                    className="max-h-48 max-w-xs object-cover rounded-2xl border border-border/80 shadow-sm"
+                    onError={(e) => {
+                      ;(e.currentTarget as HTMLElement).style.display = "none"
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+            {text && (
+              <Bubble align="end" variant="outline">
+                <BubbleContent className="rounded-3xl border border-border bg-background text-foreground font-normal px-5 py-3 leading-relaxed shadow-none">
+                  {text}
+                </BubbleContent>
+              </Bubble>
+            )}
+          </div>
         </MessageContent>
       </Message>
       <ChatMessageActions

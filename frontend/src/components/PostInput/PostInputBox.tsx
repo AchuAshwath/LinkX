@@ -156,6 +156,25 @@ function PostInputFormBody({
   isScheduleOpen,
   setIsScheduleOpen,
 }: PostInputFormBodyProps) {
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      event.preventDefault()
+      if (isAiMode && onAiDraftSubmit) {
+        onAiDraftSubmit()
+      } else {
+        handleSubmit(scheduledAt || isScheduleOpen ? "schedule" : "post")
+      }
+    } else if (
+      event.key === "Enter" &&
+      !event.shiftKey &&
+      isAiMode &&
+      onAiDraftSubmit
+    ) {
+      event.preventDefault()
+      onAiDraftSubmit()
+    }
+  }
+
   return (
     <div className="flex-1 min-w-0">
       <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -174,6 +193,7 @@ function PostInputFormBody({
         ref={textareaRef}
         value={content}
         onChange={handleContentChange}
+        onKeyDown={handleKeyDown}
         placeholder={
           isAiMode
             ? "Type a topic, idea, or notes for AI to draft..."
@@ -320,6 +340,11 @@ export function PostInputBox({
     textareaRef,
   })
 
+  const handleToggleAiMode = React.useCallback(() => {
+    form.toggleAiMode()
+    setTimeout(() => textareaRef.current?.focus(), 50)
+  }, [form.toggleAiMode])
+
   return (
     <section
       aria-label={editMode ? "Edit post" : "Post composer"}
@@ -358,7 +383,7 @@ export function PostInputBox({
         isXPremium={Boolean(xStatus?.is_premium)}
         onImageClick={() => fileInputRef.current?.click()}
         handleSubmit={onSubmitHandler}
-        onToggleAiMode={form.toggleAiMode}
+        onToggleAiMode={handleToggleAiMode}
         onAiDraftSubmit={onAiDraftHandler}
         onCancel={onCancel}
         scheduledAt={form.scheduledAt}
