@@ -1,11 +1,9 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useNavigate } from "@tanstack/react-router"
 import { Bot, Loader2, RefreshCw } from "lucide-react"
 import * as React from "react"
-import { TrendingService, type TrendingTopicPublic } from "@/client"
+import type { TrendingTopicPublic } from "@/client"
 import { Button } from "@/components/ui/button"
-import useCustomToast from "@/hooks/useCustomToast"
-import { draftingStore } from "@/hooks/useDraftingStore"
-import { formatRelativeTime, handleError } from "@/utils"
+import { formatRelativeTime } from "@/utils"
 
 export type TrendingTopic = TrendingTopicPublic
 
@@ -174,70 +172,28 @@ export function TrendingTopics({
   lastScrapedAt,
   onTopicDraft,
 }: TrendingTopicsProps) {
-  const queryClient = useQueryClient()
-  const { showSuccessToast, showErrorToast, showInfoToast } = useCustomToast()
-  const [draftingTopicId, setDraftingTopicId] = React.useState<string | null>(
-    null,
-  )
+  const navigate = useNavigate()
 
-  const extractMutation = useMutation({
-    mutationFn: async () =>
-      TrendingService.extractTrendingTopics({ maxTopics: 3 }),
-    onSuccess: (res) => {
-      showSuccessToast(
-        res.count > 0
-          ? `Successfully refreshed ${res.count} trending topics from X!`
-          : "Checked X: No new trending topics found.",
-      )
-      queryClient.setQueryData(["trending"], res)
-      queryClient.invalidateQueries({ queryKey: ["trending"] })
-    },
-    onError: handleError.bind(showErrorToast),
-  })
-
-  const draftMutation = useMutation({
-    mutationFn: async ({
-      topicId,
-    }: {
-      topicId: string
-      topicTitle: string
-    }) => {
-      setDraftingTopicId(topicId)
-      return TrendingService.draftFromTrendingTopic({ topicId })
-    },
-    onSuccess: (_, variables) => {
-      draftingStore.removeDraft(`trend-${variables.topicId}`)
-      showSuccessToast(
-        `Draft created from trending topic: "${variables.topicTitle}"`,
-      )
-      queryClient.invalidateQueries({ queryKey: ["posts"] })
-    },
-    onError: (err, variables) => {
-      draftingStore.removeDraft(`trend-${variables.topicId}`)
-      handleError.call(showErrorToast, err as any)
-    },
-    onSettled: () => {
-      setDraftingTopicId(null)
-    },
-  })
+  const handleRefresh = () => {
+    navigate({
+      to: "/ai",
+      search: {
+        prompt: "Refresh trending topics from X",
+        autoRun: true,
+      },
+    })
+  }
 
   const handleDraftClick = (topic: TrendingTopicPublic) => {
     if (onTopicDraft) {
       onTopicDraft(topic.topic_title)
     } else {
-      draftingStore.addDraft({
-        id: `trend-${topic.id}`,
-        prompt: topic.topic_title,
-        platform: "both",
-        startedAt: new Date(),
-      })
-      showInfoToast(
-        `Drafting post from "${topic.topic_title}" in background...`,
-        "Drafting...",
-      )
-      draftMutation.mutate({
-        topicId: topic.id,
-        topicTitle: topic.topic_title,
+      navigate({
+        to: "/ai",
+        search: {
+          prompt: `Draft an engaging post about: "${topic.topic_title}"`,
+          autoRun: true,
+        },
       })
     }
   }
@@ -252,22 +208,19 @@ export function TrendingTopics({
       <TrendingHeader
         title={title}
         relativeTime={relativeTime}
-        isPending={extractMutation.isPending}
-        onRefresh={() => extractMutation.mutate()}
+        isPending={false}
+        onRefresh={handleRefresh}
       />
 
       {topics.length === 0 ? (
-        <TrendingEmptyState
-          isPending={extractMutation.isPending}
-          onRefresh={() => extractMutation.mutate()}
-        />
+        <TrendingEmptyState isPending={false} onRefresh={handleRefresh} />
       ) : (
         <div className="w-full divide-y divide-border/30">
           {topics.slice(0, 3).map((topic) => (
             <TrendingTopicRow
               key={topic.id}
               topic={topic}
-              isDrafting={draftingTopicId === topic.id}
+              isDrafting={false}
               onDraft={() => handleDraftClick(topic)}
             />
           ))}
