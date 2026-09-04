@@ -52,6 +52,20 @@ class TestRateLimitsAndBotChallenges:
         assert state_locked == "rate_limited"
 
     @pytest.mark.anyio
+    async def test_detect_page_state_ignores_hidden_error_banners(self) -> None:
+        """Attack Vector 2A-b: Hidden/unrendered error banners in SPA bundle do not trigger rate_limited."""
+        page_hidden = AsyncMock(url="https://x.com/home")
+
+        def loc_hidden(selector: str) -> Any:
+            if selector == "text=Something went wrong":
+                return build_mock_locator(count=1, is_visible=False)
+            return build_mock_locator(count=0)
+
+        page_hidden.locator = MagicMock(side_effect=loc_hidden)
+        state = await detect_page_state(page_hidden)
+        assert state == "ok"
+
+    @pytest.mark.anyio
     async def test_detect_page_state_captcha_sizing_heuristics(self) -> None:
         """Attack Vector 2B: Differentiates tracking iframes vs visible CAPTCHA walls."""
         page_tracking = AsyncMock(url="https://x.com/home")

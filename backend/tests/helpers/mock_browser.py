@@ -9,14 +9,15 @@ from unittest.mock import AsyncMock, MagicMock
 def build_mock_locator(
     *,
     count: int = 0,
-    is_visible: bool = False,
+    is_visible: bool | None = None,
     inner_text: str = "",
     all_items: list[Any] | None = None,
 ) -> MagicMock:
     """Helper to construct Playwright-like async locators with <= 4 arguments."""
+    resolved_visible = (count > 0) if is_visible is None else is_visible
     loc = MagicMock()
     loc.count = AsyncMock(return_value=count)
-    loc.is_visible = AsyncMock(return_value=is_visible)
+    loc.is_visible = AsyncMock(return_value=resolved_visible)
     loc.inner_text = AsyncMock(return_value=inner_text)
     loc.first = loc
     loc.nth = MagicMock(return_value=loc)
