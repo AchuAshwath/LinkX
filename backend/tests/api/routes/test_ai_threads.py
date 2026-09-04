@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessageChunk
 from sqlmodel import Session, select
 
+from app.api.routes.ai_threads import EXCLUDED_MODELS
 from app.core.config import settings
 from app.models import Post, User
 from tests.utils.chat_thread import create_random_chat_thread
@@ -232,6 +233,10 @@ def test_chat_stream_returns_sse_and_persists(
 
     with (
         patch(
+            "app.services.agentic.agent_supervisor.build_copilot_agent",
+            side_effect=RuntimeError("copilot agent disabled for unit fallback test"),
+        ),
+        patch(
             "app.services.ai_completion_client.stream_direct_openai_proxy",
             side_effect=ConnectionError("proxy down"),
         ),
@@ -284,7 +289,7 @@ def test_list_ai_models(
     expected_default = settings.AI_MODEL.removeprefix("openai/")
     assert data["default_model"] == expected_default
     assert any(m["id"] == expected_default for m in data["data"])
-    assert not any("gemini" in m["id"].lower() for m in data["data"])
+    assert not any(m["id"] in EXCLUDED_MODELS for m in data["data"])
 
 
 def test_chat_stream_with_multimodal_images_persists(
@@ -305,6 +310,10 @@ def test_chat_stream_with_multimodal_images_persists(
     tid = t["id"]
 
     with (
+        patch(
+            "app.services.agentic.agent_supervisor.build_copilot_agent",
+            side_effect=RuntimeError("copilot agent disabled for unit fallback test"),
+        ),
         patch(
             "app.services.ai_completion_client.stream_direct_openai_proxy",
             side_effect=ConnectionError("proxy down"),

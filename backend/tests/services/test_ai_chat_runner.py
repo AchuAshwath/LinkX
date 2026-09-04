@@ -78,6 +78,42 @@ def test_build_message_history_multi_turn() -> None:
     assert messages[3].content == "Make it shorter"
 
 
+def test_build_message_history_preserves_draft_artifact_and_post_id() -> None:
+    transcript = {
+        "messages": [
+            {
+                "role": "user",
+                "parts": [{"type": "text", "text": "Draft a post about LinkX"}],
+            },
+            {
+                "role": "assistant",
+                "parts": [
+                    {
+                        "type": "draft_artifact",
+                        "artifact": {
+                            "id": "post-uuid-1234",
+                            "postId": "post-uuid-1234",
+                            "content": "Why LinkX is the best tool for founders",
+                            "platform": "x",
+                        },
+                    },
+                    {"type": "text", "text": "I've drafted and saved the post above."},
+                ],
+            },
+        ]
+    }
+    messages = _build_message_history(
+        transcript=transcript,
+        current_message="no make this more contreversial - this post",
+    )
+    assert len(messages) == 4
+    ai_msg = messages[2]
+    assert isinstance(ai_msg, AIMessage)
+    assert "post-uuid-1234" in str(ai_msg.content)
+    assert "Why LinkX is the best tool for founders" in str(ai_msg.content)
+    assert "I've drafted and saved the post above." in str(ai_msg.content)
+
+
 def test_build_message_history_truncates_window() -> None:
     # 50 existing turns -> should truncate to max 10 + 1 system
     long_messages = [
@@ -210,7 +246,8 @@ async def test_generate_ai_thread_title_success() -> None:
 
 
 def test_build_message_history_with_images() -> None:
-    images = ["data:image/png;base64,abc123", "https://example.com/photo.jpg"]
+    valid_png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+    images = [valid_png, "https://example.com/photo.jpg"]
     messages = _build_message_history(
         transcript=None,
         current_message="Check these charts",
@@ -224,7 +261,7 @@ def test_build_message_history_with_images() -> None:
     assert last_msg.content[0] == {"type": "text", "text": "Check these charts"}
     assert last_msg.content[1] == {
         "type": "image_url",
-        "image_url": {"url": "data:image/png;base64,abc123"},
+        "image_url": {"url": valid_png},
     }
     assert last_msg.content[2] == {
         "type": "image_url",

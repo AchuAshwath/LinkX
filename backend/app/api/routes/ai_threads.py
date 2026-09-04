@@ -1,3 +1,4 @@
+import copy
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
@@ -30,6 +31,7 @@ from app.services.ai_chat_runner import (
     format_sse,
     generate_ai_thread_title,
 )
+from app.services.ai_image_utils import sanitize_image_urls as _clean_image_urls
 
 router = APIRouter(prefix="/ai/threads", tags=["ai-threads"])
 
@@ -69,31 +71,87 @@ def _handle_thought_part(
 
 
 def _handle_tool_part(
+    *,
     event_name: str,
     payload: dict[str, Any],
     assistant_parts: list[dict[str, Any]],
 ) -> None:
-    part: dict[str, Any] = {
-        "type": "tool_call",
-        "name": payload.get("name"),
+    tool_id = str(payload.get("id") or f"call_{uuid.uuid4().hex[:8]}")
+    tool_name = str(payload.get("name") or "tool")
+
+    if event_name == "tool_output":
+        for part in reversed(assistant_parts):
+            if part.get("type") in ("tool_call", "tool-call") and (
+                part.get("toolCallId") == tool_id
+                or part.get("name") == tool_name
+                or (part.get("tool") and part["tool"].get("name") == tool_name)
+            ):
+                part["state"] = "completed"
+                if "output" in payload:
+                    part["output"] = payload["output"]
+                if "tool" in part and isinstance(part["tool"], dict):
+                    part["tool"]["state"] = "completed"
+                    part["tool"]["output"] = payload.get("output")
+                return
+
+    tool_item: dict[str, Any] = {
+        "id": tool_id,
+        "name": tool_name,
         "state": "running" if event_name == "tool_start" else "completed",
     }
     if "input" in payload:
-        part["input"] = payload["input"]
+        tool_item["input"] = payload["input"]
     if "output" in payload:
-        part["output"] = payload["output"]
-    assistant_parts.append(part)
+        tool_item["output"] = payload["output"]
+
+    assistant_parts.append(
+        {
+            "type": "tool-call",
+            "toolCallId": tool_id,
+            "name": tool_name,
+            "state": tool_item["state"],
+            "tool": tool_item,
+        }
+    )
 
 
 def _handle_draft_part(
-    payload: dict[str, Any], assistant_parts: list[dict[str, Any]]
+    *, payload: dict[str, Any], assistant_parts: list[dict[str, Any]]
 ) -> None:
+    content = str(payload.get("content", ""))
+    post_id = str(payload.get("post_id", ""))
+    platform = str(payload.get("platform", "x"))
+    status = str(payload.get("status", "draft"))
+
     assistant_parts.append(
         {
             "type": "draft_artifact",
-            "post_id": payload.get("post_id"),
-            "content": payload.get("content"),
-            "platform": payload.get("platform"),
+            "artifact": {
+                "id": post_id,
+                "postId": post_id,
+                "content": content,
+                "platform": platform,
+                "characterCount": payload.get("char_count") or len(content),
+                "status": status,
+            },
+            "post_id": post_id,
+            "content": content,
+            "platform": platform,
+        }
+    )
+
+
+def _handle_trending_part(
+    *, payload: dict[str, Any], assistant_parts: list[dict[str, Any]]
+) -> None:
+    topics = payload.get("topics", [])
+    assistant_parts.append(
+        {
+            "type": "trending_artifact",
+            "artifact": {
+                "topics": topics,
+                "count": payload.get("count", len(topics)),
+            },
         }
     )
 
@@ -110,9 +168,15 @@ def _collect_stream_part(
     if event_name == "thought":
         _handle_thought_part(payload, assistant_parts)
     elif event_name in {"tool_start", "tool_output"}:
-        _handle_tool_part(event_name, payload, assistant_parts)
+        _handle_tool_part(
+            event_name=event_name,
+            payload=payload,
+            assistant_parts=assistant_parts,
+        )
     elif event_name == "draft_artifact":
-        _handle_draft_part(payload, assistant_parts)
+        _handle_draft_part(payload=payload, assistant_parts=assistant_parts)
+    elif event_name == "trending_artifact":
+        _handle_trending_part(payload=payload, assistant_parts=assistant_parts)
     return ""
 
 
@@ -162,14 +226,14 @@ def _build_fallback_models(default_model_id: str) -> list[AIModelInfo]:
     return result
 
 
-def _is_allowed_proxy_model(item: dict[str, Any]) -> bool:
+def _is_allowed_proxy_model(item: dict[str, Any], default_model_id: str) -> bool:
     raw_id = item.get("id")
     if not raw_id:
         return False
     model_id = str(raw_id)
+    if model_id == default_model_id:
+        return True
     if model_id in EXCLUDED_MODELS:
-        return False
-    if model_id.lower().startswith("gemini"):
         return False
     return str(item.get("owned_by", "")).lower() != "antigravity"
 
@@ -194,18 +258,37 @@ def _fetch_models_from_proxy(default_model_id: str) -> list[AIModelInfo]:
                 is_default=(str(item["id"]) == default_model_id),
             )
             for item in items
-            if _is_allowed_proxy_model(item)
+            if _is_allowed_proxy_model(item, default_model_id)
         ]
+
+
+def _ensure_default_model(
+    models: list[AIModelInfo], default_model_id: str
+) -> list[AIModelInfo]:
+    if any(m.id == default_model_id for m in models):
+        return models
+    return [
+        AIModelInfo(
+            id=default_model_id,
+            name=FRIENDLY_MODEL_NAMES.get(default_model_id, default_model_id),
+            provider="OpenAI",
+            is_default=True,
+        ),
+        *models,
+    ]
 
 
 @router.get("/models", response_model=AIModelsPublic)
 def list_ai_models() -> Any:
     """List available AI models from the proxy/backend with friendly labels."""
     default_model_id = settings.AI_MODEL.removeprefix("openai/")
+    if default_model_id.startswith("gemini"):
+        default_model_id = "gpt-5.4"
     try:
         models = _fetch_models_from_proxy(default_model_id)
         if models:
-            return AIModelsPublic(data=models, default_model=default_model_id)
+            resolved = _ensure_default_model(models, default_model_id)
+            return AIModelsPublic(data=resolved, default_model=default_model_id)
     except Exception:
         pass
     fallback = _build_fallback_models(default_model_id)
@@ -338,21 +421,9 @@ async def _save_assistant_turn(
             pass
 
 
-VALID_IMAGE_SCHEMES = ("data:image/", "http://", "https://")
-
-
-def _is_valid_image_url(url: Any) -> bool:
-    if not isinstance(url, str):
-        return False
-    trimmed = url.strip()
-    return any(trimmed.startswith(scheme) for scheme in VALID_IMAGE_SCHEMES)
-
-
 def _sanitize_image_urls(images: list[str] | None) -> list[str]:
-    """Filter and sanitize valid image data URLs or HTTP/HTTPS image links."""
-    if not images:
-        return []
-    return [img.strip() for img in images if _is_valid_image_url(img)]
+    """Filter, sanitize, and convert valid image data URLs or HTTP/HTTPS image links."""
+    return _clean_image_urls(images=images)
 
 
 def _build_user_message_dict(
@@ -397,17 +468,26 @@ async def chat_stream(
     )
 
     effective_prompt = message_text or "Analyze the attached image(s)"
+    user_id_str = str(current_user.id)
+    transcript_copy = copy.deepcopy(thread.transcript)
 
     async def event_generator() -> AsyncGenerator[str, None]:
         accumulated_text = ""
         assistant_parts: list[dict[str, Any]] = []
 
+        target_model = body.model
+        if target_model and target_model.startswith("gemini"):
+            target_model = "gpt-5.4"
+
         try:
             async for event_name, payload in default_chat_stream_runner(
                 message=effective_prompt,
-                transcript=thread.transcript,
-                model=body.model,
+                transcript=transcript_copy,
+                model=target_model,
                 images=clean_images or None,
+                user_id=user_id_str,
+                session=session,
+                thread_id=str(thread.id),
             ):
                 delta = _collect_stream_part(
                     event_name=event_name,
@@ -415,6 +495,19 @@ async def chat_stream(
                     assistant_parts=assistant_parts,
                 )
                 accumulated_text += delta
+                if event_name == "draft_artifact" and isinstance(payload, dict):
+                    post_id_val = (
+                        payload.get("post_id")
+                        or payload.get("postId")
+                        or payload.get("id")
+                    )
+                    if post_id_val:
+                        try:
+                            thread.post_id = uuid.UUID(str(post_id_val))
+                            session.add(thread)
+                            session.commit()
+                        except Exception:
+                            pass
                 yield format_sse(event=event_name, data=payload)
 
             await _save_assistant_turn(
