@@ -13,6 +13,38 @@ import {
   useChatTurnSender,
 } from "@/hooks/useChatTurnSender"
 
+function shouldSkipTranscriptSync({
+  activeThreadId,
+  streamingThreadId,
+  queuedThreadIds,
+}: {
+  activeThreadId: string | null
+  streamingThreadId: string | null
+  queuedThreadIds: string[]
+}): boolean {
+  if (!activeThreadId) return true
+  if (activeThreadId === streamingThreadId) return true
+  return queuedThreadIds.includes(activeThreadId)
+}
+
+function resolveMergedTranscriptMessages({
+  current,
+  transcriptMessages,
+}: {
+  current: ChatUIMessage[]
+  transcriptMessages: ChatUIMessage[]
+}): ChatUIMessage[] {
+  const hasOptimistic = current.some(
+    (m) => m.id.startsWith("local_") || m.status === "queued",
+  )
+  if (hasOptimistic && transcriptMessages.length === 0) {
+    return current
+  }
+  return transcriptMessages.length >= current.length
+    ? transcriptMessages
+    : current
+}
+
 function useThreadTranscript({
   activeThreadId,
   streamingThreadId,
@@ -33,9 +65,15 @@ function useThreadTranscript({
   })
 
   React.useEffect(() => {
-    if (!activeThreadId) return
-    if (activeThreadId === streamingThreadId) return
-    if (queuedThreadIds.includes(activeThreadId)) return
+    if (
+      shouldSkipTranscriptSync({
+        activeThreadId,
+        streamingThreadId,
+        queuedThreadIds,
+      })
+    ) {
+      return
+    }
 
     const transcriptMessages =
       (activeThreadDetail?.transcript as { messages?: ChatUIMessage[] })
@@ -43,22 +81,13 @@ function useThreadTranscript({
 
     if (!transcriptMessages) return
 
-    setMessagesByThread((prev) => {
-      const current = prev[activeThreadId] ?? []
-      const hasOptimistic = current.some(
-        (m) => m.id.startsWith("local_") || m.status === "queued",
-      )
-      if (hasOptimistic && transcriptMessages.length === 0) {
-        return prev
-      }
-      return {
-        ...prev,
-        [activeThreadId]:
-          transcriptMessages.length >= current.length
-            ? transcriptMessages
-            : current,
-      }
-    })
+    setMessagesByThread((prev) => ({
+      ...prev,
+      [activeThreadId!]: resolveMergedTranscriptMessages({
+        current: prev[activeThreadId!] ?? [],
+        transcriptMessages,
+      }),
+    }))
   }, [
     activeThreadDetail,
     activeThreadId,
@@ -129,52 +158,39 @@ function useCreateThreadMutation(
   })
 }
 
-export function useAIChatFeedState({
-  threads,
-  selectedModelId,
-  initialThreadId,
+function filterOutCancelledTurnMessages(
+  msgs: ChatUIMessage[],
+  cancelled: QueuedTurn[],
+): ChatUIMessage[] {
+  const cancelledAssistantIds = new Set(cancelled.map((c) => c.assistantMsgId))
+  const cancelledPrompts = new Set(cancelled.map((c) => c.promptText))
+  return msgs.filter((m) => {
+    if (cancelledAssistantIds.has(m.id)) return false
+    if (m.role === "user") {
+      const matchesPrompt = m.parts.some(
+        (p) => p.type === "text" && cancelledPrompts.has(p.text),
+      )
+      if (matchesPrompt) return false
+    }
+    return true
+  })
+}
+
+function useTurnQueue({
+  setThreadDraft,
+  setMessagesByThread,
 }: {
-  threads: ChatThreadPublic[]
-  selectedModelId: string
-  initialThreadId?: string
+  setThreadDraft: (threadId: string | null, text: string) => void
+  setMessagesByThread: React.Dispatch<
+    React.SetStateAction<Record<string, ChatUIMessage[]>>
+  >
 }) {
-  const queryClient = useQueryClient()
-  const {
-    isStreaming,
-    streamingThreadId,
-    startStream,
-    stop: stopStream,
-  } = useAIChatStream()
-  const { threadDrafts, setThreadDraft, clearThreadDraft } = useThreadDrafts()
-
-  const [activeThreadId, setActiveThreadId] = React.useState<string | null>(
-    initialThreadId ?? null,
-  )
-  const [messagesByThread, setMessagesByThread] = React.useState<
-    Record<string, ChatUIMessage[]>
-  >({})
-  const [pendingQuestion, setPendingQuestion] =
-    React.useState<AskUserToolPart | null>(null)
-
   const turnQueueRef = React.useRef<QueuedTurn[]>([])
   const [turnQueue, setTurnQueue] = React.useState<QueuedTurn[]>([])
-  const isProcessingQueueRef = React.useRef(false)
 
   const queuedThreadIds = React.useMemo(
     () => turnQueue.map((t) => t.threadId),
     [turnQueue],
-  )
-
-  const isThreadStreaming = React.useCallback(
-    (threadId: string | null) =>
-      Boolean(threadId && streamingThreadId === threadId),
-    [streamingThreadId],
-  )
-
-  const isThreadQueued = React.useCallback(
-    (threadId: string | null) =>
-      Boolean(threadId && queuedThreadIds.includes(threadId)),
-    [queuedThreadIds],
   )
 
   const enqueueTurn = React.useCallback((turn: QueuedTurn) => {
@@ -199,50 +215,85 @@ export function useAIChatFeedState({
       )
       setTurnQueue(turnQueueRef.current)
 
-      // Restore prompt text to draft if available
       if (cancelled.length > 0 && cancelled[0].promptText) {
         setThreadDraft(threadId, cancelled[0].promptText)
       }
 
       setMessagesByThread((prev) => {
         const msgs = prev[threadId] ?? []
-        const cancelledAssistantIds = new Set(
-          cancelled.map((c) => c.assistantMsgId),
-        )
-        const cancelledPrompts = new Set(cancelled.map((c) => c.promptText))
-        const filtered = msgs.filter((m) => {
-          if (cancelledAssistantIds.has(m.id)) return false
-          if (
-            m.role === "user" &&
-            m.parts.some(
-              (p) => p.type === "text" && cancelledPrompts.has(p.text),
-            )
-          ) {
-            return false
-          }
-          return true
-        })
-        return { ...prev, [threadId]: filtered }
+        return {
+          ...prev,
+          [threadId]: filterOutCancelledTurnMessages(msgs, cancelled),
+        }
       })
     },
-    [setThreadDraft],
+    [setThreadDraft, setMessagesByThread],
   )
 
-  const handleThreadDeleted = React.useCallback(
-    (deletedId: string) => {
-      if (streamingThreadId === deletedId) {
-        stopStream(deletedId)
-      }
-      cancelQueuedTurn(deletedId)
-      setMessagesByThread((prev) => {
-        if (!(deletedId in prev)) return prev
-        const copy = { ...prev }
-        delete copy[deletedId]
-        return copy
-      })
-    },
-    [streamingThreadId, stopStream, cancelQueuedTurn],
-  )
+  return {
+    turnQueue,
+    turnQueueRef,
+    queuedThreadIds,
+    enqueueTurn,
+    dequeueTurn,
+    cancelQueuedTurn,
+  }
+}
+
+function executeStopAction({
+  activeThreadId,
+  streamingThreadId,
+  queuedThreadIds,
+  stopStream,
+  cancelQueuedTurn,
+}: {
+  activeThreadId: string | null
+  streamingThreadId: string | null
+  queuedThreadIds: string[]
+  stopStream: (id?: string) => void
+  cancelQueuedTurn: (id: string) => void
+}) {
+  if (!activeThreadId) {
+    stopStream()
+    return
+  }
+  if (activeThreadId === streamingThreadId) {
+    stopStream(activeThreadId)
+    return
+  }
+  if (queuedThreadIds.includes(activeThreadId)) {
+    cancelQueuedTurn(activeThreadId)
+    return
+  }
+  stopStream()
+}
+
+function removeThreadMessages(
+  prev: Record<string, ChatUIMessage[]>,
+  deletedId: string,
+): Record<string, ChatUIMessage[]> {
+  if (!(deletedId in prev)) return prev
+  const copy = { ...prev }
+  delete copy[deletedId]
+  return copy
+}
+
+function useQueueProcessor({
+  turnQueueRef,
+  dequeueTurn,
+  setMessagesByThread,
+  queryClient,
+  startStream,
+}: {
+  turnQueueRef: React.MutableRefObject<QueuedTurn[]>
+  dequeueTurn: () => QueuedTurn | undefined
+  setMessagesByThread: React.Dispatch<
+    React.SetStateAction<Record<string, ChatUIMessage[]>>
+  >
+  queryClient: ReturnType<typeof useQueryClient>
+  startStream: ReturnType<typeof useAIChatStream>["startStream"]
+}) {
+  const isProcessingQueueRef = React.useRef(false)
 
   const processQueue = React.useCallback(async () => {
     if (isProcessingQueueRef.current) return
@@ -293,34 +344,120 @@ export function useAIChatFeedState({
         }, 0)
       }
     }
-  }, [dequeueTurn, queryClient, startStream])
+  }, [dequeueTurn, queryClient, startStream, turnQueueRef, setMessagesByThread])
 
-  useInitialActiveThread(threads, initialThreadId, setActiveThreadId)
-  useThreadTranscript({
-    activeThreadId,
-    streamingThreadId,
-    queuedThreadIds,
-    setMessagesByThread,
-  })
+  return processQueue
+}
 
-  const createThreadMutation = useCreateThreadMutation(
-    queryClient,
-    setActiveThreadId,
+function useActiveThreadMessages({
+  activeThreadId,
+  messagesByThread,
+  setMessagesByThread,
+}: {
+  activeThreadId: string | null
+  messagesByThread: Record<string, ChatUIMessage[]>
+  setMessagesByThread: React.Dispatch<
+    React.SetStateAction<Record<string, ChatUIMessage[]>>
+  >
+}) {
+  const activeKey = activeThreadId ?? "new-chat"
+  const localMessages = messagesByThread[activeKey] ?? []
+
+  const setLocalMessages = React.useCallback(
+    (updater: React.SetStateAction<ChatUIMessage[]>) => {
+      const key = activeThreadId ?? "new-chat"
+      setMessagesByThread((prev) => {
+        const current = prev[key] ?? []
+        const updated =
+          typeof updater === "function" ? updater(current) : updater
+        return { ...prev, [key]: updated }
+      })
+    },
+    [activeThreadId, setMessagesByThread],
   )
 
-  const handleSendMessage = useChatTurnSender({
+  return { localMessages, setLocalMessages }
+}
+
+function useThreadStreamingStatus({
+  streamingThreadId,
+  queuedThreadIds,
+}: {
+  streamingThreadId: string | null
+  queuedThreadIds: string[]
+}) {
+  const isThreadStreaming = React.useCallback(
+    (threadId: string | null) =>
+      Boolean(threadId && streamingThreadId === threadId),
+    [streamingThreadId],
+  )
+
+  const isThreadQueued = React.useCallback(
+    (threadId: string | null) =>
+      Boolean(threadId && queuedThreadIds.includes(threadId)),
+    [queuedThreadIds],
+  )
+
+  return { isThreadStreaming, isThreadQueued }
+}
+
+function useChatFeedCore(initialThreadId?: string) {
+  const queryClient = useQueryClient()
+  const streamState = useAIChatStream()
+  const draftState = useThreadDrafts()
+  const [activeThreadId, setActiveThreadId] = React.useState<string | null>(
+    initialThreadId ?? null,
+  )
+  const [messagesByThread, setMessagesByThread] = React.useState<
+    Record<string, ChatUIMessage[]>
+  >({})
+  const [pendingQuestion, setPendingQuestion] =
+    React.useState<AskUserToolPart | null>(null)
+
+  return {
+    queryClient,
+    streamState,
+    draftState,
     activeThreadId,
-    selectedModelId,
-    isStreaming,
-    streamingThreadId,
+    setActiveThreadId,
+    messagesByThread,
+    setMessagesByThread,
+    pendingQuestion,
+    setPendingQuestion,
+  }
+}
+
+type ChatFeedCore = ReturnType<typeof useChatFeedCore>
+type TurnQueueState = ReturnType<typeof useTurnQueue>
+
+function useThreadActions({
+  core,
+  queueState,
+  handleSendMessage,
+}: {
+  core: ChatFeedCore
+  queueState: TurnQueueState
+  handleSendMessage: (text: string, attachedImages?: File[]) => Promise<void>
+}) {
+  const { streamingThreadId, stop: stopStream } = core.streamState
+  const {
+    activeThreadId,
     setActiveThreadId,
     setMessagesByThread,
     setPendingQuestion,
-    clearThreadDraft,
-    createThreadMutation,
-    enqueueTurn,
-    processQueue,
-  })
+  } = core
+  const { queuedThreadIds, cancelQueuedTurn } = queueState
+
+  const handleThreadDeleted = React.useCallback(
+    (deletedId: string) => {
+      if (streamingThreadId === deletedId) {
+        stopStream(deletedId)
+      }
+      cancelQueuedTurn(deletedId)
+      setMessagesByThread((prev) => removeThreadMessages(prev, deletedId))
+    },
+    [streamingThreadId, stopStream, cancelQueuedTurn, setMessagesByThread],
+  )
 
   const handleQuestionAnswer = React.useCallback(
     (_toolCallId: string, answers: AskUserAnswer[]) => {
@@ -339,20 +476,16 @@ export function useAIChatFeedState({
     setActiveThreadId(null)
     setMessagesByThread((prev) => ({ ...prev, "new-chat": [] }))
     setPendingQuestion(null)
-  }, [])
+  }, [setActiveThreadId, setMessagesByThread, setPendingQuestion])
 
   const handleStop = React.useCallback(() => {
-    if (!activeThreadId) {
-      stopStream()
-      return
-    }
-    if (activeThreadId === streamingThreadId) {
-      stopStream(activeThreadId)
-    } else if (queuedThreadIds.includes(activeThreadId)) {
-      cancelQueuedTurn(activeThreadId)
-    } else {
-      stopStream()
-    }
+    executeStopAction({
+      activeThreadId,
+      streamingThreadId,
+      queuedThreadIds,
+      stopStream,
+      cancelQueuedTurn,
+    })
   }, [
     activeThreadId,
     cancelQueuedTurn,
@@ -361,44 +494,146 @@ export function useAIChatFeedState({
     streamingThreadId,
   ])
 
-  const activeKey = activeThreadId ?? "new-chat"
-  const localMessages = messagesByThread[activeKey] ?? []
-
-  const setLocalMessages = React.useCallback(
-    (updater: React.SetStateAction<ChatUIMessage[]>) => {
-      const key = activeThreadId ?? "new-chat"
-      setMessagesByThread((prev) => {
-        const current = prev[key] ?? []
-        const updated =
-          typeof updater === "function" ? updater(current) : updater
-        return { ...prev, [key]: updated }
-      })
-    },
-    [activeThreadId],
-  )
-
   return {
-    activeThreadId,
-    setActiveThreadId,
-    localMessages,
-    setLocalMessages,
-    messagesByThread,
-    setMessagesByThread,
-    pendingQuestion,
-    threadDrafts,
-    setThreadDraft,
-    clearThreadDraft,
-    isStreaming,
-    streamingThreadId,
-    queuedThreadIds,
-    isThreadStreaming,
-    isThreadQueued,
-    turnQueue,
-    cancelQueuedTurn,
     handleThreadDeleted,
-    stopStream: handleStop,
-    handleSendMessage,
     handleQuestionAnswer,
     handleNewChat,
+    handleStop,
   }
+}
+
+function useChatEngine({
+  threads,
+  initialThreadId,
+  selectedModelId,
+  core,
+  queueState,
+}: {
+  threads: ChatThreadPublic[]
+  initialThreadId?: string
+  selectedModelId: string
+  core: ChatFeedCore
+  queueState: TurnQueueState
+}) {
+  const processQueue = useQueueProcessor({
+    turnQueueRef: queueState.turnQueueRef,
+    dequeueTurn: queueState.dequeueTurn,
+    setMessagesByThread: core.setMessagesByThread,
+    queryClient: core.queryClient,
+    startStream: core.streamState.startStream,
+  })
+
+  useInitialActiveThread(threads, initialThreadId, core.setActiveThreadId)
+  useThreadTranscript({
+    activeThreadId: core.activeThreadId,
+    streamingThreadId: core.streamState.streamingThreadId,
+    queuedThreadIds: queueState.queuedThreadIds,
+    setMessagesByThread: core.setMessagesByThread,
+  })
+
+  const createThreadMutation = useCreateThreadMutation(
+    core.queryClient,
+    core.setActiveThreadId,
+  )
+
+  const handleSendMessage = useChatTurnSender({
+    activeThreadId: core.activeThreadId,
+    selectedModelId,
+    isStreaming: core.streamState.isStreaming,
+    streamingThreadId: core.streamState.streamingThreadId,
+    setActiveThreadId: core.setActiveThreadId,
+    setMessagesByThread: core.setMessagesByThread,
+    setPendingQuestion: core.setPendingQuestion,
+    clearThreadDraft: core.draftState.clearThreadDraft,
+    createThreadMutation,
+    enqueueTurn: queueState.enqueueTurn,
+    processQueue,
+  })
+
+  return { handleSendMessage }
+}
+
+function assembleFeedState({
+  core,
+  queueState,
+  streamingStatus,
+  threadActions,
+  activeMessages,
+  handleSendMessage,
+}: {
+  core: ChatFeedCore
+  queueState: TurnQueueState
+  streamingStatus: ReturnType<typeof useThreadStreamingStatus>
+  threadActions: ReturnType<typeof useThreadActions>
+  activeMessages: ReturnType<typeof useActiveThreadMessages>
+  handleSendMessage: (text: string, attachedImages?: File[]) => Promise<void>
+}) {
+  return {
+    activeThreadId: core.activeThreadId,
+    setActiveThreadId: core.setActiveThreadId,
+    localMessages: activeMessages.localMessages,
+    setLocalMessages: activeMessages.setLocalMessages,
+    messagesByThread: core.messagesByThread,
+    setMessagesByThread: core.setMessagesByThread,
+    pendingQuestion: core.pendingQuestion,
+    threadDrafts: core.draftState.threadDrafts,
+    setThreadDraft: core.draftState.setThreadDraft,
+    clearThreadDraft: core.draftState.clearThreadDraft,
+    isStreaming: core.streamState.isStreaming,
+    streamingThreadId: core.streamState.streamingThreadId,
+    queuedThreadIds: queueState.queuedThreadIds,
+    isThreadStreaming: streamingStatus.isThreadStreaming,
+    isThreadQueued: streamingStatus.isThreadQueued,
+    turnQueue: queueState.turnQueue,
+    cancelQueuedTurn: queueState.cancelQueuedTurn,
+    handleThreadDeleted: threadActions.handleThreadDeleted,
+    stopStream: threadActions.handleStop,
+    handleSendMessage,
+    handleQuestionAnswer: threadActions.handleQuestionAnswer,
+    handleNewChat: threadActions.handleNewChat,
+  }
+}
+
+export interface UseAIChatFeedStateProps {
+  threads: ChatThreadPublic[]
+  selectedModelId: string
+  initialThreadId?: string
+}
+
+export function useAIChatFeedState(options: UseAIChatFeedStateProps) {
+  const core = useChatFeedCore(options.initialThreadId)
+  const queueState = useTurnQueue({
+    setThreadDraft: core.draftState.setThreadDraft,
+    setMessagesByThread: core.setMessagesByThread,
+  })
+  const streamingStatus = useThreadStreamingStatus({
+    streamingThreadId: core.streamState.streamingThreadId,
+    queuedThreadIds: queueState.queuedThreadIds,
+  })
+  const { handleSendMessage } = useChatEngine({
+    threads: options.threads,
+    initialThreadId: options.initialThreadId,
+    selectedModelId: options.selectedModelId,
+    core,
+    queueState,
+  })
+  const threadActions = useThreadActions({
+    core,
+    queueState,
+    handleSendMessage,
+  })
+  const activeMessages = useActiveThreadMessages({
+    activeThreadId: core.activeThreadId,
+    messagesByThread: core.messagesByThread,
+    setMessagesByThread: core.setMessagesByThread,
+  })
+
+  return assembleFeedState({
+    core,
+    queueState,
+    streamingStatus,
+    threadActions,
+    activeMessages,
+    handleSendMessage,
+  })
 }

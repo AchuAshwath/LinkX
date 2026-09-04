@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -17,7 +18,7 @@ from langgraph.prebuilt import create_react_agent
 from sqlmodel import Session, col, select
 
 from app import crud
-from app.models import ChatThread, Post, PostUpdate
+from app.models import ChatThread, Post, PostPublic, PostUpdate
 from app.services.agentic.client import get_chat_model
 from app.services.agentic.tools.context_tools import (
     get_recent_post_history as raw_get_recent_post_history,
@@ -103,39 +104,111 @@ Be helpful, concise, engaging, and decisive. Execute tools autonomously whenever
 """
 
 
-def build_copilot_tools(
-    *,
-    user_id: str,
-    session: Session,
-    thread_id: str | None = None,
-) -> list[BaseTool]:
-    """Construct context-bound tools for the authenticated user and database session."""
+@dataclass(frozen=True)
+class CopilotContext:
+    user_id: str
+    session: Session
+    thread_id: str | None = None
+
+    @property
+    def user_uuid(self) -> uuid.UUID | None:
+        try:
+            return uuid.UUID(self.user_id)
+        except (ValueError, TypeError):
+            return None
+
+
+def _resolve_by_post_id(*, ctx: CopilotContext, post_id: str) -> Post | None:
+    if post_id.strip().lower() in ("none", "null", "undefined"):
+        return None
+    try:
+        p_uuid = uuid.UUID(post_id.strip())
+        post = crud.get_post(session=ctx.session, post_id=p_uuid)
+        if post and post.owner_id == ctx.user_uuid:
+            return post
+    except (ValueError, TypeError):
+        pass
+    return None
+
+
+def _resolve_by_thread_id(*, ctx: CopilotContext) -> Post | None:
+    if not ctx.thread_id:
+        return None
+    try:
+        t_uuid = uuid.UUID(ctx.thread_id)
+        thread = ctx.session.get(ChatThread, t_uuid)
+        if thread and thread.post_id:
+            post = crud.get_post(session=ctx.session, post_id=thread.post_id)
+            if post and post.owner_id == ctx.user_uuid:
+                return post
+    except Exception as exc:
+        logger.debug("Could not load thread post: %s", exc)
+    return None
+
+
+def _resolve_target_post(
+    *, ctx: CopilotContext, post_id: str | None = None
+) -> Post | None:
+    """Resolve target post by explicit ID, linked thread, or latest user draft."""
+    if not ctx.user_uuid:
+        return None
+    if post_id and post_id.strip():
+        resolved = _resolve_by_post_id(ctx=ctx, post_id=post_id)
+        if resolved:
+            return resolved
+
+    thread_post = _resolve_by_thread_id(ctx=ctx)
+    if thread_post:
+        return thread_post
+
+    statement = (
+        select(Post)
+        .where(Post.owner_id == ctx.user_uuid, Post.status == "draft")
+        .order_by(col(Post.updated_at).desc().nulls_last())
+    )
+    post = ctx.session.exec(statement).first()
+    _link_post_to_thread(ctx=ctx, post_id=post.id if post else None)
+    return post
+
+
+def _link_post_to_thread(*, ctx: CopilotContext, post_id: uuid.UUID | None) -> None:
+    if not ctx.thread_id or not post_id:
+        return
+    try:
+        t_uuid = uuid.UUID(ctx.thread_id)
+        thread = ctx.session.get(ChatThread, t_uuid)
+        if thread and thread.post_id != post_id:
+            thread.post_id = post_id
+            ctx.session.add(thread)
+            ctx.session.commit()
+    except Exception as exc:
+        logger.debug("Could not link post to thread: %s", exc)
+
+
+def _build_trend_tools(ctx: CopilotContext) -> list[BaseTool]:
+    """Build trending topic inspection tools."""
 
     @tool
     def get_latest_scraped_trends(limit: int = 10) -> dict[str, Any]:
-        """Query the most recent trending topics currently stored in the LinkX database.
-        Returns a dictionary with 'has_today_trends', 'latest_scrape_date', 'today_date', and 'topics'.
-        If 'has_today_trends' is False or 'topics' is empty, call scrape_live_explore_trends to get fresh trends for today.
-        """
+        """Query recent trending topics from LinkX database."""
         try:
-            user_uuid = uuid.UUID(user_id)
+            assert ctx.user_uuid is not None
             topics = crud.get_latest_trending_topics(
-                session=session, user_id=user_uuid, limit=limit
+                session=ctx.session, user_id=ctx.user_uuid, limit=limit
             )
             today_utc = datetime.now(timezone.utc).date()
-            has_today_trends = False
-            latest_date_str = None
-
+            has_today = False
+            latest_str = None
             if topics:
                 latest_dt = topics[0].last_seen_at or topics[0].created_at
                 if latest_dt:
-                    latest_date = (
+                    dt_val = (
                         latest_dt.date() if hasattr(latest_dt, "date") else latest_dt
                     )
-                    latest_date_str = latest_date.isoformat()
-                    has_today_trends = latest_date >= today_utc
+                    latest_str = dt_val.isoformat()
+                    has_today = dt_val >= today_utc
 
-            topic_items = [
+            items = [
                 {
                     "id": str(t.id),
                     "topic_title": t.topic_title,
@@ -150,14 +223,14 @@ def build_copilot_tools(
                 for t in topics
             ]
             return {
-                "has_today_trends": has_today_trends,
-                "latest_scrape_date": latest_date_str,
+                "has_today_trends": has_today,
+                "latest_scrape_date": latest_str,
                 "today_date": today_utc.isoformat(),
-                "count": len(topic_items),
-                "topics": topic_items,
+                "count": len(items),
+                "topics": items,
             }
         except Exception as e:
-            logger.error(f"Error in get_latest_scraped_trends tool: {e}")
+            logger.error("Error in get_latest_scraped_trends: %s", e)
             return {
                 "has_today_trends": False,
                 "latest_scrape_date": None,
@@ -170,39 +243,48 @@ def build_copilot_tools(
     def get_topic_tweets_and_summary(
         topic_id: str, max_tweets: int = 5
     ) -> dict[str, Any] | None:
-        """Retrieve deep topic context, Grok summary, and sample tweets for a specific topic ID from the database."""
+        """Retrieve topic tweets and Grok summary for a topic ID."""
         res = raw_get_topic_tweets_and_summary(
-            topic_id=topic_id, max_tweets=max_tweets, session=session
+            topic_id=topic_id, max_tweets=max_tweets, session=ctx.session
         )
         return res.model_dump() if res else None
 
+    return [get_latest_scraped_trends, get_topic_tweets_and_summary]
+
+
+def _build_context_tools(ctx: CopilotContext) -> list[BaseTool]:
+    """Build context and account status tools."""
+
     @tool
     def get_recent_post_history(limit: int = 5) -> list[dict[str, Any]]:
-        """Retrieve the user's recently published posts to analyze their writing style, voice, and formatting."""
+        """Retrieve the user's recently published posts."""
         posts = raw_get_recent_post_history(
-            user_id=user_id, limit=limit, session=session
+            user_id=ctx.user_id, limit=limit, session=ctx.session
         )
         return [p.model_dump() for p in posts]
 
     @tool
     def get_social_account_status() -> dict[str, Any]:
-        """Check whether the user's X.com (Twitter) and LinkedIn accounts are connected and authenticated."""
-        res = raw_get_social_account_status(user_id=user_id, session=session)
+        """Check user's X.com and LinkedIn account connection status."""
+        res = raw_get_social_account_status(user_id=ctx.user_id, session=ctx.session)
         return res.model_dump()
+
+    return [get_recent_post_history, get_social_account_status]
+
+
+def _build_scraping_tools(ctx: CopilotContext) -> list[BaseTool]:
+    """Build live web perception tools."""
 
     @tool
     async def scrape_live_explore_trends(max_topics: int = 3) -> dict[str, Any]:
-        """Launch live browser automation (Playwright) to scrape fresh trending topics directly from X.com Explore.
-        Use this tool when the database has no trends, when trends are outdated, or when the user explicitly asks to refresh/scrape trends from X.
-        """
+        """Scrape fresh trending topics directly from X.com Explore."""
         raw_result = await raw_scrape_live_explore_trends(
-            user_id=user_id, max_topics=max_topics, headless=True
+            user_id=ctx.user_id, max_topics=max_topics, headless=True
         )
-        # Fetch newly persisted topics
         try:
-            user_uuid = uuid.UUID(user_id)
-            fresh_topics = crud.get_latest_trending_topics(
-                session=session, user_id=user_uuid, limit=max_topics
+            assert ctx.user_uuid is not None
+            fresh = crud.get_latest_trending_topics(
+                session=ctx.session, user_id=ctx.user_uuid, limit=max_topics
             )
             raw_result["topics"] = [
                 {
@@ -213,104 +295,70 @@ def build_copilot_tools(
                     "summary": t.summary,
                     "topic_url": t.topic_url,
                 }
-                for t in fresh_topics
+                for t in fresh
             ]
         except Exception as e:
-            logger.debug(f"Could not load fresh topics for tool response: {e}")
+            logger.debug("Could not load fresh topics: %s", e)
             raw_result["topics"] = []
-
         return raw_result
 
     @tool
     async def scrape_topic_timeline(
         topic_url: str, max_tweets: int = 5
     ) -> dict[str, Any]:
-        """Navigate a browser directly to a specific topic URL on live X to scrape its latest timeline tweets and Grok summary."""
+        """Scrape topic timeline tweets and summary from live X."""
         return await raw_scrape_topic_timeline(
-            topic_url=topic_url, user_id=user_id, max_tweets=max_tweets
+            topic_url=topic_url, user_id=ctx.user_id, max_tweets=max_tweets
         )
+
+    return [scrape_live_explore_trends, scrape_topic_timeline]
+
+
+def _build_curation_tools() -> list[BaseTool]:
+    """Build content generation and validation tools."""
 
     @tool
     async def draft_social_post(
         prompt: str, platform: str = "linkx", topic_context: str | None = None
     ) -> dict[str, Any]:
-        """Generate high-engagement social media post copy based on a prompt or trending topic."""
+        """Generate high-engagement social media post copy."""
         text = await raw_draft_social_post(
             topic_title=prompt, topic_summary=topic_context, platform=platform
         )
-        return {
-            "content": text,
-            "platform": platform,
-            "char_count": len(text),
-        }
+        return {"content": text, "platform": platform, "char_count": len(text)}
 
     @tool
     def validate_post_constraints(content: str, platform: str = "x") -> dict[str, Any]:
-        """Validate character limits (280 for X, 3000 for LinkedIn) and formatting compliance for a post."""
+        """Validate character limits and formatting compliance."""
         res = raw_validate_post_constraints(content=content, platform=platform)
         return res.model_dump()
 
-    def _resolve_target_post(*, post_id: str | None = None) -> Post | None:
-        """Resolve the target post either by explicit ID, linked thread post, or latest draft."""
-        user_uuid: uuid.UUID | None = None
-        try:
-            user_uuid = uuid.UUID(user_id)
-        except (ValueError, TypeError):
-            return None
+    return [draft_social_post, validate_post_constraints]
 
-        # 1. If explicit post_id is supplied and valid
-        if (
-            post_id
-            and post_id.strip()
-            and post_id.strip().lower() not in ("none", "null", "undefined")
-        ):
-            try:
-                p_uuid = uuid.UUID(post_id.strip())
-                post = crud.get_post(session=session, post_id=p_uuid)
-                if post and post.owner_id == user_uuid:
-                    return post
-            except (ValueError, TypeError):
-                pass
 
-        # 2. If thread_id is available, check if the thread has a linked post
-        if thread_id:
-            try:
-                t_uuid = uuid.UUID(thread_id)
-                thread = session.get(ChatThread, t_uuid)
-                if thread and thread.post_id:
-                    post = crud.get_post(session=session, post_id=thread.post_id)
-                    if post and post.owner_id == user_uuid:
-                        return post
-            except Exception as exc:
-                logger.debug(f"Could not load thread post: {exc}")
+def _format_post_card(
+    *, post: Post | PostPublic, updated: bool = False
+) -> dict[str, Any]:
+    """Format standard post dictionary for chat UI rendering."""
+    return {
+        "post_id": str(post.id),
+        "id": str(post.id),
+        "postId": str(post.id),
+        "content": post.content,
+        "platform": post.platform,
+        "status": post.status,
+        "char_count": len(post.content),
+        "updated": updated,
+        "ui_rendered": True,
+        "instruction": "The post is rendered as an interactive component in chat. Do NOT repeat or output post content in your text reply.",
+    }
 
-        # 3. Fallback: query the user's most recent draft post
-        statement = (
-            select(Post)
-            .where(Post.owner_id == user_uuid, Post.status == "draft")
-            .order_by(col(Post.updated_at).desc().nulls_last())
-        )
-        post = session.exec(statement).first()
-        if post and thread_id:
-            try:
-                t_uuid = uuid.UUID(thread_id)
-                thread = session.get(ChatThread, t_uuid)
-                if thread and not thread.post_id:
-                    thread.post_id = post.id
-                    session.add(thread)
-                    session.commit()
-            except Exception as exc:
-                logger.debug(f"Could not link post to thread: {exc}")
-        return post
 
+def _build_get_latest_draft_tool(ctx: CopilotContext) -> BaseTool:
     @tool
     def get_latest_draft_post() -> dict[str, Any]:
-        """Retrieve the current active draft post being discussed or iterated on.
-        Call this tool when the user refers to the draft ('the post', 'my draft', 'the tweet')
-        or gives feedback, critique, or instructions on revising the current draft.
-        Returns the post details (post_id, content, platform, status, char_count, updated_at).
-        """
-        post = _resolve_target_post()
+        """Retrieve the current active draft post."""
+        post = _resolve_target_post(ctx=ctx)
         if not post:
             return {"message": "No active draft post found for this conversation."}
         return {
@@ -324,142 +372,80 @@ def build_copilot_tools(
             "updated_at": post.updated_at.isoformat() if post.updated_at else None,
         }
 
+    return get_latest_draft_post
+
+
+def _build_save_draft_tool(ctx: CopilotContext) -> BaseTool:
     @tool
     def save_draft_post(content: str, platform: str = "x") -> dict[str, Any]:
-        """Persist a BRAND NEW post draft to PostgreSQL ONLY when the user asks to start a new post from scratch.
-        CRITICAL: DO NOT use this tool if the user is asking to modify, shorten, lengthen, rephrase, critique, or update an existing post. For ANY modifications to an existing draft, you MUST use update_draft_post instead.
-        Calling this tool automatically renders the native interactive post component in the chat interface.
-        IMPORTANT: In your final assistant response, DO NOT repeat, quote, or re-paste the post content. The component already renders it. Simply state that the draft has been created or provide a brief 1-sentence strategic note.
-        """
+        """Persist a BRAND NEW post draft to PostgreSQL."""
         post = raw_save_draft_post(
-            user_id=user_id, content=content, platform=platform, session=session
+            user_id=ctx.user_id,
+            content=content,
+            platform=platform,
+            session=ctx.session,
         )
         if not post:
             return {"error": "Failed to save post draft to database"}
+        _link_post_to_thread(ctx=ctx, post_id=post.id)
+        return _format_post_card(post=post)
 
-        if thread_id:
-            try:
-                t_uuid = uuid.UUID(thread_id)
-                thread = session.get(ChatThread, t_uuid)
-                if thread:
-                    thread.post_id = post.id
-                    session.add(thread)
-                    session.commit()
-            except Exception as exc:
-                logger.debug(f"Failed to link post to thread: {exc}")
+    return save_draft_post
 
-        return {
-            "post_id": str(post.id),
-            "id": str(post.id),
-            "postId": str(post.id),
-            "content": post.content,
-            "platform": post.platform,
-            "status": post.status,
-            "char_count": len(post.content),
-            "ui_rendered": True,
-            "instruction": "The post is now rendered as an interactive post component in the chat. Do NOT repeat or output the post content in your text reply.",
-        }
 
+def _build_update_draft_tool(ctx: CopilotContext) -> BaseTool:
     @tool
     def update_draft_post(
         refined_content: str, post_id: str | None = None
     ) -> dict[str, Any]:
-        """Update an existing draft post in PostgreSQL with refined content.
-        ALWAYS call this tool when the user gives feedback on a post, asks for changes, tone adjustments,
-        shortening, lengthening, adding/removing emojis or hashtags, or comments on the draft.
-        DO NOT call save_draft_post for revisions—use this tool so the same post is edited in-place.
-        If post_id is omitted or not known, it automatically targets the active draft in this thread.
-        IMPORTANT: In your final assistant response, DO NOT repeat or re-paste the post content.
-        The UI component will update and display it automatically. Keep your reply to 1 concise sentence.
-        """
-        target_post = _resolve_target_post(post_id=post_id)
-        if not target_post:
+        """Update an existing draft post in PostgreSQL with refined content."""
+        target = _resolve_target_post(ctx=ctx, post_id=post_id)
+        if not target:
             created = raw_save_draft_post(
-                user_id=user_id,
+                user_id=ctx.user_id,
                 content=refined_content,
                 platform="x",
-                session=session,
+                session=ctx.session,
             )
             if not created:
                 return {"error": "Failed to update or create draft post"}
-            if thread_id:
-                try:
-                    t_uuid = uuid.UUID(thread_id)
-                    thread = session.get(ChatThread, t_uuid)
-                    if thread:
-                        thread.post_id = created.id
-                        session.add(thread)
-                        session.commit()
-                except Exception as exc:
-                    logger.debug(f"Could not link post to thread: {exc}")
-            return {
-                "post_id": str(created.id),
-                "id": str(created.id),
-                "postId": str(created.id),
-                "content": created.content,
-                "platform": created.platform,
-                "status": created.status,
-                "char_count": len(created.content),
-                "updated": True,
-                "ui_rendered": True,
-                "instruction": "The post has been created/updated as an interactive component in the chat. Do NOT repeat or output the post content in your text reply.",
-            }
+            _link_post_to_thread(ctx=ctx, post_id=created.id)
+            return _format_post_card(post=created, updated=True)
 
         post = raw_update_post_in_db(
-            post_id=str(target_post.id),
-            user_id=user_id,
+            post_id=str(target.id),
+            user_id=ctx.user_id,
             content=refined_content,
-            session=session,
+            session=ctx.session,
         )
         if not post:
-            return {"error": f"Failed to update post with ID {target_post.id}"}
+            return {"error": f"Failed to update post with ID {target.id}"}
+        _link_post_to_thread(ctx=ctx, post_id=post.id)
+        return _format_post_card(post=post, updated=True)
 
-        if thread_id:
-            try:
-                t_uuid = uuid.UUID(thread_id)
-                thread = session.get(ChatThread, t_uuid)
-                if thread and thread.post_id != post.id:
-                    thread.post_id = post.id
-                    session.add(thread)
-                    session.commit()
-            except Exception as exc:
-                logger.debug(f"Could not link updated post to thread: {exc}")
+    return update_draft_post
 
-        return {
-            "post_id": str(post.id),
-            "id": str(post.id),
-            "postId": str(post.id),
-            "content": post.content,
-            "platform": post.platform,
-            "status": post.status,
-            "char_count": len(post.content),
-            "updated": True,
-            "ui_rendered": True,
-            "instruction": "The updated post is now rendered as an interactive post component in the chat. Do NOT repeat or output the post content in your text reply.",
-        }
 
+def _build_schedule_draft_tool(ctx: CopilotContext) -> BaseTool:
     @tool
     def schedule_post_in_db(
         scheduled_at_iso: str, post_id: str | None = None
     ) -> dict[str, Any]:
-        """Schedule an existing draft post for future publication at the specified ISO timestamp."""
+        """Schedule an existing draft post for future publication."""
         try:
-            target_post = _resolve_target_post(post_id=post_id)
-            if not target_post:
+            target = _resolve_target_post(ctx=ctx, post_id=post_id)
+            if not target:
                 return {"error": "No post found to schedule"}
-
             scheduled_dt = datetime.fromisoformat(scheduled_at_iso)
             if scheduled_dt.tzinfo is None:
                 scheduled_dt = scheduled_dt.replace(tzinfo=timezone.utc)
-
             post_in = PostUpdate(status="scheduled", scheduled_at=scheduled_dt)
             updated = crud.update_post(
-                session=session, db_post=target_post, post_in=post_in
+                session=ctx.session, db_post=target, post_in=post_in
             )
             return {
                 "post_id": str(updated.id),
                 "id": str(updated.id),
-                "postId": str(updated.id),
                 "status": updated.status,
                 "scheduled_at": updated.scheduled_at.isoformat()
                 if updated.scheduled_at
@@ -468,20 +454,55 @@ def build_copilot_tools(
         except Exception as e:
             return {"error": f"Failed to schedule post: {e}"}
 
+    return schedule_post_in_db
+
+
+def _build_draft_tools(ctx: CopilotContext) -> list[BaseTool]:
+    """Build post creation, updating, and scheduling tools."""
     return [
-        get_latest_scraped_trends,
-        get_topic_tweets_and_summary,
-        get_recent_post_history,
-        get_social_account_status,
-        scrape_live_explore_trends,
-        scrape_topic_timeline,
-        draft_social_post,
-        validate_post_constraints,
-        get_latest_draft_post,
-        save_draft_post,
-        update_draft_post,
-        schedule_post_in_db,
+        _build_get_latest_draft_tool(ctx),
+        _build_save_draft_tool(ctx),
+        _build_update_draft_tool(ctx),
+        _build_schedule_draft_tool(ctx),
     ]
+
+
+def build_copilot_tools(
+    *,
+    user_id: str,
+    session: Session,
+    thread_id: str | None = None,
+) -> list[BaseTool]:
+    """Construct context-bound tools for the authenticated user and database session."""
+    ctx = CopilotContext(user_id=user_id, session=session, thread_id=thread_id)
+    return [
+        *_build_trend_tools(ctx),
+        *_build_context_tools(ctx),
+        *_build_scraping_tools(ctx),
+        *_build_curation_tools(),
+        *_build_draft_tools(ctx),
+    ]
+
+
+def _build_active_draft_prompt(
+    *, user_id: str, session: Session, thread_id: str | None
+) -> str:
+    """Extract context prompt for active draft post."""
+    try:
+        ctx = CopilotContext(user_id=user_id, session=session, thread_id=thread_id)
+        target = _resolve_target_post(ctx=ctx)
+        if not target:
+            return ""
+        return (
+            f"\n\n### ACTIVE DRAFT IN THIS CONVERSATION:\n"
+            f"- Post ID: {target.id}\n"
+            f"- Platform: {target.platform}\n"
+            f"- Current Content:\n```\n{target.content}\n```\n"
+            f'When user refers to draft/post, call update_draft_post(post_id="{target.id}").'
+        )
+    except Exception as exc:
+        logger.debug("Could not inject draft prompt: %s", exc)
+        return ""
 
 
 def build_copilot_agent(
@@ -498,39 +519,9 @@ def build_copilot_agent(
         session=session,
         thread_id=thread_id,
     )
-    prompt_text = COPILOT_AGENT_SYSTEM_PROMPT
-
-    # Dynamically inject active draft context if available for this thread/user
-    try:
-        user_uuid = uuid.UUID(user_id)
-        target_post: Post | None = None
-        if thread_id:
-            try:
-                t_uuid = uuid.UUID(thread_id)
-                thread = session.get(ChatThread, t_uuid)
-                if thread and thread.post_id:
-                    target_post = crud.get_post(session=session, post_id=thread.post_id)
-            except Exception:
-                pass
-        if not target_post:
-            statement = (
-                select(Post)
-                .where(Post.owner_id == user_uuid, Post.status == "draft")
-                .order_by(col(Post.updated_at).desc().nulls_last())
-            )
-            target_post = session.exec(statement).first()
-
-        if target_post:
-            prompt_text += (
-                f"\n\n### ACTIVE DRAFT IN THIS CONVERSATION:\n"
-                f"- Post ID: {target_post.id}\n"
-                f"- Platform: {target_post.platform}\n"
-                f"- Current Content:\n```\n{target_post.content}\n```\n"
-                f"When the user references 'this post', 'the draft', asks for revisions, or says 'make this more controversial', "
-                f'this is the draft to modify. NEVER ask the user for the draft text or ID. Directly call update_draft_post(post_id="{target_post.id}", refined_content=...)!'
-            )
-    except Exception as exc:
-        logger.debug(f"Could not inject active post context into agent: {exc}")
+    prompt_text = COPILOT_AGENT_SYSTEM_PROMPT + _build_active_draft_prompt(
+        user_id=user_id, session=session, thread_id=thread_id
+    )
 
     return create_react_agent(
         model=chat_model,

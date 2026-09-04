@@ -41,6 +41,35 @@ const EVENT_ACTIONS: Record<string, EventAction> = {
   error: (d, h) => h.onError?.(d.message || "Unknown stream error"),
 }
 
+function parseDataLine(
+  payload: string,
+  eventType: string,
+  handlers: StreamEventHandlers,
+) {
+  try {
+    const parsed = JSON.parse(payload) as ParsedEventData
+    EVENT_ACTIONS[eventType]?.(parsed, handlers)
+  } catch {
+    // Non-JSON payload ignored
+  }
+}
+
+function processSSELine(
+  line: string,
+  currentEvent: string,
+  handlers: StreamEventHandlers,
+): string {
+  const trimmed = line.trim()
+  if (!trimmed) return currentEvent
+  if (trimmed.startsWith("event:")) {
+    return trimmed.slice(6).trim()
+  }
+  if (trimmed.startsWith("data:")) {
+    parseDataLine(trimmed.slice(5).trim(), currentEvent, handlers)
+  }
+  return currentEvent
+}
+
 function parseSSELines(
   lines: string[],
   currentEvent: string,
@@ -48,19 +77,7 @@ function parseSSELines(
 ): string {
   let eventType = currentEvent
   for (const line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed) continue
-
-    if (trimmed.startsWith("event:")) {
-      eventType = trimmed.slice(6).trim()
-    } else if (trimmed.startsWith("data:")) {
-      try {
-        const parsed = JSON.parse(trimmed.slice(5).trim()) as ParsedEventData
-        EVENT_ACTIONS[eventType]?.(parsed, handlers)
-      } catch {
-        // Non-JSON payload ignored
-      }
-    }
+    eventType = processSSELine(line, eventType, handlers)
   }
   return eventType
 }
@@ -136,6 +153,24 @@ async function executeChatStreamRequest({
   await streamResponse(response, handlers)
 }
 
+function abortActiveController(
+  ref: React.MutableRefObject<AbortController | null>,
+) {
+  if (ref.current) {
+    ref.current.abort()
+    ref.current = null
+  }
+}
+
+function handleStreamError(err: unknown, handlers: StreamEventHandlers) {
+  if (err instanceof Error && err.name === "AbortError") {
+    handlers.onAbort?.()
+    return
+  }
+  const errMsg = err instanceof Error ? err.message : "Streaming failed"
+  handlers.onError?.(errMsg)
+}
+
 export function useAIChatStream() {
   const [isStreaming, setIsStreaming] = React.useState(false)
   const [streamingThreadId, setStreamingThreadId] = React.useState<
@@ -148,10 +183,7 @@ export function useAIChatStream() {
     if (targetThreadId && streamingThreadIdRef.current !== targetThreadId) {
       return
     }
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort()
-      abortControllerRef.current = null
-    }
+    abortActiveController(abortControllerRef)
     setIsStreaming(false)
     setStreamingThreadId(null)
     streamingThreadIdRef.current = null
@@ -182,12 +214,7 @@ export function useAIChatStream() {
           signal: controller.signal,
         })
       } catch (err: unknown) {
-        if (err instanceof Error && err.name === "AbortError") {
-          handlers.onAbort?.()
-          return
-        }
-        const errMsg = err instanceof Error ? err.message : "Streaming failed"
-        handlers.onError?.(errMsg)
+        handleStreamError(err, handlers)
       } finally {
         setIsStreaming(false)
         setStreamingThreadId(null)

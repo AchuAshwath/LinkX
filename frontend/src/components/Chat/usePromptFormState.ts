@@ -28,6 +28,47 @@ function isPlainEnterPress(
   return true
 }
 
+function shouldBlockSubmit({
+  text,
+  imageCount,
+  isBusy,
+}: {
+  text: string
+  imageCount: number
+  isBusy: boolean
+}): boolean {
+  if (isBusy) return true
+  if (text.length > 0) return false
+  return imageCount === 0
+}
+
+function usePromptModelSelection({
+  selectedModelId,
+  onSelectModel,
+}: {
+  selectedModelId?: string
+  onSelectModel?: (modelId: string) => void
+}) {
+  const [localModelId, setLocalModelId] = React.useState(selectedModelId || "")
+
+  React.useEffect(() => {
+    if (selectedModelId) {
+      setLocalModelId(selectedModelId)
+    }
+  }, [selectedModelId])
+
+  const handleSelectModel = React.useCallback(
+    (mId: string) => {
+      setLocalModelId(mId)
+      onSelectModel?.(mId)
+    },
+    [onSelectModel],
+  )
+
+  const activeModelId = selectedModelId || localModelId
+  return { activeModelId, handleSelectModel }
+}
+
 export interface UsePromptFormStateProps {
   initialValue?: string
   selectedModelId?: string
@@ -52,17 +93,14 @@ export function usePromptFormState({
   inputRef,
 }: UsePromptFormStateProps) {
   const [input, setInput] = React.useState(initialValue)
-  const [localModelId, setLocalModelId] = React.useState(selectedModelId || "")
+  const { activeModelId, handleSelectModel } = usePromptModelSelection({
+    selectedModelId,
+    onSelectModel,
+  })
 
   React.useEffect(() => {
     setInput((prev) => (prev !== initialValue ? initialValue : prev))
   }, [initialValue])
-
-  React.useEffect(() => {
-    if (selectedModelId) {
-      setLocalModelId(selectedModelId)
-    }
-  }, [selectedModelId])
 
   const internalInputRef = React.useRef<HTMLTextAreaElement>(null)
   const effectiveInputRef = inputRef || internalInputRef
@@ -93,7 +131,6 @@ export function usePromptFormState({
     stopAndReset,
   } = usePromptVoiceInput({ input, updateInput })
 
-  const activeModelId = selectedModelId || localModelId
   const normalizedModels = React.useMemo(
     () => normalizeModels(models),
     [models],
@@ -105,16 +142,19 @@ export function usePromptFormState({
     }
   }, [autoFocus, effectiveInputRef])
 
-  function handleSelectModel(mId: string) {
-    setLocalModelId(mId)
-    onSelectModel?.(mId)
-  }
-
   function handleSubmit(event?: React.FormEvent) {
     event?.preventDefault()
     stopAndReset()
     const text = input.trim()
-    if ((!text && selectedImages.length === 0) || isBusy) return
+    if (
+      shouldBlockSubmit({
+        text,
+        imageCount: selectedImages.length,
+        isBusy,
+      })
+    ) {
+      return
+    }
 
     if (selectedImages.length > 0) {
       onSubmit(

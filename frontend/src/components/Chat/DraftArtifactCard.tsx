@@ -21,6 +21,76 @@ export interface DraftArtifactCardProps {
   className?: string
 }
 
+function resolveInitialPlatform(platform?: string): Platform {
+  if (!platform || platform === "all") return "linkx"
+  return platform as Platform
+}
+
+function resolvePostAuthor(
+  author?: { name: string; username: string; avatarUrl?: string | null },
+  user?: { full_name?: string | null; email?: string | null } | null,
+) {
+  if (author) return author
+  const emailPrefix = user?.email ? user.email.split("@")[0] : ""
+  const name = user?.full_name || emailPrefix || "Ashwath N"
+  const username = emailPrefix || "admin"
+  return { name, username }
+}
+
+function createDraftPostData({
+  artifact,
+  author,
+  platform,
+}: {
+  artifact: DraftArtifact
+  author: { name: string; username: string; avatarUrl?: string | null }
+  platform: Platform
+}): DraftPostData {
+  return {
+    id: artifact.id || artifact.postId || "draft-artifact",
+    author,
+    content: artifact.content,
+    createdAt: new Date().toISOString(),
+    platform,
+    status: "draft",
+    type: "draft",
+  }
+}
+
+function createPreviewPostData(post: DraftPostData): PreviewPostData {
+  return {
+    id: post.id,
+    author: {
+      name: post.author.name,
+      username: post.author.username,
+      avatarUrl: post.author.avatarUrl ?? undefined,
+    },
+    content: post.content,
+    imageUrl: post.imageUrl ?? undefined,
+    createdAt: post.createdAt,
+    likes: post.likes,
+    reposts: post.reposts,
+    comments: post.comments,
+  }
+}
+
+function usePublishPostMutation() {
+  const queryClient = useQueryClient()
+  const { showSuccessToast, showErrorToast } = useCustomToast()
+
+  return useMutation({
+    mutationFn: async (postId: string) =>
+      PostsService.publishExistingPost({ postId }),
+    onSuccess: () => {
+      showSuccessToast("Post published successfully!")
+      queryClient.invalidateQueries({ queryKey: ["posts"] })
+    },
+    onError: () => {
+      showErrorToast("Failed to publish post")
+    },
+  })
+}
+
 export function DraftArtifactCard({
   artifact,
   author,
@@ -32,108 +102,56 @@ export function DraftArtifactCard({
   className,
 }: DraftArtifactCardProps) {
   const { user } = useAuth()
-  const queryClient = useQueryClient()
-  const { showSuccessToast, showErrorToast } = useCustomToast()
   const [previewOpen, setPreviewOpen] = React.useState(false)
-
-  const [currentPlatform, setCurrentPlatform] = React.useState<Platform>(
-    (artifact.platform === "all"
-      ? "linkx"
-      : artifact.platform || "linkx") as Platform,
+  const [currentPlatform, setCurrentPlatform] = React.useState<Platform>(() =>
+    resolveInitialPlatform(artifact.platform),
   )
 
   React.useEffect(() => {
     if (artifact.platform) {
-      setCurrentPlatform(
-        (artifact.platform === "all" ? "linkx" : artifact.platform) as Platform,
-      )
+      setCurrentPlatform(resolveInitialPlatform(artifact.platform))
     }
   }, [artifact.platform])
 
-  const postAuthor = React.useMemo(() => {
-    if (author) return author
-    const name =
-      user?.full_name || (user?.email ? user.email.split("@")[0] : "Ashwath N")
-    const username = user?.email ? user.email.split("@")[0] : "admin"
-    return {
-      name,
-      username,
-    }
-  }, [author, user])
+  const postAuthor = React.useMemo(
+    () => resolvePostAuthor(author, user),
+    [author, user],
+  )
 
-  const publishMutation = useMutation({
-    mutationFn: async (postId: string) =>
-      PostsService.publishExistingPost({ postId }),
-    onSuccess: () => {
-      showSuccessToast("Post published successfully!")
-      queryClient.invalidateQueries({ queryKey: ["posts"] })
-    },
-    onError: () => {
-      showErrorToast("Failed to publish post")
-    },
-  })
+  const publishMutation = usePublishPostMutation()
 
   const handlePublish = React.useCallback(
     (postId: string) => {
       if (onPublish) {
         onPublish(artifact)
-      } else if (postId && postId !== "draft-artifact") {
+        return
+      }
+      if (postId && postId !== "draft-artifact") {
         publishMutation.mutate(postId)
       }
     },
     [artifact, onPublish, publishMutation],
   )
 
-  const handlePreview = React.useCallback(
-    (_postId?: string) => {
-      setPreviewOpen(true)
-      onPreview?.(artifact)
-    },
-    [artifact, onPreview],
+  const handlePreview = React.useCallback(() => {
+    setPreviewOpen(true)
+    onPreview?.(artifact)
+  }, [artifact, onPreview])
+
+  const postData = React.useMemo(
+    () =>
+      createDraftPostData({
+        artifact,
+        author: postAuthor,
+        platform: currentPlatform,
+      }),
+    [artifact, postAuthor, currentPlatform],
   )
 
-  const handleEdit = React.useCallback(
-    (_postId: string) => {
-      onSendToComposer?.(artifact)
-    },
-    [artifact, onSendToComposer],
+  const previewData = React.useMemo(
+    () => createPreviewPostData(postData),
+    [postData],
   )
-
-  const handleDelete = React.useCallback(
-    (_postId: string) => {
-      onDelete?.(artifact)
-    },
-    [artifact, onDelete],
-  )
-
-  const postData: DraftPostData = React.useMemo(() => {
-    return {
-      id: artifact.id || artifact.postId || "draft-artifact",
-      author: postAuthor,
-      content: artifact.content,
-      createdAt: new Date().toISOString(),
-      platform: currentPlatform,
-      status: "draft",
-      type: "draft",
-    }
-  }, [artifact, postAuthor, currentPlatform])
-
-  const previewData: PreviewPostData = React.useMemo(() => {
-    return {
-      id: postData.id,
-      author: {
-        name: postData.author.name,
-        username: postData.author.username,
-        avatarUrl: postData.author.avatarUrl ?? undefined,
-      },
-      content: postData.content,
-      imageUrl: postData.imageUrl ?? undefined,
-      createdAt: postData.createdAt,
-      likes: postData.likes,
-      reposts: postData.reposts,
-      comments: postData.comments,
-    }
-  }, [postData])
 
   return (
     <div className={cn("w-full", className)}>
@@ -142,8 +160,8 @@ export function DraftArtifactCard({
         onPlatformChange={(_, p) => setCurrentPlatform(p)}
         onPublish={handlePublish}
         onPreview={handlePreview}
-        onEdit={onSendToComposer ? handleEdit : undefined}
-        onDelete={onDelete ? handleDelete : undefined}
+        onEdit={onSendToComposer ? () => onSendToComposer(artifact) : undefined}
+        onDelete={onDelete ? () => onDelete(artifact) : undefined}
         isPublishing={publishMutation.isPending}
       />
       <PostPreviewDialog

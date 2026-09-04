@@ -70,6 +70,39 @@ def _handle_thought_part(
         assistant_parts.append({"type": "thought", "content": thought_content})
 
 
+def _is_matching_tool_part(
+    *, part: dict[str, Any], tool_id: str, tool_name: str
+) -> bool:
+    """Check if a transcript part matches the target tool call."""
+    if part.get("type") not in ("tool_call", "tool-call"):
+        return False
+    if part.get("toolCallId") == tool_id or part.get("name") == tool_name:
+        return True
+    tool_data = part.get("tool")
+    return isinstance(tool_data, dict) and tool_data.get("name") == tool_name
+
+
+def _update_existing_tool_part(
+    *,
+    assistant_parts: list[dict[str, Any]],
+    tool_id: str,
+    tool_name: str,
+    output: Any,
+) -> bool:
+    """Update state and output on an existing tool part if found."""
+    for part in reversed(assistant_parts):
+        if _is_matching_tool_part(part=part, tool_id=tool_id, tool_name=tool_name):
+            part["state"] = "completed"
+            if output is not None:
+                part["output"] = output
+            tool_data = part.get("tool")
+            if isinstance(tool_data, dict):
+                tool_data["state"] = "completed"
+                tool_data["output"] = output
+            return True
+    return False
+
+
 def _handle_tool_part(
     *,
     event_name: str,
@@ -78,21 +111,17 @@ def _handle_tool_part(
 ) -> None:
     tool_id = str(payload.get("id") or f"call_{uuid.uuid4().hex[:8]}")
     tool_name = str(payload.get("name") or "tool")
+    output = payload.get("output")
 
     if event_name == "tool_output":
-        for part in reversed(assistant_parts):
-            if part.get("type") in ("tool_call", "tool-call") and (
-                part.get("toolCallId") == tool_id
-                or part.get("name") == tool_name
-                or (part.get("tool") and part["tool"].get("name") == tool_name)
-            ):
-                part["state"] = "completed"
-                if "output" in payload:
-                    part["output"] = payload["output"]
-                if "tool" in part and isinstance(part["tool"], dict):
-                    part["tool"]["state"] = "completed"
-                    part["tool"]["output"] = payload.get("output")
-                return
+        updated = _update_existing_tool_part(
+            assistant_parts=assistant_parts,
+            tool_id=tool_id,
+            tool_name=tool_name,
+            output=output,
+        )
+        if updated:
+            return
 
     tool_item: dict[str, Any] = {
         "id": tool_id,
@@ -101,8 +130,8 @@ def _handle_tool_part(
     }
     if "input" in payload:
         tool_item["input"] = payload["input"]
-    if "output" in payload:
-        tool_item["output"] = payload["output"]
+    if output is not None:
+        tool_item["output"] = output
 
     assistant_parts.append(
         {
@@ -165,18 +194,29 @@ def _collect_stream_part(
     """Append structured message parts and return text delta if present."""
     if event_name == "text_delta":
         return str(payload.get("content", ""))
-    if event_name == "thought":
-        _handle_thought_part(payload, assistant_parts)
-    elif event_name in {"tool_start", "tool_output"}:
-        _handle_tool_part(
+
+    part_dispatch = {
+        "thought": lambda: _handle_thought_part(payload, assistant_parts),
+        "tool_start": lambda: _handle_tool_part(
             event_name=event_name,
             payload=payload,
             assistant_parts=assistant_parts,
-        )
-    elif event_name == "draft_artifact":
-        _handle_draft_part(payload=payload, assistant_parts=assistant_parts)
-    elif event_name == "trending_artifact":
-        _handle_trending_part(payload=payload, assistant_parts=assistant_parts)
+        ),
+        "tool_output": lambda: _handle_tool_part(
+            event_name=event_name,
+            payload=payload,
+            assistant_parts=assistant_parts,
+        ),
+        "draft_artifact": lambda: _handle_draft_part(
+            payload=payload, assistant_parts=assistant_parts
+        ),
+        "trending_artifact": lambda: _handle_trending_part(
+            payload=payload, assistant_parts=assistant_parts
+        ),
+    }
+    action = part_dispatch.get(event_name)
+    if action:
+        action()
     return ""
 
 
@@ -198,32 +238,24 @@ EXCLUDED_MODELS = {
 
 
 def _build_fallback_models(default_model_id: str) -> list[AIModelInfo]:
-    known_candidates: list[tuple[str, str, str]] = [
-        (
-            default_model_id,
-            FRIENDLY_MODEL_NAMES.get(default_model_id, default_model_id),
-            "OpenAI",
-        ),
-        ("gpt-5.4", "5.4", "OpenAI"),
-        ("gpt-5.4-mini", "5.4 Mini", "OpenAI"),
-        ("gpt-5.5", "5.5", "OpenAI"),
-        ("gpt-5.6-sol", "5.6 Sol", "OpenAI"),
-        ("gpt-5.6-terra", "5.6 Terra", "OpenAI"),
+    ids = [
+        default_model_id,
+        "gpt-5.4",
+        "gpt-5.4-mini",
+        "gpt-5.5",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
     ]
-    seen: set[str] = set()
-    result: list[AIModelInfo] = []
-    for mid, name, provider in known_candidates:
-        if mid and mid not in seen:
-            seen.add(mid)
-            result.append(
-                AIModelInfo(
-                    id=mid,
-                    name=name,
-                    provider=provider,
-                    is_default=(mid == default_model_id),
-                )
-            )
-    return result
+    unique_ids = dict.fromkeys(m for m in ids if m)
+    return [
+        AIModelInfo(
+            id=mid,
+            name=FRIENDLY_MODEL_NAMES.get(mid, mid),
+            provider="OpenAI",
+            is_default=(mid == default_model_id),
+        )
+        for mid in unique_ids
+    ]
 
 
 def _is_allowed_proxy_model(item: dict[str, Any], default_model_id: str) -> bool:
@@ -443,6 +475,83 @@ def _build_user_message_dict(
     }
 
 
+def _maybe_link_draft_post(
+    *, thread: ChatThread, session: Session, event_name: str, payload: Any
+) -> None:
+    """Auto-link newly created draft post ID to chat thread."""
+    if event_name != "draft_artifact" or not isinstance(payload, dict):
+        return
+    post_id_val = payload.get("post_id") or payload.get("postId") or payload.get("id")
+    if not post_id_val:
+        return
+    try:
+        thread.post_id = uuid.UUID(str(post_id_val))
+        session.add(thread)
+        session.commit()
+    except Exception:
+        pass
+
+
+class ChatStreamContext(NamedTuple):
+    thread: ChatThread
+    session: Session
+    body: ChatMessageRequest
+    clean_images: list[str]
+    user_id_str: str
+    effective_prompt: str
+
+
+async def _generate_chat_events(
+    *,
+    ctx: ChatStreamContext,
+) -> AsyncGenerator[str, None]:
+    """Execute chat stream and yield formatted SSE events."""
+    accumulated_text = ""
+    assistant_parts: list[dict[str, Any]] = []
+
+    target_model = ctx.body.model
+    if target_model and target_model.startswith("gemini"):
+        target_model = "gpt-5.4"
+
+    transcript_copy = copy.deepcopy(ctx.thread.transcript)
+    try:
+        async for event_name, payload in default_chat_stream_runner(
+            message=ctx.effective_prompt,
+            transcript=transcript_copy,
+            model=target_model,
+            images=ctx.clean_images or None,
+            user_id=ctx.user_id_str,
+            session=ctx.session,
+            thread_id=str(ctx.thread.id),
+        ):
+            delta = _collect_stream_part(
+                event_name=event_name,
+                payload=payload,
+                assistant_parts=assistant_parts,
+            )
+            accumulated_text += delta
+            _maybe_link_draft_post(
+                thread=ctx.thread,
+                session=ctx.session,
+                event_name=event_name,
+                payload=payload,
+            )
+            yield format_sse(event=event_name, data=payload)
+
+        await _save_assistant_turn(
+            session=ctx.session,
+            thread=ctx.thread,
+            payload=AssistantTurnPayload(
+                body=ctx.body,
+                accumulated_text=accumulated_text,
+                assistant_parts=assistant_parts,
+            ),
+        )
+
+    except Exception as exc:
+        yield format_sse(event="error", data={"message": str(exc)})
+
+
 @router.post("/{id}/chat")
 async def chat_stream(
     *,
@@ -468,63 +577,18 @@ async def chat_stream(
     )
 
     effective_prompt = message_text or "Analyze the attached image(s)"
-    user_id_str = str(current_user.id)
-    transcript_copy = copy.deepcopy(thread.transcript)
-
-    async def event_generator() -> AsyncGenerator[str, None]:
-        accumulated_text = ""
-        assistant_parts: list[dict[str, Any]] = []
-
-        target_model = body.model
-        if target_model and target_model.startswith("gemini"):
-            target_model = "gpt-5.4"
-
-        try:
-            async for event_name, payload in default_chat_stream_runner(
-                message=effective_prompt,
-                transcript=transcript_copy,
-                model=target_model,
-                images=clean_images or None,
-                user_id=user_id_str,
-                session=session,
-                thread_id=str(thread.id),
-            ):
-                delta = _collect_stream_part(
-                    event_name=event_name,
-                    payload=payload,
-                    assistant_parts=assistant_parts,
-                )
-                accumulated_text += delta
-                if event_name == "draft_artifact" and isinstance(payload, dict):
-                    post_id_val = (
-                        payload.get("post_id")
-                        or payload.get("postId")
-                        or payload.get("id")
-                    )
-                    if post_id_val:
-                        try:
-                            thread.post_id = uuid.UUID(str(post_id_val))
-                            session.add(thread)
-                            session.commit()
-                        except Exception:
-                            pass
-                yield format_sse(event=event_name, data=payload)
-
-            await _save_assistant_turn(
-                session=session,
-                thread=thread,
-                payload=AssistantTurnPayload(
-                    body=body,
-                    accumulated_text=accumulated_text,
-                    assistant_parts=assistant_parts,
-                ),
-            )
-
-        except Exception as exc:
-            yield format_sse(event="error", data={"message": str(exc)})
+    stream_ctx = ChatStreamContext(
+        thread=thread,
+        session=session,
+        body=body,
+        clean_images=clean_images,
+        user_id_str=str(current_user.id),
+        effective_prompt=effective_prompt,
+    )
+    events = _generate_chat_events(ctx=stream_ctx)
 
     return StreamingResponse(
-        event_generator(),
+        events,
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

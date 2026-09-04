@@ -272,19 +272,82 @@ function deduplicateDraftContentFromTextParts(
     })
 }
 
-export function ChatMessage({
-  message,
-  isStreaming = false,
-  onDraftTopic,
-}: ChatMessageProps) {
-  if (message.role === "user") {
-    return <UserMessageBubble message={message} />
-  }
+const EXCLUDED_PART_TYPES = new Set([
+  "thought",
+  "tool-call",
+  "tool_call",
+  "source-url",
+])
 
+function isOtherPart(
+  p: ChatUIMessage["parts"][number],
+  hasThoughtOrTools: boolean,
+): boolean {
+  if (EXCLUDED_PART_TYPES.has(p.type)) return false
+  if (p.type === "tool-web_search" && hasThoughtOrTools) return false
+  return true
+}
+
+function collectTools(parts: ChatUIMessage["parts"]): ToolCallItem[] {
+  const toolCallParts = parts.filter(
+    (p) => p.type === "tool-call" || p.type === "tool_call",
+  ) as ToolCallPart[]
+
+  return toolCallParts.map((tp, idx) => {
+    return (
+      tp.tool ?? {
+        id: tp.toolCallId || `tool-${idx}`,
+        name: tp.name || "tool",
+        state: tp.state || "completed",
+        input: tp.input,
+        output: tp.output,
+      }
+    )
+  })
+}
+
+function AssistantQueuedNotice({ status }: { status?: string }) {
+  if (status !== "queued") return null
+  return (
+    <div className="flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-muted/40 border border-border/50 text-xs text-muted-foreground animate-pulse select-none">
+      <Clock className="size-3.5 text-muted-foreground/80 shrink-0" />
+      <span>Queued &bull; Waiting for active generation to finish...</span>
+    </div>
+  )
+}
+
+function AssistantMessageActions({
+  isStreaming,
+  assistantText,
+  createdAt,
+}: {
+  isStreaming: boolean
+  assistantText: string
+  createdAt?: string
+}) {
+  if (isStreaming || !assistantText) return null
+  return (
+    <ChatMessageActions
+      textToCopy={assistantText}
+      createdAt={createdAt}
+      align="start"
+      className="pl-2 pt-0.5"
+    />
+  )
+}
+
+function AssistantMessageBubble({
+  message,
+  isStreaming,
+  onDraftTopic,
+}: {
+  message: ChatUIMessage
+  isStreaming: boolean
+  onDraftTopic?: (topicTitle: string) => void
+}) {
   const { cleanedParts, extractedThought } = extractThoughtFromTextParts(
     message.parts,
   )
-
   const dedupedParts = deduplicateDraftContentFromTextParts(cleanedParts)
 
   const sources = dedupedParts.filter(
@@ -302,22 +365,7 @@ export function ChatMessage({
     extractedThought ||
     ""
 
-  const toolCallParts = cleanedParts.filter(
-    (p) => p.type === "tool-call" || p.type === "tool_call",
-  ) as ToolCallPart[]
-
-  const collectedTools: ToolCallItem[] = toolCallParts.map((tp, idx) => {
-    return (
-      tp.tool ?? {
-        id: tp.toolCallId || `tool-${idx}`,
-        name: tp.name || "tool",
-        state: tp.state || "completed",
-        input: tp.input,
-        output: tp.output,
-      }
-    )
-  })
-
+  const collectedTools = collectTools(cleanedParts)
   const webSearchPart = dedupedParts.find(
     (p): p is WebSearchToolPart => p.type === "tool-web_search",
   )
@@ -333,27 +381,15 @@ export function ChatMessage({
 
   const assistantText = extractTextParts(dedupedParts)
   const createdAt = getMessageTimestamp(message)
-
-  const otherParts = dedupedParts.filter((p) => {
-    if (p.type === "thought") return false
-    if (p.type === "tool-call" || p.type === "tool_call") return false
-    if (p.type === "source-url") return false
-    if (p.type === "tool-web_search" && hasThoughtOrTools) return false
-    return true
-  })
+  const otherParts = dedupedParts.filter((p) =>
+    isOtherPart(p, hasThoughtOrTools),
+  )
 
   return (
     <div className="group relative flex flex-col items-start w-full">
       <Message align="start">
         <MessageContent>
-          {message.status === "queued" && (
-            <div className="flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-muted/40 border border-border/50 text-xs text-muted-foreground animate-pulse select-none">
-              <Clock className="size-3.5 text-muted-foreground/80 shrink-0" />
-              <span>
-                Queued &bull; Waiting for active generation to finish...
-              </span>
-            </div>
-          )}
+          <AssistantQueuedNotice status={message.status} />
 
           {hasThoughtOrTools && (
             <ThoughtPart
@@ -379,14 +415,29 @@ export function ChatMessage({
           ))}
         </MessageContent>
       </Message>
-      {!isStreaming && assistantText && (
-        <ChatMessageActions
-          textToCopy={assistantText}
-          createdAt={createdAt}
-          align="start"
-          className="pl-2 pt-0.5"
-        />
-      )}
+      <AssistantMessageActions
+        isStreaming={isStreaming}
+        assistantText={assistantText}
+        createdAt={createdAt}
+      />
     </div>
+  )
+}
+
+export function ChatMessage({
+  message,
+  isStreaming = false,
+  onDraftTopic,
+}: ChatMessageProps) {
+  if (message.role === "user") {
+    return <UserMessageBubble message={message} />
+  }
+
+  return (
+    <AssistantMessageBubble
+      message={message}
+      isStreaming={isStreaming}
+      onDraftTopic={onDraftTopic}
+    />
   )
 }

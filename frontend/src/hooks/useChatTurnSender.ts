@@ -30,11 +30,17 @@ export async function convertFilesToDataUrls(
   }
 }
 
-export function createMessageTurn(
-  text: string,
-  imageUrls: string[] = [],
-  assistantStatus: "queued" | "streaming" = "streaming",
-): {
+export interface CreateMessageTurnOptions {
+  text: string
+  imageUrls?: string[]
+  assistantStatus?: "queued" | "streaming"
+}
+
+export function createMessageTurn({
+  text,
+  imageUrls = [],
+  assistantStatus = "streaming",
+}: CreateMessageTurnOptions): {
   userMsg: ChatUIMessage
   assistantMsg: ChatUIMessage
 } {
@@ -64,53 +70,96 @@ export function createMessageTurn(
   return { userMsg, assistantMsg }
 }
 
-export function updateAssistantPart(
-  messages: ChatUIMessage[],
-  assistantMsgId: string,
+export interface UpdateAssistantPartOptions {
+  messages: ChatUIMessage[]
+  assistantMsgId: string
+  partType: "thought" | "text"
+  content: string
+}
+
+function findLastPartIndex(
+  parts: ChatUIMessage["parts"],
+  partType: string,
+): number {
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (parts[i].type === partType) {
+      return i
+    }
+  }
+  return -1
+}
+
+function mergePartContent(
+  existing: ChatUIMessage["parts"][number],
   partType: "thought" | "text",
   content: string,
-): ChatUIMessage[] {
+): ChatUIMessage["parts"][number] {
+  if (partType === "thought" && existing.type === "thought") {
+    return { ...existing, content: existing.content + content }
+  }
+  if (partType === "text" && existing.type === "text") {
+    return { ...existing, text: existing.text + content }
+  }
+  return existing
+}
+
+function createNewPart(
+  partType: "thought" | "text",
+  content: string,
+): ChatUIMessage["parts"][number] {
+  if (partType === "thought") {
+    return { type: "thought", content }
+  }
+  return { type: "text", text: content }
+}
+
+function updateMessageParts(
+  parts: ChatUIMessage["parts"],
+  partType: "thought" | "text",
+  content: string,
+): ChatUIMessage["parts"] {
+  const updated = [...parts]
+  const existingIndex = findLastPartIndex(updated, partType)
+  if (existingIndex >= 0) {
+    updated[existingIndex] = mergePartContent(
+      updated[existingIndex],
+      partType,
+      content,
+    )
+  } else {
+    updated.push(createNewPart(partType, content))
+  }
+  return updated
+}
+
+export function updateAssistantPart({
+  messages,
+  assistantMsgId,
+  partType,
+  content,
+}: UpdateAssistantPartOptions): ChatUIMessage[] {
   return messages.map((msg) => {
     if (msg.id !== assistantMsgId) return msg
-    const parts = [...msg.parts]
-    let existingIndex = -1
-    for (let i = parts.length - 1; i >= 0; i--) {
-      if (parts[i].type === partType) {
-        existingIndex = i
-        break
-      }
+    return {
+      ...msg,
+      parts: updateMessageParts(msg.parts, partType, content),
     }
-
-    if (existingIndex >= 0) {
-      const existing = parts[existingIndex]
-      if (partType === "thought" && existing.type === "thought") {
-        parts[existingIndex] = {
-          ...existing,
-          content: existing.content + content,
-        }
-      } else if (partType === "text" && existing.type === "text") {
-        parts[existingIndex] = {
-          ...existing,
-          text: existing.text + content,
-        }
-      }
-    } else {
-      if (partType === "thought") {
-        parts.push({ type: "thought", content })
-      } else {
-        parts.push({ type: "text", text: content })
-      }
-    }
-    return { ...msg, parts }
   })
 }
 
-export function updateAssistantToolStart(
-  messages: ChatUIMessage[],
-  assistantMsgId: string,
-  name: string,
-  input: unknown,
-): ChatUIMessage[] {
+export interface UpdateAssistantToolStartOptions {
+  messages: ChatUIMessage[]
+  assistantMsgId: string
+  name: string
+  input: unknown
+}
+
+export function updateAssistantToolStart({
+  messages,
+  assistantMsgId,
+  name,
+  input,
+}: UpdateAssistantToolStartOptions): ChatUIMessage[] {
   return messages.map((msg) => {
     if (msg.id !== assistantMsgId) return msg
     const parts = [...msg.parts]
@@ -132,44 +181,61 @@ export function updateAssistantToolStart(
   })
 }
 
-export function updateAssistantToolOutput(
-  messages: ChatUIMessage[],
-  assistantMsgId: string,
+function isMatchingRunningTool(part: unknown, toolName: string): boolean {
+  if (!part || typeof part !== "object") return false
+  const p = part as { type?: string; name?: string; state?: string }
+  if (p.name !== toolName) return false
+  if (p.state !== "running") return false
+  return p.type === "tool-call" || p.type === "tool_call"
+}
+
+function createCompletedToolPart(
+  prevPart: unknown,
   name: string,
   output: unknown,
-): ChatUIMessage[] {
+): ChatUIMessage["parts"][number] {
+  const p = prevPart as {
+    toolCallId?: string
+    tool?: ToolCallItem
+    input?: Record<string, unknown>
+  }
+  const updatedTool: ToolCallItem = {
+    id: p.toolCallId || p.tool?.id || `tool_${Date.now()}`,
+    name,
+    state: "completed",
+    input: p.tool?.input || p.input,
+    output: output as Record<string, unknown>,
+  }
+  return {
+    type: "tool-call",
+    toolCallId: updatedTool.id,
+    name,
+    state: "completed",
+    tool: updatedTool,
+    input: updatedTool.input,
+    output: updatedTool.output,
+  }
+}
+
+export interface UpdateAssistantToolOutputOptions {
+  messages: ChatUIMessage[]
+  assistantMsgId: string
+  name: string
+  output: unknown
+}
+
+export function updateAssistantToolOutput({
+  messages,
+  assistantMsgId,
+  name,
+  output,
+}: UpdateAssistantToolOutputOptions): ChatUIMessage[] {
   return messages.map((msg) => {
     if (msg.id !== assistantMsgId) return msg
     const parts = [...msg.parts]
     for (let i = parts.length - 1; i >= 0; i--) {
-      const p = parts[i]
-      if (
-        (p.type === "tool-call" ||
-          (p as { type: string }).type === "tool_call") &&
-        (p as { name?: string }).name === name &&
-        (p as { state?: string }).state === "running"
-      ) {
-        const prevTool = (p as { tool?: ToolCallItem }).tool
-        const updatedTool: ToolCallItem = {
-          id:
-            (p as { toolCallId?: string }).toolCallId ||
-            prevTool?.id ||
-            `tool_${Date.now()}`,
-          name,
-          state: "completed",
-          input:
-            prevTool?.input || (p as { input?: Record<string, unknown> }).input,
-          output: output as Record<string, unknown>,
-        }
-        parts[i] = {
-          type: "tool-call",
-          toolCallId: updatedTool.id,
-          name,
-          state: "completed",
-          tool: updatedTool,
-          input: updatedTool.input,
-          output: updatedTool.output,
-        }
+      if (isMatchingRunningTool(parts[i], name)) {
+        parts[i] = createCompletedToolPart(parts[i], name, output)
         break
       }
     }
@@ -177,158 +243,204 @@ export function updateAssistantToolOutput(
   })
 }
 
-export function appendAssistantArtifact(
-  messages: ChatUIMessage[],
-  assistantMsgId: string,
-  artifactPart: ChatUIMessage["parts"][number],
-): ChatUIMessage[] {
+export interface AppendAssistantArtifactOptions {
+  messages: ChatUIMessage[]
+  assistantMsgId: string
+  artifactPart: ChatUIMessage["parts"][number]
+}
+
+export function appendAssistantArtifact({
+  messages,
+  assistantMsgId,
+  artifactPart,
+}: AppendAssistantArtifactOptions): ChatUIMessage[] {
   return messages.map((msg) => {
     if (msg.id !== assistantMsgId) return msg
     return { ...msg, parts: [...msg.parts, artifactPart] }
   })
 }
 
-export function buildStreamHandlers({
-  assistantMsgId,
-  targetThreadId,
-  setMessagesByThread,
-  queryClient,
-}: {
+export interface HandlerFactoryOptions {
   assistantMsgId: string
   targetThreadId: string
   setMessagesByThread: React.Dispatch<
     React.SetStateAction<Record<string, ChatUIMessage[]>>
   >
+}
+
+function createAbortHandler({
+  assistantMsgId,
+  targetThreadId,
+  setMessagesByThread,
+}: HandlerFactoryOptions) {
+  return () =>
+    setMessagesByThread((prev) => {
+      const msgs = prev[targetThreadId] ?? []
+      return {
+        ...prev,
+        [targetThreadId]: msgs.map((m) => {
+          if (m.id !== assistantMsgId) return m
+          const hasContent = m.parts.length > 0
+          return {
+            ...m,
+            status: "done" as const,
+            parts: hasContent
+              ? m.parts
+              : [{ type: "text" as const, text: "*(Generation stopped)*" }],
+          }
+        }),
+      }
+    })
+}
+
+function createDoneHandler({
+  assistantMsgId,
+  targetThreadId,
+  setMessagesByThread,
+  queryClient,
+}: HandlerFactoryOptions & {
   queryClient: ReturnType<typeof useQueryClient>
 }) {
+  return () => {
+    setMessagesByThread((prev) => {
+      const msgs = prev[targetThreadId] ?? []
+      return {
+        ...prev,
+        [targetThreadId]: msgs.map((m) =>
+          m.id === assistantMsgId ? { ...m, status: "done" as const } : m,
+        ),
+      }
+    })
+    queryClient.invalidateQueries({ queryKey: ["ai-threads"] })
+    queryClient.invalidateQueries({
+      queryKey: ["ai-thread", targetThreadId],
+    })
+  }
+}
+
+function createErrorHandler({
+  assistantMsgId,
+  targetThreadId,
+  setMessagesByThread,
+}: HandlerFactoryOptions) {
+  return (errMsg: string) =>
+    setMessagesByThread((prev) => {
+      const msgs = prev[targetThreadId] ?? []
+      const updated = updateAssistantPart({
+        messages: msgs,
+        assistantMsgId,
+        partType: "text",
+        content: `\n\n*(Error: ${errMsg})*`,
+      })
+      return {
+        ...prev,
+        [targetThreadId]: updated.map((m) =>
+          m.id === assistantMsgId ? { ...m, status: "error" as const } : m,
+        ),
+      }
+    })
+}
+
+function createContentHandlers({
+  assistantMsgId,
+  targetThreadId,
+  setMessagesByThread,
+}: HandlerFactoryOptions) {
   return {
     onThought: (content: string) =>
       setMessagesByThread((prev) => ({
         ...prev,
-        [targetThreadId]: updateAssistantPart(
-          prev[targetThreadId] ?? [],
+        [targetThreadId]: updateAssistantPart({
+          messages: prev[targetThreadId] ?? [],
           assistantMsgId,
-          "thought",
+          partType: "thought",
           content,
-        ),
+        }),
       })),
     onTextDelta: (delta: string) =>
       setMessagesByThread((prev) => ({
         ...prev,
-        [targetThreadId]: updateAssistantPart(
-          prev[targetThreadId] ?? [],
+        [targetThreadId]: updateAssistantPart({
+          messages: prev[targetThreadId] ?? [],
           assistantMsgId,
-          "text",
-          delta,
-        ),
+          partType: "text",
+          content: delta,
+        }),
       })),
     onToolStart: (name: string, input: unknown) =>
       setMessagesByThread((prev) => ({
         ...prev,
-        [targetThreadId]: updateAssistantToolStart(
-          prev[targetThreadId] ?? [],
+        [targetThreadId]: updateAssistantToolStart({
+          messages: prev[targetThreadId] ?? [],
           assistantMsgId,
           name,
           input,
-        ),
+        }),
       })),
     onToolOutput: (name: string, output: unknown) =>
       setMessagesByThread((prev) => ({
         ...prev,
-        [targetThreadId]: updateAssistantToolOutput(
-          prev[targetThreadId] ?? [],
+        [targetThreadId]: updateAssistantToolOutput({
+          messages: prev[targetThreadId] ?? [],
           assistantMsgId,
           name,
           output,
-        ),
+        }),
       })),
     onTrendingArtifact: (artifact: TrendingArtifact) =>
       setMessagesByThread((prev) => ({
         ...prev,
-        [targetThreadId]: appendAssistantArtifact(
-          prev[targetThreadId] ?? [],
+        [targetThreadId]: appendAssistantArtifact({
+          messages: prev[targetThreadId] ?? [],
           assistantMsgId,
-          {
-            type: "trending_artifact",
-            artifact,
-          },
-        ),
+          artifactPart: { type: "trending_artifact", artifact },
+        }),
       })),
     onDraftArtifact: (artifact: DraftArtifact) =>
       setMessagesByThread((prev) => ({
         ...prev,
-        [targetThreadId]: appendAssistantArtifact(
-          prev[targetThreadId] ?? [],
+        [targetThreadId]: appendAssistantArtifact({
+          messages: prev[targetThreadId] ?? [],
           assistantMsgId,
-          {
-            type: "draft_artifact",
-            artifact,
-          },
-        ),
+          artifactPart: { type: "draft_artifact", artifact },
+        }),
       })),
-    onError: (errMsg: string) =>
-      setMessagesByThread((prev) => {
-        const msgs = prev[targetThreadId] ?? []
-        const updated = updateAssistantPart(
-          msgs,
-          assistantMsgId,
-          "text",
-          `\n\n*(Error: ${errMsg})*`,
-        )
-        return {
-          ...prev,
-          [targetThreadId]: updated.map((m) =>
-            m.id === assistantMsgId ? { ...m, status: "error" as const } : m,
-          ),
-        }
-      }),
-    onAbort: () =>
-      setMessagesByThread((prev) => {
-        const msgs = prev[targetThreadId] ?? []
-        return {
-          ...prev,
-          [targetThreadId]: msgs.map((m) => {
-            if (m.id !== assistantMsgId) return m
-            const hasContent = m.parts.length > 0
-            if (!hasContent) {
-              return {
-                ...m,
-                status: "done" as const,
-                parts: [
-                  { type: "text" as const, text: "*(Generation stopped)*" },
-                ],
-              }
-            }
-            return { ...m, status: "done" as const }
-          }),
-        }
-      }),
-    onDone: () => {
-      setMessagesByThread((prev) => {
-        const msgs = prev[targetThreadId] ?? []
-        return {
-          ...prev,
-          [targetThreadId]: msgs.map((m) =>
-            m.id === assistantMsgId ? { ...m, status: "done" as const } : m,
-          ),
-        }
-      })
-      queryClient.invalidateQueries({ queryKey: ["ai-threads"] })
-      queryClient.invalidateQueries({
-        queryKey: ["ai-thread", targetThreadId],
-      })
-    },
   }
 }
 
-export async function resolveTargetThreadId(
-  activeThreadId: string | null,
-  promptText: string,
+export function buildStreamHandlers(
+  options: HandlerFactoryOptions & {
+    queryClient: ReturnType<typeof useQueryClient>
+  },
+) {
+  const contentHandlers = createContentHandlers(options)
+  const onAbort = createAbortHandler(options)
+  const onDone = createDoneHandler(options)
+  const onError = createErrorHandler(options)
+
+  return {
+    ...contentHandlers,
+    onError,
+    onAbort,
+    onDone,
+  }
+}
+
+export interface ResolveTargetThreadOptions {
+  activeThreadId: string | null
+  promptText: string
   createThreadMutation: ReturnType<
     typeof useMutation<ChatThreadPublic, Error, string | undefined>
-  >,
-  setActiveThreadId: (id: string) => void,
-): Promise<string | null> {
+  >
+  setActiveThreadId: (id: string) => void
+}
+
+export async function resolveTargetThreadId({
+  activeThreadId,
+  promptText,
+  createThreadMutation,
+  setActiveThreadId,
+}: ResolveTargetThreadOptions): Promise<string | null> {
   if (activeThreadId) return activeThreadId
   try {
     const newThread = await createThreadMutation.mutateAsync(promptText)
@@ -339,18 +451,24 @@ export async function resolveTargetThreadId(
   }
 }
 
-export function resolvePromptText(
-  trimmedText: string,
-  hasImages: boolean,
-): string {
+export function resolvePromptText({
+  trimmedText,
+  hasImages,
+}: {
+  trimmedText: string
+  hasImages: boolean
+}): string {
   if (trimmedText) return trimmedText
   return hasImages ? "Analyze the attached image(s)" : ""
 }
 
-export function shouldSkipMessageSend(
-  trimmedText: string,
-  hasImages: boolean,
-): boolean {
+export function shouldSkipMessageSend({
+  trimmedText,
+  hasImages,
+}: {
+  trimmedText: string
+  hasImages: boolean
+}): boolean {
   return !trimmedText && !hasImages
 }
 
@@ -372,91 +490,118 @@ export interface UseChatTurnSenderProps {
   processQueue: () => void
 }
 
-export function useChatTurnSender(props: UseChatTurnSenderProps) {
-  const {
-    activeThreadId,
-    selectedModelId,
-    isStreaming,
-    streamingThreadId,
-    setActiveThreadId,
-    setMessagesByThread,
-    setPendingQuestion,
-    clearThreadDraft,
-    createThreadMutation,
-    enqueueTurn,
-    processQueue,
-  } = props
+interface DispatchTurnOptions {
+  targetThreadId: string
+  promptText: string
+  base64Images: string[]
+  selectedModelId: string
+  assistantMsg: ChatUIMessage
+  userMsg: ChatUIMessage
+  setMessagesByThread: React.Dispatch<
+    React.SetStateAction<Record<string, ChatUIMessage[]>>
+  >
+  setPendingQuestion: (q: AskUserToolPart | null) => void
+  enqueueTurn: (turn: QueuedTurn) => void
+  processQueue: () => void
+}
 
+function dispatchQueuedTurn({
+  targetThreadId,
+  promptText,
+  base64Images,
+  selectedModelId,
+  assistantMsg,
+  userMsg,
+  setMessagesByThread,
+  setPendingQuestion,
+  enqueueTurn,
+  processQueue,
+}: DispatchTurnOptions) {
+  setMessagesByThread((prev) => ({
+    ...prev,
+    [targetThreadId]: [...(prev[targetThreadId] ?? []), userMsg, assistantMsg],
+  }))
+  setPendingQuestion(null)
+
+  const queuedTurn: QueuedTurn = {
+    id: `queue_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    threadId: targetThreadId,
+    promptText,
+    base64Images: base64Images.length > 0 ? base64Images : undefined,
+    selectedModelId,
+    assistantMsgId: assistantMsg.id,
+  }
+
+  enqueueTurn(queuedTurn)
+  processQueue()
+}
+
+interface ExecuteSendOptions extends UseChatTurnSenderProps {
+  text: string
+  attachedImages?: File[]
+  isResolvingThreadRef: React.MutableRefObject<boolean>
+}
+
+async function executeChatTurnSend(options: ExecuteSendOptions) {
+  const trimmedText = options.text.trim()
+  const hasImages = Boolean(
+    options.attachedImages && options.attachedImages.length > 0,
+  )
+  if (shouldSkipMessageSend({ trimmedText, hasImages })) return
+
+  if (options.isResolvingThreadRef.current) return
+  options.isResolvingThreadRef.current = true
+
+  try {
+    const base64Images = await convertFilesToDataUrls(options.attachedImages)
+    const promptText = resolvePromptText({ trimmedText, hasImages })
+    const targetThreadId = await resolveTargetThreadId({
+      activeThreadId: options.activeThreadId,
+      promptText,
+      createThreadMutation: options.createThreadMutation,
+      setActiveThreadId: options.setActiveThreadId,
+    })
+    if (!targetThreadId) return
+
+    options.clearThreadDraft(options.activeThreadId)
+
+    const isBusy = options.isStreaming || options.streamingThreadId !== null
+    const assistantStatus = isBusy ? "queued" : "streaming"
+
+    const { userMsg, assistantMsg } = createMessageTurn({
+      text: promptText,
+      imageUrls: base64Images,
+      assistantStatus,
+    })
+
+    dispatchQueuedTurn({
+      targetThreadId,
+      promptText,
+      base64Images,
+      selectedModelId: options.selectedModelId,
+      assistantMsg,
+      userMsg,
+      setMessagesByThread: options.setMessagesByThread,
+      setPendingQuestion: options.setPendingQuestion,
+      enqueueTurn: options.enqueueTurn,
+      processQueue: options.processQueue,
+    })
+  } finally {
+    options.isResolvingThreadRef.current = false
+  }
+}
+
+export function useChatTurnSender(props: UseChatTurnSenderProps) {
   const isResolvingThreadRef = React.useRef(false)
 
   return React.useCallback(
-    async (text: string, attachedImages?: File[]) => {
-      const trimmedText = text.trim()
-      const hasImages = Boolean(attachedImages && attachedImages.length > 0)
-      if (shouldSkipMessageSend(trimmedText, hasImages)) return
-
-      if (isResolvingThreadRef.current) return
-      isResolvingThreadRef.current = true
-
-      try {
-        const base64Images = await convertFilesToDataUrls(attachedImages)
-        const promptText = resolvePromptText(trimmedText, hasImages)
-        const targetThreadId = await resolveTargetThreadId(
-          activeThreadId,
-          promptText,
-          createThreadMutation,
-          setActiveThreadId,
-        )
-        if (!targetThreadId) return
-
-        clearThreadDraft(activeThreadId)
-
-        const isBusy = isStreaming || streamingThreadId !== null
-        const assistantStatus = isBusy ? "queued" : "streaming"
-
-        const { userMsg, assistantMsg } = createMessageTurn(
-          promptText,
-          base64Images,
-          assistantStatus,
-        )
-
-        setMessagesByThread((prev) => ({
-          ...prev,
-          [targetThreadId]: [
-            ...(prev[targetThreadId] ?? []),
-            userMsg,
-            assistantMsg,
-          ],
-        }))
-        setPendingQuestion(null)
-
-        const queuedTurn: QueuedTurn = {
-          id: `queue_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-          threadId: targetThreadId,
-          promptText,
-          base64Images: base64Images.length > 0 ? base64Images : undefined,
-          selectedModelId,
-          assistantMsgId: assistantMsg.id,
-        }
-
-        enqueueTurn(queuedTurn)
-        processQueue()
-      } finally {
-        isResolvingThreadRef.current = false
-      }
-    },
-    [
-      activeThreadId,
-      clearThreadDraft,
-      createThreadMutation,
-      enqueueTurn,
-      isStreaming,
-      processQueue,
-      selectedModelId,
-      setActiveThreadId,
-      setMessagesByThread,
-      setPendingQuestion,
-      streamingThreadId,
-    ],
+    (text: string, attachedImages?: File[]) =>
+      executeChatTurnSend({
+        ...props,
+        text,
+        attachedImages,
+        isResolvingThreadRef,
+      }),
+    [props],
   )
 }

@@ -11,13 +11,68 @@ SUPPORTED_IMAGE_FORMATS = {"JPEG", "PNG", "GIF", "WEBP"}
 VALID_HTTP_SCHEMES = ("http://", "https://")
 
 
+def _is_supported_match(*, detected_format: str, declared_mime: str) -> bool:
+    """Check if detected image format is supported and matches declared MIME."""
+    normalized_declared = (
+        "image/jpeg" if declared_mime == "image/jpg" else declared_mime
+    )
+    expected_mime = f"image/{detected_format.lower()}"
+    if expected_mime == "image/jpg":
+        expected_mime = "image/jpeg"
+
+    is_supported = detected_format in SUPPORTED_IMAGE_FORMATS
+    return is_supported and normalized_declared == expected_mime
+
+
+def _convert_to_jpeg_b64(*, im: Image.Image) -> str:
+    """Convert any Pillow image to a clean base64 data-URI JPEG."""
+    export_im: Image.Image = im
+    if export_im.mode in ("RGBA", "P", "LA"):
+        export_im = export_im.convert("RGB")
+
+    out = io.BytesIO()
+    export_im.save(out, format="JPEG", quality=85)
+    encoded = base64.b64encode(out.getvalue()).decode("ascii")
+    return f"data:image/jpeg;base64,{encoded}"
+
+
+def _process_image_data_uri(*, trimmed: str) -> str | None:
+    """Safely parse base64 data and re-encode to JPEG if necessary."""
+    try:
+        header, _, b64_data = trimmed.partition(",")
+        if not b64_data:
+            return None
+
+        raw_bytes = base64.b64decode(b64_data)
+        if not raw_bytes:
+            return None
+
+        with Image.open(io.BytesIO(raw_bytes)) as im:
+            detected_fmt = (im.format or "").upper()
+            declared_mime = header.split(";")[0].replace("data:", "").strip().lower()
+
+            if _is_supported_match(
+                detected_format=detected_fmt, declared_mime=declared_mime
+            ):
+                return trimmed
+
+            logger.info(
+                "Auto-converting image to JPEG for LLM compatibility (detected=%s, declared=%s)",
+                detected_fmt,
+                declared_mime,
+            )
+            return _convert_to_jpeg_b64(im=im)
+    except Exception as exc:
+        logger.warning("Failed to parse or convert image data URL: %s", exc)
+        return None
+
+
 def normalize_image_url(*, url: Any) -> str | None:
     """Validate, normalize, and auto-convert image URLs/data-URIs for LLM vision models.
 
     OpenAI vision endpoints only support: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].
-    If an image is in another format (like AVIF, HEIC, TIFF, BMP) or has mismatched MIME headers
-    (e.g., AVIF disguised as data:image/jpeg), Pillow is used to safely convert it to JPEG.
-    If the image data is completely corrupted or unreadable, returns None.
+    If an image is in another format (like AVIF, HEIC, TIFF, BMP) or has mismatched MIME headers,
+    Pillow is used to safely convert it to JPEG. Corrupted data returns None.
     """
     if not isinstance(url, str):
         return None
@@ -31,53 +86,7 @@ def normalize_image_url(*, url: Any) -> str | None:
     if not trimmed.startswith("data:image/"):
         return None
 
-    try:
-        header, _, b64_data = trimmed.partition(",")
-        if not b64_data:
-            return None
-
-        data = base64.b64decode(b64_data)
-        if not data:
-            return None
-
-        with Image.open(io.BytesIO(data)) as im:
-            detected_format = (im.format or "").upper()
-            declared_mime = header.split(";")[0].replace("data:", "").strip().lower()
-
-            # Handle jpg -> jpeg alias
-            if declared_mime == "image/jpg":
-                declared_mime = "image/jpeg"
-
-            expected_mime = f"image/{detected_format.lower()}"
-            if expected_mime == "image/jpg":
-                expected_mime = "image/jpeg"
-
-            # If format is already supported and matches the header, it's valid as-is
-            if (
-                detected_format in SUPPORTED_IMAGE_FORMATS
-                and declared_mime == expected_mime
-            ):
-                return trimmed
-
-            # Otherwise (e.g. AVIF, BMP, TIFF, or mismatched header like AVIF declared as JPEG),
-            # convert to clean standard JPEG
-            logger.info(
-                "Auto-converting image to JPEG for LLM compatibility (detected=%s, declared=%s)",
-                detected_format,
-                declared_mime,
-            )
-            export_im: Image.Image = im
-            if export_im.mode in ("RGBA", "P", "LA"):
-                export_im = export_im.convert("RGB")
-
-            out = io.BytesIO()
-            export_im.save(out, format="JPEG", quality=85)
-            encoded = base64.b64encode(out.getvalue()).decode("ascii")
-            return f"data:image/jpeg;base64,{encoded}"
-
-    except Exception as exc:
-        logger.warning("Failed to parse or convert image data URL: %s", exc)
-        return None
+    return _process_image_data_uri(trimmed=trimmed)
 
 
 def sanitize_image_urls(*, images: list[str] | None) -> list[str]:
