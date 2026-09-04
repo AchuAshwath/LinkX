@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
-import { ThoughtPart } from "../parts/ThoughtPart"
+import { getToolIcon, ThoughtPart } from "../parts/ThoughtPart"
 
 describe("ThoughtPart component", () => {
   it("renders thinking state when streaming", () => {
@@ -23,7 +23,7 @@ describe("ThoughtPart component", () => {
         isStreaming={false}
       />,
     )
-    expect(screen.getByText("Thinking…")).toBeInTheDocument()
+    expect(screen.getByText(/thought for|worked for/i)).toBeInTheDocument()
     // Collapsed by default
     expect(
       screen.queryByText(/Selected LinkedIn hook pattern/),
@@ -43,20 +43,73 @@ describe("ThoughtPart component", () => {
     ).not.toBeInTheDocument()
   })
 
-  it("renders markdown formatting inside expanded thought content", () => {
-    const { container } = render(
+  it("renders worked for X seconds with tool calls and allows viewing tool payload", () => {
+    render(
       <ThoughtPart
-        part={{
-          type: "thought",
-          content: "Here is **critical reasoning** step.",
-        }}
-        isStreaming={true}
-        hasResponseStarted={false}
+        content="Analyzed the database state"
+        toolCalls={[
+          {
+            id: "t-1",
+            name: "get_latest_scraped_trends",
+            state: "completed",
+            durationMs: 180,
+            input: { limit: 10 },
+            output: { count: 8 },
+          },
+        ]}
+        isStreaming={false}
+        durationSeconds={3}
       />,
     )
 
-    const strongEl = container.querySelector("strong")
-    expect(strongEl).toBeDefined()
-    expect(strongEl?.textContent).toBe("critical reasoning")
+    expect(screen.getByText("Worked for 3 seconds")).toBeInTheDocument()
+
+    // Click toggle to expand dropdown
+    const toggleButton = screen.getByRole("button", {
+      name: /toggle thinking details/i,
+    })
+    fireEvent.click(toggleButton)
+
+    expect(screen.getByText("get_latest_scraped_trends")).toBeInTheDocument()
+    expect(screen.getByText("(180ms)")).toBeInTheDocument()
+    expect(screen.getByText(/Analyzed the database state/)).toBeInTheDocument()
+
+    // Expand tool payload details
+    const viewDetailsBtn = screen.getByRole("button", {
+      name: /toggle tool payload details/i,
+    })
+    fireEvent.click(viewDetailsBtn)
+    expect(screen.getByText(/"limit": 10/)).toBeInTheDocument()
+    expect(screen.getByText(/"count": 8/)).toBeInTheDocument()
+  })
+
+  it("maps tool calls to appropriate icons using the icon dictionary", () => {
+    // Database
+    expect(getToolIcon("get_latest_scraped_trends")).toBeDefined()
+    expect(getToolIcon("get_topic_tweets_and_summary")).toBeDefined()
+    expect(getToolIcon("save_draft_post")).toBeDefined()
+    expect(getToolIcon("update_draft_post")).toBeDefined()
+    // Validation
+    expect(getToolIcon("validate_post_constraints")).toBeDefined()
+    // Web / Scraper
+    expect(getToolIcon("scrape_live_explore_trends")).toBeDefined()
+    expect(getToolIcon("web_search")).toBeDefined()
+    // Draft
+    expect(getToolIcon("draft_social_post")).toBeDefined()
+    // Fallback
+    expect(getToolIcon("unknown_tool")).toBeDefined()
+
+    // Validate that validation icon is distinct from draft icon
+    expect(getToolIcon("validate_post_constraints")).not.toBe(
+      getToolIcon("draft_social_post"),
+    )
+    // Validate database icon (save_draft_post) is distinct from draft authoring icon (draft_social_post)
+    expect(getToolIcon("save_draft_post")).not.toBe(
+      getToolIcon("draft_social_post"),
+    )
+    // Validate save_draft_post shares the Database icon with get_latest_scraped_trends
+    expect(getToolIcon("save_draft_post")).toBe(
+      getToolIcon("get_latest_scraped_trends"),
+    )
   })
 })

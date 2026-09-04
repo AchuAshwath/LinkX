@@ -12,7 +12,18 @@ import { PromptForm } from "@/components/Chat/PromptForm"
 import { RenameThreadDialog } from "@/components/Chat/RenameThreadDialog"
 import { useAIChatFeedState } from "@/hooks/useAIChatFeedState"
 
+interface AISearchParams {
+  threadId?: string
+  prompt?: string
+  autoRun?: boolean
+}
+
 export const Route = createFileRoute("/_layout/ai")({
+  validateSearch: (search: Record<string, unknown>): AISearchParams => ({
+    threadId: typeof search.threadId === "string" ? search.threadId : undefined,
+    prompt: typeof search.prompt === "string" ? search.prompt : undefined,
+    autoRun: search.autoRun === true || search.autoRun === "true",
+  }),
   component: AIPage,
   head: () => ({
     meta: [
@@ -29,12 +40,12 @@ function getInitialStoredModel(): string {
   if (typeof window !== "undefined" && typeof localStorage !== "undefined") {
     try {
       const saved = localStorage.getItem(AI_MODEL_STORAGE_KEY)
-      if (saved) return saved
+      if (saved && !saved.startsWith("gemini")) return saved
     } catch {
       // ignore
     }
   }
-  return "gemini-3.6-flash-high"
+  return "gpt-5.4"
 }
 
 function filterAndSortThreads(
@@ -60,7 +71,22 @@ function filterAndSortThreads(
   return result
 }
 
+function getUrlSearchParams(): AISearchParams {
+  if (typeof window === "undefined") return {}
+  try {
+    const params = new URLSearchParams(window.location.search)
+    return {
+      threadId: params.get("threadId") || undefined,
+      prompt: params.get("prompt") || undefined,
+      autoRun: params.get("autoRun") === "true",
+    }
+  } catch {
+    return {}
+  }
+}
+
 function AIPage() {
+  const search = React.useMemo(() => getUrlSearchParams(), [])
   const queryClient = useQueryClient()
   const promptInputRef = React.useRef<HTMLTextAreaElement>(null)
 
@@ -105,13 +131,15 @@ function AIPage() {
         ? localStorage.getItem(AI_MODEL_STORAGE_KEY)
         : null
 
-    if (!saved) {
-      const defaultId = modelsData.default_model || modelsData.data?.[0]?.id
+    if (!saved || saved.startsWith("gemini")) {
+      const defaultId =
+        modelsData.default_model || modelsData.data?.[0]?.id || "gpt-5.4"
       if (defaultId) setSelectedModelId(defaultId)
     } else if (modelsData.data && modelsData.data.length > 0) {
       const exists = modelsData.data.some((m) => m.id === saved)
       if (!exists) {
-        const fallback = modelsData.default_model || modelsData.data[0].id
+        const fallback =
+          modelsData.default_model || modelsData.data[0].id || "gpt-5.4"
         setSelectedModelId(fallback)
       }
     }
@@ -128,16 +156,82 @@ function AIPage() {
     activeThreadId,
     setActiveThreadId,
     localMessages,
-    setLocalMessages,
     pendingQuestion,
     threadDrafts,
     setThreadDraft,
-    isStreaming,
+    streamingThreadId,
+    queuedThreadIds,
+    isThreadStreaming,
+    isThreadQueued,
+    handleThreadDeleted,
     stopStream,
     handleSendMessage,
     handleQuestionAnswer,
     handleNewChat,
-  } = useAIChatFeedState({ threads, selectedModelId })
+  } = useAIChatFeedState({
+    threads,
+    selectedModelId,
+    initialThreadId: search.threadId,
+  })
+
+  const isCurrentThreadStreaming = isThreadStreaming(activeThreadId)
+  const isCurrentThreadQueued = isThreadQueued(activeThreadId)
+  const isCurrentThreadBusy = isCurrentThreadStreaming || isCurrentThreadQueued
+
+  const autoRunExecutedRef = React.useRef(false)
+  React.useEffect(() => {
+    if (search.autoRun && search.prompt && !autoRunExecutedRef.current) {
+      autoRunExecutedRef.current = true
+      try {
+        const url = new URL(window.location.href)
+        url.searchParams.delete("autoRun")
+        url.searchParams.delete("prompt")
+        window.history.replaceState(
+          {},
+          "",
+          url.pathname + (url.search ? url.search : ""),
+        )
+      } catch {
+        // ignore
+      }
+      handleSendMessage(search.prompt)
+    }
+  }, [search.autoRun, search.prompt, handleSendMessage])
+
+  // Keep browser URL in sync with activeThreadId and purge stale autoRun/prompt params
+  React.useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      const url = new URL(window.location.href)
+      let changed = false
+      if (url.searchParams.has("autoRun")) {
+        url.searchParams.delete("autoRun")
+        changed = true
+      }
+      if (url.searchParams.has("prompt")) {
+        url.searchParams.delete("prompt")
+        changed = true
+      }
+      if (activeThreadId) {
+        if (url.searchParams.get("threadId") !== activeThreadId) {
+          url.searchParams.set("threadId", activeThreadId)
+          changed = true
+        }
+      } else if (url.searchParams.has("threadId")) {
+        url.searchParams.delete("threadId")
+        changed = true
+      }
+      if (changed) {
+        window.history.replaceState(
+          {},
+          "",
+          url.pathname + (url.search ? url.search : ""),
+        )
+      }
+    } catch {
+      // ignore
+    }
+  }, [activeThreadId])
 
   const updateThreadMutation = useMutation({
     mutationFn: ({
@@ -163,10 +257,10 @@ function AIPage() {
     mutationFn: (id: string) => AiThreadsService.deleteChatThread({ id }),
     onSuccess: (_, deletedId) => {
       queryClient.invalidateQueries({ queryKey: ["ai-threads"] })
+      handleThreadDeleted(deletedId)
       if (activeThreadId === deletedId) {
         const remaining = threads.filter((t) => t.id !== deletedId)
         setActiveThreadId(remaining.length > 0 ? remaining[0].id : null)
-        setLocalMessages([])
       }
       setThreadToDelete(null)
     },
@@ -223,7 +317,7 @@ function AIPage() {
   )
 
   return (
-    <div className="flex w-full min-h-[calc(100vh-3.5rem)] lg:min-h-screen bg-background text-foreground">
+    <div className="flex w-full h-[calc(100vh-3.5rem)] lg:h-screen overflow-hidden bg-background text-foreground">
       <RenameThreadDialog
         thread={threadToRename}
         isOpen={Boolean(threadToRename)}
@@ -248,7 +342,7 @@ function AIPage() {
       <div className="relative mx-auto flex min-h-0 w-full flex-1 max-w-2xl border-r-0 md:border-r border-border flex-col h-[calc(100vh-3.5rem)] lg:h-screen overflow-hidden">
         <AIChatFeed
           localMessages={localMessages}
-          isStreaming={isStreaming}
+          isStreaming={isCurrentThreadStreaming}
           pendingQuestion={pendingQuestion}
           onSendMessage={handleSendMessage}
           onQuestionAnswer={handleQuestionAnswer}
@@ -260,8 +354,10 @@ function AIPage() {
             inputRef={promptInputRef}
             initialValue={threadDrafts[activeThreadId ?? "new-chat"] ?? ""}
             onValueChange={(val) => setThreadDraft(activeThreadId, val)}
-            placeholder="Ask anything"
-            isBusy={isStreaming}
+            placeholder={
+              isCurrentThreadQueued ? "Waiting in queue..." : "Ask anything"
+            }
+            isBusy={isCurrentThreadBusy}
             selectedModelId={selectedModelId}
             models={modelsData?.data}
             onSelectModel={setSelectedModelId}
@@ -279,6 +375,8 @@ function AIPage() {
         activeThreadId={activeThreadId}
         openMenuThreadId={openMenuThreadId}
         isLoading={isThreadsLoading}
+        streamingThreadId={streamingThreadId}
+        queuedThreadIds={queuedThreadIds}
         filters={{
           searchQuery,
           isSearchOpen,
@@ -302,7 +400,6 @@ function AIPage() {
         actions={{
           onSelect: (threadId) => {
             if (threadId !== activeThreadId) {
-              stopStream()
               setActiveThreadId(threadId)
             }
           },

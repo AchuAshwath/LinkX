@@ -1,189 +1,157 @@
-import {
-  CalendarIcon,
-  CheckIcon,
-  CopyIcon,
-  PenToolIcon,
-  SendIcon,
-} from "lucide-react"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import * as React from "react"
+import { PostsService } from "@/client"
 import type { DraftArtifact } from "@/components/Chat/types"
-import { Button } from "@/components/ui/button"
+import type { Platform } from "@/components/Common/PlatformSelector"
+import { DraftPost, type DraftPostData } from "@/components/Post/DraftPost"
+import { PostPreviewDialog } from "@/components/Post/Previews"
+import type { PreviewPostData } from "@/components/Post/Previews/LinkedInPostPreview"
+import useAuth from "@/hooks/useAuth"
+import useCustomToast from "@/hooks/useCustomToast"
+import { cn } from "@/lib/utils"
 
 export interface DraftArtifactCardProps {
   artifact: DraftArtifact
+  author?: { name: string; username: string; avatarUrl?: string | null }
   onSchedule?: (artifact: DraftArtifact) => void
   onSendToComposer?: (artifact: DraftArtifact) => void
   onPublish?: (artifact: DraftArtifact) => void
+  onDelete?: (artifact: DraftArtifact) => void
+  onPreview?: (artifact: DraftArtifact) => void
   className?: string
-}
-
-function PlatformTabs({
-  selected,
-  onSelect,
-}: {
-  selected: "x" | "linkedin" | "linkx" | "all"
-  onSelect: (p: "x" | "linkedin" | "linkx" | "all") => void
-}) {
-  return (
-    <div className="flex items-center rounded-lg bg-muted/40 p-0.5 border border-border/50">
-      {(["linkx", "x", "linkedin"] as const).map((p) => (
-        <button
-          key={p}
-          type="button"
-          onClick={() => onSelect(p)}
-          className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer uppercase ${
-            selected === p
-              ? "bg-background text-foreground shadow-2xs font-semibold"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          {p === "linkx" ? "Both" : p}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-function DraftActions({
-  artifact,
-  copied,
-  onCopy,
-  onSendToComposer,
-  onSchedule,
-  onPublish,
-}: {
-  artifact: DraftArtifact
-  copied: boolean
-  onCopy: () => void
-  onSendToComposer?: (artifact: DraftArtifact) => void
-  onSchedule?: (artifact: DraftArtifact) => void
-  onPublish?: (artifact: DraftArtifact) => void
-}) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={onCopy}
-        className="h-7 px-2 text-[11px] rounded-lg cursor-pointer"
-        aria-label="Copy text"
-      >
-        {copied ? (
-          <CheckIcon className="h-3 w-3 text-emerald-500 mr-1" />
-        ) : (
-          <CopyIcon className="h-3 w-3 mr-1" />
-        )}
-        {copied ? "Copied" : "Copy"}
-      </Button>
-
-      {onSendToComposer && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => onSendToComposer(artifact)}
-          className="h-7 px-2 text-[11px] rounded-lg cursor-pointer"
-          aria-label="Send to Composer"
-        >
-          Send to Composer
-        </Button>
-      )}
-
-      {onSchedule && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => onSchedule(artifact)}
-          className="h-7 px-2 text-[11px] rounded-lg cursor-pointer"
-          aria-label="Schedule"
-        >
-          <CalendarIcon className="h-3 w-3 mr-1 text-primary" />
-          Schedule
-        </Button>
-      )}
-
-      {onPublish && (
-        <Button
-          type="button"
-          size="sm"
-          onClick={() => onPublish(artifact)}
-          className="h-7 px-2.5 text-[11px] rounded-lg bg-primary text-primary-foreground font-semibold cursor-pointer hover:bg-primary/90"
-          aria-label="Publish"
-        >
-          <SendIcon className="h-3 w-3 mr-1" />
-          Publish
-        </Button>
-      )}
-    </div>
-  )
 }
 
 export function DraftArtifactCard({
   artifact,
-  onSchedule,
+  author,
+  onSchedule: _onSchedule,
   onSendToComposer,
   onPublish,
+  onDelete,
+  onPreview,
   className,
 }: DraftArtifactCardProps) {
-  const [copied, setCopied] = React.useState(false)
-  const [selectedPlatform, setSelectedPlatform] = React.useState<
-    "x" | "linkedin" | "linkx" | "all"
-  >(artifact.platform || "linkx")
+  const { user } = useAuth()
+  const queryClient = useQueryClient()
+  const { showSuccessToast, showErrorToast } = useCustomToast()
+  const [previewOpen, setPreviewOpen] = React.useState(false)
 
-  const charCount = artifact.content ? artifact.content.length : 0
-  const maxLimit = selectedPlatform === "x" ? 280 : 3000
+  const [currentPlatform, setCurrentPlatform] = React.useState<Platform>(
+    (artifact.platform === "all"
+      ? "linkx"
+      : artifact.platform || "linkx") as Platform,
+  )
 
-  const handleCopy = async () => {
-    if (!artifact.content) return
-    await navigator.clipboard.writeText(artifact.content)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
+  React.useEffect(() => {
+    if (artifact.platform) {
+      setCurrentPlatform(
+        (artifact.platform === "all" ? "linkx" : artifact.platform) as Platform,
+      )
+    }
+  }, [artifact.platform])
+
+  const postAuthor = React.useMemo(() => {
+    if (author) return author
+    const name =
+      user?.full_name || (user?.email ? user.email.split("@")[0] : "Ashwath N")
+    const username = user?.email ? user.email.split("@")[0] : "admin"
+    return {
+      name,
+      username,
+    }
+  }, [author, user])
+
+  const publishMutation = useMutation({
+    mutationFn: async (postId: string) =>
+      PostsService.publishExistingPost({ postId }),
+    onSuccess: () => {
+      showSuccessToast("Post published successfully!")
+      queryClient.invalidateQueries({ queryKey: ["posts"] })
+    },
+    onError: () => {
+      showErrorToast("Failed to publish post")
+    },
+  })
+
+  const handlePublish = React.useCallback(
+    (postId: string) => {
+      if (onPublish) {
+        onPublish(artifact)
+      } else if (postId && postId !== "draft-artifact") {
+        publishMutation.mutate(postId)
+      }
+    },
+    [artifact, onPublish, publishMutation],
+  )
+
+  const handlePreview = React.useCallback(
+    (_postId?: string) => {
+      setPreviewOpen(true)
+      onPreview?.(artifact)
+    },
+    [artifact, onPreview],
+  )
+
+  const handleEdit = React.useCallback(
+    (_postId: string) => {
+      onSendToComposer?.(artifact)
+    },
+    [artifact, onSendToComposer],
+  )
+
+  const handleDelete = React.useCallback(
+    (_postId: string) => {
+      onDelete?.(artifact)
+    },
+    [artifact, onDelete],
+  )
+
+  const postData: DraftPostData = React.useMemo(() => {
+    return {
+      id: artifact.id || artifact.postId || "draft-artifact",
+      author: postAuthor,
+      content: artifact.content,
+      createdAt: new Date().toISOString(),
+      platform: currentPlatform,
+      status: "draft",
+      type: "draft",
+    }
+  }, [artifact, postAuthor, currentPlatform])
+
+  const previewData: PreviewPostData = React.useMemo(() => {
+    return {
+      id: postData.id,
+      author: {
+        name: postData.author.name,
+        username: postData.author.username,
+        avatarUrl: postData.author.avatarUrl ?? undefined,
+      },
+      content: postData.content,
+      imageUrl: postData.imageUrl ?? undefined,
+      createdAt: postData.createdAt,
+      likes: postData.likes,
+      reposts: postData.reposts,
+      comments: postData.comments,
+    }
+  }, [postData])
 
   return (
-    <div
-      className={`w-full max-w-xl mx-auto my-3 rounded-2xl border border-primary/30 bg-card p-4 shadow-sm text-xs flex flex-col gap-3 transition-all ${
-        className || ""
-      }`}
-    >
-      <div className="flex items-center justify-between border-b border-border/60 pb-2.5">
-        <div className="flex items-center gap-1.5 font-semibold text-foreground">
-          <PenToolIcon className="h-3.5 w-3.5 text-primary" />
-          <span>Drafted Post</span>
-        </div>
-        <PlatformTabs
-          selected={selectedPlatform}
-          onSelect={setSelectedPlatform}
-        />
-      </div>
-
-      <div className="rounded-xl bg-muted/20 border border-border/40 p-3 text-foreground text-xs leading-relaxed whitespace-pre-wrap font-sans">
-        {artifact.content}
-      </div>
-
-      <div className="flex items-center justify-between pt-1 text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-[11px]">
-            {charCount} / {maxLimit} chars
-          </span>
-          {charCount > maxLimit && (
-            <span className="text-destructive font-semibold">
-              Exceeds limit
-            </span>
-          )}
-        </div>
-
-        <DraftActions
-          artifact={artifact}
-          copied={copied}
-          onCopy={handleCopy}
-          onSendToComposer={onSendToComposer}
-          onSchedule={onSchedule}
-          onPublish={onPublish}
-        />
-      </div>
+    <div className={cn("w-full", className)}>
+      <DraftPost
+        post={postData}
+        onPlatformChange={(_, p) => setCurrentPlatform(p)}
+        onPublish={handlePublish}
+        onPreview={handlePreview}
+        onEdit={onSendToComposer ? handleEdit : undefined}
+        onDelete={onDelete ? handleDelete : undefined}
+        isPublishing={publishMutation.isPending}
+      />
+      <PostPreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        post={previewData}
+        platform={currentPlatform}
+      />
     </div>
   )
 }

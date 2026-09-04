@@ -18,6 +18,8 @@ function ThreadListSection({
   openMenuThreadId,
   isLoading,
   emptyMessage,
+  streamingThreadId,
+  queuedThreadIds,
   actions,
 }: {
   threads: ChatThreadPublic[]
@@ -25,6 +27,8 @@ function ThreadListSection({
   openMenuThreadId: string | null
   isLoading: boolean
   emptyMessage: string
+  streamingThreadId?: string | null
+  queuedThreadIds?: string[]
   actions: ThreadItemActions
 }) {
   if (isLoading) {
@@ -51,6 +55,10 @@ function ThreadListSection({
           thread={thread}
           isActive={thread.id === activeThreadId}
           isMenuOpen={openMenuThreadId === thread.id}
+          isStreaming={Boolean(
+            streamingThreadId && streamingThreadId === thread.id,
+          )}
+          isQueued={Boolean(queuedThreadIds?.includes(thread.id))}
           actions={actions}
         />
       ))}
@@ -85,6 +93,8 @@ export interface AIThreadsSidebarProps {
   isLoading: boolean
   filters: SidebarFilterState
   filterHandlers: SidebarFilterHandlers
+  streamingThreadId?: string | null
+  queuedThreadIds?: string[]
   actions: ThreadItemActions
 }
 
@@ -96,12 +106,14 @@ export function AIThreadsSidebar({
   isLoading,
   filters,
   filterHandlers,
+  streamingThreadId,
+  queuedThreadIds,
   actions,
 }: AIThreadsSidebarProps) {
   return (
-    <div className="hidden w-80 md:block shrink-0">
-      <div className="sticky top-0 self-start p-4 flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
+    <aside className="hidden w-80 md:block shrink-0 h-full overflow-y-auto overscroll-contain scrollbar-thin border-l border-border/40">
+      <div className="p-4 pb-20 space-y-6">
+        <section className="space-y-1.5">
           <SidebarControlsHeader
             isOpen={filters.recentsOpen}
             isSearchOpen={filters.isSearchOpen}
@@ -129,12 +141,14 @@ export function AIThreadsSidebar({
               openMenuThreadId={openMenuThreadId}
               isLoading={isLoading}
               emptyMessage="No recent chats"
+              streamingThreadId={streamingThreadId}
+              queuedThreadIds={queuedThreadIds}
               actions={actions}
             />
           )}
-        </div>
+        </section>
 
-        <div className="flex flex-col gap-1 border-t border-border/40 pt-2.5">
+        <section className="space-y-1.5 border-t border-border/40 pt-4">
           <div className="flex items-center justify-between px-2 py-1">
             <button
               type="button"
@@ -158,11 +172,13 @@ export function AIThreadsSidebar({
               openMenuThreadId={openMenuThreadId}
               isLoading={isLoading}
               emptyMessage="No archived chats"
+              streamingThreadId={streamingThreadId}
+              queuedThreadIds={queuedThreadIds}
               actions={actions}
             />
           )}
-        </div>
+        </section>
       </div>
-    </div>
+    </aside>
   )
 }

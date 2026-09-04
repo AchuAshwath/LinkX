@@ -68,6 +68,9 @@ export function AIChatFeed({
                   isStreaming={
                     isStreaming && index === localMessages.length - 1
                   }
+                  onDraftTopic={(title) =>
+                    onSendMessage(`Draft an engaging post about: "${title}"`)
+                  }
                 />
               </MessageScrollerItem>
             ))}

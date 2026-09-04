@@ -55,6 +55,10 @@ export function usePromptFormState({
   const [localModelId, setLocalModelId] = React.useState(selectedModelId || "")
 
   React.useEffect(() => {
+    setInput((prev) => (prev !== initialValue ? initialValue : prev))
+  }, [initialValue])
+
+  React.useEffect(() => {
     if (selectedModelId) {
       setLocalModelId(selectedModelId)
     }

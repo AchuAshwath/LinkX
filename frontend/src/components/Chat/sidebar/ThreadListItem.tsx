@@ -1,4 +1,4 @@
-import { Archive, MoreHorizontal, Trash2 } from "lucide-react"
+import { Archive, Clock, Loader2, MoreHorizontal, Trash2 } from "lucide-react"
 import type { ChatThreadPublic } from "@/client"
 import { ThreadActionsMenu } from "@/components/Chat/sidebar/ThreadActionsMenu"
 import { Button } from "@/components/ui/button"
@@ -16,11 +16,15 @@ export function ThreadListItem({
   thread,
   isActive,
   isMenuOpen,
+  isStreaming,
+  isQueued,
   actions,
 }: {
   thread: ChatThreadPublic
   isActive: boolean
   isMenuOpen: boolean
+  isStreaming?: boolean
+  isQueued?: boolean
   actions: ThreadItemActions
 }) {
   const isArchived = Boolean(thread.is_archived)
@@ -46,7 +50,7 @@ export function ThreadListItem({
       >
         <span
           className={cn(
-            "truncate w-full",
+            "truncate",
             isArchived
               ? "text-xs text-muted-foreground font-normal group-hover:text-foreground"
               : "text-xs text-foreground font-medium",
@@ -54,6 +58,24 @@ export function ThreadListItem({
         >
           {thread.title}
         </span>
+        {isStreaming && (
+          <span
+            data-testid="thread-generating-badge"
+            className="ml-1.5 flex items-center gap-1 text-[10px] font-medium text-primary px-1.5 py-0.5 rounded-md bg-primary/10 shrink-0"
+          >
+            <Loader2 className="size-2.5 animate-spin" />
+            <span className="hidden sm:inline">Generating</span>
+          </span>
+        )}
+        {isQueued && (
+          <span
+            data-testid="thread-queued-badge"
+            className="ml-1.5 flex items-center gap-1 text-[10px] font-medium text-muted-foreground px-1.5 py-0.5 rounded-md bg-muted/60 shrink-0"
+          >
+            <Clock className="size-2.5" />
+            <span className="hidden sm:inline">Queued</span>
+          </span>
+        )}
       </button>
 
       <div className="flex items-center gap-0.5 shrink-0">

@@ -1,7 +1,21 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 import { ChatMessage } from "../ChatMessage"
 import type { ChatUIMessage } from "../types"
+
+function renderWithClient(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+      },
+    },
+  })
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+  )
+}
 
 describe("ChatMessage component", () => {
   it("renders user message in an end-aligned bubble", () => {
@@ -138,5 +152,75 @@ describe("ChatMessage component", () => {
     // Trigger image loading error
     fireEvent.error(img)
     expect(img).toHaveStyle({ display: "none" })
+  })
+
+  it("extracts thought tags embedded in text and renders thinking accordion", () => {
+    const message: ChatUIMessage = {
+      id: "msg-thought-tags",
+      role: "assistant",
+      parts: [
+        {
+          type: "text",
+          text: "<thought>Keep the response brief, friendly, and establish role.</thought>\n\nI'm LinkX Copilot — your AI assistant.",
+        },
+      ],
+    }
+
+    render(<ChatMessage message={message} />)
+    // Thought content is in the thinking accordion, not rendered as raw tags
+    expect(screen.queryByText(/<thought>/)).not.toBeInTheDocument()
+    expect(
+      screen.getByText(/I'm LinkX Copilot — your AI assistant\./),
+    ).toBeInTheDocument()
+    // Thinking summary button is visible
+    expect(
+      screen.getByRole("button", { name: /toggle thinking details/i }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/thought for 2 seconds/i)).toBeInTheDocument()
+  })
+
+  it("deduplicates draft post text repeated in assistant text parts", () => {
+    const postText =
+      "Raghav Chadha has accused Punjab AAP of a 'voter roll vendetta' after his electoral shift."
+    const message: ChatUIMessage = {
+      id: "msg-draft-duplicate",
+      role: "assistant",
+      parts: [
+        {
+          type: "draft_artifact",
+          artifact: {
+            id: "draft-1",
+            content: postText,
+            platform: "x",
+            status: "draft",
+          },
+        },
+        {
+          type: "text",
+          text: `Here's a polished X draft:\n\n${postText}\n\nSaved as a draft.`,
+        },
+      ],
+    }
+
+    renderWithClient(<ChatMessage message={message} />)
+    const matches = screen.getAllByText(new RegExp(postText))
+    expect(matches).toHaveLength(1)
+    expect(
+      screen.queryByText(/Here's a polished X draft/i),
+    ).not.toBeInTheDocument()
+  })
+
+  it("renders queued indicator when assistant message status is queued", () => {
+    const message: ChatUIMessage = {
+      id: "msg-queued",
+      role: "assistant",
+      parts: [],
+      status: "queued",
+    }
+
+    renderWithClient(<ChatMessage message={message} />)
+    expect(
+      screen.getByText(/Queued • Waiting for active generation to finish.../i),
+    ).toBeInTheDocument()
   })
 })

@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useNavigate } from "@tanstack/react-router"
 import { useCallback, useState } from "react"
 
 import { PostsService } from "@/client"
@@ -238,7 +239,7 @@ function useAiDraftMutation(
 }
 
 export function usePostForm(options?: UsePostFormOptions) {
-  const { showSuccessToast, showErrorToast, showInfoToast } = useCustomToast()
+  const { showSuccessToast, showErrorToast } = useCustomToast()
   const core = useComposerCoreState(options)
   const media = useComposerMedia(showErrorToast, options?.initialImageUrl)
 
@@ -259,34 +260,25 @@ export function usePostForm(options?: UsePostFormOptions) {
 
   const aiDraftMutation = useAiDraftMutation(showSuccessToast, showErrorToast)
 
+  const navigate = useNavigate()
+
   const handleAiDraft = useCallback(() => {
     const prompt = core.content.trim()
     if (!prompt) return
-
-    const draftId = `draft-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-
-    // Add to in-flight drafting list immediately
-    draftingStore.addDraft({
-      id: draftId,
-      prompt,
-      platform: core.channel,
-      startedAt: new Date(),
-    })
 
     // Immediately free the input box for the user's next post
     core.setContent("")
     core.setIsAiMode(false)
 
-    // Show initial notification toast
-    showInfoToast("Drafting post in background with AI...", "Drafting...")
-
-    // Trigger background generation
-    aiDraftMutation.mutate({
-      draftId,
-      prompt,
-      platform: core.channel,
+    // Route to AI chat thread
+    navigate({
+      to: "/ai",
+      search: {
+        prompt: `Draft a ${core.channel !== "linkx" ? core.channel : "social"} post about: "${prompt}"`,
+        autoRun: true,
+      },
     })
-  }, [core, showInfoToast, aiDraftMutation])
+  }, [core, navigate])
 
   const handleSubmit = useCallback(
     (action: "draft" | "schedule" | "post") => {
