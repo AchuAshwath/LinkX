@@ -5,6 +5,7 @@ import {
   XCircleIcon,
 } from "lucide-react"
 import * as React from "react"
+import { getToolIcon } from "@/components/Chat/parts/ThoughtPart"
 import type { ToolCallItem } from "@/components/Chat/types"
 
 export interface ToolCallAccordionProps {
@@ -31,24 +32,28 @@ function ToolStatusIcon({ state }: { state: ToolCallItem["state"] }) {
 
 function ToolCallDetails({ tool }: { tool: ToolCallItem }) {
   return (
-    <div className="border-t border-border/60 bg-muted/20 p-3 flex flex-col gap-2 font-mono text-[11px] overflow-x-auto">
+    <div className="border-t border-border/60 bg-zinc-950 dark:bg-black text-zinc-200 p-3 flex flex-col gap-2 font-mono text-[11px] overflow-x-auto">
       {tool.input && (
         <div>
-          <span className="font-semibold text-muted-foreground block mb-0.5">
-            Input:
-          </span>
-          <pre className="text-foreground bg-background/80 rounded-lg p-2 border border-border/50 overflow-x-auto">
-            {JSON.stringify(tool.input, null, 2)}
+          <div className="text-zinc-500 text-[10px] uppercase tracking-wider mb-1 flex items-center gap-1.5 font-mono">
+            <span className="text-emerald-400">$</span> input:
+          </div>
+          <pre className="text-zinc-300 pl-2.5 border-l border-zinc-800 whitespace-pre-wrap break-words overflow-x-auto">
+            {typeof tool.input === "string"
+              ? tool.input
+              : JSON.stringify(tool.input, null, 2)}
           </pre>
         </div>
       )}
       {tool.output && (
         <div>
-          <span className="font-semibold text-muted-foreground block mb-0.5">
-            Output:
-          </span>
-          <pre className="text-foreground bg-background/80 rounded-lg p-2 border border-border/50 overflow-x-auto">
-            {JSON.stringify(tool.output, null, 2)}
+          <div className="text-zinc-500 text-[10px] uppercase tracking-wider mb-1 flex items-center gap-1.5 font-mono">
+            <span className="text-blue-400">➜</span> output:
+          </div>
+          <pre className="text-zinc-300 pl-2.5 border-l border-zinc-800 whitespace-pre-wrap break-words overflow-x-auto">
+            {typeof tool.output === "string"
+              ? tool.output
+              : JSON.stringify(tool.output, null, 2)}
           </pre>
         </div>
       )}
@@ -65,8 +70,10 @@ function ToolCallCard({
   isExpanded: boolean
   onToggle: () => void
 }) {
+  const IconComponent = getToolIcon(tool.name)
+
   return (
-    <div className="rounded-xl border border-border/80 bg-card/60 overflow-hidden text-xs transition-all shadow-2xs">
+    <div className="rounded-xl border border-border/80 bg-zinc-950/5 dark:bg-zinc-950/40 overflow-hidden text-xs transition-all shadow-2xs font-mono">
       <button
         type="button"
         onClick={onToggle}
@@ -74,6 +81,7 @@ function ToolCallCard({
         className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-muted/40 transition-colors cursor-pointer"
       >
         <div className="flex items-center gap-2 min-w-0">
+          <IconComponent className="size-3.5 text-muted-foreground/80 shrink-0" />
           <ToolStatusIcon state={tool.state} />
           <span className="font-semibold text-foreground truncate">
             {tool.state === "running" ? `Executing ${tool.name}…` : tool.name}

@@ -1,16 +1,26 @@
+import { Clock } from "lucide-react"
 import { ChatMessageActions } from "@/components/Chat/ChatMessageActions"
 import { DraftArtifactCard } from "@/components/Chat/DraftArtifactCard"
 import { TextPart } from "@/components/Chat/parts/TextPart"
 import { ThoughtPart } from "@/components/Chat/parts/ThoughtPart"
 import { WebSearchPart } from "@/components/Chat/parts/WebSearchPart"
 import { ToolCallAccordion } from "@/components/Chat/ToolCallAccordion"
-import type { ChatUIMessage, SourceUrlPart } from "@/components/Chat/types"
+import { TrendingArtifactCard } from "@/components/Chat/TrendingArtifactCard"
+import type {
+  ChatUIMessage,
+  SourceUrlPart,
+  ThoughtPart as ThoughtPartType,
+  ToolCallItem,
+  ToolCallPart,
+  WebSearchToolPart,
+} from "@/components/Chat/types"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import { Message, MessageContent } from "@/components/ui/message"
 
 export interface ChatMessageProps {
   message: ChatUIMessage
   isStreaming?: boolean
+  onDraftTopic?: (topicTitle: string) => void
 }
 
 function extractTextParts(parts: ChatUIMessage["parts"]): string {
@@ -112,6 +122,7 @@ function renderToolOrDraftPart(
   part: ChatUIMessage["parts"][number],
   index: number,
   sources: SourceUrlPart[],
+  onDraftTopic?: (topicTitle: string) => void,
 ) {
   if (part.type === "tool-web_search") {
     return (
@@ -122,11 +133,19 @@ function renderToolOrDraftPart(
       />
     )
   }
-  if (part.type === "tool-call") {
+  if (part.type === "tool-call" || part.type === "tool_call") {
+    const toolPart = part as ToolCallPart
+    const toolItem: ToolCallItem = toolPart.tool ?? {
+      id: toolPart.toolCallId || `tool-${index}`,
+      name: toolPart.name || "tool",
+      state: toolPart.state || "completed",
+      input: toolPart.input,
+      output: toolPart.output,
+    }
     return (
       <ToolCallAccordion
-        key={part.toolCallId || `tool-${index}`}
-        toolCalls={[part.tool]}
+        key={toolItem.id || `tool-${index}`}
+        toolCalls={[toolItem]}
       />
     )
   }
@@ -135,6 +154,15 @@ function renderToolOrDraftPart(
       <DraftArtifactCard
         key={part.artifact.id || `draft-${index}`}
         artifact={part.artifact}
+      />
+    )
+  }
+  if (part.type === "trending_artifact") {
+    return (
+      <TrendingArtifactCard
+        key={`trending-${index}`}
+        artifact={part.artifact}
+        onDraftTopic={onDraftTopic}
       />
     )
   }
@@ -147,12 +175,14 @@ function AssistantPartRenderer({
   isStreaming,
   hasResponseStarted,
   sources,
+  onDraftTopic,
 }: {
   part: ChatUIMessage["parts"][number]
   index: number
   isStreaming: boolean
   hasResponseStarted: boolean
   sources: SourceUrlPart[]
+  onDraftTopic?: (topicTitle: string) => void
 }) {
   if (part.type === "thought") {
     return (
@@ -167,41 +197,212 @@ function AssistantPartRenderer({
   if (part.type === "text") {
     return <TextPart key={`text-${index}`} part={part} />
   }
-  return renderToolOrDraftPart(part, index, sources)
+  return renderToolOrDraftPart(part, index, sources, onDraftTopic)
 }
 
-export function ChatMessage({
-  message,
-  isStreaming = false,
-}: ChatMessageProps) {
-  if (message.role === "user") {
-    return <UserMessageBubble message={message} />
+function extractThoughtFromTextParts(parts: ChatUIMessage["parts"]): {
+  cleanedParts: ChatUIMessage["parts"]
+  extractedThought: string | null
+} {
+  let extractedThought: string | null = null
+  const cleanedParts = parts.map((part) => {
+    if (part.type === "text" && part.text) {
+      const match = /<thought>([\s\S]*?)<\/thought>/i.exec(part.text)
+      if (match) {
+        extractedThought = match[1].trim()
+        const cleanedText = part.text
+          .replace(/<thought>[\s\S]*?<\/thought>/gi, "")
+          .trim()
+        return { ...part, text: cleanedText }
+      }
+    }
+    return part
+  })
+  return { cleanedParts, extractedThought }
+}
+
+function deduplicateDraftContentFromTextParts(
+  parts: ChatUIMessage["parts"],
+): ChatUIMessage["parts"] {
+  const draftContents: string[] = []
+  for (const part of parts) {
+    if (part.type === "draft_artifact") {
+      const c = (part as any).artifact?.content || (part as any).content
+      if (typeof c === "string" && c.trim()) {
+        draftContents.push(c.trim())
+      }
+    }
   }
 
-  const sources = message.parts.filter(
+  if (draftContents.length === 0) return parts
+
+  return parts
+    .map((part) => {
+      if (part.type === "text" && part.text) {
+        let cleaned = part.text
+        for (const draftContent of draftContents) {
+          if (!draftContent) continue
+          if (cleaned.includes(draftContent)) {
+            cleaned = cleaned.split(draftContent).join("").trim()
+          } else {
+            const unquoted = draftContent.replace(/^["']|["']$/g, "").trim()
+            if (unquoted && cleaned.includes(unquoted)) {
+              cleaned = cleaned.split(unquoted).join("").trim()
+            }
+          }
+        }
+        cleaned = cleaned
+          .replace(
+            /^(?:Here(?:'s| is) (?:a|the) (?:polished )?(?:X|LinkedIn|draft|post)[\w\s]*:?)/i,
+            "",
+          )
+          .replace(/^(?:Saved as (?:a )?draft\.?)/i, "")
+          .replace(/(?:Saved as (?:a )?draft\.?)$/i, "")
+          .replace(/^["'\s]+|["'\s]+$/g, "")
+          .trim()
+        return { ...part, text: cleaned }
+      }
+      return part
+    })
+    .filter((part) => {
+      if (part.type === "text") {
+        return Boolean(part.text?.trim())
+      }
+      return true
+    })
+}
+
+const EXCLUDED_PART_TYPES = new Set([
+  "thought",
+  "tool-call",
+  "tool_call",
+  "source-url",
+])
+
+function isOtherPart(
+  p: ChatUIMessage["parts"][number],
+  hasThoughtOrTools: boolean,
+): boolean {
+  if (EXCLUDED_PART_TYPES.has(p.type)) return false
+  if (p.type === "tool-web_search" && hasThoughtOrTools) return false
+  return true
+}
+
+function collectTools(parts: ChatUIMessage["parts"]): ToolCallItem[] {
+  const toolCallParts = parts.filter(
+    (p) => p.type === "tool-call" || p.type === "tool_call",
+  ) as ToolCallPart[]
+
+  return toolCallParts.map((tp, idx) => {
+    return (
+      tp.tool ?? {
+        id: tp.toolCallId || `tool-${idx}`,
+        name: tp.name || "tool",
+        state: tp.state || "completed",
+        input: tp.input,
+        output: tp.output,
+      }
+    )
+  })
+}
+
+function AssistantQueuedNotice({ status }: { status?: string }) {
+  if (status !== "queued") return null
+  return (
+    <div className="flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-muted/40 border border-border/50 text-xs text-muted-foreground animate-pulse select-none">
+      <Clock className="size-3.5 text-muted-foreground/80 shrink-0" />
+      <span>Queued &bull; Waiting for active generation to finish...</span>
+    </div>
+  )
+}
+
+function AssistantMessageActions({
+  isStreaming,
+  assistantText,
+  createdAt,
+}: {
+  isStreaming: boolean
+  assistantText: string
+  createdAt?: string
+}) {
+  if (isStreaming || !assistantText) return null
+  return (
+    <ChatMessageActions
+      textToCopy={assistantText}
+      createdAt={createdAt}
+      align="start"
+      className="pl-2 pt-0.5"
+    />
+  )
+}
+
+function AssistantMessageBubble({
+  message,
+  isStreaming,
+  onDraftTopic,
+}: {
+  message: ChatUIMessage
+  isStreaming: boolean
+  onDraftTopic?: (topicTitle: string) => void
+}) {
+  const { cleanedParts, extractedThought } = extractThoughtFromTextParts(
+    message.parts,
+  )
+  const dedupedParts = deduplicateDraftContentFromTextParts(cleanedParts)
+
+  const sources = dedupedParts.filter(
     (part): part is SourceUrlPart => part.type === "source-url",
   )
 
-  const hasThoughtPart = message.parts.some((p) => p.type === "thought")
-  const hasResponseStarted = message.parts.some(
+  const thoughtParts = dedupedParts.filter(
+    (p): p is ThoughtPartType => p.type === "thought",
+  )
+  const combinedThought =
+    thoughtParts
+      .map((p) => p.content)
+      .filter(Boolean)
+      .join("\n\n") ||
+    extractedThought ||
+    ""
+
+  const collectedTools = collectTools(cleanedParts)
+  const webSearchPart = dedupedParts.find(
+    (p): p is WebSearchToolPart => p.type === "tool-web_search",
+  )
+
+  const hasResponseStarted = dedupedParts.some(
     (p) => p.type === "text" && Boolean(p.text?.trim()),
   )
-  const assistantText = extractTextParts(message.parts)
+
+  const hasThoughtOrTools =
+    Boolean(combinedThought) ||
+    collectedTools.length > 0 ||
+    (isStreaming && !hasResponseStarted)
+
+  const assistantText = extractTextParts(dedupedParts)
   const createdAt = getMessageTimestamp(message)
+  const otherParts = dedupedParts.filter((p) =>
+    isOtherPart(p, hasThoughtOrTools),
+  )
 
   return (
     <div className="group relative flex flex-col items-start w-full">
       <Message align="start">
         <MessageContent>
-          {isStreaming && !hasThoughtPart && !hasResponseStarted && (
+          <AssistantQueuedNotice status={message.status} />
+
+          {hasThoughtOrTools && (
             <ThoughtPart
-              part={{ type: "thought", content: "" }}
-              isStreaming={true}
-              hasResponseStarted={false}
+              content={combinedThought}
+              toolCalls={collectedTools}
+              webSearchPart={webSearchPart}
+              sources={sources}
+              isStreaming={isStreaming}
+              hasResponseStarted={hasResponseStarted}
             />
           )}
 
-          {message.parts.map((part, index) => (
+          {otherParts.map((part, index) => (
             <AssistantPartRenderer
               key={index}
               part={part}
@@ -209,18 +410,34 @@ export function ChatMessage({
               isStreaming={isStreaming}
               hasResponseStarted={hasResponseStarted}
               sources={sources}
+              onDraftTopic={onDraftTopic}
             />
           ))}
         </MessageContent>
       </Message>
-      {!isStreaming && assistantText && (
-        <ChatMessageActions
-          textToCopy={assistantText}
-          createdAt={createdAt}
-          align="start"
-          className="pl-2 pt-0.5"
-        />
-      )}
+      <AssistantMessageActions
+        isStreaming={isStreaming}
+        assistantText={assistantText}
+        createdAt={createdAt}
+      />
     </div>
+  )
+}
+
+export function ChatMessage({
+  message,
+  isStreaming = false,
+  onDraftTopic,
+}: ChatMessageProps) {
+  if (message.role === "user") {
+    return <UserMessageBubble message={message} />
+  }
+
+  return (
+    <AssistantMessageBubble
+      message={message}
+      isStreaming={isStreaming}
+      onDraftTopic={onDraftTopic}
+    />
   )
 }

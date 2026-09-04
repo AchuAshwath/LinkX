@@ -17,10 +17,11 @@ export default defineConfig({
         __dirname,
         "../node_modules/@tanstack/react-query",
       ),
-      "@radix-ui/react-dialog": path.resolve(
+      "@tanstack/react-router": path.resolve(
         __dirname,
-        "../node_modules/@radix-ui/react-dialog",
+        "../node_modules/@tanstack/react-router",
       ),
+      "@radix-ui": path.resolve(__dirname, "../node_modules/@radix-ui"),
     },
     dedupe: ["react", "react-dom"],
   },

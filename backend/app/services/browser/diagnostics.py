@@ -137,7 +137,9 @@ async def _check_url_and_title(page: Any) -> str | None:
 
 
 async def _check_error_banners(page: Any) -> str | None:
-    """Check for rate limit or generic error text banners."""
+    """Check for rate limit or generic error text banners that are actively visible."""
+    if not hasattr(page, "locator"):
+        return None
     for text_sel in (
         "text=Something went wrong",
         "text=Rate limit exceeded",
@@ -145,8 +147,11 @@ async def _check_error_banners(page: Any) -> str | None:
         "[data-testid='error-detail']",
     ):
         try:
-            if hasattr(page, "locator") and await page.locator(text_sel).count() > 0:
-                return "rate_limited"
+            loc = page.locator(text_sel)
+            if await loc.count() > 0:
+                first = loc.first
+                if hasattr(first, "is_visible") and await first.is_visible():
+                    return "rate_limited"
         except Exception:
             pass
     return None

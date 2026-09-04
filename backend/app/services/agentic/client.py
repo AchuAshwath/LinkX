@@ -18,6 +18,8 @@ def get_chat_model(
     target_model = model or settings.AI_MODEL
     # Strip optional provider prefix like 'openai/' if present for standard OpenAI client
     clean_model = target_model.removeprefix("openai/")
+    if clean_model.startswith("gemini"):
+        clean_model = "gpt-5.4"
     resolved_api_key = (
         settings.OPENAI_API_COMPATIBLE_API_KEY or settings.AI_API_KEY or "dummy-key"
     )

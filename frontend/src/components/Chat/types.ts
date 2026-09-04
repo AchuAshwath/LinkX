@@ -61,9 +61,32 @@ export interface ToolCallItem {
 }
 
 export interface ToolCallPart {
-  type: "tool-call"
-  toolCallId: string
-  tool: ToolCallItem
+  type: "tool-call" | "tool_call"
+  toolCallId?: string
+  name?: string
+  state?: "running" | "completed" | "failed"
+  tool?: ToolCallItem
+  input?: Record<string, unknown>
+  output?: Record<string, unknown>
+}
+
+export interface TrendingTopicItem {
+  id?: string
+  topic_title: string
+  category?: string | null
+  post_count?: number | null
+  summary?: string | null
+  topic_url?: string
+}
+
+export interface TrendingArtifact {
+  topics: TrendingTopicItem[]
+  count?: number
+}
+
+export interface TrendingArtifactPart {
+  type: "trending_artifact"
+  artifact: TrendingArtifact
 }
 
 export interface DraftArtifact {
@@ -102,6 +125,7 @@ export type ChatMessagePart =
   | WebSearchToolPart
   | ToolCallPart
   | DraftArtifactPart
+  | TrendingArtifactPart
   | ThoughtPart
 
 export interface ChatUIMessage {
@@ -109,4 +133,14 @@ export interface ChatUIMessage {
   role: "user" | "assistant" | "system"
   parts: ChatMessagePart[]
   createdAt?: string
+  status?: "queued" | "streaming" | "done" | "error"
+}
+
+export interface QueuedTurn {
+  id: string
+  threadId: string
+  promptText: string
+  base64Images?: string[]
+  selectedModelId: string
+  assistantMsgId: string
 }
