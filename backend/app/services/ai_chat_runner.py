@@ -1,7 +1,10 @@
+import asyncio
 import json
 import logging
 import re
+import uuid
 from collections.abc import AsyncGenerator
+from datetime import datetime, timezone
 from typing import Any
 
 from langchain_core.messages import (
@@ -14,6 +17,12 @@ from langchain_core.messages import (
 from app.core.config import settings
 from app.services.agentic.client import get_chat_model
 from app.services.ai_completion_client import stream_raw_chat_completion
+from app.services.ai_context_budgeter import (
+    DEFAULT_TOKEN_BUDGET,
+    apply_sliding_window_budget,
+    estimate_total_tokens,
+    prune_tool_call_outputs,
+)
 from app.services.ai_image_utils import normalize_image_url, sanitize_image_urls
 from app.services.ai_stream_parser import (
     process_buffer_step,
@@ -45,22 +54,28 @@ def format_sse(*, event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-def _extract_text_from_parts(parts: list[dict[str, Any]]) -> str:
+def _extract_text_from_parts(parts: list[dict[str, Any]] | None) -> str:
     """Extract concatenated text content from message parts."""
+    if not isinstance(parts, list):
+        return ""
     text_chunks = [
         str(part.get("text", ""))
         for part in parts
-        if part.get("type") == "text" and part.get("text")
+        if isinstance(part, dict) and part.get("type") == "text" and part.get("text")
     ]
     return "\n".join(text_chunks).strip()
 
 
-def _extract_thought_from_parts(parts: list[dict[str, Any]]) -> str:
+def _extract_thought_from_parts(parts: list[dict[str, Any]] | None) -> str:
     """Extract concatenated thought content from message parts."""
+    if not isinstance(parts, list):
+        return ""
     thoughts = [
         str(part.get("content", ""))
         for part in parts
-        if part.get("type") == "thought" and part.get("content")
+        if isinstance(part, dict)
+        and part.get("type") == "thought"
+        and part.get("content")
     ]
     return "\n".join(thoughts).strip()
 
@@ -75,7 +90,7 @@ def _build_assistant_history_content(thought: str, text: str) -> str:
 
 def _extract_image_url_from_part(part: dict[str, Any]) -> str:
     """Extract raw image URL or base64 from a part."""
-    if part.get("type") not in ("image_url", "image"):
+    if not isinstance(part, dict) or part.get("type") not in ("image_url", "image"):
         return ""
     img_val = part.get("image_url")
     if isinstance(img_val, dict):
@@ -85,16 +100,18 @@ def _extract_image_url_from_part(part: dict[str, Any]) -> str:
     return str(part.get("url", "")).strip()
 
 
-def _extract_images_from_parts(parts: list[dict[str, Any]]) -> list[str]:
+def _extract_single_image(part: dict[str, Any]) -> str | None:
+    raw_url = _extract_image_url_from_part(part)
+    return normalize_image_url(url=raw_url) if raw_url else None
+
+
+def _extract_images_from_parts(parts: list[dict[str, Any]] | None) -> list[str]:
     """Extract and normalize image URLs from message parts."""
-    images: list[str] = []
-    for part in parts:
-        raw_url = _extract_image_url_from_part(part)
-        if raw_url:
-            normalized = normalize_image_url(url=raw_url)
-            if normalized:
-                images.append(normalized)
-    return images
+    if not isinstance(parts, list):
+        return []
+    return [
+        img for p in parts if isinstance(p, dict) and (img := _extract_single_image(p))
+    ]
 
 
 def _build_human_message_content(
@@ -127,17 +144,22 @@ def _get_draft_field(
     return default
 
 
+def _format_draft_block(*, content: str, post_id: str, platform: str) -> str:
+    id_str = f" (Post ID: {post_id})" if post_id else ""
+    return f"[Draft Post{id_str}, Platform: {platform or 'x'}]:\n{content}"
+
+
 def _extract_draft_block_from_artifact(part: dict[str, Any]) -> str | None:
-    if part.get("type") != "draft_artifact":
+    if not isinstance(part, dict) or part.get("type") != "draft_artifact":
         return None
-    art = part.get("artifact") or {}
+    raw_art = part.get("artifact")
+    art: dict[str, Any] = raw_art if isinstance(raw_art, dict) else {}
     content = _get_draft_field(art, part, "content")
     if not content:
         return None
     post_id = _get_draft_field(art, part, "postId", "id", "post_id")
     platform = _get_draft_field(art, part, "platform", default="x")
-    id_str = f" (Post ID: {post_id})" if post_id else ""
-    return f"[Draft Post{id_str}, Platform: {platform}]:\n{content}"
+    return _format_draft_block(content=content, post_id=post_id, platform=platform)
 
 
 def _extract_output_payload(output: Any) -> tuple[str | None, str, str]:
@@ -167,30 +189,40 @@ def _extract_tool_payload(
 
 
 def _extract_draft_block_from_tool_call(part: dict[str, Any]) -> str | None:
-    if part.get("type") not in ("tool-call", "tool_call"):
+    if not isinstance(part, dict) or part.get("type") not in ("tool-call", "tool_call"):
         return None
-    name = part.get("name") or part.get("tool", {}).get("name")
+    tool_val = part.get("tool")
+    tool_dict = tool_val if isinstance(tool_val, dict) else {}
+    name = part.get("name") or tool_dict.get("name")
     if name not in ("save_draft_post", "update_draft_post"):
         return None
-    content, post_id, platform = _extract_tool_payload(part.get("tool", {}), part)
+    content, post_id, platform = _extract_tool_payload(tool_dict, part)
     if not content:
         return None
-    id_str = f" (Post ID: {post_id})" if post_id else ""
-    return f"[Draft Post{id_str}, Platform: {platform}]:\n{content}"
+    return _format_draft_block(content=content, post_id=post_id, platform=platform)
+
+
+def _extract_single_assistant_block(part: dict[str, Any]) -> str | None:
+    draft = _extract_draft_block_from_artifact(part)
+    if draft:
+        return draft
+    tool_draft = _extract_draft_block_from_tool_call(part)
+    if tool_draft:
+        return tool_draft
+    if part.get("type") == "text" and part.get("text"):
+        return str(part["text"])
+    return None
 
 
 def _extract_assistant_content_from_parts(parts: list[dict[str, Any]]) -> str:
     """Extract full conversational content including text and draft artifacts from assistant parts."""
-    blocks: list[str] = []
-    for part in parts:
-        draft_block = _extract_draft_block_from_artifact(
-            part
-        ) or _extract_draft_block_from_tool_call(part)
-        if draft_block:
-            blocks.append(draft_block)
-        elif part.get("type") == "text" and part.get("text"):
-            blocks.append(str(part["text"]))
-
+    if not isinstance(parts, list):
+        return ""
+    blocks = [
+        blk
+        for p in parts
+        if isinstance(p, dict) and (blk := _extract_single_assistant_block(p))
+    ]
     return "\n\n".join(b.strip() for b in blocks if b.strip()).strip()
 
 
@@ -206,8 +238,12 @@ def _convert_assistant_turn(
 
 
 def _convert_transcript_item(item: dict[str, Any]) -> BaseMessage | None:
+    if not isinstance(item, dict):
+        return None
     role = item.get("role")
     parts = item.get("parts", [])
+    if not isinstance(parts, list):
+        parts = []
     if role == "user":
         text = _extract_text_from_parts(parts)
         images = _extract_images_from_parts(parts)
@@ -223,8 +259,6 @@ def _ensure_latest_human_message(
     current_message: str,
     images: list[str] | None = None,
 ) -> None:
-    if not current_message and not images:
-        return
     user_turn = _convert_user_turn(current_message, images or [])
     if not user_turn:
         return
@@ -234,26 +268,54 @@ def _ensure_latest_human_message(
         converted.append(user_turn)
 
 
+def _convert_transcript_messages(
+    transcript: dict[str, Any] | None,
+) -> list[BaseMessage]:
+    raw = transcript.get("messages", []) if isinstance(transcript, dict) else []
+    if not isinstance(raw, list):
+        return []
+    return [msg for item in raw if (msg := _convert_transcript_item(item)) is not None]
+
+
+def _assemble_prompt_messages(
+    transcript: dict[str, Any] | None,
+    current_message: str,
+    images: list[str] | None,
+    max_history: int,
+) -> list[BaseMessage]:
+    converted = _convert_transcript_messages(transcript)
+    _ensure_latest_human_message(converted, current_message, images=images)
+    trimmed = converted[-max_history:] if len(converted) > max_history else converted
+    return [SystemMessage(content=LINKX_SYSTEM_PROMPT), *trimmed]
+
+
 def _build_message_history(
     *,
     transcript: dict[str, Any] | None,
     current_message: str,
-    max_history_messages: int = 10,
     images: list[str] | None = None,
+    **kwargs: Any,
 ) -> list[BaseMessage]:
-    """Convert JSONB transcript messages into LangChain BaseMessage objects."""
-    raw_messages = (transcript or {}).get("messages", [])
-    converted = [
-        msg
-        for item in raw_messages
-        if (msg := _convert_transcript_item(item)) is not None
-    ]
+    """Convert JSONB transcript into LangChain messages with token-aware context budgeting."""
+    max_hist = int(kwargs.get("max_history_messages", 10))
+    budget = int(kwargs.get("token_budget", DEFAULT_TOKEN_BUDGET))
+    model = kwargs.get("model")
     clean_images = sanitize_image_urls(images=images) if images else None
-    _ensure_latest_human_message(converted, current_message, images=clean_images)
-    if len(converted) > max_history_messages:
-        converted = converted[-max_history_messages:]
 
-    return [SystemMessage(content=LINKX_SYSTEM_PROMPT), *converted]
+    base_msgs = _assemble_prompt_messages(
+        transcript, current_message, clean_images, max_hist
+    )
+    if estimate_total_tokens(base_msgs, model=model) <= budget:
+        return base_msgs
+
+    pruned = prune_tool_call_outputs(transcript, max_chars=300)
+    pruned_msgs = _assemble_prompt_messages(
+        pruned, current_message, clean_images, max_hist
+    )
+    if estimate_total_tokens(pruned_msgs, model=model) <= budget:
+        return pruned_msgs
+
+    return apply_sliding_window_budget(pruned_msgs, token_budget=budget, model=model)
 
 
 def _normalize_tool_output(raw_output: Any) -> Any:
@@ -375,16 +437,18 @@ async def default_chat_stream_runner(
     model: str | None = None,
     **kwargs: Any,
 ) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
-    """Stream AI chat conversation tokens, tool executions, and artifacts."""
-    images = kwargs.get("images")
+    """Stream AI chat conversation tokens, tool executions, and artifacts with cancellation persistence."""
     messages = _build_message_history(
         transcript=transcript,
         current_message=message,
-        images=images,
+        model=model,
+        **kwargs,
     )
     user_id = kwargs.get("user_id")
     session = kwargs.get("session")
     thread_id = kwargs.get("thread_id")
+    thread = kwargs.get("thread")
+    parts: list[dict[str, Any]] = []
 
     if user_id and session:
         try:
@@ -400,10 +464,17 @@ async def default_chat_stream_runner(
             async for ev in _stream_agent_supervisor_events(
                 agent=agent, messages=conv_messages
             ):
+                _append_stream_part(parts, event=ev[0], data=ev[1])
                 yield ev
             yield ("done", {})
             return
+        except (asyncio.CancelledError, GeneratorExit):
+            _persist_interrupted_turn(
+                session=session, thread=thread, thread_id=thread_id, parts=parts
+            )
+            raise
         except Exception as exc:
+            parts.clear()
             logger.warning(
                 "Agent supervisor error, falling back to direct stream: %s", exc
             )
@@ -413,7 +484,13 @@ async def default_chat_stream_runner(
             stream_raw_chat_completion(messages=messages, model=model),
             delay=0.0,
         ):
+            _append_stream_part(parts, event=event[0], data=event[1])
             yield event
+    except (asyncio.CancelledError, GeneratorExit):
+        _persist_interrupted_turn(
+            session=session, thread=thread, thread_id=thread_id, parts=parts
+        )
+        raise
     except Exception as exc:
         yield ("error", {"message": f"LLM error: {exc}"})
 
@@ -465,3 +542,160 @@ async def generate_ai_thread_title(
     except Exception:
         pass
     return None
+
+
+def _append_text_delta(parts: list[dict[str, Any]], *, text: str) -> None:
+    if not text:
+        return
+    if parts and parts[-1].get("type") == "text":
+        parts[-1]["text"] = str(parts[-1].get("text", "")) + text
+        return
+    parts.append({"type": "text", "text": text})
+
+
+def _append_thought_delta(parts: list[dict[str, Any]], *, thought: str) -> None:
+    if not thought:
+        return
+    if parts and parts[-1].get("type") == "thought":
+        parts[-1]["content"] = str(parts[-1].get("content", "")) + thought
+        return
+    parts.append({"type": "thought", "content": thought})
+
+
+def _is_matching_tool_part(
+    *, part: dict[str, Any], tool_id: str, tool_name: str
+) -> bool:
+    if not isinstance(part, dict) or part.get("type") not in ("tool_call", "tool-call"):
+        return False
+    if part.get("toolCallId") == tool_id or part.get("name") == tool_name:
+        return True
+    tool_data = part.get("tool")
+    return isinstance(tool_data, dict) and tool_data.get("name") == tool_name
+
+
+def _update_existing_tool_part(
+    parts: list[dict[str, Any]], *, tool_id: str, tool_name: str, output: Any
+) -> bool:
+    for part in reversed(parts):
+        if _is_matching_tool_part(part=part, tool_id=tool_id, tool_name=tool_name):
+            part["state"] = "completed"
+            if output is not None:
+                part["output"] = output
+            tool_data = part.get("tool")
+            if isinstance(tool_data, dict):
+                tool_data["state"] = "completed"
+                tool_data["output"] = output
+            return True
+    return False
+
+
+def _append_tool_call(
+    parts: list[dict[str, Any]], *, event: str, data: dict[str, Any]
+) -> None:
+    t_id = str(data.get("id") or "call")
+    t_name = str(data.get("name") or "tool")
+    if event == "tool_output" and _update_existing_tool_part(
+        parts, tool_id=t_id, tool_name=t_name, output=data.get("output")
+    ):
+        return
+    st = "running" if event == "tool_start" else "completed"
+    parts.append(
+        {
+            "type": "tool-call",
+            "toolCallId": t_id,
+            "name": t_name,
+            "state": st,
+            "tool": {
+                "id": t_id,
+                "name": t_name,
+                "state": st,
+                "input": data.get("input", {}),
+                "output": data.get("output"),
+            },
+        }
+    )
+
+
+def _append_draft_artifact(
+    parts: list[dict[str, Any]], *, data: dict[str, Any]
+) -> None:
+    parts.append(
+        {
+            "type": "draft_artifact",
+            "artifact": data,
+            "post_id": str(data.get("post_id", "")),
+            "content": str(data.get("content", "")),
+            "platform": str(data.get("platform", "x")),
+        }
+    )
+
+
+def _append_stream_part(
+    parts: list[dict[str, Any]], *, event: str, data: dict[str, Any]
+) -> None:
+    if event == "text_delta":
+        _append_text_delta(parts, text=str(data.get("content", "")))
+    elif event == "thought":
+        _append_thought_delta(parts, thought=str(data.get("content", "")))
+    elif event in ("tool_start", "tool_output"):
+        _append_tool_call(parts, event=event, data=data)
+    elif event == "draft_artifact":
+        _append_draft_artifact(parts, data=data)
+
+
+def _resolve_target_thread(*, session: Any, thread_id: Any) -> Any:
+    if not thread_id or not session:
+        return None
+    try:
+        from app import crud
+
+        thread_uuid = (
+            uuid.UUID(str(thread_id))
+            if isinstance(thread_id, (str, uuid.UUID))
+            else thread_id
+        )
+        return crud.get_chat_thread(session=session, thread_id=thread_uuid)
+    except Exception:
+        return None
+
+
+def _cancel_single_tool_part(part: dict[str, Any]) -> None:
+    if part.get("type") in ("tool-call", "tool_call"):
+        part["state"] = "cancelled"
+        tool_data = part.get("tool")
+        if isinstance(tool_data, dict):
+            tool_data["state"] = "cancelled"
+
+
+def _mark_running_tools_interrupted(parts: list[dict[str, Any]]) -> None:
+    for part in parts:
+        if isinstance(part, dict) and part.get("state") == "running":
+            _cancel_single_tool_part(part)
+
+
+def _persist_interrupted_turn(
+    *, session: Any, thread: Any, thread_id: Any, parts: list[dict[str, Any]]
+) -> None:
+    if not session:
+        return
+    _mark_running_tools_interrupted(parts)
+    if not parts:
+        parts.append({"type": "text", "text": "*(Generation stopped)*"})
+    msg = {
+        "id": f"msg_{uuid.uuid4().hex[:12]}",
+        "role": "assistant",
+        "parts": parts,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "interrupted": True,
+    }
+    target = thread or _resolve_target_thread(session=session, thread_id=thread_id)
+    if not target:
+        return
+    try:
+        from app import crud
+
+        crud.append_message_to_transcript(
+            session=session, db_thread=target, message=msg
+        )
+    except Exception as exc:
+        logger.warning("Failed to persist interrupted turn: %s", exc)
