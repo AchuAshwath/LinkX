@@ -81,6 +81,11 @@ describe("AIPage component with PostgreSQL backend persistence", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    try {
+      window.history.replaceState({}, "", "/")
+    } catch {
+      // ignore
+    }
     vi.mocked(AiThreadsService.listChatThreads).mockResolvedValue({
       data: mockThreads,
       count: mockThreads.length,
@@ -230,5 +235,100 @@ describe("AIPage component with PostgreSQL backend persistence", () => {
         id: "thread-archived",
       })
     })
+  })
+
+  it("does not switch to older thread when threads list loads after a new chat is created (Issue #127)", async () => {
+    // Simulate threads list initially empty (loading delay)
+    let threadListResponse: Array<(typeof mockThreads)[0]> = []
+    vi.mocked(AiThreadsService.listChatThreads).mockImplementation(
+      () =>
+        Promise.resolve({
+          data: threadListResponse,
+          count: threadListResponse.length,
+        }) as any,
+    )
+
+    const newThread = {
+      id: "thread-new",
+      title: "Newly Created Conversation",
+      origin: "composer",
+      message_count: 1,
+      is_archived: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      transcript: { messages: [] },
+      owner_id: "user-1",
+    }
+    vi.mocked(AiThreadsService.createChatThread).mockResolvedValue(newThread)
+    vi.mocked(AiThreadsService.getChatThread).mockResolvedValue({
+      ...newThread,
+      transcript: {
+        messages: [
+          {
+            id: "msg-1",
+            role: "user",
+            parts: [{ type: "text", text: "New conversation prompt" }],
+          },
+        ],
+      },
+    })
+
+    const Component = Route.options.component as React.ComponentType
+    renderWithClient(<Component />)
+
+    // User is on empty new chat view
+    expect(
+      await screen.findByText("What would you like to create?"),
+    ).toBeInTheDocument()
+
+    // When new thread is created, update the thread list query response
+    // to include the old threads plus the new one
+    threadListResponse = [mockThreads[0], newThread]
+
+    // User submits prompt via suggestion
+    const suggestionBtn = screen.getByText("Viral Launch Post")
+    fireEvent.click(suggestionBtn)
+
+    await waitFor(() => {
+      expect(AiThreadsService.createChatThread).toHaveBeenCalled()
+    })
+
+    // Wait for the new thread to be selected
+    await waitFor(() => {
+      expect(AiThreadsService.getChatThread).toHaveBeenCalledWith({
+        id: "thread-new",
+      })
+    })
+
+    // Give React Query time to refetch threads
+    await new Promise((r) => setTimeout(r, 100))
+
+    // The active thread MUST NOT switch to mockThreads[0] ("thread-1")!
+    expect(AiThreadsService.getChatThread).not.toHaveBeenCalledWith({
+      id: "thread-1",
+    })
+    expect(AiThreadsService.getChatThread).toHaveBeenLastCalledWith({
+      id: "thread-new",
+    })
+  })
+
+  it("allows switching to new chat when initialThreadId is present in URL", async () => {
+    window.history.replaceState({}, "", "/ai?threadId=thread-1")
+    const Component = Route.options.component as React.ComponentType
+    renderWithClient(<Component />)
+
+    // Wait for thread-1 to load
+    await screen.findByText("Rich Markdown & Typography")
+
+    // Click New Chat button
+    const newChatBtns = await screen.findAllByRole("button", {
+      name: /new chat/i,
+    })
+    fireEvent.click(newChatBtns[0])
+
+    // Should switch to empty New Chat state and stay there!
+    expect(
+      await screen.findByText("What would you like to create?"),
+    ).toBeInTheDocument()
   })
 })

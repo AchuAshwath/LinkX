@@ -207,11 +207,17 @@ function extractThoughtFromTextParts(parts: ChatUIMessage["parts"]): {
   let extractedThought: string | null = null
   const cleanedParts = parts.map((part) => {
     if (part.type === "text" && part.text) {
-      const match = /<thought>([\s\S]*?)<\/thought>/i.exec(part.text)
+      const match =
+        /<\s*(?:thought|thinking|think)\s*>([\s\S]*?)<\/\s*(?:thought|thinking|think)\s*>/i.exec(
+          part.text,
+        )
       if (match) {
         extractedThought = match[1].trim()
         const cleanedText = part.text
-          .replace(/<thought>[\s\S]*?<\/thought>/gi, "")
+          .replace(
+            /<\s*(?:thought|thinking|think)\s*>[\s\S]*?<\/\s*(?:thought|thinking|think)\s*>/gi,
+            "",
+          )
           .trim()
         return { ...part, text: cleanedText }
       }

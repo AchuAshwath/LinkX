@@ -393,26 +393,14 @@ function canRenderThought({
 
 function ThoughtReasoningSection({
   hasContent,
-  hasPriorSection,
   rawContent,
 }: {
   hasContent: boolean
-  hasPriorSection: boolean
   rawContent: string
 }) {
   if (!hasContent) return null
   return (
-    <div
-      className={cn(
-        "text-xs w-full",
-        hasPriorSection && "pt-1.5 border-t border-border/30",
-      )}
-    >
-      {hasPriorSection && (
-        <div className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider mb-1 font-mono">
-          Reasoning
-        </div>
-      )}
+    <div className="text-xs w-full">
       <ThoughtContent content={rawContent} />
     </div>
   )
@@ -446,8 +434,6 @@ function ThoughtExpandedBody({
   rawContent: string
 }) {
   const hasWebSearch = Boolean(webSearchPart)
-  const hasTools = toolCalls.length > 0
-  const hasPriorSection = hasTools || hasWebSearch
   const searchError =
     webSearchPart?.state === "output-error"
       ? webSearchPart.errorText || "Web search failed"
@@ -455,6 +441,10 @@ function ThoughtExpandedBody({
 
   return (
     <div className="mt-1.5 ml-1.5 flex flex-col gap-2.5 border-l border-border/50 pl-3 py-1 text-xs w-full animate-in fade-in-0 duration-150">
+      <ThoughtReasoningSection
+        hasContent={hasContent}
+        rawContent={rawContent}
+      />
       <ThoughtToolList toolCalls={toolCalls} />
       {hasWebSearch && (
         <WebSearchSection
@@ -463,11 +453,6 @@ function ThoughtExpandedBody({
           errorText={searchError}
         />
       )}
-      <ThoughtReasoningSection
-        hasContent={hasContent}
-        hasPriorSection={hasPriorSection}
-        rawContent={rawContent}
-      />
     </div>
   )
 }

@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncGenerator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -357,3 +358,251 @@ def test_handle_supervisor_custom_node_events() -> None:
     assert emitted[0][0] == "tool_output"
     assert emitted[0][1]["name"] == "init_and_recover_session"
     assert emitted[0][1]["output"]["status"] == "session_ready"
+
+
+@pytest.mark.anyio
+async def test_default_chat_stream_runner_cancelled_persists_partial_turn() -> None:
+    """Issue #120: Verify CancelledError flushes partial tokens with interrupted: True."""
+
+    async def slow_stream(_messages: Any) -> AsyncGenerator[AIMessageChunk, None]:
+        yield AIMessageChunk(
+            content="<thought>Formulating post</thought>\nHere is part 1"
+        )
+        await asyncio.sleep(0.5)
+        yield AIMessageChunk(content=" and part 2")
+
+    mock_model = MagicMock()
+    mock_model.astream = slow_stream
+    mock_session = MagicMock()
+    mock_thread = MagicMock()
+    mock_thread.id = "thread-123"
+
+    with (
+        patch(
+            "app.services.ai_completion_client.stream_direct_openai_proxy",
+            side_effect=ConnectionError("proxy down"),
+        ),
+        patch(
+            "app.services.ai_completion_client.get_chat_model",
+            return_value=mock_model,
+        ),
+        patch("app.crud.append_message_to_transcript") as mock_append,
+    ):
+        gen = default_chat_stream_runner(
+            message="Test cancellation",
+            session=mock_session,
+            thread=mock_thread,
+        )
+
+        async def consume() -> None:
+            async for _ in gen:
+                pass
+
+        task = asyncio.create_task(consume())
+        await asyncio.sleep(0.05)
+        task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        mock_append.assert_called_once()
+        _, kwargs = mock_append.call_args
+        persisted_msg = kwargs["message"]
+
+        assert persisted_msg["role"] == "assistant"
+        assert persisted_msg["interrupted"] is True
+        part_types = [p["type"] for p in persisted_msg["parts"]]
+        assert "thought" in part_types
+        assert "text" in part_types
+        text_parts = [p["text"] for p in persisted_msg["parts"] if p["type"] == "text"]
+        assert any("part 1" in t for t in text_parts)
+
+
+@pytest.mark.anyio
+async def test_default_chat_stream_runner_generator_exit_persists_turn() -> None:
+    """Issue #120: Verify generator close (aclose) persists turn with interrupted: True."""
+
+    async def fake_stream(_messages: Any) -> AsyncGenerator[AIMessageChunk, None]:
+        yield AIMessageChunk(content="First partial token")
+        await asyncio.sleep(0.2)
+        yield AIMessageChunk(content="Second token")
+
+    mock_model = MagicMock()
+    mock_model.astream = fake_stream
+    mock_session = MagicMock()
+    mock_thread = MagicMock()
+
+    with (
+        patch(
+            "app.services.ai_completion_client.stream_direct_openai_proxy",
+            side_effect=ConnectionError("proxy down"),
+        ),
+        patch(
+            "app.services.ai_completion_client.get_chat_model",
+            return_value=mock_model,
+        ),
+        patch("app.crud.append_message_to_transcript") as mock_append,
+    ):
+        gen = default_chat_stream_runner(
+            message="Test aclose",
+            session=mock_session,
+            thread=mock_thread,
+        )
+        async for _ev, _data in gen:
+            break
+        await gen.aclose()
+
+        mock_append.assert_called_once()
+        _, kwargs = mock_append.call_args
+        persisted_msg = kwargs["message"]
+        assert persisted_msg["interrupted"] is True
+        assert persisted_msg["role"] == "assistant"
+
+
+def test_build_message_history_applies_context_budgeting() -> None:
+    """Issue #119: Verify _build_message_history applies tool pruning and sliding window."""
+    long_tool_output = "A" * 1000
+    transcript = {
+        "messages": [
+            {
+                "role": "user",
+                "parts": [{"type": "text", "text": "Turn 1"}],
+            },
+            {
+                "role": "assistant",
+                "parts": [
+                    {
+                        "type": "tool_call",
+                        "name": "search_trends",
+                        "output": long_tool_output,
+                    },
+                    {"type": "text", "text": "Found trends"},
+                ],
+            },
+            {
+                "role": "user",
+                "parts": [{"type": "text", "text": "Turn 2"}],
+            },
+            {
+                "role": "assistant",
+                "parts": [{"type": "text", "text": "Response 2"}],
+            },
+        ]
+    }
+    # Budget that forces pruning
+    messages = _build_message_history(
+        transcript=transcript,
+        current_message="Turn 3",
+        token_budget=50,
+    )
+    assert len(messages) >= 2
+    assert isinstance(messages[0], SystemMessage)
+    assert isinstance(messages[-1], HumanMessage)
+    assert messages[-1].content == "Turn 3"
+
+
+def test_build_message_history_malformed_transcript_resilience() -> None:
+    """Adversarial Test: Verify build_message_history survives highly malformed transcripts without crashing."""
+    malformed_variations: list[Any] = [
+        None,
+        {},
+        {"messages": "not a list"},
+        {"messages": [None, 123, "string", {}, {"parts": "not a list"}]},
+        {"messages": [{"role": "user", "parts": [None, {"type": 999}]}]},
+        {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "parts": [None, 456, {"type": "text", "text": 123}],
+                }
+            ]
+        },
+        {
+            "messages": [
+                {"role": "assistant", "parts": [{"type": "tool_call", "output": None}]}
+            ]
+        },
+    ]
+    for bad_transcript in malformed_variations:
+        result = _build_message_history(
+            transcript=bad_transcript,
+            current_message="Safe user prompt",
+        )
+        assert len(result) >= 2
+        assert isinstance(result[0], SystemMessage)
+        assert isinstance(result[-1], HumanMessage)
+        assert result[-1].content == "Safe user prompt"
+
+
+def test_tool_call_deduplication_and_output_update() -> None:
+    """Adversarial Test: tool_output must update existing tool-call in-place rather than duplicating it."""
+    from app.services.ai_chat_runner import _append_tool_call
+
+    parts: list[dict[str, Any]] = []
+    _append_tool_call(
+        parts,
+        event="tool_start",
+        data={
+            "id": "call_abc",
+            "name": "save_draft_post",
+            "input": {"content": "Post 1"},
+        },
+    )
+    assert len(parts) == 1
+    assert parts[0]["state"] == "running"
+    assert parts[0]["tool"]["input"] == {"content": "Post 1"}
+
+    _append_tool_call(
+        parts,
+        event="tool_output",
+        data={
+            "id": "call_abc",
+            "name": "save_draft_post",
+            "output": {"post_id": "p_123"},
+        },
+    )
+    assert len(parts) == 1
+    assert parts[0]["state"] == "completed"
+    assert parts[0]["output"] == {"post_id": "p_123"}
+    assert parts[0]["tool"]["input"] == {"content": "Post 1"}
+    assert parts[0]["tool"]["output"] == {"post_id": "p_123"}
+
+
+def test_persist_interrupted_turn_marks_running_tools_cancelled() -> None:
+    """Adversarial Test: Interrupted turn must transition running tools to cancelled state."""
+    from app.services.ai_chat_runner import _persist_interrupted_turn
+
+    mock_session = MagicMock()
+    mock_thread = MagicMock()
+    mock_thread.id = "thread-xyz"
+
+    parts: list[dict[str, Any]] = [
+        {
+            "type": "tool-call",
+            "toolCallId": "call_in_progress",
+            "name": "generate_media",
+            "state": "running",
+            "tool": {
+                "id": "call_in_progress",
+                "name": "generate_media",
+                "state": "running",
+            },
+        }
+    ]
+
+    with patch("app.crud.append_message_to_transcript") as mock_append:
+        _persist_interrupted_turn(
+            session=mock_session,
+            thread=mock_thread,
+            thread_id=mock_thread.id,
+            parts=parts,
+        )
+
+        mock_append.assert_called_once()
+        _, kwargs = mock_append.call_args
+        persisted_msg = kwargs["message"]
+
+        assert persisted_msg["interrupted"] is True
+        saved_part = persisted_msg["parts"][0]
+        assert saved_part["state"] == "cancelled"
+        assert saved_part["tool"]["state"] == "cancelled"
