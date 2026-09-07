@@ -10,6 +10,7 @@ from sqlmodel import Session
 
 from app import crud
 from app.models import Post, TrendingTopic, TrendingTweet, User, UserCreate
+from app.services.agentic.schemas import ScrapedBatchReport
 from app.services.agentic.tools.context_tools import (
     get_latest_published_post,
     get_latest_scraped_trends,
@@ -150,25 +151,26 @@ class TestContextTools:
 class TestPerceptionTools:
     @pytest.mark.anyio
     async def test_scrape_live_explore_trends_success(self) -> None:
-        mock_result = MagicMock()
-        mock_result.status = "success"
-        mock_result.topics_found = 5
-        mock_result.topics_scraped = 3
-        mock_result.errors = []
+        mock_result = ScrapedBatchReport(
+            status="persisted",
+            scraped_topics=[{"topic_title": f"Topic {i}"} for i in range(5)],
+            persisted_topic_count=3,
+            error=None,
+        )
 
         with patch(
-            "app.services.agentic.tools.perception_tools.scrape_trending_topics",
+            "app.services.agentic.tools.perception_tools.scrape_trends_with_graph",
             return_value=mock_result,
         ):
             res = await scrape_live_explore_trends(user_id="user-123", max_topics=3)
-            assert res["status"] == "success"
+            assert res["status"] == "persisted"
             assert res["topics_scraped"] == 3
             assert res["errors"] == []
 
     @pytest.mark.anyio
     async def test_scrape_live_explore_trends_exception_handling(self) -> None:
         with patch(
-            "app.services.agentic.tools.perception_tools.scrape_trending_topics",
+            "app.services.agentic.tools.perception_tools.scrape_trends_with_graph",
             side_effect=RuntimeError("Browser crashed"),
         ):
             res = await scrape_live_explore_trends(user_id="user-123", max_topics=3)

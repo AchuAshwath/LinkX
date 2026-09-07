@@ -2,6 +2,7 @@
 
 import logging
 import uuid
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any
 
@@ -159,3 +160,54 @@ def persist_scraped_batch_records(
                     pass
 
     return persisted_topics, persisted_tweets, errors
+
+
+def _execute_batch_persistence(*, state: Mapping[str, Any]) -> dict[str, Any]:
+    """Execute persistence of scraped topics and tweets into database."""
+    scraped_topics_raw = state.get("scraped_topics", [])
+    scraped_topics = scraped_topics_raw if isinstance(scraped_topics_raw, list) else []
+    topic_tweets_map = (
+        state.get("topic_tweets_map", {})
+        if isinstance(state.get("topic_tweets_map"), dict)
+        else {}
+    )
+    topic_summaries = (
+        state.get("topic_summaries", {})
+        if isinstance(state.get("topic_summaries"), dict)
+        else {}
+    )
+
+    try:
+        (
+            persisted_topics,
+            persisted_tweets,
+            errors,
+        ) = persist_scraped_batch_records(
+            user_id_raw=state.get("user_id"),
+            session_arg=state.get("session"),
+            scraped_topics=scraped_topics,
+            topic_tweets_map=topic_tweets_map,
+            topic_summaries=topic_summaries,
+        )
+
+        if errors and persisted_topics == 0:
+            return {
+                "persisted_topic_count": 0,
+                "persisted_tweet_count": 0,
+                "status": "error",
+                "error": "; ".join(errors),
+            }
+
+        return {
+            "persisted_topic_count": persisted_topics,
+            "persisted_tweet_count": persisted_tweets,
+            "status": "persisted",
+        }
+    except Exception as e:
+        logger.error(f"Error persisting scraped batch: {e}")
+        return {
+            "persisted_topic_count": 0,
+            "persisted_tweet_count": 0,
+            "status": "error",
+            "error": str(e),
+        }

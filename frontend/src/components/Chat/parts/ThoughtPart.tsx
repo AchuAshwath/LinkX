@@ -127,7 +127,13 @@ export const TOOL_ICON_DICTIONARY: Record<
 
   // Account / Authentication tools
   get_social_account_status: ShieldCheck,
+  init_and_recover_session: ShieldCheck,
   account: ShieldCheck,
+
+  // LangGraph Scraping Pipeline tools
+  scrape_explore_trends: Globe,
+  extract_topic_timelines: Search,
+  persist_scraped_batch: Database,
 
   // Terminal / Execution / CLI tools
   terminal: SquareTerminal,

@@ -5,10 +5,13 @@ from __future__ import annotations
 import logging
 from typing import Any, TypedDict
 
+from langchain_core.callbacks.manager import adispatch_custom_event
 from langgraph.graph import END, START, StateGraph
 
 from app.services.agentic.schemas import ScrapedBatchReport
 from app.services.agentic.scraping_extraction import (
+    _execute_trends_extraction,
+    _extract_timelines_for_candidates,
     _format_single_topic,
     _get_topic_url,
     _load_selectors,
@@ -17,11 +20,12 @@ from app.services.agentic.scraping_extraction import (
     _try_navigate_to_trends,
 )
 from app.services.agentic.scraping_persistence import (
+    _execute_batch_persistence,
     _resolve_user_id,
     _safe_int,
-    persist_scraped_batch_records,
 )
 from app.services.agentic.scraping_session import (
+    _check_session_and_page_state,
     _diagnose_and_recover_overlay,
     _diagnose_page_health,
     _is_valid_page,
@@ -106,74 +110,12 @@ class ScrapingGraphState(TypedDict, total=False):
     error: str | None
 
 
-async def _perform_session_recovery(
-    *, page: Any, mouse: Any | None = None
-) -> tuple[str, str, dict[str, Any] | None, str | None]:
-    """Execute session recovery using module-scoped recover_page_session."""
+async def _safe_dispatch_node_event(event_name: str, data: dict[str, Any]) -> None:
+    """Safely dispatch LangGraph custom event to parent stream runner."""
     try:
-        recovery = await recover_page_session(
-            page=page, expected_state="home", mouse=mouse
-        )
-        rec_dict = recovery.model_dump() if hasattr(recovery, "model_dump") else {}
-        if not getattr(recovery, "recovered", False):
-            err = (
-                getattr(recovery, "error", None)
-                or f"Session recovery failed: {getattr(recovery, 'status', 'failed')}"
-            )
-            return (
-                getattr(recovery, "page_state", "error"),
-                "unrecoverable",
-                rec_dict,
-                err,
-            )
-        return "ok", "session_ready", rec_dict, None
-    except Exception as rec_err:
-        return (
-            "error",
-            "unrecoverable",
-            {"recovered": False, "error": str(rec_err)},
-            f"Session recovery encountered exception: {rec_err}",
-        )
-
-
-async def _check_session_and_page_state(
-    *,
-    user_id: str,
-    page: Any,
-    mouse: Any | None = None,
-) -> tuple[str, str, dict[str, Any] | None, str | None]:
-    """Check browser session existence, diagnose sentinel state, and auto-recover overlays."""
-    if not _is_valid_page(page=page):
-        return (
-            "error",
-            "unrecoverable",
-            None,
-            "No active browser page instance provided in state",
-        )
-
-    session_abort = _validate_user_session(user_id=user_id)
-    if session_abort:
-        return session_abort
-
-    try:
-        page_state = await detect_page_state(page)
-    except Exception as e:
-        logger.warning(f"Failed to detect page state: {e}")
-        page_state = "error"
-
-    if page_state in ("logged_out", "captcha"):
-        return page_state, "unrecoverable", None, f"Unrecoverable state: {page_state}"
-
-    has_overlay = False
-    try:
-        has_overlay = bool(await _detect_overlay(page=page))
-    except Exception as overlay_err:
-        logger.debug(f"Overlay check error: {overlay_err}")
-
-    if page_state != "ok" or has_overlay:
-        return await _perform_session_recovery(page=page, mouse=mouse)
-
-    return "ok", "session_ready", None, None
+        await adispatch_custom_event(event_name, data)
+    except Exception:
+        pass
 
 
 async def init_and_recover_session_node(state: ScrapingGraphState) -> dict[str, Any]:
@@ -182,6 +124,14 @@ async def init_and_recover_session_node(state: ScrapingGraphState) -> dict[str, 
     user_id = str(raw_user_id).strip() if raw_user_id else "default"
     page = state.get("page")
     mouse = state.get("mouse")
+
+    await _safe_dispatch_node_event(
+        "scraping_node_start",
+        {
+            "name": "init_and_recover_session",
+            "input": {"user_id": user_id, "platform": "x"},
+        },
+    )
 
     try:
         (
@@ -192,128 +142,117 @@ async def init_and_recover_session_node(state: ScrapingGraphState) -> dict[str, 
         ) = await _check_session_and_page_state(
             user_id=user_id or "default", page=page, mouse=mouse
         )
-        return {
+        out = {
             "page_state": page_state,
             "session_recovery": session_recovery,
             "status": status,
             "error": error,
         }
-
     except Exception as e:
         logger.error(f"Unexpected error in init_and_recover_session_node: {e}")
-        return {
+        out = {
             "page_state": "error",
             "status": "unrecoverable",
             "error": str(e),
         }
 
+    await _safe_dispatch_node_event(
+        "scraping_node_end",
+        {"name": "init_and_recover_session", "output": out},
+    )
+    return out
+
 
 async def scrape_explore_trends_node(state: ScrapingGraphState) -> dict[str, Any]:
     """Navigate to explore/trends and extract trending topic blocks."""
+    max_topics = _parse_clamped_max_topics(val=state.get("max_topics"), default=3)
+    await _safe_dispatch_node_event(
+        "scraping_node_start",
+        {
+            "name": "scrape_explore_trends",
+            "input": {"target": "x.com/explore/tabs/keyword", "max_topics": max_topics},
+        },
+    )
+
     page = state.get("page")
     if page is None:
-        return {
+        no_page_out: dict[str, Any] = {
             "scraped_topics": [],
             "status": "error",
             "error": "No page instance available for scraping",
         }
+        await _safe_dispatch_node_event(
+            "scraping_node_end",
+            {"name": "scrape_explore_trends", "output": no_page_out},
+        )
+        return no_page_out
 
     try:
-        try:
-            nav_ok = await navigate_to_trends(page)
-        except Exception as nav_err:
-            logger.warning(f"navigate_to_trends raised exception: {nav_err}")
-            nav_ok = False
-
-        if not nav_ok:
-            try:
-                page_state = await detect_page_state(page)
-            except Exception:
-                page_state = "error"
-            status = (
-                "error"
-                if page_state not in ("logged_out", "captcha")
-                else "unrecoverable"
-            )
-            return {
-                "scraped_topics": [],
-                "page_state": page_state,
-                "status": status,
-                "error": f"Failed to navigate to trends: page state is {page_state}",
-            }
-
-        selectors = _load_selectors()
-        raw_topics = await extract_trending_sidebar(page, selectors=selectors)
-
-        formatted_topics = [
-            fmt
-            for t in (raw_topics or [])
-            if (fmt := _format_single_topic(topic=t)) is not None
-        ]
-
-        return {
-            "scraped_topics": formatted_topics,
-            "status": "trends_extracted",
-        }
+        res = await _execute_trends_extraction(page=page)
     except Exception as e:
         logger.error(f"Error during scrape_explore_trends_node: {e}")
-        return {
+        res = {
             "scraped_topics": [],
             "status": "error",
             "error": str(e),
         }
 
-
-async def _navigate_topic_timeline(
-    *, page: Any, topic_url: str, mouse: Any | None = None
-) -> None:
-    """Navigate to topic URL and perform stealth reading scroll."""
-    try:
-        await human_navigation(page=page, url=topic_url)
-    except Exception:
-        if hasattr(page, "goto"):
-            await page.goto(topic_url, wait_until="domcontentloaded")
-
-    await random_delay(min_sec=1.0, max_sec=2.0)
-    if mouse and hasattr(mouse, "human_scroll"):
-        try:
-            await mouse.human_scroll(scrolls=2)
-        except Exception as scroll_err:
-            logger.debug(f"Scroll error: {scroll_err}")
-
-
-async def _extract_topic_summary_and_tweets(
-    *, page: Any, topic_url: str, selectors: dict[str, Any]
-) -> tuple[str | None, list[dict[str, Any]]]:
-    """Extract Grok summary and parse top timeline tweets."""
-    summary = None
-    try:
-        summary = await extract_grok_summary(page)
-    except Exception as sum_err:
-        logger.debug(f"Grok summary extraction skipped: {sum_err}")
-
-    raw_tweets = await extract_topic_tweets(
-        page=page, topic_url=topic_url, selectors=selectors
+    end_payload = (
+        {
+            "topics_count": len(res.get("scraped_topics", [])),
+            "scraped_topics": res.get("scraped_topics", []),
+            "status": "trends_extracted",
+        }
+        if res.get("status") == "trends_extracted"
+        else res
     )
-    tweets_data = [
-        parsed
-        for t in (raw_tweets or [])
-        if (parsed := _parse_single_tweet(tweet=t)) is not None
-    ]
-    return summary, tweets_data
+    await _safe_dispatch_node_event(
+        "scraping_node_end",
+        {"name": "scrape_explore_trends", "output": end_payload},
+    )
+    return res
 
 
-async def _extract_single_topic_flow(
+async def _handle_empty_timelines() -> dict[str, Any]:
+    """Emit skip events and return empty state when no topics or page present."""
+    out: dict[str, Any] = {
+        "topic_tweets_map": {},
+        "topic_summaries": {},
+        "failed_topics": [],
+        "status": "tweets_extracted",
+    }
+    await _safe_dispatch_node_event(
+        "scraping_node_start",
+        {"name": "extract_topic_timelines", "input": {"topics_to_extract": 0}},
+    )
+    await _safe_dispatch_node_event(
+        "scraping_node_end",
+        {
+            "name": "extract_topic_timelines",
+            "output": {"status": "skipped", "reason": "No topics or page"},
+        },
+    )
+    return out
+
+
+async def _dispatch_timelines_complete(
     *,
-    page: Any,
-    topic_url: str,
-    selectors: dict[str, Any],
-    mouse: Any | None = None,
-) -> tuple[str | None, list[dict[str, Any]]]:
-    """Perform stealth navigation, summary extraction, tweet extraction, and return navigation."""
-    await _navigate_topic_timeline(page=page, topic_url=topic_url, mouse=mouse)
-    return await _extract_topic_summary_and_tweets(
-        page=page, topic_url=topic_url, selectors=selectors
+    summaries: dict[str, str],
+    tweets_map: dict[str, list[dict[str, Any]]],
+    failed: list[dict[str, str]],
+) -> None:
+    """Emit timeline extraction completion custom event."""
+    await _safe_dispatch_node_event(
+        "scraping_node_end",
+        {
+            "name": "extract_topic_timelines",
+            "output": {
+                "summaries_count": len(summaries),
+                "tweets_extracted_count": sum(len(v) for v in tweets_map.values()),
+                "failed_topics_count": len(failed),
+                "status": "tweets_extracted",
+            },
+        },
     )
 
 
@@ -325,41 +264,43 @@ async def extract_topic_timelines_node(state: ScrapingGraphState) -> dict[str, A
     scraped_topics = scraped_topics_raw if isinstance(scraped_topics_raw, list) else []
     max_topics = _parse_clamped_max_topics(val=state.get("max_topics"), default=3)
 
-    topic_tweets_map: dict[str, list[dict[str, Any]]] = {}
-    topic_summaries: dict[str, str] = {}
-    failed_topics: list[dict[str, str]] = []
-
     if not scraped_topics or page is None:
-        return {
-            "topic_tweets_map": topic_tweets_map,
-            "topic_summaries": topic_summaries,
-            "failed_topics": failed_topics,
-            "status": "tweets_extracted",
-        }
+        return await _handle_empty_timelines()
 
-    selectors = _load_selectors()
     candidates = list(scraped_topics)
     selected_topics = candidates[:max_topics]
+    selected_titles = [
+        str(t.get("topic_title", "")) for t in selected_topics if isinstance(t, dict)
+    ]
 
-    for idx, topic in enumerate(selected_topics):
-        if idx > 0:
-            await random_delay(min_sec=2.0, max_sec=4.0)
-        topic_url = _get_topic_url(topic=topic)
-        if not topic_url:
-            continue
-        try:
-            summary, tweets = await _extract_single_topic_flow(
-                page=page,
-                topic_url=topic_url,
-                selectors=selectors,
-                mouse=mouse,
-            )
-            if summary:
-                topic_summaries[topic_url] = str(summary)
-            topic_tweets_map[topic_url] = tweets
-        except Exception as e:
-            logger.warning(f"Error extracting timeline for topic {topic_url}: {e}")
-            failed_topics.append({"topic_url": topic_url, "reason": str(e)})
+    await _safe_dispatch_node_event(
+        "scraping_node_start",
+        {
+            "name": "extract_topic_timelines",
+            "input": {
+                "topics_to_extract": len(selected_topics),
+                "topics": selected_titles,
+            },
+        },
+    )
+
+    selectors = _load_selectors()
+    (
+        topic_tweets_map,
+        topic_summaries,
+        failed_topics,
+    ) = await _extract_timelines_for_candidates(
+        page=page,
+        selected_topics=selected_topics,
+        selectors=selectors,
+        mouse=mouse,
+    )
+
+    await _dispatch_timelines_complete(
+        summaries=topic_summaries,
+        tweets_map=topic_tweets_map,
+        failed=failed_topics,
+    )
 
     return {
         "topic_tweets_map": topic_tweets_map,
@@ -373,58 +314,36 @@ async def persist_scraped_batch_node(state: ScrapingGraphState) -> dict[str, Any
     """Persist scraped topics and tweets into PostgreSQL via CRUD upsert."""
     scraped_topics_raw = state.get("scraped_topics", [])
     scraped_topics = scraped_topics_raw if isinstance(scraped_topics_raw, list) else []
+
+    await _safe_dispatch_node_event(
+        "scraping_node_start",
+        {
+            "name": "persist_scraped_batch",
+            "input": {
+                "topics_to_persist": len(scraped_topics),
+                "user_id": str(state.get("user_id", "default")),
+            },
+        },
+    )
+
     if not scraped_topics:
-        return {
+        out = {
             "persisted_topic_count": 0,
             "persisted_tweet_count": 0,
             "status": "persisted",
         }
-
-    topic_tweets_map = (
-        state.get("topic_tweets_map", {})
-        if isinstance(state.get("topic_tweets_map"), dict)
-        else {}
-    )
-    topic_summaries = (
-        state.get("topic_summaries", {})
-        if isinstance(state.get("topic_summaries"), dict)
-        else {}
-    )
-
-    try:
-        (
-            persisted_topics,
-            persisted_tweets,
-            errors,
-        ) = persist_scraped_batch_records(
-            user_id_raw=state.get("user_id"),
-            session_arg=state.get("session"),
-            scraped_topics=scraped_topics,
-            topic_tweets_map=topic_tweets_map,
-            topic_summaries=topic_summaries,
+        await _safe_dispatch_node_event(
+            "scraping_node_end",
+            {"name": "persist_scraped_batch", "output": out},
         )
+        return out
 
-        if errors and persisted_topics == 0:
-            return {
-                "persisted_topic_count": 0,
-                "persisted_tweet_count": 0,
-                "status": "error",
-                "error": "; ".join(errors),
-            }
-
-        return {
-            "persisted_topic_count": persisted_topics,
-            "persisted_tweet_count": persisted_tweets,
-            "status": "persisted",
-        }
-    except Exception as e:
-        logger.error(f"Error persisting scraped batch: {e}")
-        return {
-            "persisted_topic_count": 0,
-            "persisted_tweet_count": 0,
-            "status": "error",
-            "error": str(e),
-        }
+    out = _execute_batch_persistence(state=state)
+    await _safe_dispatch_node_event(
+        "scraping_node_end",
+        {"name": "persist_scraped_batch", "output": out},
+    )
+    return out
 
 
 def _route_after_session_check(state: ScrapingGraphState) -> str:

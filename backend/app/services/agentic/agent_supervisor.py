@@ -279,7 +279,10 @@ def _build_scraping_tools(ctx: CopilotContext) -> list[BaseTool]:
     async def scrape_live_explore_trends(max_topics: int = 3) -> dict[str, Any]:
         """Scrape fresh trending topics directly from X.com Explore."""
         raw_result = await raw_scrape_live_explore_trends(
-            user_id=ctx.user_id, max_topics=max_topics, headless=True
+            user_id=ctx.user_id,
+            max_topics=max_topics,
+            headless=True,
+            session=ctx.session,
         )
         try:
             assert ctx.user_uuid is not None

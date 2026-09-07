@@ -332,6 +332,45 @@ def _process_model_chunk(
     return emitted_events, thought_buffer, in_thought
 
 
+def _handle_custom_node_event(
+    event: dict[str, Any],
+) -> list[tuple[str, dict[str, Any]]]:
+    """Translate nested LangGraph node events into streaming UI tool cards."""
+    name = str(event.get("name", ""))
+    data = event.get("data", {})
+    if not isinstance(data, dict):
+        return []
+
+    node_name = str(data.get("name", ""))
+    if not node_name:
+        return []
+
+    node_id = f"node_{node_name}"
+    if name == "scraping_node_start":
+        return [
+            (
+                "tool_start",
+                {
+                    "id": node_id,
+                    "name": node_name,
+                    "input": data.get("input", {}),
+                },
+            )
+        ]
+    if name == "scraping_node_end":
+        return [
+            (
+                "tool_output",
+                {
+                    "id": node_id,
+                    "name": node_name,
+                    "output": data.get("output", {}),
+                },
+            )
+        ]
+    return []
+
+
 def _handle_supervisor_event(
     event: dict[str, Any], thought_buffer: str, in_thought: bool
 ) -> tuple[list[tuple[str, dict[str, Any]]], str, bool]:
@@ -345,6 +384,8 @@ def _handle_supervisor_event(
         return _process_model_chunk(
             event.get("data", {}).get("chunk"), thought_buffer, in_thought
         )
+    if kind == "on_custom_event":
+        return _handle_custom_node_event(event), thought_buffer, in_thought
     return [], thought_buffer, in_thought
 
 

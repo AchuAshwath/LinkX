@@ -10,7 +10,11 @@ import sys
 from typing import Any
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-CS_MCP_BIN = "/opt/homebrew/bin/cs-mcp"
+CS_MCP_BIN = (
+    "/opt/homebrew/bin/cs-mcp-wrapper"
+    if os.path.exists("/opt/homebrew/bin/cs-mcp-wrapper")
+    else "/opt/homebrew/bin/cs-mcp"
+)
 
 
 def _send_rpc(proc: subprocess.Popen[str], msg: dict[str, Any]) -> None:

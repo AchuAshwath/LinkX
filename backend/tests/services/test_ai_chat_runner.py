@@ -325,3 +325,35 @@ def test_extract_images_from_parts_variations() -> None:
         "https://example.com/string.png",
         "https://example.com/direct.png",
     ]
+
+
+def test_handle_supervisor_custom_node_events() -> None:
+    from app.services.ai_chat_runner import _handle_supervisor_event
+
+    start_event = {
+        "event": "on_custom_event",
+        "name": "scraping_node_start",
+        "data": {
+            "name": "init_and_recover_session",
+            "input": {"user_id": "test-user", "platform": "x"},
+        },
+    }
+    emitted, buf, in_thought = _handle_supervisor_event(start_event, "", False)
+    assert len(emitted) == 1
+    assert emitted[0][0] == "tool_start"
+    assert emitted[0][1]["name"] == "init_and_recover_session"
+    assert emitted[0][1]["input"]["platform"] == "x"
+
+    end_event = {
+        "event": "on_custom_event",
+        "name": "scraping_node_end",
+        "data": {
+            "name": "init_and_recover_session",
+            "output": {"page_state": "ok", "status": "session_ready"},
+        },
+    }
+    emitted, buf, in_thought = _handle_supervisor_event(end_event, "", False)
+    assert len(emitted) == 1
+    assert emitted[0][0] == "tool_output"
+    assert emitted[0][1]["name"] == "init_and_recover_session"
+    assert emitted[0][1]["output"]["status"] == "session_ready"
