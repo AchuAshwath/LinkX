@@ -126,20 +126,28 @@ function useThreadDrafts() {
 function useInitialActiveThread(
   threads: ChatThreadPublic[],
   initialThreadId: string | undefined,
+  activeThreadId: string | null,
   setActiveThreadId: (id: string) => void,
 ) {
   const initialLoadedRef = React.useRef(false)
   React.useEffect(() => {
+    if (initialLoadedRef.current) {
+      return
+    }
+    if (activeThreadId) {
+      initialLoadedRef.current = true
+      return
+    }
     if (initialThreadId) {
       setActiveThreadId(initialThreadId)
       initialLoadedRef.current = true
       return
     }
-    if (threads.length > 0 && !initialLoadedRef.current) {
+    if (threads.length > 0) {
       setActiveThreadId(threads[0].id)
       initialLoadedRef.current = true
     }
-  }, [threads, initialThreadId, setActiveThreadId])
+  }, [threads, initialThreadId, activeThreadId, setActiveThreadId])
 }
 
 function useCreateThreadMutation(
@@ -523,7 +531,12 @@ function useChatEngine({
     startStream: core.streamState.startStream,
   })
 
-  useInitialActiveThread(threads, initialThreadId, core.setActiveThreadId)
+  useInitialActiveThread(
+    threads,
+    initialThreadId,
+    core.activeThreadId,
+    core.setActiveThreadId,
+  )
   useThreadTranscript({
     activeThreadId: core.activeThreadId,
     streamingThreadId: core.streamState.streamingThreadId,
