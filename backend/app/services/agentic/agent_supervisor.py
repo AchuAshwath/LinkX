@@ -67,6 +67,7 @@ You have access to a rich set of autonomous tools to query database state, scrap
   The draft content and ID are ALREADY in your conversation history and system context. Never reply with "Please paste the post text or share the draft/post ID".
   Immediately rewrite the draft and call `update_draft_post`.
 - If you call `update_draft_post`, you do NOT need to specify `post_id` if you don't have it; it will automatically resolve and update the active draft post in this thread.
+- Only call `update_draft_post` ONCE with the final revised copy. Do NOT call `update_draft_post` repeatedly in the same turn.
 - ONLY call `save_draft_post` when the user explicitly requests a BRAND NEW post on an entirely new topic from scratch, and is NOT discussing, modifying, or iterating on an existing draft.
 
 ### CRITICAL RULE 2: NO POST CONTENT REPETITION IN CHAT

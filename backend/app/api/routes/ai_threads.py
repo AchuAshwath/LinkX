@@ -1,4 +1,3 @@
-import copy
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
@@ -32,6 +31,12 @@ from app.services.ai_chat_runner import (
     generate_ai_thread_title,
 )
 from app.services.ai_image_utils import sanitize_image_urls as _clean_image_urls
+from app.services.ai_turn_accumulator import (
+    TranscriptEditPayload,
+    append_or_update_draft_part,
+    apply_transcript_branch,
+    resolve_active_branch,
+)
 
 router = APIRouter(prefix="/ai/threads", tags=["ai-threads"])
 
@@ -144,32 +149,6 @@ def _handle_tool_part(
     )
 
 
-def _handle_draft_part(
-    *, payload: dict[str, Any], assistant_parts: list[dict[str, Any]]
-) -> None:
-    content = str(payload.get("content", ""))
-    post_id = str(payload.get("post_id", ""))
-    platform = str(payload.get("platform", "x"))
-    status = str(payload.get("status", "draft"))
-
-    assistant_parts.append(
-        {
-            "type": "draft_artifact",
-            "artifact": {
-                "id": post_id,
-                "postId": post_id,
-                "content": content,
-                "platform": platform,
-                "characterCount": payload.get("char_count") or len(content),
-                "status": status,
-            },
-            "post_id": post_id,
-            "content": content,
-            "platform": platform,
-        }
-    )
-
-
 def _handle_trending_part(
     *, payload: dict[str, Any], assistant_parts: list[dict[str, Any]]
 ) -> None:
@@ -207,8 +186,8 @@ def _collect_stream_part(
             payload=payload,
             assistant_parts=assistant_parts,
         ),
-        "draft_artifact": lambda: _handle_draft_part(
-            payload=payload, assistant_parts=assistant_parts
+        "draft_artifact": lambda: append_or_update_draft_part(
+            assistant_parts, payload=payload
         ),
         "trending_artifact": lambda: _handle_trending_part(
             payload=payload, assistant_parts=assistant_parts
@@ -221,12 +200,19 @@ def _collect_stream_part(
 
 
 FRIENDLY_MODEL_NAMES: dict[str, str] = {
+    "gemini-3.7-flash-high": "Gemini 3.7 Flash",
+    "gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite",
+    "gemini-3-flash": "Gemini 3 Flash",
+    "gemini-3.1-pro-low": "Gemini 3.1 Pro",
+    "claude-sonnet-4-6": "Claude 3.7 Sonnet",
+    "claude-opus-4-6-thinking": "Claude 3.7 Opus",
+    "gpt-oss-120b-medium": "DeepSeek R1",
     "gpt-5.6-luna": "5.6 Luna",
     "gpt-5.6-sol": "5.6 Sol",
     "gpt-5.6-terra": "5.6 Terra",
-    "gpt-5.4": "5.4",
-    "gpt-5.4-mini": "5.4 Mini",
     "gpt-5.5": "5.5",
+    "gpt-5.4": "5.4",
+    "gpt-6-astra": "6 Astra",
 }
 
 EXCLUDED_MODELS = {
@@ -237,24 +223,40 @@ EXCLUDED_MODELS = {
 }
 
 
+def _resolve_model_provider(model_id: str) -> str:
+    mid = model_id.lower()
+    if mid.startswith("gemini"):
+        return "Google"
+    if mid.startswith("claude"):
+        return "Anthropic"
+    if mid.startswith(("deepseek", "gpt-oss")):
+        return "DeepSeek"
+    if mid.startswith("qwen"):
+        return "Qwen"
+    if mid.startswith(("kimi", "moonshot")):
+        return "Moonshot"
+    if mid.startswith("grok"):
+        return "xAI"
+    return "OpenAI"
+
+
+def _resolve_model_name(model_id: str) -> str:
+    if model_id in FRIENDLY_MODEL_NAMES:
+        return FRIENDLY_MODEL_NAMES[model_id]
+    clean = model_id.removeprefix("gpt-").replace("-", " ")
+    return clean.title()
+
+
 def _build_fallback_models(default_model_id: str) -> list[AIModelInfo]:
-    ids = [
-        default_model_id,
-        "gpt-5.4",
-        "gpt-5.4-mini",
-        "gpt-5.5",
-        "gpt-5.6-sol",
-        "gpt-5.6-terra",
-    ]
-    unique_ids = dict.fromkeys(m for m in ids if m)
+    if not default_model_id:
+        return []
     return [
         AIModelInfo(
-            id=mid,
-            name=FRIENDLY_MODEL_NAMES.get(mid, mid),
-            provider="OpenAI",
-            is_default=(mid == default_model_id),
+            id=default_model_id,
+            name=_resolve_model_name(default_model_id),
+            provider=_resolve_model_provider(default_model_id),
+            is_default=True,
         )
-        for mid in unique_ids
     ]
 
 
@@ -265,9 +267,7 @@ def _is_allowed_proxy_model(item: dict[str, Any], default_model_id: str) -> bool
     model_id = str(raw_id)
     if model_id == default_model_id:
         return True
-    if model_id in EXCLUDED_MODELS:
-        return False
-    return str(item.get("owned_by", "")).lower() != "antigravity"
+    return model_id not in EXCLUDED_MODELS
 
 
 def _fetch_models_from_proxy(default_model_id: str) -> list[AIModelInfo]:
@@ -285,8 +285,8 @@ def _fetch_models_from_proxy(default_model_id: str) -> list[AIModelInfo]:
         return [
             AIModelInfo(
                 id=str(item["id"]),
-                name=FRIENDLY_MODEL_NAMES.get(str(item["id"]), str(item["id"])),
-                provider=str(item.get("owned_by", "")).capitalize() or None,
+                name=_resolve_model_name(str(item["id"])),
+                provider=_resolve_model_provider(str(item["id"])),
                 is_default=(str(item["id"]) == default_model_id),
             )
             for item in items
@@ -294,37 +294,44 @@ def _fetch_models_from_proxy(default_model_id: str) -> list[AIModelInfo]:
         ]
 
 
-def _ensure_default_model(
+def _resolve_default_model_id(
+    models: list[AIModelInfo], preferred_default_id: str
+) -> str:
+    if any(m.id == preferred_default_id for m in models):
+        return preferred_default_id
+    if models:
+        return models[0].id
+    return preferred_default_id
+
+
+def _mark_default_model(
     models: list[AIModelInfo], default_model_id: str
 ) -> list[AIModelInfo]:
-    if any(m.id == default_model_id for m in models):
-        return models
     return [
         AIModelInfo(
-            id=default_model_id,
-            name=FRIENDLY_MODEL_NAMES.get(default_model_id, default_model_id),
-            provider="OpenAI",
-            is_default=True,
-        ),
-        *models,
+            id=m.id,
+            name=m.name,
+            provider=m.provider,
+            is_default=(m.id == default_model_id),
+        )
+        for m in models
     ]
 
 
 @router.get("/models", response_model=AIModelsPublic)
 def list_ai_models() -> Any:
     """List available AI models from the proxy/backend with friendly labels."""
-    default_model_id = settings.AI_MODEL.removeprefix("openai/")
-    if default_model_id.startswith("gemini"):
-        default_model_id = "gpt-5.4"
+    configured_default = settings.AI_MODEL.removeprefix("openai/")
     try:
-        models = _fetch_models_from_proxy(default_model_id)
+        models = _fetch_models_from_proxy(configured_default)
         if models:
-            resolved = _ensure_default_model(models, default_model_id)
-            return AIModelsPublic(data=resolved, default_model=default_model_id)
+            resolved_default = _resolve_default_model_id(models, configured_default)
+            final_models = _mark_default_model(models, resolved_default)
+            return AIModelsPublic(data=final_models, default_model=resolved_default)
     except Exception:
         pass
-    fallback = _build_fallback_models(default_model_id)
-    return AIModelsPublic(data=fallback, default_model=default_model_id)
+    fallback = _build_fallback_models(configured_default)
+    return AIModelsPublic(data=fallback, default_model=configured_default)
 
 
 @router.post("/", response_model=ChatThreadDetail)
@@ -429,6 +436,7 @@ async def _save_assistant_turn(
     assistant_msg = {
         "id": f"msg_{uuid.uuid4().hex[:12]}",
         "role": "assistant",
+        "parent_id": thread.active_leaf_id,
         "parts": payload.assistant_parts,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -438,7 +446,7 @@ async def _save_assistant_turn(
         message=assistant_msg,
     )
 
-    if thread.message_count <= 2:
+    if thread.message_count <= 2 and not getattr(thread, "is_custom_title", False):
         try:
             ai_title = await generate_ai_thread_title(
                 user_prompt=payload.body.message.strip() or "Image analysis",
@@ -459,9 +467,11 @@ def _sanitize_image_urls(images: list[str] | None) -> list[str]:
 
 
 def _build_user_message_dict(
-    message_text: str, clean_images: list[str]
+    message_text: str,
+    clean_images: list[str],
+    parent_id: str | None = None,
 ) -> dict[str, Any]:
-    """Construct transcript user message turn."""
+    """Construct transcript user message turn with parent_id linkage."""
     user_parts: list[dict[str, Any]] = []
     if message_text:
         user_parts.append({"type": "text", "text": message_text})
@@ -470,6 +480,7 @@ def _build_user_message_dict(
     return {
         "id": f"msg_{uuid.uuid4().hex[:12]}",
         "role": "user",
+        "parent_id": parent_id,
         "parts": user_parts,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -510,10 +521,15 @@ async def _generate_chat_events(
     assistant_parts: list[dict[str, Any]] = []
 
     target_model = ctx.body.model
-    if target_model and target_model.startswith("gemini"):
-        target_model = "gpt-5.4"
 
-    transcript_copy = copy.deepcopy(ctx.thread.transcript)
+    active_path = resolve_active_branch(
+        ctx.thread.transcript.get("messages", []),
+        ctx.thread.active_leaf_id,
+    )
+    transcript_copy = {
+        "messages": active_path,
+        "active_leaf_id": ctx.thread.active_leaf_id,
+    }
     try:
         async for event_name, payload in default_chat_stream_runner(
             message=ctx.effective_prompt,
@@ -524,6 +540,8 @@ async def _generate_chat_events(
             session=ctx.session,
             thread_id=str(ctx.thread.id),
         ):
+            if event_name == "done":
+                continue
             delta = _collect_stream_part(
                 event_name=event_name,
                 payload=payload,
@@ -547,9 +565,37 @@ async def _generate_chat_events(
                 assistant_parts=assistant_parts,
             ),
         )
+        yield format_sse(event="done", data={})
 
     except Exception as exc:
         yield format_sse(event="error", data={"message": str(exc)})
+
+
+def _ensure_user_turn_saved(
+    *,
+    session: Session,
+    thread: ChatThread,
+    body: ChatMessageRequest,
+    clean_images: list[str],
+) -> None:
+    msg_text = body.message.strip()
+    if body.edit_message_id and apply_transcript_branch(
+        session=session,
+        thread=thread,
+        payload=TranscriptEditPayload(
+            edit_message_id=body.edit_message_id,
+            message_text=msg_text,
+            clean_images=clean_images,
+        ),
+    ):
+        return
+
+    user_msg = _build_user_message_dict(
+        msg_text, clean_images, parent_id=thread.active_leaf_id
+    )
+    crud.append_message_to_transcript(
+        session=session, db_thread=thread, message=user_msg
+    )
 
 
 @router.post("/{id}/chat")
@@ -571,9 +617,11 @@ async def chat_stream(
             detail="Message content or at least one image is required",
         )
 
-    user_msg = _build_user_message_dict(message_text, clean_images)
-    crud.append_message_to_transcript(
-        session=session, db_thread=thread, message=user_msg
+    _ensure_user_turn_saved(
+        session=session,
+        thread=thread,
+        body=body,
+        clean_images=clean_images,
     )
 
     effective_prompt = message_text or "Analyze the attached image(s)"

@@ -53,16 +53,14 @@ function persistStoredModel(modelId: string): void {
 }
 
 function getInitialStoredModel(): string {
-  const saved = getStoredModel()
-  if (saved && !saved.startsWith("gemini")) return saved
-  return "gpt-5.4"
+  return getStoredModel() || ""
 }
 
 function resolveFallbackModel(modelsData?: {
   default_model?: string | null
   data?: { id: string }[]
 }): string {
-  return modelsData?.default_model || modelsData?.data?.[0]?.id || "gpt-5.4"
+  return modelsData?.default_model || modelsData?.data?.[0]?.id || ""
 }
 
 function computeReconciledModel(modelsData?: {
@@ -70,12 +68,10 @@ function computeReconciledModel(modelsData?: {
   data?: { id: string }[]
 }): string | null {
   if (!modelsData) return null
-  const saved = getStoredModel()
-  if (!saved || saved.startsWith("gemini")) {
-    return resolveFallbackModel(modelsData)
-  }
   const available = modelsData.data ?? []
-  if (available.length > 0 && !available.some((m) => m.id === saved)) {
+  if (available.length === 0) return null
+  const saved = getStoredModel()
+  if (!saved || !available.some((m) => m.id === saved)) {
     return resolveFallbackModel(modelsData)
   }
   return null
@@ -314,6 +310,7 @@ function useThreadMutations({
 interface AIChatCenterColumnProps {
   activeThreadId: string | null
   localMessages: ReturnType<typeof useAIChatFeedState>["localMessages"]
+  allMessages?: ReturnType<typeof useAIChatFeedState>["allMessages"]
   isCurrentThreadStreaming: boolean
   isCurrentThreadBusy: boolean
   isCurrentThreadQueued: boolean
@@ -324,14 +321,27 @@ interface AIChatCenterColumnProps {
   selectedModelId: string
   modelsData?: { data?: { id: string; name?: string }[] }
   setSelectedModelId: (id: string) => void
-  handleSendMessage: (text: string, images?: File[]) => Promise<void>
+  handleSendMessage: (
+    text: string,
+    images?: File[],
+    editMessageId?: string,
+  ) => Promise<void>
   handleQuestionAnswer: (id: string, answers: any[]) => void
   stopStream: () => void
+  editingMessageId: string | null
+  onStartEdit: (messageId: string) => void
+  onCancelEdit: () => void
+  onSaveEdit: (messageId: string, newText: string) => void
+  onRegenerate: (assistantMsgId: string) => void
+  onRetry: (assistantMsgId: string) => void
+  onSwitchBranch?: (messageId: string, direction: "prev" | "next") => void
+  onEditLastUserMessage: () => void
 }
 
 function AIChatCenterColumn({
   activeThreadId,
   localMessages,
+  allMessages,
   isCurrentThreadStreaming,
   isCurrentThreadBusy,
   isCurrentThreadQueued,
@@ -345,6 +355,14 @@ function AIChatCenterColumn({
   handleSendMessage,
   handleQuestionAnswer,
   stopStream,
+  editingMessageId,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+  onRegenerate,
+  onRetry,
+  onSwitchBranch,
+  onEditLastUserMessage,
 }: AIChatCenterColumnProps) {
   const currentKey = activeThreadId ?? "new-chat"
   const draftValue = threadDrafts[currentKey] ?? ""
@@ -356,10 +374,18 @@ function AIChatCenterColumn({
     <div className="relative mx-auto flex min-h-0 w-full flex-1 max-w-2xl border-r-0 md:border-r border-border flex-col h-[calc(100vh-3.5rem)] lg:h-screen overflow-hidden">
       <AIChatFeed
         localMessages={localMessages}
+        allMessages={allMessages}
         isStreaming={isCurrentThreadStreaming}
         pendingQuestion={pendingQuestion}
         onSendMessage={handleSendMessage}
         onQuestionAnswer={handleQuestionAnswer}
+        editingMessageId={editingMessageId}
+        onStartEdit={onStartEdit}
+        onCancelEdit={onCancelEdit}
+        onSaveEdit={onSaveEdit}
+        onRegenerate={onRegenerate}
+        onRetry={onRetry}
+        onSwitchBranch={onSwitchBranch}
       />
 
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-2 px-4 pb-4 shrink-0">
@@ -378,6 +404,7 @@ function AIChatCenterColumn({
           onSelectModel={setSelectedModelId}
           onSubmit={handleSendMessage}
           onStop={stopStream}
+          onEditLastUserMessage={onEditLastUserMessage}
           autoFocus
         />
       </div>
@@ -438,6 +465,18 @@ function AIPage() {
   }, [feedState.activeThreadId])
 
   React.useEffect(() => {
+    function handlePopState() {
+      const params = new URLSearchParams(window.location.search)
+      const tid = params.get("threadId") || null
+      if (tid !== feedState.activeThreadId) {
+        feedState.setActiveThreadId(tid)
+      }
+    }
+    window.addEventListener("popstate", handlePopState)
+    return () => window.removeEventListener("popstate", handlePopState)
+  }, [feedState.activeThreadId, feedState.setActiveThreadId])
+
+  React.useEffect(() => {
     function handleClickOutside() {
       setOpenMenuThreadId(null)
       sidebarFilters.setIsSortMenuOpen(false)
@@ -482,6 +521,7 @@ function AIPage() {
       <AIChatCenterColumn
         activeThreadId={feedState.activeThreadId}
         localMessages={feedState.localMessages}
+        allMessages={feedState.allMessages}
         isCurrentThreadStreaming={isCurrentThreadStreaming}
         isCurrentThreadBusy={isCurrentThreadBusy}
         isCurrentThreadQueued={isCurrentThreadQueued}
@@ -495,6 +535,14 @@ function AIPage() {
         handleSendMessage={feedState.handleSendMessage}
         handleQuestionAnswer={feedState.handleQuestionAnswer}
         stopStream={feedState.stopStream}
+        editingMessageId={feedState.editingMessageId}
+        onStartEdit={feedState.handleStartEdit}
+        onCancelEdit={feedState.handleCancelEdit}
+        onSaveEdit={feedState.handleEditMessage}
+        onRegenerate={feedState.handleRegenerate}
+        onRetry={feedState.handleRetry}
+        onSwitchBranch={feedState.handleSwitchBranch}
+        onEditLastUserMessage={feedState.handleEditLastUserMessage}
       />
 
       <AIThreadsSidebar

@@ -109,15 +109,30 @@ def _handle_tool_end_events(
     return events
 
 
+REASONING_KEYS = ("reasoning_content", "reasoning", "thought")
+
+
+def _find_reasoning_in_dict(source: Any) -> str | None:
+    if not isinstance(source, dict):
+        return None
+    for key in REASONING_KEYS:
+        val = source.get(key)
+        if isinstance(val, str) and val:
+            return val
+    return None
+
+
+def _extract_chunk_reasoning(chunk: Any) -> str | None:
+    return _find_reasoning_in_dict(
+        getattr(chunk, "additional_kwargs", None)
+    ) or _find_reasoning_in_dict(getattr(chunk, "response_metadata", None))
+
+
 def _process_model_chunk(
     chunk: Any, thought_buffer: str, in_thought: bool
 ) -> tuple[list[tuple[str, dict[str, Any]]], str, bool]:
     emitted_events: list[tuple[str, dict[str, Any]]] = []
-    reasoning = (
-        getattr(chunk, "additional_kwargs", {}).get("reasoning_content")
-        if hasattr(chunk, "additional_kwargs")
-        else None
-    )
+    reasoning = _extract_chunk_reasoning(chunk)
     if isinstance(reasoning, str):
         emitted_events.append(("thought", {"content": reasoning}))
 

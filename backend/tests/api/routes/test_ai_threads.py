@@ -379,6 +379,10 @@ def test_chat_stream_accepts_empty_message_with_valid_images(
 
     with (
         patch(
+            "app.services.agentic.agent_supervisor.build_copilot_agent",
+            side_effect=RuntimeError("copilot agent disabled for unit fallback test"),
+        ),
+        patch(
             "app.services.ai_completion_client.stream_direct_openai_proxy",
             side_effect=ConnectionError("proxy down"),
         ),
@@ -417,6 +421,10 @@ def test_chat_stream_filters_malformed_image_schemes(
     tid = t["id"]
 
     with (
+        patch(
+            "app.services.agentic.agent_supervisor.build_copilot_agent",
+            side_effect=RuntimeError("copilot agent disabled for unit fallback test"),
+        ),
         patch(
             "app.services.ai_completion_client.stream_direct_openai_proxy",
             side_effect=ConnectionError("proxy down"),

@@ -205,11 +205,14 @@ def _extract_assistant_content_from_parts(parts: list[dict[str, Any]]) -> str:
     if not isinstance(parts, list):
         return ""
     blocks = [
-        blk
+        blk.strip()
         for p in parts
-        if isinstance(p, dict) and (blk := _extract_single_assistant_block(p))
+        if isinstance(p, dict)
+        and (blk := _extract_single_assistant_block(p))
+        and blk.strip()
     ]
-    return "\n\n".join(b.strip() for b in blocks if b.strip()).strip()
+    deduped = list(dict.fromkeys(blocks))
+    return "\n\n".join(deduped).strip()
 
 
 def _convert_assistant_turn(

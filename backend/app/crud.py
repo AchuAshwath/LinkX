@@ -387,16 +387,34 @@ def get_chat_threads(
     return threads, count
 
 
+def _clean_updated_title(update_data: dict[str, Any]) -> None:
+    if "title" not in update_data or update_data["title"] is None:
+        return
+    trimmed = update_data["title"].strip()
+    if not trimmed:
+        raise ValueError("Title cannot be empty or whitespace only")
+    update_data["title"] = trimmed
+    if "is_custom_title" not in update_data:
+        update_data["is_custom_title"] = True
+
+
+def _apply_leaf_id_update(
+    *, db_thread: ChatThread, update_data: dict[str, Any]
+) -> None:
+    leaf_id = update_data.get("active_leaf_id")
+    if leaf_id is not None:
+        transcript = dict(db_thread.transcript or {})
+        transcript["active_leaf_id"] = leaf_id
+        db_thread.transcript = transcript
+
+
 def update_chat_thread(
     *, session: Session, db_thread: ChatThread, thread_in: ChatThreadUpdate
 ) -> ChatThread:
-    """Update chat thread metadata (title, archive status)."""
+    """Update chat thread metadata (title, archive status, active_leaf_id)."""
     update_data = thread_in.model_dump(exclude_unset=True)
-    if "title" in update_data and update_data["title"] is not None:
-        trimmed_title = update_data["title"].strip()
-        if not trimmed_title:
-            raise ValueError("Title cannot be empty or whitespace only")
-        update_data["title"] = trimmed_title
+    _clean_updated_title(update_data)
+    _apply_leaf_id_update(db_thread=db_thread, update_data=update_data)
 
     db_thread.sqlmodel_update(update_data)
     db_thread.updated_at = datetime.now(timezone.utc)
@@ -414,26 +432,52 @@ def delete_chat_thread(*, session: Session, thread_id: uuid.UUID) -> None:
         session.commit()
 
 
+def _resolve_appended_parent_id(
+    *,
+    message: dict[str, Any],
+    db_thread: ChatThread,
+    messages: list[dict[str, Any]],
+) -> str | None:
+    if "parent_id" in message:
+        raw_pid = message["parent_id"]
+        return str(raw_pid) if raw_pid is not None else None
+    if db_thread.active_leaf_id:
+        return db_thread.active_leaf_id
+    if messages and messages[-1].get("id"):
+        return str(messages[-1]["id"])
+    return None
+
+
+def _maybe_auto_title_thread(*, db_thread: ChatThread, message: dict[str, Any]) -> None:
+    default_titles = ("New conversation", "New Chat", "Untitled", "")
+    if db_thread.title not in default_titles or message.get("role") != "user":
+        return
+    parts = message.get("parts", [])
+    text_parts = [p.get("text", "") for p in parts if p.get("type") == "text"]
+    text_content = " ".join(text_parts).strip()
+    if text_content:
+        db_thread.title = generate_thread_title(text_content)
+
+
 def append_message_to_transcript(
     *, session: Session, db_thread: ChatThread, message: dict[str, Any]
 ) -> ChatThread:
-    """Append a message to the thread's JSONB transcript and update message count & title."""
+    """Append a message to the thread's JSONB transcript and update active leaf & message count."""
     current_transcript = dict(db_thread.transcript or {})
     messages = list(current_transcript.get("messages", []))
-    messages.append(message)
-    current_transcript["messages"] = messages
 
-    # Auto-generate title from first user message if thread still has default title
-    if (
-        db_thread.title in ("New conversation", "New Chat", "Untitled", "")
-        and message.get("role") == "user"
-    ):
-        parts = message.get("parts", [])
-        text_content = " ".join(
-            p.get("text", "") for p in parts if p.get("type") == "text"
-        ).strip()
-        if text_content:
-            db_thread.title = generate_thread_title(text_content)
+    message["parent_id"] = _resolve_appended_parent_id(
+        message=message, db_thread=db_thread, messages=messages
+    )
+    messages.append(message)
+
+    msg_id = message.get("id")
+    if msg_id:
+        db_thread.active_leaf_id = str(msg_id)
+        current_transcript["active_leaf_id"] = str(msg_id)
+
+    current_transcript["messages"] = messages
+    _maybe_auto_title_thread(db_thread=db_thread, message=message)
 
     db_thread.transcript = current_transcript
     db_thread.message_count = len(messages)

@@ -128,8 +128,15 @@ export type ChatMessagePart =
   | TrendingArtifactPart
   | ThoughtPart
 
+export interface BranchVersionInfo {
+  currentIndex: number
+  totalVersions: number
+}
+
 export interface ChatUIMessage {
   id: string
+  parentId?: string | null
+  forkedFromId?: string | null
   role: "user" | "assistant" | "system"
   parts: ChatMessagePart[]
   createdAt?: string
@@ -143,4 +150,5 @@ export interface QueuedTurn {
   base64Images?: string[]
   selectedModelId: string
   assistantMsgId: string
+  editMessageId?: string
 }
