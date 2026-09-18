@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import * as React from "react"
 import { AiThreadsService, type ChatThreadPublic } from "@/client"
+import { extractTextParts } from "@/components/Chat/ChatMessage"
 import type {
   AskUserAnswer,
   AskUserToolPart,
@@ -12,6 +13,11 @@ import {
   buildStreamHandlers,
   useChatTurnSender,
 } from "@/hooks/useChatTurnSender"
+import {
+  findDeepestLeaf,
+  findSiblingByDirection,
+  resolveActiveBranch,
+} from "@/hooks/useTranscriptTree"
 
 function shouldSkipTranscriptSync({
   activeThreadId,
@@ -27,6 +33,25 @@ function shouldSkipTranscriptSync({
   return queuedThreadIds.includes(activeThreadId)
 }
 
+function isPendingMessage(m: ChatUIMessage, serverIds: Set<string>): boolean {
+  if (serverIds.has(m.id)) return false
+  if (m.id.startsWith("local_")) return true
+  return m.status === "queued" || m.status === "streaming"
+}
+
+function hasActiveTurn(messages: ChatUIMessage[]): boolean {
+  return messages.some((m) => m.status === "queued" || m.status === "streaming")
+}
+
+function mergePendingTurns(
+  current: ChatUIMessage[],
+  transcriptMessages: ChatUIMessage[],
+): ChatUIMessage[] {
+  const serverIds = new Set(transcriptMessages.map((m) => m.id))
+  const pendingTurns = current.filter((m) => isPendingMessage(m, serverIds))
+  return [...transcriptMessages, ...pendingTurns]
+}
+
 function resolveMergedTranscriptMessages({
   current,
   transcriptMessages,
@@ -34,15 +59,113 @@ function resolveMergedTranscriptMessages({
   current: ChatUIMessage[]
   transcriptMessages: ChatUIMessage[]
 }): ChatUIMessage[] {
-  const hasOptimistic = current.some(
-    (m) => m.id.startsWith("local_") || m.status === "queued",
-  )
-  if (hasOptimistic && transcriptMessages.length === 0) {
-    return current
+  if (current.length === 0) {
+    return transcriptMessages
   }
-  return transcriptMessages.length >= current.length
-    ? transcriptMessages
-    : current
+  if (hasActiveTurn(current)) {
+    return mergePendingTurns(current, transcriptMessages)
+  }
+  if (transcriptMessages.length === 0) {
+    const hasOptimistic = current.some((m) => m.id.startsWith("local_"))
+    if (hasOptimistic) return current
+  }
+  if (transcriptMessages.length >= current.length) {
+    return transcriptMessages
+  }
+  return current
+}
+
+function matchesExpectedThread(
+  detailId?: string,
+  expectedThreadId?: string | null,
+): boolean {
+  if (!expectedThreadId) return true
+  return detailId === expectedThreadId
+}
+
+function getFirstDefined<T>(a: T | undefined, b: T | undefined): T | undefined {
+  return a !== undefined ? a : b
+}
+
+function normalizeRawMessage(raw: any): ChatUIMessage {
+  if (!raw || typeof raw !== "object") return raw
+  return {
+    ...raw,
+    parentId: getFirstDefined(raw.parentId, raw.parent_id),
+    forkedFromId: getFirstDefined(raw.forkedFromId, raw.forked_from_id),
+    createdAt: getFirstDefined(raw.createdAt, raw.created_at),
+  }
+}
+
+function extractTranscriptMessages(
+  detail: unknown,
+  expectedThreadId?: string | null,
+): ChatUIMessage[] | null {
+  if (!detail || typeof detail !== "object") return null
+  const typed = detail as {
+    id?: string
+    transcript?: { messages?: unknown[] }
+  }
+  if (!matchesExpectedThread(typed.id, expectedThreadId)) {
+    return null
+  }
+  const rawList = typed.transcript?.messages
+  if (!Array.isArray(rawList)) return null
+  return rawList.map(normalizeRawMessage)
+}
+
+function extractServerActiveLeafId(
+  detail: unknown,
+  expectedThreadId?: string | null,
+): string | null {
+  if (!detail || typeof detail !== "object") return null
+  const typed = detail as {
+    id?: string
+    active_leaf_id?: string | null
+    transcript?: { active_leaf_id?: string | null }
+  }
+  if (!matchesExpectedThread(typed.id, expectedThreadId)) {
+    return null
+  }
+  return typed.active_leaf_id ?? typed.transcript?.active_leaf_id ?? null
+}
+
+function syncTranscriptToState({
+  threadId,
+  transcriptMessages,
+  setMessagesByThread,
+}: {
+  threadId: string
+  transcriptMessages: ChatUIMessage[]
+  setMessagesByThread: React.Dispatch<
+    React.SetStateAction<Record<string, ChatUIMessage[]>>
+  >
+}) {
+  setMessagesByThread((prev) => ({
+    ...prev,
+    [threadId]: resolveMergedTranscriptMessages({
+      current: prev[threadId] ?? [],
+      transcriptMessages,
+    }),
+  }))
+}
+
+function syncLeafIdToState({
+  threadId,
+  leafId,
+  setActiveLeafIdByThread,
+}: {
+  threadId: string
+  leafId: string | null
+  setActiveLeafIdByThread: React.Dispatch<
+    React.SetStateAction<Record<string, string | null>>
+  >
+}) {
+  if (!leafId) return
+  setActiveLeafIdByThread((prev) => {
+    if (prev[threadId] === leafId) return prev
+    return { ...prev, [threadId]: leafId }
+  })
 }
 
 function useThreadTranscript({
@@ -50,12 +173,16 @@ function useThreadTranscript({
   streamingThreadId,
   queuedThreadIds,
   setMessagesByThread,
+  setActiveLeafIdByThread,
 }: {
   activeThreadId: string | null
   streamingThreadId: string | null
   queuedThreadIds: string[]
   setMessagesByThread: React.Dispatch<
     React.SetStateAction<Record<string, ChatUIMessage[]>>
+  >
+  setActiveLeafIdByThread: React.Dispatch<
+    React.SetStateAction<Record<string, string | null>>
   >
 }) {
   const { data: activeThreadDetail } = useQuery({
@@ -66,6 +193,7 @@ function useThreadTranscript({
 
   React.useEffect(() => {
     if (
+      !activeThreadId ||
       shouldSkipTranscriptSync({
         activeThreadId,
         streamingThreadId,
@@ -75,25 +203,31 @@ function useThreadTranscript({
       return
     }
 
-    const transcriptMessages =
-      (activeThreadDetail?.transcript as { messages?: ChatUIMessage[] })
-        ?.messages || null
+    const messages = extractTranscriptMessages(
+      activeThreadDetail,
+      activeThreadId,
+    )
+    if (messages) {
+      syncTranscriptToState({
+        threadId: activeThreadId,
+        transcriptMessages: messages,
+        setMessagesByThread,
+      })
+    }
 
-    if (!transcriptMessages) return
-
-    setMessagesByThread((prev) => ({
-      ...prev,
-      [activeThreadId!]: resolveMergedTranscriptMessages({
-        current: prev[activeThreadId!] ?? [],
-        transcriptMessages,
-      }),
-    }))
+    const leafId = extractServerActiveLeafId(activeThreadDetail, activeThreadId)
+    syncLeafIdToState({
+      threadId: activeThreadId,
+      leafId,
+      setActiveLeafIdByThread,
+    })
   }, [
     activeThreadDetail,
     activeThreadId,
     streamingThreadId,
     queuedThreadIds,
     setMessagesByThread,
+    setActiveLeafIdByThread,
   ])
 }
 
@@ -126,20 +260,28 @@ function useThreadDrafts() {
 function useInitialActiveThread(
   threads: ChatThreadPublic[],
   initialThreadId: string | undefined,
+  activeThreadId: string | null,
   setActiveThreadId: (id: string) => void,
 ) {
   const initialLoadedRef = React.useRef(false)
   React.useEffect(() => {
+    if (initialLoadedRef.current) {
+      return
+    }
+    if (activeThreadId) {
+      initialLoadedRef.current = true
+      return
+    }
     if (initialThreadId) {
       setActiveThreadId(initialThreadId)
       initialLoadedRef.current = true
       return
     }
-    if (threads.length > 0 && !initialLoadedRef.current) {
+    if (threads.length > 0) {
       setActiveThreadId(threads[0].id)
       initialLoadedRef.current = true
     }
-  }, [threads, initialThreadId, setActiveThreadId])
+  }, [threads, initialThreadId, activeThreadId, setActiveThreadId])
 }
 
 function useCreateThreadMutation(
@@ -335,6 +477,7 @@ function useQueueProcessor({
         handlers,
         nextTurn.selectedModelId,
         imagesPayload,
+        nextTurn.editMessageId,
       )
     } finally {
       isProcessingQueueRef.current = false
@@ -353,15 +496,24 @@ function useActiveThreadMessages({
   activeThreadId,
   messagesByThread,
   setMessagesByThread,
+  activeLeafIdByThread,
+  setActiveLeafIdByThread,
 }: {
   activeThreadId: string | null
   messagesByThread: Record<string, ChatUIMessage[]>
   setMessagesByThread: React.Dispatch<
     React.SetStateAction<Record<string, ChatUIMessage[]>>
   >
+  activeLeafIdByThread: Record<string, string | null>
+  setActiveLeafIdByThread: React.Dispatch<
+    React.SetStateAction<Record<string, string | null>>
+  >
 }) {
   const activeKey = activeThreadId ?? "new-chat"
   const localMessages = messagesByThread[activeKey] ?? []
+  const activeLeafId = activeThreadId
+    ? (activeLeafIdByThread[activeThreadId] ?? null)
+    : null
 
   const setLocalMessages = React.useCallback(
     (updater: React.SetStateAction<ChatUIMessage[]>) => {
@@ -376,7 +528,41 @@ function useActiveThreadMessages({
     [activeThreadId, setMessagesByThread],
   )
 
-  return { localMessages, setLocalMessages }
+  const displayMessages = React.useMemo(
+    () => resolveActiveBranch(localMessages, activeLeafId),
+    [localMessages, activeLeafId],
+  )
+
+  const handleSwitchBranch = React.useCallback(
+    (messageId: string, direction: "prev" | "next") => {
+      const sibling = findSiblingByDirection(
+        localMessages,
+        messageId,
+        direction,
+      )
+      if (!sibling) return
+      const targetLeafId = findDeepestLeaf(localMessages, sibling.id)
+      if (activeThreadId) {
+        setActiveLeafIdByThread((prev) => ({
+          ...prev,
+          [activeThreadId]: targetLeafId,
+        }))
+        AiThreadsService.updateChatThread({
+          id: activeThreadId,
+          requestBody: { active_leaf_id: targetLeafId },
+        }).catch(() => {})
+      }
+    },
+    [activeThreadId, localMessages, setActiveLeafIdByThread],
+  )
+
+  return {
+    localMessages: displayMessages,
+    allMessages: localMessages,
+    setLocalMessages,
+    activeLeafId,
+    handleSwitchBranch,
+  }
 }
 
 function useThreadStreamingStatus({
@@ -411,6 +597,9 @@ function useChatFeedCore(initialThreadId?: string) {
   const [messagesByThread, setMessagesByThread] = React.useState<
     Record<string, ChatUIMessage[]>
   >({})
+  const [activeLeafIdByThread, setActiveLeafIdByThread] = React.useState<
+    Record<string, string | null>
+  >({})
   const [pendingQuestion, setPendingQuestion] =
     React.useState<AskUserToolPart | null>(null)
 
@@ -422,6 +611,8 @@ function useChatFeedCore(initialThreadId?: string) {
     setActiveThreadId,
     messagesByThread,
     setMessagesByThread,
+    activeLeafIdByThread,
+    setActiveLeafIdByThread,
     pendingQuestion,
     setPendingQuestion,
   }
@@ -430,6 +621,37 @@ function useChatFeedCore(initialThreadId?: string) {
 type ChatFeedCore = ReturnType<typeof useChatFeedCore>
 type TurnQueueState = ReturnType<typeof useTurnQueue>
 
+function formatAnswersText(answers: AskUserAnswer[]): string {
+  return answers
+    .map((a) => a.answer)
+    .filter(Boolean)
+    .join("; ")
+}
+
+interface ExecuteThreadDeletionOptions {
+  deletedId: string
+  streamingThreadId: string | null
+  stopStream: (id: string) => void
+  cancelQueuedTurn: (id: string) => void
+  setMessagesByThread: React.Dispatch<
+    React.SetStateAction<Record<string, ChatUIMessage[]>>
+  >
+}
+
+function executeThreadDeletion({
+  deletedId,
+  streamingThreadId,
+  stopStream,
+  cancelQueuedTurn,
+  setMessagesByThread,
+}: ExecuteThreadDeletionOptions) {
+  if (streamingThreadId === deletedId) {
+    stopStream(deletedId)
+  }
+  cancelQueuedTurn(deletedId)
+  setMessagesByThread((prev) => removeThreadMessages(prev, deletedId))
+}
+
 function useThreadActions({
   core,
   queueState,
@@ -437,7 +659,11 @@ function useThreadActions({
 }: {
   core: ChatFeedCore
   queueState: TurnQueueState
-  handleSendMessage: (text: string, attachedImages?: File[]) => Promise<void>
+  handleSendMessage: (
+    text: string,
+    attachedImages?: File[],
+    editMessageId?: string,
+  ) => Promise<void>
 }) {
   const { streamingThreadId, stop: stopStream } = core.streamState
   const {
@@ -450,21 +676,20 @@ function useThreadActions({
 
   const handleThreadDeleted = React.useCallback(
     (deletedId: string) => {
-      if (streamingThreadId === deletedId) {
-        stopStream(deletedId)
-      }
-      cancelQueuedTurn(deletedId)
-      setMessagesByThread((prev) => removeThreadMessages(prev, deletedId))
+      executeThreadDeletion({
+        deletedId,
+        streamingThreadId,
+        stopStream,
+        cancelQueuedTurn,
+        setMessagesByThread,
+      })
     },
     [streamingThreadId, stopStream, cancelQueuedTurn, setMessagesByThread],
   )
 
   const handleQuestionAnswer = React.useCallback(
     (_toolCallId: string, answers: AskUserAnswer[]) => {
-      const text = answers
-        .map((a) => a.answer)
-        .filter(Boolean)
-        .join("; ")
+      const text = formatAnswersText(answers)
       if (text) {
         handleSendMessage(text)
       }
@@ -523,12 +748,18 @@ function useChatEngine({
     startStream: core.streamState.startStream,
   })
 
-  useInitialActiveThread(threads, initialThreadId, core.setActiveThreadId)
+  useInitialActiveThread(
+    threads,
+    initialThreadId,
+    core.activeThreadId,
+    core.setActiveThreadId,
+  )
   useThreadTranscript({
     activeThreadId: core.activeThreadId,
     streamingThreadId: core.streamState.streamingThreadId,
     queuedThreadIds: queueState.queuedThreadIds,
     setMessagesByThread: core.setMessagesByThread,
+    setActiveLeafIdByThread: core.setActiveLeafIdByThread,
   })
 
   const createThreadMutation = useCreateThreadMutation(
@@ -542,6 +773,7 @@ function useChatEngine({
     isStreaming: core.streamState.isStreaming,
     streamingThreadId: core.streamState.streamingThreadId,
     setActiveThreadId: core.setActiveThreadId,
+    setActiveLeafIdByThread: core.setActiveLeafIdByThread,
     setMessagesByThread: core.setMessagesByThread,
     setPendingQuestion: core.setPendingQuestion,
     clearThreadDraft: core.draftState.clearThreadDraft,
@@ -553,6 +785,108 @@ function useChatEngine({
   return { handleSendMessage }
 }
 
+interface UseMessageEditingProps {
+  localMessages: ChatUIMessage[]
+  handleSendMessage: (
+    text: string,
+    attachedImages?: File[],
+    editMessageId?: string,
+  ) => Promise<void>
+  stopStream: () => void
+  isStreaming: boolean
+}
+
+function findPrecedingUserMessage(
+  messages: ChatUIMessage[],
+  assistantMsgId: string,
+): ChatUIMessage | null {
+  const idx = messages.findIndex((m) => m.id === assistantMsgId)
+  if (idx <= 0) return null
+  for (let i = idx - 1; i >= 0; i--) {
+    if (messages[i].role === "user") {
+      return messages[i]
+    }
+  }
+  return null
+}
+
+function findLastUserMessage(messages: ChatUIMessage[]): ChatUIMessage | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "user") {
+      return messages[i]
+    }
+  }
+  return null
+}
+
+function useMessageEditing({
+  localMessages,
+  handleSendMessage,
+  stopStream,
+  isStreaming,
+}: UseMessageEditingProps) {
+  const [editingMessageId, setEditingMessageId] = React.useState<string | null>(
+    null,
+  )
+
+  const handleStartEdit = React.useCallback((messageId: string) => {
+    setEditingMessageId(messageId)
+  }, [])
+
+  const handleCancelEdit = React.useCallback(() => {
+    setEditingMessageId(null)
+  }, [])
+
+  const handleEditMessage = React.useCallback(
+    async (messageId: string, newText: string) => {
+      setEditingMessageId(null)
+      if (isStreaming) {
+        stopStream()
+      }
+      await handleSendMessage(newText, undefined, messageId)
+    },
+    [handleSendMessage, isStreaming, stopStream],
+  )
+
+  const handleRegenerate = React.useCallback(
+    async (assistantMsgId: string) => {
+      const preceding = findPrecedingUserMessage(localMessages, assistantMsgId)
+      if (!preceding) return
+      const text = extractTextParts(preceding.parts)
+      if (!text) return
+      if (isStreaming) {
+        stopStream()
+      }
+      await handleSendMessage(text, undefined, assistantMsgId)
+    },
+    [handleSendMessage, isStreaming, localMessages, stopStream],
+  )
+
+  const handleRetry = React.useCallback(
+    async (assistantMsgId: string) => {
+      await handleRegenerate(assistantMsgId)
+    },
+    [handleRegenerate],
+  )
+
+  const handleEditLastUserMessage = React.useCallback(() => {
+    const lastUser = findLastUserMessage(localMessages)
+    if (lastUser) {
+      setEditingMessageId(lastUser.id)
+    }
+  }, [localMessages])
+
+  return {
+    editingMessageId,
+    handleStartEdit,
+    handleCancelEdit,
+    handleEditMessage,
+    handleRegenerate,
+    handleRetry,
+    handleEditLastUserMessage,
+  }
+}
+
 function assembleFeedState({
   core,
   queueState,
@@ -560,18 +894,27 @@ function assembleFeedState({
   threadActions,
   activeMessages,
   handleSendMessage,
+  editingState,
 }: {
   core: ChatFeedCore
   queueState: TurnQueueState
   streamingStatus: ReturnType<typeof useThreadStreamingStatus>
   threadActions: ReturnType<typeof useThreadActions>
   activeMessages: ReturnType<typeof useActiveThreadMessages>
-  handleSendMessage: (text: string, attachedImages?: File[]) => Promise<void>
+  handleSendMessage: (
+    text: string,
+    attachedImages?: File[],
+    editMessageId?: string,
+  ) => Promise<void>
+  editingState: ReturnType<typeof useMessageEditing>
 }) {
   return {
     activeThreadId: core.activeThreadId,
     setActiveThreadId: core.setActiveThreadId,
     localMessages: activeMessages.localMessages,
+    allMessages: activeMessages.allMessages,
+    activeLeafId: activeMessages.activeLeafId,
+    handleSwitchBranch: activeMessages.handleSwitchBranch,
     setLocalMessages: activeMessages.setLocalMessages,
     messagesByThread: core.messagesByThread,
     setMessagesByThread: core.setMessagesByThread,
@@ -591,6 +934,13 @@ function assembleFeedState({
     handleSendMessage,
     handleQuestionAnswer: threadActions.handleQuestionAnswer,
     handleNewChat: threadActions.handleNewChat,
+    editingMessageId: editingState.editingMessageId,
+    handleStartEdit: editingState.handleStartEdit,
+    handleCancelEdit: editingState.handleCancelEdit,
+    handleEditMessage: editingState.handleEditMessage,
+    handleRegenerate: editingState.handleRegenerate,
+    handleRetry: editingState.handleRetry,
+    handleEditLastUserMessage: editingState.handleEditLastUserMessage,
   }
 }
 
@@ -626,6 +976,14 @@ export function useAIChatFeedState(options: UseAIChatFeedStateProps) {
     activeThreadId: core.activeThreadId,
     messagesByThread: core.messagesByThread,
     setMessagesByThread: core.setMessagesByThread,
+    activeLeafIdByThread: core.activeLeafIdByThread,
+    setActiveLeafIdByThread: core.setActiveLeafIdByThread,
+  })
+  const editingState = useMessageEditing({
+    localMessages: activeMessages.localMessages,
+    handleSendMessage,
+    stopStream: threadActions.handleStop,
+    isStreaming: core.streamState.isStreaming,
   })
 
   return assembleFeedState({
@@ -635,5 +993,6 @@ export function useAIChatFeedState(options: UseAIChatFeedStateProps) {
     threadActions,
     activeMessages,
     handleSendMessage,
+    editingState,
   })
 }

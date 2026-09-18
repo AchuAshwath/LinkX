@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react"
+import { Plus, Square } from "lucide-react"
 import type * as React from "react"
 
 import { AttachmentPreviewStrip } from "@/components/Chat/AttachmentPreviewStrip"
@@ -12,6 +12,7 @@ import { VoiceInputButton } from "@/components/Chat/VoiceInputButton"
 import {
   InputGroup,
   InputGroupAddon,
+  InputGroupButton,
   InputGroupTextarea,
 } from "@/components/ui/input-group"
 
@@ -20,6 +21,7 @@ export type { AIModelOption }
 export interface PromptFormProps {
   onSubmit: (text: string, images?: File[]) => void
   onStop?: () => void
+  onEditLastUserMessage?: () => void
   isBusy?: boolean
   placeholder?: string
   selectedModelId?: string
@@ -36,6 +38,7 @@ export interface PromptFormProps {
 export function PromptForm({
   onSubmit,
   onStop,
+  onEditLastUserMessage,
   isBusy = false,
   placeholder = "Ask anything",
   selectedModelId,
@@ -73,7 +76,7 @@ export function PromptForm({
     onSelectModel,
     onValueChange,
     onSubmit,
-    isBusy,
+    onEditLastUserMessage,
     autoFocus,
     inputRef,
   })
@@ -132,6 +135,19 @@ export function PromptForm({
               error={voiceError}
               disabled={isBusy}
             />
+
+            {isBusy && hasContent && onStop && (
+              <InputGroupButton
+                type="button"
+                size="icon-sm"
+                variant="outline"
+                aria-label="Stop generating"
+                className="size-8 rounded-full bg-muted border-border text-foreground hover:bg-muted/80 cursor-pointer"
+                onClick={onStop}
+              >
+                <Square className="size-3.5 fill-current" />
+              </InputGroupButton>
+            )}
 
             <PromptSubmitButton
               isBusy={isBusy}

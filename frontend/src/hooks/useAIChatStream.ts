@@ -130,6 +130,7 @@ async function executeChatStreamRequest({
   handlers,
   model,
   images,
+  editMessageId,
   signal,
 }: {
   threadId: string
@@ -137,6 +138,7 @@ async function executeChatStreamRequest({
   handlers: StreamEventHandlers
   model?: string
   images?: string[]
+  editMessageId?: string
   signal: AbortSignal
 }) {
   const token = getAuthToken()
@@ -146,7 +148,12 @@ async function executeChatStreamRequest({
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ message, model, images }),
+    body: JSON.stringify({
+      message,
+      model,
+      images,
+      edit_message_id: editMessageId,
+    }),
     signal,
   })
 
@@ -196,6 +203,7 @@ export function useAIChatStream() {
       handlers: StreamEventHandlers = {},
       model?: string,
       images?: string[],
+      editMessageId?: string,
     ) => {
       stop()
       const controller = new AbortController()
@@ -211,6 +219,7 @@ export function useAIChatStream() {
           handlers,
           model,
           images,
+          editMessageId,
           signal: controller.signal,
         })
       } catch (err: unknown) {

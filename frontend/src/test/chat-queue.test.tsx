@@ -118,30 +118,60 @@ describe("Multi-thread prompt queuing and stream isolation", () => {
     })
   })
 
-  it("queues Thread Beta when submitted while Thread Alpha is streaming", async () => {
-    let controllerA: any = null
-    const streamA = new ReadableStream<Uint8Array>({
+  function createMockStream() {
+    let controller: ReadableStreamDefaultController<Uint8Array> | null = null
+    const stream = new ReadableStream<Uint8Array>({
       start(ctrl) {
-        controllerA = ctrl
+        controller = ctrl
       },
     })
+    return {
+      stream,
+      close: () => controller?.close(),
+      enqueueText: (content: string) => {
+        const encoder = new TextEncoder()
+        controller?.enqueue(
+          encoder.encode(
+            `event: text_delta\ndata: {"content": "${content}"}\n\nevent: done\ndata: {}\n\n`,
+          ),
+        )
+        controller?.close()
+      },
+    }
+  }
 
-    let controllerB: any = null
-    const streamB = new ReadableStream<Uint8Array>({
-      start(ctrl) {
-        controllerB = ctrl
-      },
-    })
+  function submitPrompt(text: string) {
+    const input = screen.getByPlaceholderText("Ask anything")
+    fireEvent.change(input, { target: { value: text } })
+    fireEvent.submit(input.closest("form")!)
+  }
+
+  function selectSidebarThread(threadName: string) {
+    const btn = screen.getByText(threadName)
+    fireEvent.click(btn)
+  }
+
+  async function expectQueuedIndicator() {
+    expect(
+      await screen.findByText(
+        /Queued • Waiting for active generation to finish.../i,
+      ),
+    ).toBeInTheDocument()
+  }
+
+  it("queues Thread Beta when submitted while Thread Alpha is streaming", async () => {
+    const mockA = createMockStream()
+    const mockB = createMockStream()
 
     const fetchMock = vi.fn().mockImplementation(async (url: string) => {
       if (url.includes("thread-A")) {
-        return new Response(streamA, {
+        return new Response(mockA.stream, {
           status: 200,
           headers: { "Content-Type": "text/event-stream" },
         })
       }
       if (url.includes("thread-B")) {
-        return new Response(streamB, {
+        return new Response(mockB.stream, {
           status: 200,
           headers: { "Content-Type": "text/event-stream" },
         })
@@ -153,67 +183,37 @@ describe("Multi-thread prompt queuing and stream isolation", () => {
     const Component = Route.options.component as React.ComponentType
     renderWithClient(<Component />)
 
-    // Wait for Thread Alpha to load initially
     await screen.findByText("Thread Alpha")
     await screen.findByText("Alpha initial prompt")
 
-    // Send a message in Thread Alpha
-    const input = screen.getByPlaceholderText("Ask anything")
-    fireEvent.change(input, { target: { value: "Run generation on Alpha" } })
-    fireEvent.submit(input.closest("form")!)
+    submitPrompt("Run generation on Alpha")
 
-    // Verify fetch was called for thread-A
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         expect.stringContaining("/ai/threads/thread-A/chat"),
         expect.anything(),
       )
     })
-
-    // Verify Thread Alpha shows generating badge in sidebar
     await waitFor(() => {
       expect(screen.getByTestId("thread-generating-badge")).toBeInTheDocument()
     })
 
-    // Now switch to Thread Beta in sidebar WITHOUT aborting Thread Alpha
-    const threadBetaBtn = screen.getByText("Thread Beta")
-    fireEvent.click(threadBetaBtn)
-
-    // Verify Thread Beta messages load
+    selectSidebarThread("Thread Beta")
     await screen.findByText("Beta initial prompt")
 
-    // In Thread Beta, input should NOT be disabled; user can submit
-    const inputBeta = screen.getByPlaceholderText("Ask anything")
-    fireEvent.change(inputBeta, { target: { value: "Run prompt on Beta" } })
-    fireEvent.submit(inputBeta.closest("form")!)
+    submitPrompt("Run prompt on Beta")
 
-    // Verify Thread Beta displays user message and queued assistant indicator
     expect(await screen.findByText("Run prompt on Beta")).toBeInTheDocument()
-    expect(
-      await screen.findByText(
-        /Queued • Waiting for active generation to finish.../i,
-      ),
-    ).toBeInTheDocument()
-
-    // Verify Thread Beta has queued badge in sidebar
+    await expectQueuedIndicator()
     expect(screen.getByTestId("thread-queued-badge")).toBeInTheDocument()
 
-    // Thread B should NOT have called fetch yet because Thread A is still streaming!
     const betaCallsBefore = fetchMock.mock.calls.filter((c) =>
       String(c[0]).includes("thread-B"),
     )
     expect(betaCallsBefore.length).toBe(0)
 
-    // Now finish Thread Alpha stream
-    const encoder = new TextEncoder()
-    controllerA?.enqueue(
-      encoder.encode(
-        'event: text_delta\ndata: {"content": "Alpha completed successfully"}\n\nevent: done\ndata: {}\n\n',
-      ),
-    )
-    controllerA?.close()
+    mockA.enqueueText("Alpha completed successfully")
 
-    // Once Thread Alpha completes, the queue automatically triggers Thread Beta's stream!
     await waitFor(
       () => {
         const betaCallsAfter = fetchMock.mock.calls.filter((c) =>
@@ -224,31 +224,19 @@ describe("Multi-thread prompt queuing and stream isolation", () => {
       { timeout: 3000 },
     )
 
-    // Send chunks to Thread Beta
-    controllerB?.enqueue(
-      encoder.encode(
-        'event: text_delta\ndata: {"content": "Beta response is here!"}\n\nevent: done\ndata: {}\n\n',
-      ),
-    )
-    controllerB?.close()
+    mockB.enqueueText("Beta response is here!")
 
-    // Verify Thread Beta receives response text
     expect(
       await screen.findByText("Beta response is here!"),
     ).toBeInTheDocument()
   })
 
   it("can cancel a queued turn in Thread Beta without interrupting active Thread Alpha stream", async () => {
-    let controllerA: any = null
-    const streamA = new ReadableStream<Uint8Array>({
-      start(ctrl) {
-        controllerA = ctrl
-      },
-    })
+    const mockA = createMockStream()
 
     const fetchMock = vi.fn().mockImplementation(async (url: string) => {
       if (url.includes("thread-A")) {
-        return new Response(streamA, {
+        return new Response(mockA.stream, {
           status: 200,
           headers: { "Content-Type": "text/event-stream" },
         })
@@ -260,39 +248,25 @@ describe("Multi-thread prompt queuing and stream isolation", () => {
     const Component = Route.options.component as React.ComponentType
     renderWithClient(<Component />)
 
-    // Wait for Thread Alpha to load and start streaming
     await screen.findByText("Thread Alpha")
-    const input = screen.getByPlaceholderText("Ask anything")
-    fireEvent.change(input, { target: { value: "Prompt on Alpha" } })
-    fireEvent.submit(input.closest("form")!)
+    submitPrompt("Prompt on Alpha")
 
     await waitFor(() => {
       expect(screen.getByTestId("thread-generating-badge")).toBeInTheDocument()
     })
 
-    // Switch to Thread Beta and submit a prompt to queue it
-    const threadBetaBtn = screen.getByText("Thread Beta")
-    fireEvent.click(threadBetaBtn)
+    selectSidebarThread("Thread Beta")
     await screen.findByText("Beta initial prompt")
 
-    const inputBeta = screen.getByPlaceholderText("Ask anything")
-    fireEvent.change(inputBeta, { target: { value: "Queued prompt on Beta" } })
-    fireEvent.submit(inputBeta.closest("form")!)
-
+    submitPrompt("Queued prompt on Beta")
     expect(await screen.findByText("Queued prompt on Beta")).toBeInTheDocument()
-    expect(
-      await screen.findByText(
-        /Queued • Waiting for active generation to finish.../i,
-      ),
-    ).toBeInTheDocument()
+    await expectQueuedIndicator()
 
-    // PromptForm in Thread Beta now displays Stop button
     const stopButton = screen.getByRole("button", {
       name: /stop generating/i,
     })
     fireEvent.click(stopButton)
 
-    // Queued indicator is removed from Thread Beta
     await waitFor(() => {
       expect(
         screen.queryByText(
@@ -301,29 +275,19 @@ describe("Multi-thread prompt queuing and stream isolation", () => {
       ).not.toBeInTheDocument()
     })
 
-    // The user's prompt is restored to the input box so it is not lost
     expect(screen.getByPlaceholderText("Ask anything")).toHaveValue(
       "Queued prompt on Beta",
     )
-
-    // Thread Alpha is STILL running and generating!
     expect(screen.getByTestId("thread-generating-badge")).toBeInTheDocument()
-
-    // Clean up stream A
-    controllerA?.close()
+    mockA.close()
   })
 
   it("deleting a queued thread purges it from the queue and prevents it from streaming when active stream finishes", async () => {
-    let controllerA: any = null
-    const streamA = new ReadableStream<Uint8Array>({
-      start(ctrl) {
-        controllerA = ctrl
-      },
-    })
+    const mockA = createMockStream()
 
     const fetchMock = vi.fn().mockImplementation(async (url: string) => {
       if (url.includes("thread-A")) {
-        return new Response(streamA, {
+        return new Response(mockA.stream, {
           status: 200,
           headers: { "Content-Type": "text/event-stream" },
         })
@@ -335,64 +299,94 @@ describe("Multi-thread prompt queuing and stream isolation", () => {
     const Component = Route.options.component as React.ComponentType
     renderWithClient(<Component />)
 
-    // Start Thread Alpha streaming
     await screen.findByText("Thread Alpha")
-    const input = screen.getByPlaceholderText("Ask anything")
-    fireEvent.change(input, { target: { value: "Prompt on Alpha" } })
-    fireEvent.submit(input.closest("form")!)
+    submitPrompt("Prompt on Alpha")
 
     await waitFor(() => {
       expect(screen.getByTestId("thread-generating-badge")).toBeInTheDocument()
     })
 
-    // Switch to Thread Beta and submit a prompt to queue it
-    const threadBetaBtn = screen.getByText("Thread Beta")
-    fireEvent.click(threadBetaBtn)
+    selectSidebarThread("Thread Beta")
     await screen.findByText("Beta initial prompt")
 
-    const inputBeta = screen.getByPlaceholderText("Ask anything")
-    fireEvent.change(inputBeta, { target: { value: "Queued on Beta" } })
-    fireEvent.submit(inputBeta.closest("form")!)
-
+    submitPrompt("Queued on Beta")
     expect(await screen.findByText("Queued on Beta")).toBeInTheDocument()
 
-    // Open options menu for Thread Beta and click Delete
     const kebabButtons = await screen.findAllByRole("button", {
       name: /thread options/i,
     })
-    fireEvent.click(kebabButtons[1]) // Thread Beta kebab
+    fireEvent.click(kebabButtons[1])
 
-    const deleteMenuItem = screen.getByRole("menuitem", { name: /delete/i })
-    fireEvent.click(deleteMenuItem)
+    fireEvent.click(screen.getByRole("menuitem", { name: /delete/i }))
+    fireEvent.click(screen.getByRole("button", { name: /^delete chat$/i }))
 
-    // Confirm deletion inside dialog
-    const confirmDeleteBtn = screen.getByRole("button", {
-      name: /^delete chat$/i,
-    })
-    fireEvent.click(confirmDeleteBtn)
-
-    // Verify backend delete was invoked
     await waitFor(() => {
       expect(AiThreadsService.deleteChatThread).toHaveBeenCalledWith({
         id: "thread-B",
       })
     })
 
-    // Now finish Thread Alpha stream
-    const encoder = new TextEncoder()
-    controllerA?.enqueue(
-      encoder.encode(
-        'event: text_delta\ndata: {"content": "Alpha done"}\n\nevent: done\ndata: {}\n\n',
-      ),
-    )
-    controllerA?.close()
-
-    // Wait 200ms to ensure no queued turn for Thread Beta is executed
+    mockA.enqueueText("Alpha done")
     await new Promise((r) => setTimeout(r, 200))
 
     const betaCalls = fetchMock.mock.calls.filter((c) =>
       String(c[0]).includes("thread-B"),
     )
     expect(betaCalls.length).toBe(0)
+  })
+
+  it("queues follow-up prompt in the same thread while streaming and executes sequentially", async () => {
+    const mock1 = createMockStream()
+    const mock2 = createMockStream()
+
+    let callCount = 0
+    const fetchMock = vi.fn().mockImplementation(async () => {
+      callCount++
+      if (callCount === 1) {
+        return new Response(mock1.stream, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        })
+      }
+      return new Response(mock2.stream, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      })
+    })
+    globalThis.fetch = fetchMock
+
+    const Component = Route.options.component as React.ComponentType
+    renderWithClient(<Component />)
+
+    await screen.findByText("Thread Alpha")
+    await screen.findByText("Alpha initial prompt")
+
+    submitPrompt("Turn 1 prompt")
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    })
+
+    submitPrompt("Turn 2 queued follow-up")
+
+    expect(
+      await screen.findByText("Turn 2 queued follow-up"),
+    ).toBeInTheDocument()
+    await expectQueuedIndicator()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    mock1.enqueueText("Turn 1 answer")
+
+    await waitFor(
+      () => {
+        expect(fetchMock).toHaveBeenCalledTimes(2)
+      },
+      { timeout: 3000 },
+    )
+
+    mock2.enqueueText("Turn 2 answer complete")
+
+    expect(
+      await screen.findByText("Turn 2 answer complete"),
+    ).toBeInTheDocument()
   })
 })

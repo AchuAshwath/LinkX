@@ -8,11 +8,12 @@ import re
 from typing import Any
 from urllib.parse import SplitResult, urlsplit
 
+from app.services.agentic.scraping_graph import scrape_trends_with_graph
 from app.services.agentic.tools.common import get_active_page
 from app.services.browser.actions import human_navigation, random_delay
 from app.services.browser.diagnostics import extract_grok_summary
 from app.services.browser.manager import BrowserManager
-from scripts.scrape_trending_topics import extract_topic_tweets, scrape_trending_topics
+from scripts.scrape_trending_topics import extract_topic_tweets
 
 logger = logging.getLogger(__name__)
 
@@ -118,20 +119,23 @@ async def scrape_live_explore_trends(
     user_id: str,
     max_topics: int = 3,
     headless: bool = True,
+    session: Any = None,
 ) -> dict[str, Any]:
     """Execute live stealth scraping on X.com Explore, auto-heal broken selectors,
-    and persist trending topics + Grok summaries to PostgreSQL."""
+    and persist trending topics + Grok summaries to PostgreSQL via ScrapingGraph."""
     try:
-        result = await scrape_trending_topics(
+        report = await scrape_trends_with_graph(
             user_id=user_id,
             max_topics=max_topics,
             headless=headless,
+            session=session,
         )
         return {
-            "status": result.status,
-            "topics_found": result.topics_found,
-            "topics_scraped": result.topics_scraped,
-            "errors": result.errors,
+            "status": report.status,
+            "topics_found": len(report.scraped_topics),
+            "topics_scraped": report.persisted_topic_count,
+            "errors": [report.error] if report.error else [],
+            "topics": report.scraped_topics,
         }
     except Exception as e:
         logger.error(f"Error during scrape_live_explore_trends: {e}")
@@ -140,6 +144,7 @@ async def scrape_live_explore_trends(
             "topics_found": 0,
             "topics_scraped": 0,
             "errors": [str(e)],
+            "topics": [],
         }
 
 

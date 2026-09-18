@@ -15,7 +15,7 @@ from typing import Any
 from langchain_core.messages import SystemMessage
 from langchain_core.tools import BaseTool, tool
 from langgraph.prebuilt import create_react_agent
-from sqlmodel import Session, col, select
+from sqlmodel import Session
 
 from app import crud
 from app.models import ChatThread, Post, PostPublic, PostUpdate
@@ -54,6 +54,10 @@ COPILOT_AGENT_SYSTEM_PROMPT = """You are LinkX Copilot, the intelligent social m
 
 You have access to a rich set of autonomous tools to query database state, scrape live explore feeds, curate social content, validate platform rules, and manage draft posts.
 
+### Thinking & Strategic Reasoning Guidelines:
+- Before drafting content, executing tool actions, or formulating your response, first briefly outline your strategic thinking, angle, and platform tone inside <thought>...</thought> tags.
+- Then, execute necessary tool calls or provide your final response cleanly outside the tags.
+
 ### CRITICAL RULE 1: IN-PLACE DRAFT EDITING VS CREATING NEW DRAFTS
 - If the user says ANYTHING about a post—including asking for changes, edits, tone tweaks ("make it more controversial", "punchier", "funnier"), rewrites, shortening, lengthening, adding/removing hashtags or emojis, giving feedback, or critiquing a post:
   **YOU MUST ALWAYS CALL `update_draft_post` TO EDIT THE SAME DRAFT IN-PLACE.**
@@ -63,6 +67,7 @@ You have access to a rich set of autonomous tools to query database state, scrap
   The draft content and ID are ALREADY in your conversation history and system context. Never reply with "Please paste the post text or share the draft/post ID".
   Immediately rewrite the draft and call `update_draft_post`.
 - If you call `update_draft_post`, you do NOT need to specify `post_id` if you don't have it; it will automatically resolve and update the active draft post in this thread.
+- Only call `update_draft_post` ONCE with the final revised copy. Do NOT call `update_draft_post` repeatedly in the same turn.
 - ONLY call `save_draft_post` when the user explicitly requests a BRAND NEW post on an entirely new topic from scratch, and is NOT discussing, modifying, or iterating on an existing draft.
 
 ### CRITICAL RULE 2: NO POST CONTENT REPETITION IN CHAT
@@ -109,6 +114,7 @@ class CopilotContext:
     user_id: str
     session: Session
     thread_id: str | None = None
+    transcript: dict[str, Any] | None = None
 
     @property
     def user_uuid(self) -> uuid.UUID | None:
@@ -131,6 +137,31 @@ def _resolve_by_post_id(*, ctx: CopilotContext, post_id: str) -> Post | None:
     return None
 
 
+def _contains_post_id(*, messages: Any, post_id_str: str) -> bool:
+    if not isinstance(messages, list):
+        return False
+    return any(_extract_id_from_message(msg=m) == post_id_str for m in messages)
+
+
+def _post_belongs_to_inactive_branch(
+    *, thread: ChatThread, active_transcript: dict[str, Any] | None
+) -> bool:
+    """Check if thread.post_id was created in a sibling branch not on the active path."""
+    if not thread.post_id or not active_transcript:
+        return False
+
+    target_str = str(thread.post_id)
+    if _contains_post_id(
+        messages=active_transcript.get("messages"), post_id_str=target_str
+    ):
+        return False
+
+    all_transcript = thread.transcript if isinstance(thread.transcript, dict) else {}
+    return _contains_post_id(
+        messages=all_transcript.get("messages"), post_id_str=target_str
+    )
+
+
 def _resolve_by_thread_id(*, ctx: CopilotContext) -> Post | None:
     if not ctx.thread_id:
         return None
@@ -138,6 +169,10 @@ def _resolve_by_thread_id(*, ctx: CopilotContext) -> Post | None:
         t_uuid = uuid.UUID(ctx.thread_id)
         thread = ctx.session.get(ChatThread, t_uuid)
         if thread and thread.post_id:
+            if _post_belongs_to_inactive_branch(
+                thread=thread, active_transcript=ctx.transcript
+            ):
+                return None
             post = crud.get_post(session=ctx.session, post_id=thread.post_id)
             if post and post.owner_id == ctx.user_uuid:
                 return post
@@ -146,29 +181,81 @@ def _resolve_by_thread_id(*, ctx: CopilotContext) -> Post | None:
     return None
 
 
+def _extract_from_artifact_part(*, part: dict[str, Any]) -> str | None:
+    if part.get("type") != "draft_artifact":
+        return None
+    raw_artifact = part.get("artifact")
+    artifact: dict[str, Any] = raw_artifact if isinstance(raw_artifact, dict) else {}
+    p_id = part.get("post_id") or artifact.get("postId") or artifact.get("id")
+    return str(p_id) if p_id else None
+
+
+def _extract_from_tool_call_part(*, part: dict[str, Any]) -> str | None:
+    if part.get("type") not in ("tool-call", "tool_call"):
+        return None
+    raw_tool = part.get("tool")
+    tool_val: dict[str, Any] = raw_tool if isinstance(raw_tool, dict) else {}
+    name = part.get("name") or tool_val.get("name")
+    if name not in ("save_draft_post", "update_draft_post"):
+        return None
+    raw_output = part.get("output") or tool_val.get("output")
+    if not isinstance(raw_output, dict):
+        return None
+    p_id = raw_output.get("post_id") or raw_output.get("id") or raw_output.get("postId")
+    return str(p_id) if p_id else None
+
+
+def _extract_id_from_part(*, part: Any) -> str | None:
+    if not isinstance(part, dict):
+        return None
+    return _extract_from_artifact_part(part=part) or _extract_from_tool_call_part(
+        part=part
+    )
+
+
+def _extract_id_from_message(*, msg: Any) -> str | None:
+    if not isinstance(msg, dict):
+        return None
+    parts = msg.get("parts")
+    if not isinstance(parts, list):
+        return None
+    for part in reversed(parts):
+        p_id = _extract_id_from_part(part=part)
+        if p_id:
+            return p_id
+    return None
+
+
+def _extract_draft_id_from_transcript(
+    *,
+    transcript: dict[str, Any] | None,
+) -> str | None:
+    if not isinstance(transcript, dict):
+        return None
+    messages = transcript.get("messages")
+    if not isinstance(messages, list):
+        return None
+    for msg in reversed(messages):
+        p_id = _extract_id_from_message(msg=msg)
+        if p_id:
+            return p_id
+    return None
+
+
 def _resolve_target_post(
     *, ctx: CopilotContext, post_id: str | None = None
 ) -> Post | None:
-    """Resolve target post by explicit ID, linked thread, or latest user draft."""
+    """Resolve target post scoped strictly to explicit ID, active branch, or thread."""
     if not ctx.user_uuid:
         return None
-    if post_id and post_id.strip():
-        resolved = _resolve_by_post_id(ctx=ctx, post_id=post_id)
-        if resolved:
-            return resolved
 
-    thread_post = _resolve_by_thread_id(ctx=ctx)
-    if thread_post:
-        return thread_post
+    clean_post_id = (post_id or "").strip()
+    if clean_post_id:
+        return _resolve_by_post_id(ctx=ctx, post_id=clean_post_id)
 
-    statement = (
-        select(Post)
-        .where(Post.owner_id == ctx.user_uuid, Post.status == "draft")
-        .order_by(col(Post.updated_at).desc().nulls_last())
-    )
-    post = ctx.session.exec(statement).first()
-    _link_post_to_thread(ctx=ctx, post_id=post.id if post else None)
-    return post
+    target_id = _extract_draft_id_from_transcript(transcript=ctx.transcript)
+    resolved = _resolve_by_post_id(ctx=ctx, post_id=target_id) if target_id else None
+    return resolved or _resolve_by_thread_id(ctx=ctx)
 
 
 def _link_post_to_thread(*, ctx: CopilotContext, post_id: uuid.UUID | None) -> None:
@@ -279,7 +366,10 @@ def _build_scraping_tools(ctx: CopilotContext) -> list[BaseTool]:
     async def scrape_live_explore_trends(max_topics: int = 3) -> dict[str, Any]:
         """Scrape fresh trending topics directly from X.com Explore."""
         raw_result = await raw_scrape_live_explore_trends(
-            user_id=ctx.user_id, max_topics=max_topics, headless=True
+            user_id=ctx.user_id,
+            max_topics=max_topics,
+            headless=True,
+            session=ctx.session,
         )
         try:
             assert ctx.user_uuid is not None
@@ -472,9 +562,15 @@ def build_copilot_tools(
     user_id: str,
     session: Session,
     thread_id: str | None = None,
+    transcript: dict[str, Any] | None = None,
 ) -> list[BaseTool]:
     """Construct context-bound tools for the authenticated user and database session."""
-    ctx = CopilotContext(user_id=user_id, session=session, thread_id=thread_id)
+    ctx = CopilotContext(
+        user_id=user_id,
+        session=session,
+        thread_id=thread_id,
+        transcript=transcript,
+    )
     return [
         *_build_trend_tools(ctx),
         *_build_context_tools(ctx),
@@ -484,12 +580,9 @@ def build_copilot_tools(
     ]
 
 
-def _build_active_draft_prompt(
-    *, user_id: str, session: Session, thread_id: str | None
-) -> str:
+def _build_active_draft_prompt(*, ctx: CopilotContext) -> str:
     """Extract context prompt for active draft post."""
     try:
-        ctx = CopilotContext(user_id=user_id, session=session, thread_id=thread_id)
         target = _resolve_target_post(ctx=ctx)
         if not target:
             return ""
@@ -507,21 +600,18 @@ def _build_active_draft_prompt(
 
 def build_copilot_agent(
     *,
-    user_id: str,
-    session: Session,
+    ctx: CopilotContext,
     model: str | None = None,
-    thread_id: str | None = None,
 ) -> Any:
     """Compile a LangGraph ReAct agent equipped with LinkX tools."""
     chat_model = get_chat_model(model=model, streaming=True)
     tools = build_copilot_tools(
-        user_id=user_id,
-        session=session,
-        thread_id=thread_id,
+        user_id=ctx.user_id,
+        session=ctx.session,
+        thread_id=ctx.thread_id,
+        transcript=ctx.transcript,
     )
-    prompt_text = COPILOT_AGENT_SYSTEM_PROMPT + _build_active_draft_prompt(
-        user_id=user_id, session=session, thread_id=thread_id
-    )
+    prompt_text = COPILOT_AGENT_SYSTEM_PROMPT + _build_active_draft_prompt(ctx=ctx)
 
     return create_react_agent(
         model=chat_model,

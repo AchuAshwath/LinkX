@@ -20,7 +20,7 @@ export function ModelSelectorPill({
   const [open, setOpen] = React.useState(false)
 
   const activeModel = models.find((m) => m.id === selectedModelId)
-  const displayLabel = activeModel ? activeModel.name : selectedModelId
+  const displayLabel = activeModel?.name || selectedModelId || "Select Model"
 
   React.useEffect(() => {
     const handleOutside = () => setOpen(false)

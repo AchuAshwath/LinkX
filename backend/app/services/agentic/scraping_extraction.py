@@ -16,6 +16,7 @@ from app.services.browser.actions import human_navigation, random_delay
 from app.services.browser.diagnostics import detect_page_state, extract_grok_summary
 from scripts.scrape_trending_topics import (
     extract_topic_tweets,
+    extract_trending_sidebar,
     navigate_to_trends,
 )
 
@@ -433,3 +434,123 @@ async def extract_topic_timelines(
         results.record(url=url, summary=summary, tweets=tweets, err=err)
 
     return results.tweets_map, results.summaries, results.failed
+
+
+async def _extract_sidebar_topics(*, page: Any) -> list[dict[str, Any]]:
+    """Extract and format raw topics from explore page trending sidebar."""
+    selectors = _load_selectors()
+    raw_topics = await extract_trending_sidebar(page, selectors=selectors)
+    return [
+        fmt
+        for t in (raw_topics or [])
+        if (fmt := _format_single_topic(topic=t)) is not None
+    ]
+
+
+async def _execute_trends_extraction(*, page: Any) -> dict[str, Any]:
+    """Navigate to trends page and extract sidebar topics."""
+    nav_ok, page_state = await _try_navigate_to_trends(page=page)
+    if not nav_ok:
+        status = (
+            "error" if page_state not in ("logged_out", "captcha") else "unrecoverable"
+        )
+        return {
+            "scraped_topics": [],
+            "page_state": page_state,
+            "status": status,
+            "error": f"Failed to navigate to trends: page state is {page_state}",
+        }
+
+    formatted_topics = await _extract_sidebar_topics(page=page)
+    return {
+        "scraped_topics": formatted_topics,
+        "status": "trends_extracted",
+    }
+
+
+async def _navigate_topic_timeline(
+    *, page: Any, topic_url: str, mouse: Any | None = None
+) -> None:
+    """Navigate to topic URL and perform stealth reading scroll."""
+    try:
+        await human_navigation(page=page, url=topic_url)
+    except Exception:
+        if hasattr(page, "goto"):
+            await page.goto(topic_url, wait_until="domcontentloaded")
+
+    await random_delay(min_sec=1.0, max_sec=2.0)
+    if mouse and hasattr(mouse, "human_scroll"):
+        try:
+            await mouse.human_scroll(scrolls=2)
+        except Exception as scroll_err:
+            logger.debug(f"Scroll error: {scroll_err}")
+
+
+async def _extract_topic_summary_and_tweets(
+    *, page: Any, topic_url: str, selectors: dict[str, Any]
+) -> tuple[str | None, list[dict[str, Any]]]:
+    """Extract Grok summary and parse top timeline tweets."""
+    summary = None
+    try:
+        summary = await extract_grok_summary(page)
+    except Exception as sum_err:
+        logger.debug(f"Grok summary extraction skipped: {sum_err}")
+
+    raw_tweets = await extract_topic_tweets(
+        page=page, topic_url=topic_url, selectors=selectors
+    )
+    tweets_data = [
+        parsed
+        for t in (raw_tweets or [])
+        if (parsed := _parse_single_tweet(tweet=t)) is not None
+    ]
+    return summary, tweets_data
+
+
+async def _extract_single_topic_flow(
+    *,
+    page: Any,
+    topic_url: str,
+    selectors: dict[str, Any],
+    mouse: Any | None = None,
+) -> tuple[str | None, list[dict[str, Any]]]:
+    """Perform stealth navigation, summary extraction, and tweet extraction."""
+    await _navigate_topic_timeline(page=page, topic_url=topic_url, mouse=mouse)
+    return await _extract_topic_summary_and_tweets(
+        page=page, topic_url=topic_url, selectors=selectors
+    )
+
+
+async def _extract_timelines_for_candidates(
+    *,
+    page: Any,
+    selected_topics: list[dict[str, Any]],
+    selectors: dict[str, Any],
+    mouse: Any | None = None,
+) -> tuple[dict[str, list[dict[str, Any]]], dict[str, str], list[dict[str, str]]]:
+    """Iterate through selected topics and fetch their timeline tweets and Grok summaries."""
+    topic_tweets_map: dict[str, list[dict[str, Any]]] = {}
+    topic_summaries: dict[str, str] = {}
+    failed_topics: list[dict[str, str]] = []
+
+    for idx, topic in enumerate(selected_topics):
+        if idx > 0:
+            await random_delay(min_sec=2.0, max_sec=4.0)
+        topic_url = _get_topic_url(topic=topic)
+        if not topic_url:
+            continue
+        try:
+            summary, tweets = await _extract_single_topic_flow(
+                page=page,
+                topic_url=topic_url,
+                selectors=selectors,
+                mouse=mouse,
+            )
+            if summary:
+                topic_summaries[topic_url] = str(summary)
+            topic_tweets_map[topic_url] = tweets
+        except Exception as e:
+            logger.warning(f"Error extracting timeline for topic {topic_url}: {e}")
+            failed_topics.append({"topic_url": topic_url, "reason": str(e)})
+
+    return topic_tweets_map, topic_summaries, failed_topics

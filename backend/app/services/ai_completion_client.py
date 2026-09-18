@@ -84,7 +84,7 @@ def _build_proxy_payload(
     max_tokens: int,
 ) -> dict[str, Any]:
     raw_model = model_name.removeprefix("openai/")
-    clean_model = "gpt-5.4" if raw_model.startswith("gemini") else raw_model
+    clean_model = raw_model
     return {
         "model": clean_model,
         "messages": messages,

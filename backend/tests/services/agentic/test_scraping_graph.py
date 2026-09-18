@@ -110,12 +110,12 @@ def _patch_browser_layer(**kwargs: Any):
             return_value=mock_page,
         ) as p_page,
         patch(
-            "app.services.agentic.scraping_graph.detect_page_state",
+            "app.services.agentic.scraping_session.detect_page_state",
             new_callable=AsyncMock,
             return_value=page_state,
         ) as p_state,
         patch(
-            "app.services.agentic.scraping_graph.navigate_to_trends",
+            "app.services.agentic.scraping_extraction.navigate_to_trends",
             new_callable=AsyncMock,
             return_value=nav_ok,
         ) as p_nav,
@@ -138,27 +138,27 @@ def _patch_scraping_extractors(**kwargs: Any):
 
     with (
         patch(
-            "app.services.agentic.scraping_graph.extract_trending_sidebar",
+            "app.services.agentic.scraping_extraction.extract_trending_sidebar",
             new_callable=AsyncMock,
             return_value=mock_topics,
         ) as p_side,
         patch(
-            "app.services.agentic.scraping_graph.extract_grok_summary",
+            "app.services.agentic.scraping_extraction.extract_grok_summary",
             new_callable=AsyncMock,
             return_value=grok_summary,
         ) as p_grok,
         patch(
-            "app.services.agentic.scraping_graph.extract_topic_tweets",
+            "app.services.agentic.scraping_extraction.extract_topic_tweets",
             new_callable=AsyncMock,
             return_value=mock_tweets,
         ) as p_tweets,
         patch(
-            "app.services.agentic.scraping_graph.recover_page_session",
+            "app.services.agentic.scraping_session.recover_page_session",
             new_callable=AsyncMock,
             return_value=recovery_report,
         ) as p_rec,
         patch(
-            "app.services.agentic.scraping_graph._detect_overlay",
+            "app.services.agentic.scraping_session._detect_overlay",
             new_callable=AsyncMock,
             return_value=detect_overlay_return,
         ) as p_over,
@@ -402,11 +402,11 @@ class TestScrapingGraphNodeUnits:
         page = MockPage(page_state="error")
         with (
             patch(
-                "app.services.agentic.scraping_graph.navigate_to_trends",
+                "app.services.agentic.scraping_extraction.navigate_to_trends",
                 return_value=False,
             ),
             patch(
-                "app.services.agentic.scraping_graph.detect_page_state",
+                "app.services.agentic.scraping_extraction.detect_page_state",
                 return_value="error",
             ),
         ):

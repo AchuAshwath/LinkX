@@ -1,5 +1,13 @@
-import { Clock } from "lucide-react"
+import { Clock, RotateCw } from "lucide-react"
+import { BranchSwitcher } from "@/components/Chat/BranchSwitcher"
 import { ChatMessageActions } from "@/components/Chat/ChatMessageActions"
+import {
+  extractImageUrls,
+  extractTextParts,
+  getMessageTimestamp,
+  isValidImageUrl,
+  prepareAssistantRenderState,
+} from "@/components/Chat/chatMessageUtils"
 import { DraftArtifactCard } from "@/components/Chat/DraftArtifactCard"
 import { TextPart } from "@/components/Chat/parts/TextPart"
 import { ThoughtPart } from "@/components/Chat/parts/ThoughtPart"
@@ -7,112 +15,149 @@ import { WebSearchPart } from "@/components/Chat/parts/WebSearchPart"
 import { ToolCallAccordion } from "@/components/Chat/ToolCallAccordion"
 import { TrendingArtifactCard } from "@/components/Chat/TrendingArtifactCard"
 import type {
+  BranchVersionInfo,
   ChatUIMessage,
   SourceUrlPart,
-  ThoughtPart as ThoughtPartType,
   ToolCallItem,
   ToolCallPart,
-  WebSearchToolPart,
 } from "@/components/Chat/types"
+import { UserMessageEditForm } from "@/components/Chat/UserMessageEditForm"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import { Message, MessageContent } from "@/components/ui/message"
+
+export { extractImageUrls, extractTextParts, isValidImageUrl }
 
 export interface ChatMessageProps {
   message: ChatUIMessage
   isStreaming?: boolean
+  isLatestAssistant?: boolean
+  isEditing?: boolean
+  branchInfo?: BranchVersionInfo
+  onSwitchBranch?: (direction: "prev" | "next") => void
   onDraftTopic?: (topicTitle: string) => void
+  onStartEdit?: (messageId: string) => void
+  onCancelEdit?: () => void
+  onSaveEdit?: (messageId: string, newText: string) => void
+  onRegenerate?: (assistantMsgId: string) => void
+  onRetry?: (assistantMsgId: string) => void
 }
 
-function extractTextParts(parts: ChatUIMessage["parts"]): string {
-  return parts
-    .filter(
-      (p): p is { type: "text"; text: string } =>
-        p.type === "text" && Boolean(p.text),
-    )
-    .map((p) => p.text)
-    .join("\n\n")
-    .trim()
-}
-
-function isValidImageUrl(url: string): boolean {
-  if (!url) return false
-  const trimmed = url.trim().toLowerCase()
+function UserAttachmentList({ imageUrls }: { imageUrls: string[] }) {
+  if (imageUrls.length === 0) return null
   return (
-    trimmed.startsWith("data:image/") ||
-    trimmed.startsWith("https://") ||
-    trimmed.startsWith("http://") ||
-    trimmed.startsWith("blob:") ||
-    trimmed.startsWith("/")
+    <div className="flex flex-wrap justify-end gap-2 max-w-sm">
+      {imageUrls.map((url, idx) => (
+        <img
+          key={idx}
+          src={url}
+          alt={`Attachment ${idx + 1}`}
+          className="max-h-48 max-w-xs object-cover rounded-2xl border border-border/80 shadow-sm"
+          onError={(e) => {
+            ;(e.currentTarget as HTMLElement).style.display = "none"
+          }}
+        />
+      ))}
+    </div>
   )
 }
 
-function extractImageUrls(parts: ChatUIMessage["parts"]): string[] {
-  const urls: string[] = []
-  for (const p of parts) {
-    if (p.type === "image_url" || p.type === "image") {
-      let rawUrl = ""
-      if ("url" in p && typeof p.url === "string") {
-        rawUrl = p.url
-      } else if (
-        "image_url" in p &&
-        p.image_url &&
-        typeof p.image_url === "object" &&
-        "url" in p.image_url
-      ) {
-        rawUrl = String(p.image_url.url || "")
-      }
-      if (rawUrl && isValidImageUrl(rawUrl)) {
-        urls.push(rawUrl)
-      }
-    }
-  }
-  return urls
+function UserTextBubble({ text }: { text: string }) {
+  if (!text) return null
+  return (
+    <Bubble align="end" variant="outline">
+      <BubbleContent className="rounded-3xl border border-border bg-background text-foreground font-normal px-5 py-3 leading-relaxed shadow-none">
+        {text}
+      </BubbleContent>
+    </Bubble>
+  )
 }
 
-function getMessageTimestamp(message: ChatUIMessage): string | undefined {
-  return message.createdAt || (message as { created_at?: string }).created_at
+function UserMessageFooter({
+  branchInfo,
+  onSwitchBranch,
+  text,
+  createdAt,
+  onStartEdit,
+  messageId,
+}: {
+  branchInfo?: BranchVersionInfo
+  onSwitchBranch?: (direction: "prev" | "next") => void
+  text: string
+  createdAt?: string
+  onStartEdit?: (id: string) => void
+  messageId: string
+}) {
+  const showBranchSwitcher = Boolean(branchInfo && branchInfo.totalVersions > 1)
+  return (
+    <div className="flex items-center gap-1.5 pr-2 pt-0.5">
+      {showBranchSwitcher && (
+        <BranchSwitcher
+          currentIndex={branchInfo!.currentIndex}
+          totalVersions={branchInfo!.totalVersions}
+          onPrevious={() => onSwitchBranch?.("prev")}
+          onNext={() => onSwitchBranch?.("next")}
+        />
+      )}
+      <ChatMessageActions
+        textToCopy={text}
+        createdAt={createdAt}
+        align="end"
+        onEdit={onStartEdit ? () => onStartEdit(messageId) : undefined}
+      />
+    </div>
+  )
 }
 
-function UserMessageBubble({ message }: { message: ChatUIMessage }) {
+function UserMessageBubble({
+  message,
+  isEditing = false,
+  branchInfo,
+  onSwitchBranch,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+}: {
+  message: ChatUIMessage
+  isEditing?: boolean
+  branchInfo?: BranchVersionInfo
+  onSwitchBranch?: (direction: "prev" | "next") => void
+  onStartEdit?: (id: string) => void
+  onCancelEdit?: () => void
+  onSaveEdit?: (id: string, newText: string) => void
+}) {
   const text = extractTextParts(message.parts)
   const imageUrls = extractImageUrls(message.parts)
   const createdAt = getMessageTimestamp(message)
+
+  if (isEditing && onSaveEdit) {
+    return (
+      <div className="group relative flex flex-col items-end w-full">
+        <UserMessageEditForm
+          initialText={text}
+          onSave={(newText) => onSaveEdit(message.id, newText)}
+          onCancel={onCancelEdit ?? (() => {})}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="group relative flex flex-col items-end w-full">
       <Message align="end">
         <MessageContent>
           <div className="flex flex-col items-end gap-2 max-w-full">
-            {imageUrls.length > 0 && (
-              <div className="flex flex-wrap justify-end gap-2 max-w-sm">
-                {imageUrls.map((url, idx) => (
-                  <img
-                    key={idx}
-                    src={url}
-                    alt={`Attachment ${idx + 1}`}
-                    className="max-h-48 max-w-xs object-cover rounded-2xl border border-border/80 shadow-sm"
-                    onError={(e) => {
-                      ;(e.currentTarget as HTMLElement).style.display = "none"
-                    }}
-                  />
-                ))}
-              </div>
-            )}
-            {text && (
-              <Bubble align="end" variant="outline">
-                <BubbleContent className="rounded-3xl border border-border bg-background text-foreground font-normal px-5 py-3 leading-relaxed shadow-none">
-                  {text}
-                </BubbleContent>
-              </Bubble>
-            )}
+            <UserAttachmentList imageUrls={imageUrls} />
+            <UserTextBubble text={text} />
           </div>
         </MessageContent>
       </Message>
-      <ChatMessageActions
-        textToCopy={text}
+      <UserMessageFooter
+        branchInfo={branchInfo}
+        onSwitchBranch={onSwitchBranch}
+        text={text}
         createdAt={createdAt}
-        align="end"
-        className="pr-2 pt-0.5"
+        onStartEdit={onStartEdit}
+        messageId={message.id}
       />
     </div>
   )
@@ -200,112 +245,6 @@ function AssistantPartRenderer({
   return renderToolOrDraftPart(part, index, sources, onDraftTopic)
 }
 
-function extractThoughtFromTextParts(parts: ChatUIMessage["parts"]): {
-  cleanedParts: ChatUIMessage["parts"]
-  extractedThought: string | null
-} {
-  let extractedThought: string | null = null
-  const cleanedParts = parts.map((part) => {
-    if (part.type === "text" && part.text) {
-      const match = /<thought>([\s\S]*?)<\/thought>/i.exec(part.text)
-      if (match) {
-        extractedThought = match[1].trim()
-        const cleanedText = part.text
-          .replace(/<thought>[\s\S]*?<\/thought>/gi, "")
-          .trim()
-        return { ...part, text: cleanedText }
-      }
-    }
-    return part
-  })
-  return { cleanedParts, extractedThought }
-}
-
-function deduplicateDraftContentFromTextParts(
-  parts: ChatUIMessage["parts"],
-): ChatUIMessage["parts"] {
-  const draftContents: string[] = []
-  for (const part of parts) {
-    if (part.type === "draft_artifact") {
-      const c = (part as any).artifact?.content || (part as any).content
-      if (typeof c === "string" && c.trim()) {
-        draftContents.push(c.trim())
-      }
-    }
-  }
-
-  if (draftContents.length === 0) return parts
-
-  return parts
-    .map((part) => {
-      if (part.type === "text" && part.text) {
-        let cleaned = part.text
-        for (const draftContent of draftContents) {
-          if (!draftContent) continue
-          if (cleaned.includes(draftContent)) {
-            cleaned = cleaned.split(draftContent).join("").trim()
-          } else {
-            const unquoted = draftContent.replace(/^["']|["']$/g, "").trim()
-            if (unquoted && cleaned.includes(unquoted)) {
-              cleaned = cleaned.split(unquoted).join("").trim()
-            }
-          }
-        }
-        cleaned = cleaned
-          .replace(
-            /^(?:Here(?:'s| is) (?:a|the) (?:polished )?(?:X|LinkedIn|draft|post)[\w\s]*:?)/i,
-            "",
-          )
-          .replace(/^(?:Saved as (?:a )?draft\.?)/i, "")
-          .replace(/(?:Saved as (?:a )?draft\.?)$/i, "")
-          .replace(/^["'\s]+|["'\s]+$/g, "")
-          .trim()
-        return { ...part, text: cleaned }
-      }
-      return part
-    })
-    .filter((part) => {
-      if (part.type === "text") {
-        return Boolean(part.text?.trim())
-      }
-      return true
-    })
-}
-
-const EXCLUDED_PART_TYPES = new Set([
-  "thought",
-  "tool-call",
-  "tool_call",
-  "source-url",
-])
-
-function isOtherPart(
-  p: ChatUIMessage["parts"][number],
-  hasThoughtOrTools: boolean,
-): boolean {
-  if (EXCLUDED_PART_TYPES.has(p.type)) return false
-  if (p.type === "tool-web_search" && hasThoughtOrTools) return false
-  return true
-}
-
-function collectTools(parts: ChatUIMessage["parts"]): ToolCallItem[] {
-  const toolCallParts = parts.filter(
-    (p) => p.type === "tool-call" || p.type === "tool_call",
-  ) as ToolCallPart[]
-
-  return toolCallParts.map((tp, idx) => {
-    return (
-      tp.tool ?? {
-        id: tp.toolCallId || `tool-${idx}`,
-        name: tp.name || "tool",
-        state: tp.state || "completed",
-        input: tp.input,
-        output: tp.output,
-      }
-    )
-  })
-}
-
 function AssistantQueuedNotice({ status }: { status?: string }) {
   if (status !== "queued") return null
   return (
@@ -316,74 +255,87 @@ function AssistantQueuedNotice({ status }: { status?: string }) {
   )
 }
 
+function AssistantRetryButton({ onRetry }: { onRetry?: () => void }) {
+  if (!onRetry) return null
+  return (
+    <div className="flex items-center gap-2 pt-1.5">
+      <button
+        type="button"
+        onClick={onRetry}
+        className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/25 transition-colors cursor-pointer"
+      >
+        <RotateCw className="size-3" />
+        <span>Retry generation</span>
+      </button>
+    </div>
+  )
+}
+
 function AssistantMessageActions({
   isStreaming,
   assistantText,
   createdAt,
+  onRegenerate,
+  isLatestAssistant,
+  branchInfo,
+  onSwitchBranch,
 }: {
   isStreaming: boolean
   assistantText: string
   createdAt?: string
+  onRegenerate?: () => void
+  isLatestAssistant?: boolean
+  branchInfo?: BranchVersionInfo
+  onSwitchBranch?: (direction: "prev" | "next") => void
 }) {
-  if (isStreaming || !assistantText) return null
+  const showBranchSwitcher = Boolean(branchInfo && branchInfo.totalVersions > 1)
+  const canShowActions = !isStreaming && Boolean(assistantText)
+  if (!showBranchSwitcher && !canShowActions) return null
+
   return (
-    <ChatMessageActions
-      textToCopy={assistantText}
-      createdAt={createdAt}
-      align="start"
-      className="pl-2 pt-0.5"
-    />
+    <div className="flex items-center gap-1.5 pl-2 pt-0.5">
+      {showBranchSwitcher && (
+        <BranchSwitcher
+          currentIndex={branchInfo!.currentIndex}
+          totalVersions={branchInfo!.totalVersions}
+          onPrevious={() => onSwitchBranch?.("prev")}
+          onNext={() => onSwitchBranch?.("next")}
+        />
+      )}
+      {canShowActions && (
+        <ChatMessageActions
+          textToCopy={assistantText}
+          createdAt={createdAt}
+          align="start"
+          onRegenerate={onRegenerate}
+          isLatestAssistant={isLatestAssistant}
+          isStreaming={isStreaming}
+        />
+      )}
+    </div>
   )
 }
 
 function AssistantMessageBubble({
   message,
   isStreaming,
+  isLatestAssistant,
+  branchInfo,
+  onSwitchBranch,
   onDraftTopic,
+  onRegenerate,
+  onRetry,
 }: {
   message: ChatUIMessage
   isStreaming: boolean
+  isLatestAssistant?: boolean
+  branchInfo?: BranchVersionInfo
+  onSwitchBranch?: (direction: "prev" | "next") => void
   onDraftTopic?: (topicTitle: string) => void
+  onRegenerate?: () => void
+  onRetry?: () => void
 }) {
-  const { cleanedParts, extractedThought } = extractThoughtFromTextParts(
-    message.parts,
-  )
-  const dedupedParts = deduplicateDraftContentFromTextParts(cleanedParts)
-
-  const sources = dedupedParts.filter(
-    (part): part is SourceUrlPart => part.type === "source-url",
-  )
-
-  const thoughtParts = dedupedParts.filter(
-    (p): p is ThoughtPartType => p.type === "thought",
-  )
-  const combinedThought =
-    thoughtParts
-      .map((p) => p.content)
-      .filter(Boolean)
-      .join("\n\n") ||
-    extractedThought ||
-    ""
-
-  const collectedTools = collectTools(cleanedParts)
-  const webSearchPart = dedupedParts.find(
-    (p): p is WebSearchToolPart => p.type === "tool-web_search",
-  )
-
-  const hasResponseStarted = dedupedParts.some(
-    (p) => p.type === "text" && Boolean(p.text?.trim()),
-  )
-
-  const hasThoughtOrTools =
-    Boolean(combinedThought) ||
-    collectedTools.length > 0 ||
-    (isStreaming && !hasResponseStarted)
-
-  const assistantText = extractTextParts(dedupedParts)
-  const createdAt = getMessageTimestamp(message)
-  const otherParts = dedupedParts.filter((p) =>
-    isOtherPart(p, hasThoughtOrTools),
-  )
+  const state = prepareAssistantRenderState(message, isStreaming)
 
   return (
     <div className="group relative flex flex-col items-start w-full">
@@ -391,34 +343,42 @@ function AssistantMessageBubble({
         <MessageContent>
           <AssistantQueuedNotice status={message.status} />
 
-          {hasThoughtOrTools && (
+          {state.hasThoughtOrTools && (
             <ThoughtPart
-              content={combinedThought}
-              toolCalls={collectedTools}
-              webSearchPart={webSearchPart}
-              sources={sources}
+              content={state.combinedThought}
+              toolCalls={state.collectedTools}
+              webSearchPart={state.webSearchPart}
+              sources={state.sources}
               isStreaming={isStreaming}
-              hasResponseStarted={hasResponseStarted}
+              hasResponseStarted={state.hasResponseStarted}
             />
           )}
 
-          {otherParts.map((part, index) => (
+          {state.otherParts.map((part, index) => (
             <AssistantPartRenderer
               key={index}
               part={part}
               index={index}
               isStreaming={isStreaming}
-              hasResponseStarted={hasResponseStarted}
-              sources={sources}
+              hasResponseStarted={state.hasResponseStarted}
+              sources={state.sources}
               onDraftTopic={onDraftTopic}
             />
           ))}
+
+          {message.status === "error" && (
+            <AssistantRetryButton onRetry={onRetry} />
+          )}
         </MessageContent>
       </Message>
       <AssistantMessageActions
         isStreaming={isStreaming}
-        assistantText={assistantText}
-        createdAt={createdAt}
+        assistantText={state.assistantText}
+        createdAt={state.createdAt}
+        onRegenerate={onRegenerate}
+        isLatestAssistant={isLatestAssistant}
+        branchInfo={branchInfo}
+        onSwitchBranch={onSwitchBranch}
       />
     </div>
   )
@@ -427,17 +387,41 @@ function AssistantMessageBubble({
 export function ChatMessage({
   message,
   isStreaming = false,
+  isLatestAssistant = false,
+  isEditing = false,
+  branchInfo,
+  onSwitchBranch,
   onDraftTopic,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+  onRegenerate,
+  onRetry,
 }: ChatMessageProps) {
   if (message.role === "user") {
-    return <UserMessageBubble message={message} />
+    return (
+      <UserMessageBubble
+        message={message}
+        isEditing={isEditing}
+        branchInfo={branchInfo}
+        onSwitchBranch={onSwitchBranch}
+        onStartEdit={onStartEdit}
+        onCancelEdit={onCancelEdit}
+        onSaveEdit={onSaveEdit}
+      />
+    )
   }
 
   return (
     <AssistantMessageBubble
       message={message}
       isStreaming={isStreaming}
+      isLatestAssistant={isLatestAssistant}
+      branchInfo={branchInfo}
+      onSwitchBranch={onSwitchBranch}
       onDraftTopic={onDraftTopic}
+      onRegenerate={onRegenerate ? () => onRegenerate(message.id) : undefined}
+      onRetry={onRetry ? () => onRetry(message.id) : undefined}
     />
   )
 }

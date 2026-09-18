@@ -12,7 +12,7 @@ export function PromptSubmitButton({
   hasContent: boolean
   onStop?: () => void
 }) {
-  if (isBusy) {
+  if (isBusy && !hasContent) {
     return (
       <InputGroupButton
         type="button"

@@ -98,8 +98,51 @@ async def test_generate_ai_post_draft_fallback_on_error(
 
     with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
         mock_acompletion.side_effect = RuntimeError("Proxy unavailable")
-
         content = await generate_ai_post_draft(prompt="System Design", platform="x")
 
         assert "System Design" in content
         assert "#Tech" in content or "#BuildInPublic" in content
+
+
+def test_build_message_history_deduplicates_repeated_draft_blocks() -> None:
+    from langchain_core.messages import AIMessage
+
+    from app.services.ai_chat_runner import _build_message_history
+
+    transcript = {
+        "messages": [
+            {
+                "role": "assistant",
+                "parts": [
+                    {
+                        "type": "draft_artifact",
+                        "artifact": {
+                            "id": "post-uuid-999",
+                            "postId": "post-uuid-999",
+                            "content": "Unique content here",
+                            "platform": "x",
+                        },
+                    },
+                    {
+                        "type": "tool_call",
+                        "tool": {
+                            "name": "update_draft_post",
+                            "output": {
+                                "post_id": "post-uuid-999",
+                                "content": "Unique content here",
+                                "platform": "x",
+                            },
+                        },
+                    },
+                    {"type": "text", "text": "Draft updated."},
+                ],
+            },
+        ]
+    }
+    messages = _build_message_history(
+        transcript=transcript,
+        current_message="make it punchier",
+    )
+    ai_msg = messages[1]
+    assert isinstance(ai_msg, AIMessage)
+    assert str(ai_msg.content).count("Unique content here") == 1

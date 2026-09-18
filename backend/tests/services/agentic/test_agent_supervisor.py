@@ -8,9 +8,10 @@ from typing import Any
 from sqlmodel import Session, select
 
 from app import crud
-from app.models import ChatThread, ChatThreadCreate, Post, User, UserCreate
+from app.models import ChatThread, ChatThreadCreate, Post, PostCreate, User, UserCreate
 from app.services.agentic.agent_supervisor import (
     COPILOT_AGENT_SYSTEM_PROMPT,
+    CopilotContext,
     build_copilot_agent,
     build_copilot_tools,
 )
@@ -181,9 +182,10 @@ class TestAgentSupervisorDraftManagement:
 
     def test_build_copilot_agent_compilation(self, db: Session) -> None:
         user = _make_user(db=db)
-        agent = build_copilot_agent(
+        ctx = CopilotContext(
             user_id=str(user.id), session=db, thread_id="some-thread-id"
         )
+        agent = build_copilot_agent(ctx=ctx)
         assert agent is not None
 
     def test_build_copilot_agent_injects_active_draft_context(
@@ -202,7 +204,84 @@ class TestAgentSupervisorDraftManagement:
         )
         assert "post_id" in save_res
 
-        agent = build_copilot_agent(
-            user_id=str(user.id), session=db, thread_id=str(thread.id)
-        )
+        ctx = CopilotContext(user_id=str(user.id), session=db, thread_id=str(thread.id))
+        agent = build_copilot_agent(ctx=ctx)
         assert agent is not None
+
+    def test_copilot_tools_isolated_across_threads(self, db: Session) -> None:
+        """Verify that drafts created in Thread A do NOT bleed into Thread B."""
+        user = _make_user(db=db)
+        thread_a = _make_thread(db=db, user=user)
+        thread_b = _make_thread(db=db, user=user)
+
+        # Thread A saves a draft
+        tools_a = build_copilot_tools(
+            user_id=str(user.id), session=db, thread_id=str(thread_a.id)
+        )
+        save_tool_a = _get_tool_by_name(tools_a, "save_draft_post")
+        res_a = save_tool_a.invoke(
+            {"content": "Thread A exclusive tweet", "platform": "x"}
+        )
+        assert "post_id" in res_a
+
+        # Thread B checks for active draft
+        tools_b = build_copilot_tools(
+            user_id=str(user.id), session=db, thread_id=str(thread_b.id)
+        )
+        get_tool_b = _get_tool_by_name(tools_b, "get_latest_draft_post")
+        res_b = get_tool_b.invoke({})
+
+        assert "No active draft post found" in res_b["message"]
+        db.refresh(thread_b)
+        assert thread_b.post_id is None
+
+    def test_active_draft_resolved_from_transcript_branch(self, db: Session) -> None:
+        """Verify that active draft resolves from transcript branch without global DB fallback."""
+        user = _make_user(db=db)
+        thread = _make_thread(db=db, user=user)
+
+        # First save a post to DB
+        post = crud.create_post(
+            session=db,
+            post_in=PostCreate(
+                content="Transcript branch post",
+                platform="x",
+                status="draft",
+            ),
+            owner_id=user.id,
+        )
+        transcript = {
+            "messages": [
+                {
+                    "id": "msg_u1",
+                    "role": "user",
+                    "parts": [{"type": "text", "text": "Draft a post"}],
+                },
+                {
+                    "id": "msg_a1",
+                    "role": "assistant",
+                    "parts": [
+                        {
+                            "type": "draft_artifact",
+                            "post_id": str(post.id),
+                            "artifact": {
+                                "id": str(post.id),
+                                "content": "Transcript branch post",
+                            },
+                        }
+                    ],
+                },
+            ]
+        }
+
+        tools = build_copilot_tools(
+            user_id=str(user.id),
+            session=db,
+            thread_id=str(thread.id),
+            transcript=transcript,
+        )
+        get_tool = _get_tool_by_name(tools, "get_latest_draft_post")
+        res = get_tool.invoke({})
+
+        assert res["post_id"] == str(post.id)
+        assert res["content"] == "Transcript branch post"

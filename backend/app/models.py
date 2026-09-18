@@ -340,6 +340,8 @@ class ChatThreadBase(SQLModel):
     origin: str = Field(
         default="manual", max_length=20
     )  # "composer" | "trending" | "manual"
+    is_custom_title: bool = Field(default=False)
+    active_leaf_id: str | None = Field(default=None, max_length=100)
 
 
 class ChatThreadCreate(SQLModel):
@@ -352,6 +354,8 @@ class ChatThreadCreate(SQLModel):
 class ChatThreadUpdate(SQLModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     is_archived: bool | None = None
+    is_custom_title: bool | None = None
+    active_leaf_id: str | None = Field(default=None, max_length=100)
 
 
 class ChatThread(TimestampedUUIDModel, ChatThreadBase, table=True):
@@ -366,6 +370,8 @@ class ChatThread(TimestampedUUIDModel, ChatThreadBase, table=True):
     topic_keyword: str | None = Field(default=None, max_length=200)
     message_count: int = Field(default=0)
     is_archived: bool = Field(default=False)
+    is_custom_title: bool = Field(default=False)
+    active_leaf_id: str | None = Field(default=None, max_length=100)
     transcript: dict[str, Any] = Field(
         default_factory=lambda: {"messages": []},
         sa_column=Column(JSONB),
@@ -408,3 +414,4 @@ class ChatMessageRequest(SQLModel):
     message: str = Field(default="", max_length=25000)
     model: str | None = Field(default=None, max_length=100)
     images: list[str] | None = Field(default=None, max_length=10)
+    edit_message_id: str | None = Field(default=None, max_length=100)

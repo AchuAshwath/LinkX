@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen } from "@testing-library/react"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { ChatMessage } from "../ChatMessage"
 import type { ChatUIMessage } from "../types"
 
@@ -210,6 +210,59 @@ describe("ChatMessage component", () => {
     ).not.toBeInTheDocument()
   })
 
+  it("renders only the latest draft UI card when message has multiple draft artifact revisions", () => {
+    const message: ChatUIMessage = {
+      id: "msg-multi-draft",
+      role: "assistant",
+      parts: [
+        {
+          type: "draft_artifact",
+          artifact: {
+            id: "draft-post-1",
+            content: "Draft version 1: Most people eat sushi wrong.",
+            platform: "x",
+            status: "draft",
+          },
+        },
+        {
+          type: "draft_artifact",
+          artifact: {
+            id: "draft-post-1",
+            content:
+              "Draft version 2: Stop disrespecting sushi. You're doing it wrong.",
+            platform: "x",
+            status: "draft",
+          },
+        },
+        {
+          type: "draft_artifact",
+          artifact: {
+            id: "draft-post-1",
+            content:
+              "Draft version 3: Stop disrespecting sushi. Fix your habits.",
+            platform: "x",
+            status: "draft",
+          },
+        },
+      ],
+    }
+
+    renderWithClient(<ChatMessage message={message} />)
+    expect(
+      screen.getByText(
+        "Draft version 3: Stop disrespecting sushi. Fix your habits.",
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText("Draft version 1: Most people eat sushi wrong."),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(
+        "Draft version 2: Stop disrespecting sushi. You're doing it wrong.",
+      ),
+    ).not.toBeInTheDocument()
+  })
+
   it("renders queued indicator when assistant message status is queued", () => {
     const message: ChatUIMessage = {
       id: "msg-queued",
@@ -222,5 +275,119 @@ describe("ChatMessage component", () => {
     expect(
       screen.getByText(/Queued • Waiting for active generation to finish.../i),
     ).toBeInTheDocument()
+  })
+
+  it("renders edit button for user message and triggers onStartEdit", () => {
+    const onStartEdit = vi.fn()
+    const message: ChatUIMessage = {
+      id: "msg-user-1",
+      role: "user",
+      parts: [{ type: "text", text: "Original user prompt" }],
+    }
+
+    render(<ChatMessage message={message} onStartEdit={onStartEdit} />)
+    const editBtn = screen.getByLabelText("Edit message")
+    expect(editBtn).toBeInTheDocument()
+
+    fireEvent.click(editBtn)
+    expect(onStartEdit).toHaveBeenCalledWith("msg-user-1")
+  })
+
+  it("renders UserMessageEditForm when isEditing is true and supports Save & Submit", () => {
+    const onSaveEdit = vi.fn()
+    const onCancelEdit = vi.fn()
+    const message: ChatUIMessage = {
+      id: "msg-user-2",
+      role: "user",
+      parts: [{ type: "text", text: "Editable prompt" }],
+    }
+
+    render(
+      <ChatMessage
+        message={message}
+        isEditing={true}
+        onSaveEdit={onSaveEdit}
+        onCancelEdit={onCancelEdit}
+      />,
+    )
+
+    const textarea = screen.getByDisplayValue("Editable prompt")
+    expect(textarea).toBeInTheDocument()
+
+    fireEvent.change(textarea, { target: { value: "Updated prompt text" } })
+    const saveBtn = screen.getByRole("button", { name: /Save & Submit/i })
+    fireEvent.click(saveBtn)
+
+    expect(onSaveEdit).toHaveBeenCalledWith("msg-user-2", "Updated prompt text")
+  })
+
+  it("UserMessageEditForm cancels on Escape key or Cancel button", () => {
+    const onSaveEdit = vi.fn()
+    const onCancelEdit = vi.fn()
+    const message: ChatUIMessage = {
+      id: "msg-user-3",
+      role: "user",
+      parts: [{ type: "text", text: "Prompt to cancel" }],
+    }
+
+    render(
+      <ChatMessage
+        message={message}
+        isEditing={true}
+        onSaveEdit={onSaveEdit}
+        onCancelEdit={onCancelEdit}
+      />,
+    )
+
+    const cancelBtn = screen.getByRole("button", { name: /Cancel/i })
+    fireEvent.click(cancelBtn)
+    expect(onCancelEdit).toHaveBeenCalledTimes(1)
+
+    const textarea = screen.getByDisplayValue("Prompt to cancel")
+    fireEvent.keyDown(textarea, { key: "Escape" })
+    expect(onCancelEdit).toHaveBeenCalledTimes(2)
+  })
+
+  it("renders regenerate button on latest assistant message and triggers onRegenerate", () => {
+    const onRegenerate = vi.fn()
+    const message: ChatUIMessage = {
+      id: "msg-asst-1",
+      role: "assistant",
+      parts: [{ type: "text", text: "Assistant response" }],
+      status: "done",
+    }
+
+    render(
+      <ChatMessage
+        message={message}
+        isLatestAssistant={true}
+        isStreaming={false}
+        onRegenerate={onRegenerate}
+      />,
+    )
+
+    const regenBtn = screen.getByLabelText("Regenerate response")
+    expect(regenBtn).toBeInTheDocument()
+
+    fireEvent.click(regenBtn)
+    expect(onRegenerate).toHaveBeenCalledWith("msg-asst-1")
+  })
+
+  it("renders retry button when assistant status is error and triggers onRetry", () => {
+    const onRetry = vi.fn()
+    const message: ChatUIMessage = {
+      id: "msg-err-1",
+      role: "assistant",
+      parts: [{ type: "text", text: "*(Error: Rate limit)*" }],
+      status: "error",
+    }
+
+    render(<ChatMessage message={message} onRetry={onRetry} />)
+
+    const retryBtn = screen.getByRole("button", { name: /Retry generation/i })
+    expect(retryBtn).toBeInTheDocument()
+
+    fireEvent.click(retryBtn)
+    expect(onRetry).toHaveBeenCalledWith("msg-err-1")
   })
 })

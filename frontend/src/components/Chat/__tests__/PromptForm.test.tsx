@@ -152,4 +152,40 @@ describe("PromptForm component", () => {
     expect(window.URL.createObjectURL).toHaveBeenCalledTimes(1)
     expect(window.URL.createObjectURL).toHaveBeenCalledWith(validImg)
   })
+
+  it("triggers onEditLastUserMessage when ArrowUp is pressed on empty input", () => {
+    const handleEditLast = vi.fn()
+    render(
+      <PromptForm
+        onSubmit={vi.fn()}
+        onEditLastUserMessage={handleEditLast}
+        placeholder="Ask anything…"
+      />,
+    )
+
+    const textarea = screen.getByPlaceholderText("Ask anything…")
+    fireEvent.keyDown(textarea, { key: "ArrowUp" })
+    expect(handleEditLast).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not trigger onEditLastUserMessage when composer contains text or modifier keys", () => {
+    const handleEditLast = vi.fn()
+    render(
+      <PromptForm
+        onSubmit={vi.fn()}
+        onEditLastUserMessage={handleEditLast}
+        placeholder="Ask anything…"
+      />,
+    )
+
+    const textarea = screen.getByPlaceholderText("Ask anything…")
+    fireEvent.change(textarea, { target: { value: "some text" } })
+    fireEvent.keyDown(textarea, { key: "ArrowUp" })
+    expect(handleEditLast).not.toHaveBeenCalled()
+
+    // Test with modifier keys on empty input
+    fireEvent.change(textarea, { target: { value: "" } })
+    fireEvent.keyDown(textarea, { key: "ArrowUp", shiftKey: true })
+    expect(handleEditLast).not.toHaveBeenCalled()
+  })
 })

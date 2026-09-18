@@ -9,6 +9,7 @@ import type {
   ToolCallItem,
   TrendingArtifact,
 } from "@/components/Chat/types"
+import { ensureMessageParentIds } from "@/hooks/useTranscriptTree"
 
 export function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -34,12 +35,14 @@ export interface CreateMessageTurnOptions {
   text: string
   imageUrls?: string[]
   assistantStatus?: "queued" | "streaming"
+  parentMsgId?: string | null
 }
 
 export function createMessageTurn({
   text,
   imageUrls = [],
   assistantStatus = "streaming",
+  parentMsgId = null,
 }: CreateMessageTurnOptions): {
   userMsg: ChatUIMessage
   assistantMsg: ChatUIMessage
@@ -55,6 +58,7 @@ export function createMessageTurn({
   const userMsg: ChatUIMessage = {
     id: `local_user_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     role: "user",
+    parentId: parentMsgId,
     parts,
     createdAt: new Date().toISOString(),
   }
@@ -62,6 +66,7 @@ export function createMessageTurn({
   const assistantMsg: ChatUIMessage = {
     id: `local_assistant_${Date.now() + 1}_${Math.random().toString(36).slice(2, 6)}`,
     role: "assistant",
+    parentId: userMsg.id,
     parts: [],
     status: assistantStatus,
     createdAt: new Date().toISOString(),
@@ -249,6 +254,38 @@ export interface AppendAssistantArtifactOptions {
   artifactPart: ChatUIMessage["parts"][number]
 }
 
+function extractArtifactPostId(
+  part: ChatUIMessage["parts"][number],
+): string | null {
+  if (part.type !== "draft_artifact") return null
+  const art = (part as any).artifact || part
+  return (art.id || art.postId || (part as any).post_id || null) as
+    | string
+    | null
+}
+
+function mergeArtifactIntoParts(
+  existingParts: ChatUIMessage["parts"],
+  artifactPart: ChatUIMessage["parts"][number],
+): ChatUIMessage["parts"] {
+  if (artifactPart.type !== "draft_artifact") {
+    return [...existingParts, artifactPart]
+  }
+  const targetId = extractArtifactPostId(artifactPart)
+  const existingIdx = existingParts.findIndex((p) => {
+    if (p.type !== "draft_artifact") return false
+    const existingId = extractArtifactPostId(p)
+    if (targetId && existingId) return targetId === existingId
+    return true
+  })
+  if (existingIdx === -1) {
+    return [...existingParts, artifactPart]
+  }
+  const updated = [...existingParts]
+  updated[existingIdx] = artifactPart
+  return updated
+}
+
 export function appendAssistantArtifact({
   messages,
   assistantMsgId,
@@ -256,7 +293,10 @@ export function appendAssistantArtifact({
 }: AppendAssistantArtifactOptions): ChatUIMessage[] {
   return messages.map((msg) => {
     if (msg.id !== assistantMsgId) return msg
-    return { ...msg, parts: [...msg.parts, artifactPart] }
+    return {
+      ...msg,
+      parts: mergeArtifactIntoParts(msg.parts, artifactPart),
+    }
   })
 }
 
@@ -478,6 +518,9 @@ export interface UseChatTurnSenderProps {
   isStreaming: boolean
   streamingThreadId: string | null
   setActiveThreadId: (id: string) => void
+  setActiveLeafIdByThread?: React.Dispatch<
+    React.SetStateAction<Record<string, string | null>>
+  >
   setMessagesByThread: React.Dispatch<
     React.SetStateAction<Record<string, ChatUIMessage[]>>
   >
@@ -490,6 +533,44 @@ export interface UseChatTurnSenderProps {
   processQueue: () => void
 }
 
+export interface ApplyOptimisticTurnOptions {
+  messages: ChatUIMessage[]
+  userMsg: ChatUIMessage
+  assistantMsg: ChatUIMessage
+  editMessageId?: string
+}
+
+export function applyOptimisticTurn({
+  messages,
+  userMsg,
+  assistantMsg,
+  editMessageId,
+}: ApplyOptimisticTurnOptions): ChatUIMessage[] {
+  const normalized = ensureMessageParentIds(messages)
+  if (!editMessageId) {
+    const lastMsg = normalized[normalized.length - 1]
+    userMsg.parentId = userMsg.parentId ?? (lastMsg ? lastMsg.id : null)
+    assistantMsg.parentId = userMsg.id
+    return [...normalized, userMsg, assistantMsg]
+  }
+
+  const target = normalized.find((m) => m.id === editMessageId)
+  if (!target) {
+    return [...normalized, userMsg, assistantMsg]
+  }
+
+  if (target.role === "user") {
+    userMsg.parentId = target.parentId ?? null
+    userMsg.forkedFromId = target.id
+    assistantMsg.parentId = userMsg.id
+    return [...normalized, userMsg, assistantMsg]
+  }
+
+  // Assistant regeneration or retry - create sibling assistant turn
+  assistantMsg.parentId = target.parentId ?? null
+  return [...normalized, assistantMsg]
+}
+
 interface DispatchTurnOptions {
   targetThreadId: string
   promptText: string
@@ -497,6 +578,10 @@ interface DispatchTurnOptions {
   selectedModelId: string
   assistantMsg: ChatUIMessage
   userMsg: ChatUIMessage
+  editMessageId?: string
+  setActiveLeafIdByThread?: React.Dispatch<
+    React.SetStateAction<Record<string, string | null>>
+  >
   setMessagesByThread: React.Dispatch<
     React.SetStateAction<Record<string, ChatUIMessage[]>>
   >
@@ -512,6 +597,8 @@ function dispatchQueuedTurn({
   selectedModelId,
   assistantMsg,
   userMsg,
+  editMessageId,
+  setActiveLeafIdByThread,
   setMessagesByThread,
   setPendingQuestion,
   enqueueTurn,
@@ -519,7 +606,16 @@ function dispatchQueuedTurn({
 }: DispatchTurnOptions) {
   setMessagesByThread((prev) => ({
     ...prev,
-    [targetThreadId]: [...(prev[targetThreadId] ?? []), userMsg, assistantMsg],
+    [targetThreadId]: applyOptimisticTurn({
+      messages: prev[targetThreadId] ?? [],
+      userMsg,
+      assistantMsg,
+      editMessageId,
+    }),
+  }))
+  setActiveLeafIdByThread?.((prev) => ({
+    ...prev,
+    [targetThreadId]: assistantMsg.id,
   }))
   setPendingQuestion(null)
 
@@ -530,6 +626,7 @@ function dispatchQueuedTurn({
     base64Images: base64Images.length > 0 ? base64Images : undefined,
     selectedModelId,
     assistantMsgId: assistantMsg.id,
+    editMessageId,
   }
 
   enqueueTurn(queuedTurn)
@@ -539,6 +636,7 @@ function dispatchQueuedTurn({
 interface ExecuteSendOptions extends UseChatTurnSenderProps {
   text: string
   attachedImages?: File[]
+  editMessageId?: string
   isResolvingThreadRef: React.MutableRefObject<boolean>
 }
 
@@ -563,7 +661,9 @@ async function executeChatTurnSend(options: ExecuteSendOptions) {
     })
     if (!targetThreadId) return
 
-    options.clearThreadDraft(options.activeThreadId)
+    if (!options.editMessageId) {
+      options.clearThreadDraft(options.activeThreadId)
+    }
 
     const isBusy = options.isStreaming || options.streamingThreadId !== null
     const assistantStatus = isBusy ? "queued" : "streaming"
@@ -581,6 +681,8 @@ async function executeChatTurnSend(options: ExecuteSendOptions) {
       selectedModelId: options.selectedModelId,
       assistantMsg,
       userMsg,
+      editMessageId: options.editMessageId,
+      setActiveLeafIdByThread: options.setActiveLeafIdByThread,
       setMessagesByThread: options.setMessagesByThread,
       setPendingQuestion: options.setPendingQuestion,
       enqueueTurn: options.enqueueTurn,
@@ -595,11 +697,12 @@ export function useChatTurnSender(props: UseChatTurnSenderProps) {
   const isResolvingThreadRef = React.useRef(false)
 
   return React.useCallback(
-    (text: string, attachedImages?: File[]) =>
+    (text: string, attachedImages?: File[], editMessageId?: string) =>
       executeChatTurnSend({
         ...props,
         text,
         attachedImages,
+        editMessageId,
         isResolvingThreadRef,
       }),
     [props],

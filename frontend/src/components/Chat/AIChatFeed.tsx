@@ -14,13 +14,22 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller"
+import { findSiblingVersions } from "@/hooks/useTranscriptTree"
 
 export interface AIChatFeedProps {
   localMessages: ChatUIMessage[]
+  allMessages?: ChatUIMessage[]
   isStreaming: boolean
   pendingQuestion: AskUserToolPart | null
   onSendMessage: (text: string) => void
   onQuestionAnswer: (toolCallId: string, answers: AskUserAnswer[]) => void
+  editingMessageId?: string | null
+  onStartEdit?: (messageId: string) => void
+  onCancelEdit?: () => void
+  onSaveEdit?: (messageId: string, newText: string) => void
+  onRegenerate?: (assistantMsgId: string) => void
+  onRetry?: (assistantMsgId: string) => void
+  onSwitchBranch?: (messageId: string, direction: "prev" | "next") => void
 }
 
 function EmptyChatSuggestions({
@@ -45,35 +54,71 @@ function EmptyChatSuggestions({
   )
 }
 
+function findLastAssistantIndex(messages: ChatUIMessage[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "assistant") return i
+  }
+  return -1
+}
+
 export function AIChatFeed({
   localMessages,
+  allMessages,
   isStreaming,
   pendingQuestion,
   onSendMessage,
   onQuestionAnswer,
+  editingMessageId,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+  onRegenerate,
+  onRetry,
+  onSwitchBranch,
 }: AIChatFeedProps) {
   if (localMessages.length === 0) {
     return <EmptyChatSuggestions onSendMessage={onSendMessage} />
   }
+
+  const lastAssistantIndex = findLastAssistantIndex(localMessages)
+  const messagesToInspect = allMessages ?? localMessages
 
   return (
     <MessageScrollerProvider>
       <MessageScroller className="flex-1 min-h-0">
         <MessageScrollerViewport>
           <MessageScrollerContent className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-6">
-            {localMessages.map((message, index) => (
-              <MessageScrollerItem key={message.id} messageId={message.id}>
-                <ChatMessage
-                  message={message}
-                  isStreaming={
-                    isStreaming && index === localMessages.length - 1
-                  }
-                  onDraftTopic={(title) =>
-                    onSendMessage(`Draft an engaging post about: "${title}"`)
-                  }
-                />
-              </MessageScrollerItem>
-            ))}
+            {localMessages.map((message, index) => {
+              const branchInfo = findSiblingVersions(
+                messagesToInspect,
+                message.id,
+              )
+              return (
+                <MessageScrollerItem key={message.id} messageId={message.id}>
+                  <ChatMessage
+                    message={message}
+                    isStreaming={
+                      isStreaming && index === localMessages.length - 1
+                    }
+                    isLatestAssistant={
+                      message.role === "assistant" &&
+                      index === lastAssistantIndex
+                    }
+                    isEditing={editingMessageId === message.id}
+                    branchInfo={branchInfo}
+                    onSwitchBranch={(dir) => onSwitchBranch?.(message.id, dir)}
+                    onDraftTopic={(title) =>
+                      onSendMessage(`Draft an engaging post about: "${title}"`)
+                    }
+                    onStartEdit={onStartEdit}
+                    onCancelEdit={onCancelEdit}
+                    onSaveEdit={onSaveEdit}
+                    onRegenerate={onRegenerate}
+                    onRetry={onRetry}
+                  />
+                </MessageScrollerItem>
+              )
+            })}
 
             {pendingQuestion && (
               <QuestionCard

@@ -1,10 +1,8 @@
-import copy
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 from typing import Annotated, Any, NamedTuple
 
-import httpx
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -14,7 +12,6 @@ from app import crud
 from app.api.deps import CurrentUser, SessionDep
 from app.core.config import settings
 from app.models import (
-    AIModelInfo,
     AIModelsPublic,
     ChatMessageRequest,
     ChatThread,
@@ -32,6 +29,13 @@ from app.services.ai_chat_runner import (
     generate_ai_thread_title,
 )
 from app.services.ai_image_utils import sanitize_image_urls as _clean_image_urls
+from app.services.ai_model_catalog import get_available_ai_models
+from app.services.ai_turn_accumulator import (
+    TranscriptEditPayload,
+    append_or_update_draft_part,
+    apply_transcript_branch,
+    resolve_active_branch,
+)
 
 router = APIRouter(prefix="/ai/threads", tags=["ai-threads"])
 
@@ -144,32 +148,6 @@ def _handle_tool_part(
     )
 
 
-def _handle_draft_part(
-    *, payload: dict[str, Any], assistant_parts: list[dict[str, Any]]
-) -> None:
-    content = str(payload.get("content", ""))
-    post_id = str(payload.get("post_id", ""))
-    platform = str(payload.get("platform", "x"))
-    status = str(payload.get("status", "draft"))
-
-    assistant_parts.append(
-        {
-            "type": "draft_artifact",
-            "artifact": {
-                "id": post_id,
-                "postId": post_id,
-                "content": content,
-                "platform": platform,
-                "characterCount": payload.get("char_count") or len(content),
-                "status": status,
-            },
-            "post_id": post_id,
-            "content": content,
-            "platform": platform,
-        }
-    )
-
-
 def _handle_trending_part(
     *, payload: dict[str, Any], assistant_parts: list[dict[str, Any]]
 ) -> None:
@@ -207,8 +185,8 @@ def _collect_stream_part(
             payload=payload,
             assistant_parts=assistant_parts,
         ),
-        "draft_artifact": lambda: _handle_draft_part(
-            payload=payload, assistant_parts=assistant_parts
+        "draft_artifact": lambda: append_or_update_draft_part(
+            assistant_parts, payload=payload
         ),
         "trending_artifact": lambda: _handle_trending_part(
             payload=payload, assistant_parts=assistant_parts
@@ -220,111 +198,11 @@ def _collect_stream_part(
     return ""
 
 
-FRIENDLY_MODEL_NAMES: dict[str, str] = {
-    "gpt-5.6-luna": "5.6 Luna",
-    "gpt-5.6-sol": "5.6 Sol",
-    "gpt-5.6-terra": "5.6 Terra",
-    "gpt-5.4": "5.4",
-    "gpt-5.4-mini": "5.4 Mini",
-    "gpt-5.5": "5.5",
-}
-
-EXCLUDED_MODELS = {
-    "gpt-image-2",
-    "gpt-image-1.5",
-    "gpt-5.3-codex-spark",
-    "codex-auto-review",
-}
-
-
-def _build_fallback_models(default_model_id: str) -> list[AIModelInfo]:
-    ids = [
-        default_model_id,
-        "gpt-5.4",
-        "gpt-5.4-mini",
-        "gpt-5.5",
-        "gpt-5.6-sol",
-        "gpt-5.6-terra",
-    ]
-    unique_ids = dict.fromkeys(m for m in ids if m)
-    return [
-        AIModelInfo(
-            id=mid,
-            name=FRIENDLY_MODEL_NAMES.get(mid, mid),
-            provider="OpenAI",
-            is_default=(mid == default_model_id),
-        )
-        for mid in unique_ids
-    ]
-
-
-def _is_allowed_proxy_model(item: dict[str, Any], default_model_id: str) -> bool:
-    raw_id = item.get("id")
-    if not raw_id:
-        return False
-    model_id = str(raw_id)
-    if model_id == default_model_id:
-        return True
-    if model_id in EXCLUDED_MODELS:
-        return False
-    return str(item.get("owned_by", "")).lower() != "antigravity"
-
-
-def _fetch_models_from_proxy(default_model_id: str) -> list[AIModelInfo]:
-    api_key = (
-        settings.OPENAI_API_COMPATIBLE_API_KEY or settings.AI_API_KEY or "dummy-key"
-    )
-    with httpx.Client(timeout=3.0) as client:
-        resp = client.get(
-            f"{settings.AI_API_BASE}/models",
-            headers={"Authorization": f"Bearer {api_key}"},
-        )
-        if resp.status_code != 200:
-            return []
-        items = resp.json().get("data", [])
-        return [
-            AIModelInfo(
-                id=str(item["id"]),
-                name=FRIENDLY_MODEL_NAMES.get(str(item["id"]), str(item["id"])),
-                provider=str(item.get("owned_by", "")).capitalize() or None,
-                is_default=(str(item["id"]) == default_model_id),
-            )
-            for item in items
-            if _is_allowed_proxy_model(item, default_model_id)
-        ]
-
-
-def _ensure_default_model(
-    models: list[AIModelInfo], default_model_id: str
-) -> list[AIModelInfo]:
-    if any(m.id == default_model_id for m in models):
-        return models
-    return [
-        AIModelInfo(
-            id=default_model_id,
-            name=FRIENDLY_MODEL_NAMES.get(default_model_id, default_model_id),
-            provider="OpenAI",
-            is_default=True,
-        ),
-        *models,
-    ]
-
-
 @router.get("/models", response_model=AIModelsPublic)
 def list_ai_models() -> Any:
     """List available AI models from the proxy/backend with friendly labels."""
-    default_model_id = settings.AI_MODEL.removeprefix("openai/")
-    if default_model_id.startswith("gemini"):
-        default_model_id = "gpt-5.4"
-    try:
-        models = _fetch_models_from_proxy(default_model_id)
-        if models:
-            resolved = _ensure_default_model(models, default_model_id)
-            return AIModelsPublic(data=resolved, default_model=default_model_id)
-    except Exception:
-        pass
-    fallback = _build_fallback_models(default_model_id)
-    return AIModelsPublic(data=fallback, default_model=default_model_id)
+    configured_default = settings.AI_MODEL.removeprefix("openai/")
+    return get_available_ai_models(configured_default=configured_default)
 
 
 @router.post("/", response_model=ChatThreadDetail)
@@ -429,6 +307,7 @@ async def _save_assistant_turn(
     assistant_msg = {
         "id": f"msg_{uuid.uuid4().hex[:12]}",
         "role": "assistant",
+        "parent_id": thread.active_leaf_id,
         "parts": payload.assistant_parts,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -438,7 +317,7 @@ async def _save_assistant_turn(
         message=assistant_msg,
     )
 
-    if thread.message_count <= 2:
+    if thread.message_count <= 2 and not getattr(thread, "is_custom_title", False):
         try:
             ai_title = await generate_ai_thread_title(
                 user_prompt=payload.body.message.strip() or "Image analysis",
@@ -453,15 +332,13 @@ async def _save_assistant_turn(
             pass
 
 
-def _sanitize_image_urls(images: list[str] | None) -> list[str]:
-    """Filter, sanitize, and convert valid image data URLs or HTTP/HTTPS image links."""
-    return _clean_image_urls(images=images)
-
-
 def _build_user_message_dict(
-    message_text: str, clean_images: list[str]
+    *,
+    message_text: str,
+    clean_images: list[str],
+    parent_id: str | None = None,
 ) -> dict[str, Any]:
-    """Construct transcript user message turn."""
+    """Construct transcript user message turn with parent_id linkage."""
     user_parts: list[dict[str, Any]] = []
     if message_text:
         user_parts.append({"type": "text", "text": message_text})
@@ -470,6 +347,7 @@ def _build_user_message_dict(
     return {
         "id": f"msg_{uuid.uuid4().hex[:12]}",
         "role": "user",
+        "parent_id": parent_id,
         "parts": user_parts,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -510,10 +388,15 @@ async def _generate_chat_events(
     assistant_parts: list[dict[str, Any]] = []
 
     target_model = ctx.body.model
-    if target_model and target_model.startswith("gemini"):
-        target_model = "gpt-5.4"
 
-    transcript_copy = copy.deepcopy(ctx.thread.transcript)
+    active_path = resolve_active_branch(
+        messages=ctx.thread.transcript.get("messages", []),
+        active_leaf_id=ctx.thread.active_leaf_id,
+    )
+    transcript_copy = {
+        "messages": active_path,
+        "active_leaf_id": ctx.thread.active_leaf_id,
+    }
     try:
         async for event_name, payload in default_chat_stream_runner(
             message=ctx.effective_prompt,
@@ -524,6 +407,8 @@ async def _generate_chat_events(
             session=ctx.session,
             thread_id=str(ctx.thread.id),
         ):
+            if event_name == "done":
+                continue
             delta = _collect_stream_part(
                 event_name=event_name,
                 payload=payload,
@@ -547,9 +432,39 @@ async def _generate_chat_events(
                 assistant_parts=assistant_parts,
             ),
         )
+        yield format_sse(event="done", data={})
 
     except Exception as exc:
         yield format_sse(event="error", data={"message": str(exc)})
+
+
+def _ensure_user_turn_saved(
+    *,
+    session: Session,
+    thread: ChatThread,
+    body: ChatMessageRequest,
+    clean_images: list[str],
+) -> None:
+    msg_text = body.message.strip()
+    if body.edit_message_id and apply_transcript_branch(
+        session=session,
+        thread=thread,
+        payload=TranscriptEditPayload(
+            edit_message_id=body.edit_message_id,
+            message_text=msg_text,
+            clean_images=clean_images,
+        ),
+    ):
+        return
+
+    user_msg = _build_user_message_dict(
+        message_text=msg_text,
+        clean_images=clean_images,
+        parent_id=thread.active_leaf_id,
+    )
+    crud.append_message_to_transcript(
+        session=session, db_thread=thread, message=user_msg
+    )
 
 
 @router.post("/{id}/chat")
@@ -564,16 +479,18 @@ async def chat_stream(
     thread = _get_owned_thread(session=session, current_user=current_user, thread_id=id)
 
     message_text = body.message.strip()
-    clean_images = _sanitize_image_urls(body.images)
+    clean_images = _clean_image_urls(images=body.images)
     if not message_text and not clean_images:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Message content or at least one image is required",
         )
 
-    user_msg = _build_user_message_dict(message_text, clean_images)
-    crud.append_message_to_transcript(
-        session=session, db_thread=thread, message=user_msg
+    _ensure_user_turn_saved(
+        session=session,
+        thread=thread,
+        body=body,
+        clean_images=clean_images,
     )
 
     effective_prompt = message_text or "Analyze the attached image(s)"

@@ -210,6 +210,18 @@ export const ChatMessageRequestSchema = {
                 }
             ],
             title: 'Images'
+        },
+        edit_message_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Edit Message Id'
         }
     },
     type: 'object',
@@ -277,6 +289,23 @@ export const ChatThreadDetailSchema = {
             maxLength: 20,
             title: 'Origin',
             default: 'manual'
+        },
+        is_custom_title: {
+            type: 'boolean',
+            title: 'Is Custom Title',
+            default: false
+        },
+        active_leaf_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Active Leaf Id'
         },
         id: {
             type: 'string',
@@ -368,6 +397,23 @@ export const ChatThreadPublicSchema = {
             maxLength: 20,
             title: 'Origin',
             default: 'manual'
+        },
+        is_custom_title: {
+            type: 'boolean',
+            title: 'Is Custom Title',
+            default: false
+        },
+        active_leaf_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Active Leaf Id'
         },
         id: {
             type: 'string',
@@ -467,6 +513,29 @@ export const ChatThreadUpdateSchema = {
                 }
             ],
             title: 'Is Archived'
+        },
+        is_custom_title: {
+            anyOf: [
+                {
+                    type: 'boolean'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Is Custom Title'
+        },
+        active_leaf_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Active Leaf Id'
         }
     },
     type: 'object',
