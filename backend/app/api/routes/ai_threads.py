@@ -332,12 +332,8 @@ async def _save_assistant_turn(
             pass
 
 
-def _sanitize_image_urls(images: list[str] | None) -> list[str]:
-    """Filter, sanitize, and convert valid image data URLs or HTTP/HTTPS image links."""
-    return _clean_image_urls(images=images)
-
-
 def _build_user_message_dict(
+    *,
     message_text: str,
     clean_images: list[str],
     parent_id: str | None = None,
@@ -394,8 +390,8 @@ async def _generate_chat_events(
     target_model = ctx.body.model
 
     active_path = resolve_active_branch(
-        ctx.thread.transcript.get("messages", []),
-        ctx.thread.active_leaf_id,
+        messages=ctx.thread.transcript.get("messages", []),
+        active_leaf_id=ctx.thread.active_leaf_id,
     )
     transcript_copy = {
         "messages": active_path,
@@ -462,7 +458,9 @@ def _ensure_user_turn_saved(
         return
 
     user_msg = _build_user_message_dict(
-        msg_text, clean_images, parent_id=thread.active_leaf_id
+        message_text=msg_text,
+        clean_images=clean_images,
+        parent_id=thread.active_leaf_id,
     )
     crud.append_message_to_transcript(
         session=session, db_thread=thread, message=user_msg
@@ -481,7 +479,7 @@ async def chat_stream(
     thread = _get_owned_thread(session=session, current_user=current_user, thread_id=id)
 
     message_text = body.message.strip()
-    clean_images = _sanitize_image_urls(body.images)
+    clean_images = _clean_image_urls(images=body.images)
     if not message_text and not clean_images:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

@@ -232,7 +232,7 @@ def _build_edited_user_parts(
     return parts
 
 
-def ensure_parent_ids(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def ensure_parent_ids(*, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Ensure all messages have a parent_id, inferring from array order for legacy data."""
     if not messages:
         return []
@@ -288,13 +288,14 @@ def _walk_branch_to_root(
 
 
 def resolve_active_branch(
+    *,
     messages: list[dict[str, Any]],
     active_leaf_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Walk backward from active_leaf_id via parent_id to build chronological active path."""
     if not messages:
         return []
-    normalized = ensure_parent_ids(messages)
+    normalized = ensure_parent_ids(messages=messages)
     id_map = {m["id"]: m for m in normalized if m.get("id")}
     fallback_id = normalized[-1].get("id")
     target_id = _select_target_leaf_id(
@@ -308,11 +309,12 @@ def resolve_active_branch(
 
 
 def find_sibling_branches(
+    *,
     messages: list[dict[str, Any]],
     message_id: str,
 ) -> list[dict[str, Any]]:
     """Return all messages that share the same parent_id as the given message."""
-    normalized = ensure_parent_ids(messages)
+    normalized = ensure_parent_ids(messages=messages)
     target = next((m for m in normalized if m.get("id") == message_id), None)
     if not target:
         return []
@@ -321,6 +323,7 @@ def find_sibling_branches(
 
 
 def _build_children_map(
+    *,
     messages: list[dict[str, Any]],
 ) -> dict[str, list[dict[str, Any]]]:
     children_map: dict[str, list[dict[str, Any]]] = {}
@@ -349,12 +352,13 @@ def _next_unvisited_child_id(
 
 
 def find_deepest_leaf(
+    *,
     messages: list[dict[str, Any]],
     node_id: str,
 ) -> str:
     """Find the deepest leaf descendant starting from node_id, following the latest child."""
-    normalized = ensure_parent_ids(messages)
-    children_map = _build_children_map(normalized)
+    normalized = ensure_parent_ids(messages=messages)
+    children_map = _build_children_map(messages=normalized)
 
     curr = node_id
     visited: set[str] = {curr}
@@ -415,7 +419,7 @@ def apply_transcript_branch(
     if not session or not thread:
         return False
     transcript = dict(thread.transcript or {})
-    messages = ensure_parent_ids(list(transcript.get("messages", [])))
+    messages = ensure_parent_ids(messages=list(transcript.get("messages", [])))
     target = next(
         (m for m in messages if m.get("id") == payload.edit_message_id),
         None,

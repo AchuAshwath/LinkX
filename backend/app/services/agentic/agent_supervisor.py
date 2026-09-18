@@ -137,6 +137,31 @@ def _resolve_by_post_id(*, ctx: CopilotContext, post_id: str) -> Post | None:
     return None
 
 
+def _contains_post_id(*, messages: Any, post_id_str: str) -> bool:
+    if not isinstance(messages, list):
+        return False
+    return any(_extract_id_from_message(msg=m) == post_id_str for m in messages)
+
+
+def _post_belongs_to_inactive_branch(
+    *, thread: ChatThread, active_transcript: dict[str, Any] | None
+) -> bool:
+    """Check if thread.post_id was created in a sibling branch not on the active path."""
+    if not thread.post_id or not active_transcript:
+        return False
+
+    target_str = str(thread.post_id)
+    if _contains_post_id(
+        messages=active_transcript.get("messages"), post_id_str=target_str
+    ):
+        return False
+
+    all_transcript = thread.transcript if isinstance(thread.transcript, dict) else {}
+    return _contains_post_id(
+        messages=all_transcript.get("messages"), post_id_str=target_str
+    )
+
+
 def _resolve_by_thread_id(*, ctx: CopilotContext) -> Post | None:
     if not ctx.thread_id:
         return None
@@ -144,6 +169,10 @@ def _resolve_by_thread_id(*, ctx: CopilotContext) -> Post | None:
         t_uuid = uuid.UUID(ctx.thread_id)
         thread = ctx.session.get(ChatThread, t_uuid)
         if thread and thread.post_id:
+            if _post_belongs_to_inactive_branch(
+                thread=thread, active_transcript=ctx.transcript
+            ):
+                return None
             post = crud.get_post(session=ctx.session, post_id=thread.post_id)
             if post and post.owner_id == ctx.user_uuid:
                 return post
@@ -152,7 +181,7 @@ def _resolve_by_thread_id(*, ctx: CopilotContext) -> Post | None:
     return None
 
 
-def _extract_from_artifact_part(part: dict[str, Any]) -> str | None:
+def _extract_from_artifact_part(*, part: dict[str, Any]) -> str | None:
     if part.get("type") != "draft_artifact":
         return None
     raw_artifact = part.get("artifact")
@@ -161,7 +190,7 @@ def _extract_from_artifact_part(part: dict[str, Any]) -> str | None:
     return str(p_id) if p_id else None
 
 
-def _extract_from_tool_call_part(part: dict[str, Any]) -> str | None:
+def _extract_from_tool_call_part(*, part: dict[str, Any]) -> str | None:
     if part.get("type") not in ("tool-call", "tool_call"):
         return None
     raw_tool = part.get("tool")
@@ -176,26 +205,29 @@ def _extract_from_tool_call_part(part: dict[str, Any]) -> str | None:
     return str(p_id) if p_id else None
 
 
-def _extract_id_from_part(part: Any) -> str | None:
+def _extract_id_from_part(*, part: Any) -> str | None:
     if not isinstance(part, dict):
         return None
-    return _extract_from_artifact_part(part) or _extract_from_tool_call_part(part)
+    return _extract_from_artifact_part(part=part) or _extract_from_tool_call_part(
+        part=part
+    )
 
 
-def _extract_id_from_message(msg: Any) -> str | None:
+def _extract_id_from_message(*, msg: Any) -> str | None:
     if not isinstance(msg, dict):
         return None
     parts = msg.get("parts")
     if not isinstance(parts, list):
         return None
     for part in reversed(parts):
-        p_id = _extract_id_from_part(part)
+        p_id = _extract_id_from_part(part=part)
         if p_id:
             return p_id
     return None
 
 
 def _extract_draft_id_from_transcript(
+    *,
     transcript: dict[str, Any] | None,
 ) -> str | None:
     if not isinstance(transcript, dict):
@@ -204,7 +236,7 @@ def _extract_draft_id_from_transcript(
     if not isinstance(messages, list):
         return None
     for msg in reversed(messages):
-        p_id = _extract_id_from_message(msg)
+        p_id = _extract_id_from_message(msg=msg)
         if p_id:
             return p_id
     return None
@@ -221,7 +253,7 @@ def _resolve_target_post(
     if clean_post_id:
         return _resolve_by_post_id(ctx=ctx, post_id=clean_post_id)
 
-    target_id = _extract_draft_id_from_transcript(ctx.transcript)
+    target_id = _extract_draft_id_from_transcript(transcript=ctx.transcript)
     resolved = _resolve_by_post_id(ctx=ctx, post_id=target_id) if target_id else None
     return resolved or _resolve_by_thread_id(ctx=ctx)
 

@@ -19,7 +19,7 @@ def test_ensure_parent_ids_backfills_linear_chain() -> None:
         {"id": "msg_2", "role": "assistant", "parts": [{"type": "text", "text": "B"}]},
         {"id": "msg_3", "role": "user", "parts": [{"type": "text", "text": "C"}]},
     ]
-    normalized = ensure_parent_ids(legacy_messages)
+    normalized = ensure_parent_ids(messages=legacy_messages)
     assert normalized[0]["parent_id"] is None
     assert normalized[1]["parent_id"] == "msg_1"
     assert normalized[2]["parent_id"] == "msg_2"
@@ -32,7 +32,7 @@ def test_ensure_parent_ids_heals_explicit_none_parent_ids() -> None:
         {"id": "msg_2", "parent_id": None, "role": "assistant"},
         {"id": "msg_3", "parent_id": None, "role": "user"},
     ]
-    normalized = ensure_parent_ids(db_messages)
+    normalized = ensure_parent_ids(messages=db_messages)
     assert normalized[0]["parent_id"] is None
     assert normalized[1]["parent_id"] == "msg_1"
     assert normalized[2]["parent_id"] == "msg_2"
@@ -52,11 +52,11 @@ def test_resolve_active_branch_walks_backward_to_root() -> None:
     ]
 
     # Resolve Branch A
-    path_a = resolve_active_branch(messages, active_leaf_id="msg_a2a")
+    path_a = resolve_active_branch(messages=messages, active_leaf_id="msg_a2a")
     assert [m["id"] for m in path_a] == ["msg_u1", "msg_a1", "msg_u2a", "msg_a2a"]
 
     # Resolve Branch B
-    path_b = resolve_active_branch(messages, active_leaf_id="msg_a2b")
+    path_b = resolve_active_branch(messages=messages, active_leaf_id="msg_a2b")
     assert [m["id"] for m in path_b] == ["msg_u1", "msg_a1", "msg_u2b", "msg_a2b"]
 
 
@@ -67,7 +67,7 @@ def test_find_sibling_branches_detects_forks() -> None:
         {"id": "msg_u2a", "parent_id": "msg_a1", "role": "user"},
         {"id": "msg_u2b", "parent_id": "msg_a1", "role": "user"},
     ]
-    siblings = find_sibling_branches(messages, "msg_u2a")
+    siblings = find_sibling_branches(messages=messages, message_id="msg_u2a")
     assert len(siblings) == 2
     assert [s["id"] for s in siblings] == ["msg_u2a", "msg_u2b"]
 
@@ -79,7 +79,7 @@ def test_find_deepest_leaf_follows_latest_children() -> None:
         {"id": "msg_u2a", "parent_id": "msg_a1", "role": "user"},
         {"id": "msg_a2a", "parent_id": "msg_u2a", "role": "assistant"},
     ]
-    leaf = find_deepest_leaf(messages, "msg_u1")
+    leaf = find_deepest_leaf(messages=messages, node_id="msg_u1")
     assert leaf == "msg_a2a"
 
 
@@ -274,3 +274,83 @@ def test_append_or_update_draft_part_updates_in_place() -> None:
     )
     assert len(assistant_parts) == 1
     assert assistant_parts[0]["content"] == "Draft v2 updated"
+
+
+def _to_langchain_messages(*, path: list[dict[str, Any]], sys_prompt: Any) -> list[Any]:
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    lc_msgs: list[Any] = [sys_prompt]
+    for m in path:
+        text = str(m["parts"][0]["text"])
+        cls = HumanMessage if m["role"] == "user" else AIMessage
+        lc_msgs.append(cls(content=text))
+    return lc_msgs
+
+
+def test_token_budgeting_on_branched_transcript() -> None:
+    """Verify that context window token budgeting strictly operates on the active branch."""
+    from langchain_core.messages import SystemMessage
+
+    from app.services.ai_context_budgeter import (
+        apply_sliding_window_budget,
+        estimate_total_tokens,
+    )
+
+    messages = [
+        {
+            "id": "msg_u1",
+            "parent_id": None,
+            "role": "user",
+            "parts": [{"type": "text", "text": "Hello world"}],
+        },
+        {
+            "id": "msg_a1",
+            "parent_id": "msg_u1",
+            "role": "assistant",
+            "parts": [{"type": "text", "text": "Welcome to LinkX"}],
+        },
+        {
+            "id": "msg_u2a",
+            "parent_id": "msg_a1",
+            "role": "user",
+            "parts": [{"type": "text", "text": "Branch A request: write an essay"}],
+        },
+        {
+            "id": "msg_a2a",
+            "parent_id": "msg_u2a",
+            "role": "assistant",
+            "parts": [{"type": "text", "text": "X" * 15000}],
+        },
+        {
+            "id": "msg_u2b",
+            "parent_id": "msg_a1",
+            "role": "user",
+            "parts": [{"type": "text", "text": "Branch B request: short answer"}],
+        },
+        {
+            "id": "msg_a2b",
+            "parent_id": "msg_u2b",
+            "role": "assistant",
+            "parts": [{"type": "text", "text": "Short answer here"}],
+        },
+    ]
+
+    # Resolve Branch B path
+    active_path_b = resolve_active_branch(messages=messages, active_leaf_id="msg_a2b")
+    branch_b_ids = [m["id"] for m in active_path_b]
+    assert "msg_a2a" not in branch_b_ids
+    assert "msg_u2a" not in branch_b_ids
+    assert branch_b_ids == ["msg_u1", "msg_a1", "msg_u2b", "msg_a2b"]
+
+    sys_prompt = SystemMessage(content="You are a helpful assistant.")
+    lc_messages_b = _to_langchain_messages(path=active_path_b, sys_prompt=sys_prompt)
+    budgeted_b = apply_sliding_window_budget(lc_messages_b, token_budget=500)
+    assert len(budgeted_b) == 5
+    assert estimate_total_tokens(budgeted_b) < 100
+
+    # Branch A's massive message forces sliding window truncation
+    active_path_a = resolve_active_branch(messages=messages, active_leaf_id="msg_a2a")
+    lc_messages_a = _to_langchain_messages(path=active_path_a, sys_prompt=sys_prompt)
+    budgeted_a = apply_sliding_window_budget(lc_messages_a, token_budget=500)
+    assert len(budgeted_a) < len(lc_messages_a)
+    assert len(budgeted_a) == 2

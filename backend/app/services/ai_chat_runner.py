@@ -59,7 +59,7 @@ def format_sse(*, event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-def _normalize_tool_output(raw_output: Any) -> Any:
+def _normalize_tool_output(*, raw_output: Any) -> Any:
     val = getattr(raw_output, "content", raw_output)
     if isinstance(val, str):
         try:
@@ -94,7 +94,7 @@ def _handle_tool_end_events(
     event: dict[str, Any],
 ) -> list[tuple[str, dict[str, Any]]]:
     name = str(event.get("name", ""))
-    output_data = _normalize_tool_output(event.get("data", {}).get("output"))
+    output_data = _normalize_tool_output(raw_output=event.get("data", {}).get("output"))
     events: list[tuple[str, dict[str, Any]]] = [
         (
             "tool_output",
@@ -300,7 +300,7 @@ async def default_chat_stream_runner(
     yield ("done", {})
 
 
-def _clean_ai_title_response(raw_text: Any) -> str | None:
+def _clean_ai_title_response(*, raw_text: Any) -> str | None:
     if not isinstance(raw_text, str):
         return None
     cleaned = raw_text.strip().strip("\"'`")
@@ -341,7 +341,7 @@ async def generate_ai_thread_title(
             streaming=False,
         )
         res = await chat_model.ainvoke(messages)
-        return _clean_ai_title_response(res.content)
+        return _clean_ai_title_response(raw_text=res.content)
     except Exception:
         pass
     return None
