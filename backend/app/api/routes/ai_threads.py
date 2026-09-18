@@ -3,7 +3,6 @@ from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 from typing import Annotated, Any, NamedTuple
 
-import httpx
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -13,7 +12,6 @@ from app import crud
 from app.api.deps import CurrentUser, SessionDep
 from app.core.config import settings
 from app.models import (
-    AIModelInfo,
     AIModelsPublic,
     ChatMessageRequest,
     ChatThread,
@@ -31,6 +29,7 @@ from app.services.ai_chat_runner import (
     generate_ai_thread_title,
 )
 from app.services.ai_image_utils import sanitize_image_urls as _clean_image_urls
+from app.services.ai_model_catalog import get_available_ai_models
 from app.services.ai_turn_accumulator import (
     TranscriptEditPayload,
     append_or_update_draft_part,
@@ -199,139 +198,11 @@ def _collect_stream_part(
     return ""
 
 
-FRIENDLY_MODEL_NAMES: dict[str, str] = {
-    "gemini-3.7-flash-high": "Gemini 3.7 Flash",
-    "gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite",
-    "gemini-3-flash": "Gemini 3 Flash",
-    "gemini-3.1-pro-low": "Gemini 3.1 Pro",
-    "claude-sonnet-4-6": "Claude 3.7 Sonnet",
-    "claude-opus-4-6-thinking": "Claude 3.7 Opus",
-    "gpt-oss-120b-medium": "DeepSeek R1",
-    "gpt-5.6-luna": "5.6 Luna",
-    "gpt-5.6-sol": "5.6 Sol",
-    "gpt-5.6-terra": "5.6 Terra",
-    "gpt-5.5": "5.5",
-    "gpt-5.4": "5.4",
-    "gpt-6-astra": "6 Astra",
-}
-
-EXCLUDED_MODELS = {
-    "gpt-image-2",
-    "gpt-image-1.5",
-    "gpt-5.3-codex-spark",
-    "codex-auto-review",
-}
-
-
-def _resolve_model_provider(model_id: str) -> str:
-    mid = model_id.lower()
-    if mid.startswith("gemini"):
-        return "Google"
-    if mid.startswith("claude"):
-        return "Anthropic"
-    if mid.startswith(("deepseek", "gpt-oss")):
-        return "DeepSeek"
-    if mid.startswith("qwen"):
-        return "Qwen"
-    if mid.startswith(("kimi", "moonshot")):
-        return "Moonshot"
-    if mid.startswith("grok"):
-        return "xAI"
-    return "OpenAI"
-
-
-def _resolve_model_name(model_id: str) -> str:
-    if model_id in FRIENDLY_MODEL_NAMES:
-        return FRIENDLY_MODEL_NAMES[model_id]
-    clean = model_id.removeprefix("gpt-").replace("-", " ")
-    return clean.title()
-
-
-def _build_fallback_models(default_model_id: str) -> list[AIModelInfo]:
-    if not default_model_id:
-        return []
-    return [
-        AIModelInfo(
-            id=default_model_id,
-            name=_resolve_model_name(default_model_id),
-            provider=_resolve_model_provider(default_model_id),
-            is_default=True,
-        )
-    ]
-
-
-def _is_allowed_proxy_model(item: dict[str, Any], default_model_id: str) -> bool:
-    raw_id = item.get("id")
-    if not raw_id:
-        return False
-    model_id = str(raw_id)
-    if model_id == default_model_id:
-        return True
-    return model_id not in EXCLUDED_MODELS
-
-
-def _fetch_models_from_proxy(default_model_id: str) -> list[AIModelInfo]:
-    api_key = (
-        settings.OPENAI_API_COMPATIBLE_API_KEY or settings.AI_API_KEY or "dummy-key"
-    )
-    with httpx.Client(timeout=3.0) as client:
-        resp = client.get(
-            f"{settings.AI_API_BASE}/models",
-            headers={"Authorization": f"Bearer {api_key}"},
-        )
-        if resp.status_code != 200:
-            return []
-        items = resp.json().get("data", [])
-        return [
-            AIModelInfo(
-                id=str(item["id"]),
-                name=_resolve_model_name(str(item["id"])),
-                provider=_resolve_model_provider(str(item["id"])),
-                is_default=(str(item["id"]) == default_model_id),
-            )
-            for item in items
-            if _is_allowed_proxy_model(item, default_model_id)
-        ]
-
-
-def _resolve_default_model_id(
-    models: list[AIModelInfo], preferred_default_id: str
-) -> str:
-    if any(m.id == preferred_default_id for m in models):
-        return preferred_default_id
-    if models:
-        return models[0].id
-    return preferred_default_id
-
-
-def _mark_default_model(
-    models: list[AIModelInfo], default_model_id: str
-) -> list[AIModelInfo]:
-    return [
-        AIModelInfo(
-            id=m.id,
-            name=m.name,
-            provider=m.provider,
-            is_default=(m.id == default_model_id),
-        )
-        for m in models
-    ]
-
-
 @router.get("/models", response_model=AIModelsPublic)
 def list_ai_models() -> Any:
     """List available AI models from the proxy/backend with friendly labels."""
     configured_default = settings.AI_MODEL.removeprefix("openai/")
-    try:
-        models = _fetch_models_from_proxy(configured_default)
-        if models:
-            resolved_default = _resolve_default_model_id(models, configured_default)
-            final_models = _mark_default_model(models, resolved_default)
-            return AIModelsPublic(data=final_models, default_model=resolved_default)
-    except Exception:
-        pass
-    fallback = _build_fallback_models(configured_default)
-    return AIModelsPublic(data=fallback, default_model=configured_default)
+    return get_available_ai_models(configured_default=configured_default)
 
 
 @router.post("/", response_model=ChatThreadDetail)

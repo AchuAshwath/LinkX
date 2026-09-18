@@ -240,8 +240,16 @@ def ensure_parent_ids(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     prev_id: str | None = None
     for i, msg in enumerate(messages):
         item = dict(msg)
-        if "parent_id" not in item:
-            item["parent_id"] = None if i == 0 else prev_id
+        raw_pid = item.get("parent_id")
+        forked_from = item.get("forked_from_id")
+        if i == 0:
+            item["parent_id"] = None
+        elif raw_pid is not None:
+            item["parent_id"] = str(raw_pid)
+        elif raw_pid is None and forked_from is not None:
+            item["parent_id"] = None
+        else:
+            item["parent_id"] = prev_id
         result.append(item)
         prev_id = item.get("id")
     return result

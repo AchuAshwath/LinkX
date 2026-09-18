@@ -7,9 +7,9 @@ from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessageChunk
 from sqlmodel import Session, select
 
-from app.api.routes.ai_threads import EXCLUDED_MODELS
 from app.core.config import settings
 from app.models import Post, User
+from app.services.ai_model_catalog import EXCLUDED_MODELS
 from tests.utils.chat_thread import create_random_chat_thread
 
 

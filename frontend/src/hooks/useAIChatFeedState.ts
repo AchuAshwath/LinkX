@@ -83,6 +83,20 @@ function matchesExpectedThread(
   return detailId === expectedThreadId
 }
 
+function getFirstDefined<T>(a: T | undefined, b: T | undefined): T | undefined {
+  return a !== undefined ? a : b
+}
+
+function normalizeRawMessage(raw: any): ChatUIMessage {
+  if (!raw || typeof raw !== "object") return raw
+  return {
+    ...raw,
+    parentId: getFirstDefined(raw.parentId, raw.parent_id),
+    forkedFromId: getFirstDefined(raw.forkedFromId, raw.forked_from_id),
+    createdAt: getFirstDefined(raw.createdAt, raw.created_at),
+  }
+}
+
 function extractTranscriptMessages(
   detail: unknown,
   expectedThreadId?: string | null,
@@ -90,12 +104,14 @@ function extractTranscriptMessages(
   if (!detail || typeof detail !== "object") return null
   const typed = detail as {
     id?: string
-    transcript?: { messages?: ChatUIMessage[] }
+    transcript?: { messages?: unknown[] }
   }
   if (!matchesExpectedThread(typed.id, expectedThreadId)) {
     return null
   }
-  return typed.transcript?.messages ?? null
+  const rawList = typed.transcript?.messages
+  if (!Array.isArray(rawList)) return null
+  return rawList.map(normalizeRawMessage)
 }
 
 function extractServerActiveLeafId(

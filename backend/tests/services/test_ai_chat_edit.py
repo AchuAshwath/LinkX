@@ -25,6 +25,19 @@ def test_ensure_parent_ids_backfills_linear_chain() -> None:
     assert normalized[2]["parent_id"] == "msg_2"
 
 
+def test_ensure_parent_ids_heals_explicit_none_parent_ids() -> None:
+    """Ensure older DB messages with explicit parent_id=None are healed sequentially."""
+    db_messages = [
+        {"id": "msg_1", "parent_id": None, "role": "user"},
+        {"id": "msg_2", "parent_id": None, "role": "assistant"},
+        {"id": "msg_3", "parent_id": None, "role": "user"},
+    ]
+    normalized = ensure_parent_ids(db_messages)
+    assert normalized[0]["parent_id"] is None
+    assert normalized[1]["parent_id"] == "msg_1"
+    assert normalized[2]["parent_id"] == "msg_2"
+
+
 def test_resolve_active_branch_walks_backward_to_root() -> None:
     # Tree structure:
     # msg_u1 (root) -> msg_a1 -> msg_u2a -> msg_a2a

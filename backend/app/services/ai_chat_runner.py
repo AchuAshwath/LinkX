@@ -249,13 +249,19 @@ async def default_chat_stream_runner(
 
     if user_id and session:
         try:
-            from app.services.agentic.agent_supervisor import build_copilot_agent
+            from app.services.agentic.agent_supervisor import (
+                CopilotContext,
+                build_copilot_agent,
+            )
 
             agent = build_copilot_agent(
-                user_id=user_id,
-                session=session,
+                ctx=CopilotContext(
+                    user_id=user_id,
+                    session=session,
+                    thread_id=thread_id,
+                    transcript=transcript,
+                ),
                 model=model,
-                thread_id=thread_id,
             )
             conv_messages = [m for m in messages if not isinstance(m, SystemMessage)]
             async for ev in _stream_agent_supervisor_events(

@@ -95,7 +95,13 @@ function extractDraftContents(parts: ChatUIMessage["parts"]): string[] {
   return contents
 }
 
-function stripDraftContent(text: string, draftContents: string[]): string {
+function stripDraftContent({
+  text,
+  draftContents,
+}: {
+  text: string
+  draftContents: string[]
+}): string {
   let cleaned = text
   for (const draftContent of draftContents) {
     if (!draftContent) continue
@@ -111,7 +117,7 @@ function stripDraftContent(text: string, draftContents: string[]): string {
   return cleaned
 }
 
-function cleanPostambleText(text: string): string {
+function cleanPostambleText({ text }: { text: string }): string {
   return text
     .replace(
       /^(?:Here(?:'s| is) (?:a|the) (?:polished )?(?:X|LinkedIn|draft|post)[\w\s]*:?)/i,
@@ -132,8 +138,8 @@ export function deduplicateDraftContentFromTextParts(
   return parts
     .map((part) => {
       if (part.type !== "text" || !part.text) return part
-      const stripped = stripDraftContent(part.text, draftContents)
-      const cleaned = cleanPostambleText(stripped)
+      const stripped = stripDraftContent({ text: part.text, draftContents })
+      const cleaned = cleanPostambleText({ text: stripped })
       return { ...part, text: cleaned }
     })
     .filter((part) => {
@@ -178,10 +184,13 @@ export function collectTools(parts: ChatUIMessage["parts"]): ToolCallItem[] {
   })
 }
 
-function buildCombinedThought(
-  dedupedParts: ChatUIMessage["parts"],
-  extractedThought: string | null,
-): string {
+function buildCombinedThought({
+  dedupedParts,
+  extractedThought,
+}: {
+  dedupedParts: ChatUIMessage["parts"]
+  extractedThought: string | null
+}): string {
   const thoughtParts = dedupedParts.filter(
     (p): p is ThoughtPartType => p.type === "thought",
   )
@@ -196,12 +205,17 @@ function checkHasResponseStarted(parts: ChatUIMessage["parts"]): boolean {
   return parts.some((p) => p.type === "text" && Boolean(p.text?.trim()))
 }
 
-function checkHasThoughtOrTools(
-  combinedThought: string,
-  hasTools: boolean,
-  isStreaming: boolean,
-  hasResponseStarted: boolean,
-): boolean {
+function checkHasThoughtOrTools({
+  combinedThought,
+  hasTools,
+  isStreaming,
+  hasResponseStarted,
+}: {
+  combinedThought: string
+  hasTools: boolean
+  isStreaming: boolean
+  hasResponseStarted: boolean
+}): boolean {
   if (combinedThought) return true
   if (hasTools) return true
   return isStreaming && !hasResponseStarted
@@ -266,18 +280,21 @@ export function prepareAssistantRenderState(
   const sources = dedupedParts.filter(
     (part): part is SourceUrlPart => part.type === "source-url",
   )
-  const combinedThought = buildCombinedThought(dedupedParts, extractedThought)
+  const combinedThought = buildCombinedThought({
+    dedupedParts,
+    extractedThought,
+  })
   const collectedTools = collectTools(cleanedParts)
   const webSearchPart = dedupedParts.find(
     (p): p is WebSearchToolPart => p.type === "tool-web_search",
   )
   const hasResponseStarted = checkHasResponseStarted(dedupedParts)
-  const hasThoughtOrTools = checkHasThoughtOrTools(
+  const hasThoughtOrTools = checkHasThoughtOrTools({
     combinedThought,
-    collectedTools.length > 0,
+    hasTools: collectedTools.length > 0,
     isStreaming,
     hasResponseStarted,
-  )
+  })
   const rawOtherParts = dedupedParts.filter((p) =>
     isOtherPart(p, hasThoughtOrTools),
   )

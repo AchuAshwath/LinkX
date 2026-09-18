@@ -126,4 +126,38 @@ describe("useTranscriptTree - DAG session tree utilities", () => {
       "local_assistant",
     ])
   })
+
+  it("ensureMessageParentIds heals legacy messages with explicit parentId: null", () => {
+    const legacyNull: ChatUIMessage[] = [
+      { id: "m1", parentId: null, role: "user", parts: [] },
+      { id: "m2", parentId: null, role: "assistant", parts: [] },
+      { id: "m3", parentId: null, role: "user", parts: [] },
+    ]
+    const normalized = ensureMessageParentIds(legacyNull)
+    expect(normalized[0].parentId).toBeNull()
+    expect(normalized[1].parentId).toBe("m1")
+    expect(normalized[2].parentId).toBe("m2")
+  })
+
+  it("ensureMessageParentIds preserves snake_case parent_id from server", () => {
+    const serverMsgs: any[] = [
+      { id: "m1", parent_id: null, role: "user", parts: [] },
+      { id: "m2", parent_id: "m1", role: "assistant", parts: [] },
+      { id: "m3a", parent_id: "m2", role: "user", parts: [] },
+      { id: "m3b", parent_id: "m2", role: "user", parts: [] },
+    ]
+    const normalized = ensureMessageParentIds(serverMsgs)
+    expect(normalized[0].parentId).toBeNull()
+    expect(normalized[1].parentId).toBe("m1")
+    expect(normalized[2].parentId).toBe("m2")
+    expect(normalized[3].parentId).toBe("m2")
+
+    const siblingsA = findSiblingVersions(normalized, "m3a")
+    expect(siblingsA.totalVersions).toBe(2)
+    expect(siblingsA.currentIndex).toBe(1)
+
+    const siblingsB = findSiblingVersions(normalized, "m3b")
+    expect(siblingsB.totalVersions).toBe(2)
+    expect(siblingsB.currentIndex).toBe(2)
+  })
 })

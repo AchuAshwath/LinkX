@@ -3,6 +3,32 @@ import type { BranchVersionInfo, ChatUIMessage } from "@/components/Chat/types"
 /**
  * Ensures all messages have a parentId, inferring sequentially from array order for legacy data.
  */
+function resolveRawParentId(raw: ChatUIMessage): string | null | undefined {
+  if (raw.parentId !== undefined) return raw.parentId
+  const snake = (raw as unknown as Record<string, unknown>).parent_id
+  return typeof snake === "string" || snake === null ? snake : undefined
+}
+
+function computeMessageParentId({
+  index,
+  rawParentId,
+  hasForkedFrom,
+  prevId,
+}: {
+  index: number
+  rawParentId: string | null | undefined
+  hasForkedFrom: boolean
+  prevId: string | null
+}): string | null {
+  if (index === 0) return null
+  if (rawParentId !== undefined && rawParentId !== null) return rawParentId
+  if (rawParentId === null && hasForkedFrom) return null
+  return prevId
+}
+
+/**
+ * Ensures all messages have a parentId, inferring sequentially from array order for legacy data.
+ */
 export function ensureMessageParentIds(
   messages: ChatUIMessage[],
 ): ChatUIMessage[] {
@@ -11,16 +37,60 @@ export function ensureMessageParentIds(
   let prevId: string | null = null
 
   for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i]
-    const parentId =
-      msg.parentId !== undefined ? msg.parentId : i === 0 ? null : prevId
-    result.push({
-      ...msg,
-      parentId,
+    const raw = messages[i]
+    const rawParentId = resolveRawParentId(raw)
+    const rawRecord = raw as unknown as Record<string, unknown>
+    const forkedFrom = (raw.forkedFromId ?? rawRecord.forked_from_id) as
+      | string
+      | undefined
+
+    const parentId = computeMessageParentId({
+      index: i,
+      rawParentId,
+      hasForkedFrom: Boolean(forkedFrom),
+      prevId,
     })
-    prevId = msg.id
+
+    result.push({
+      ...raw,
+      parentId,
+      forkedFromId: forkedFrom ?? raw.forkedFromId,
+    })
+    prevId = raw.id
   }
   return result
+}
+
+function findStartNodeId(
+  messages: ChatUIMessage[],
+  idMap: Map<string, ChatUIMessage>,
+  activeLeafId?: string | null,
+): string | null {
+  if (activeLeafId && idMap.has(activeLeafId)) {
+    return activeLeafId
+  }
+  return messages[messages.length - 1]?.id ?? null
+}
+
+function tracePathToRoot(
+  targetId: string,
+  idMap: Map<string, ChatUIMessage>,
+): ChatUIMessage[] {
+  const visited = new Set<string>()
+  const path: ChatUIMessage[] = []
+  let currId: string | null | undefined = targetId
+
+  while (currId) {
+    if (visited.has(currId)) break
+    visited.add(currId)
+    const node = idMap.get(currId)
+    if (!node) break
+    path.push(node)
+    currId = node.parentId
+  }
+
+  path.reverse()
+  return path
 }
 
 /**
@@ -33,47 +103,31 @@ export function resolveActiveBranch(
 ): ChatUIMessage[] {
   if (!messages || messages.length === 0) return []
   const normalized = ensureMessageParentIds(messages)
-  const idMap = new Map<string, ChatUIMessage>()
-  for (const m of normalized) {
-    idMap.set(m.id, m)
-  }
+  const idMap = new Map<string, ChatUIMessage>(normalized.map((m) => [m.id, m]))
 
-  const startId =
-    activeLeafId && idMap.has(activeLeafId)
-      ? activeLeafId
-      : normalized[normalized.length - 1]?.id
-
-  if (!startId || !idMap.has(startId)) {
-    return normalized
-  }
+  const startId = findStartNodeId(normalized, idMap, activeLeafId)
+  if (!startId) return normalized
 
   const targetId = findDeepestLeaf(normalized, startId)
-  if (!targetId || !idMap.has(targetId)) {
-    return normalized
-  }
+  if (!idMap.has(targetId)) return normalized
 
-  const visited = new Set<string>()
-  const path: ChatUIMessage[] = []
-  let currId: string | null | undefined = targetId
-
-  while (currId && idMap.has(currId) && !visited.has(currId)) {
-    visited.add(currId)
-    const node: ChatUIMessage | undefined = idMap.get(currId)
-    if (!node) break
-    path.push(node)
-    currId = node.parentId
-  }
-
-  path.reverse()
-  return path
+  return tracePathToRoot(targetId, idMap)
 }
 
 export interface SiblingVersionsResult extends BranchVersionInfo {
   siblings: ChatUIMessage[]
 }
 
+function matchesSiblingBranch(
+  candidate: ChatUIMessage,
+  role: string,
+  parentId: string | null,
+): boolean {
+  return candidate.role === role && (candidate.parentId ?? null) === parentId
+}
+
 /**
- * Finds all sibling versions at the same branch point (sharing identical parentId).
+ * Finds all sibling versions at the same branch point (sharing identical parentId and role).
  */
 export function findSiblingVersions(
   messages: ChatUIMessage[],
@@ -89,8 +143,8 @@ export function findSiblingVersions(
   }
 
   const targetParentId = target.parentId ?? null
-  const siblings = normalized.filter(
-    (m) => (m.parentId ?? null) === targetParentId,
+  const siblings = normalized.filter((m) =>
+    matchesSiblingBranch(m, target.role, targetParentId),
   )
   const idx = siblings.findIndex((m) => m.id === messageId)
 
@@ -101,6 +155,31 @@ export function findSiblingVersions(
   }
 }
 
+function buildChildrenMap(
+  messages: ChatUIMessage[],
+): Map<string, ChatUIMessage[]> {
+  const childrenMap = new Map<string, ChatUIMessage[]>()
+  for (const m of messages) {
+    if (!m.parentId) continue
+    const list = childrenMap.get(m.parentId) ?? []
+    list.push(m)
+    childrenMap.set(m.parentId, list)
+  }
+  return childrenMap
+}
+
+function getNextLeafChild(
+  curr: string,
+  childrenMap: Map<string, ChatUIMessage[]>,
+  visited: Set<string>,
+): string | null {
+  const children = childrenMap.get(curr)
+  if (!children || children.length === 0) return null
+  const latest = children[children.length - 1]
+  if (visited.has(latest.id)) return null
+  return latest.id
+}
+
 /**
  * Finds the deepest leaf descendant starting from a node, following the latest child.
  */
@@ -109,30 +188,31 @@ export function findDeepestLeaf(
   nodeId: string,
 ): string {
   const normalized = ensureMessageParentIds(messages)
-  const childrenMap = new Map<string, ChatUIMessage[]>()
-
-  for (const m of normalized) {
-    const pId = m.parentId
-    if (pId) {
-      const list = childrenMap.get(pId) ?? []
-      list.push(m)
-      childrenMap.set(pId, list)
-    }
-  }
-
+  const childrenMap = buildChildrenMap(normalized)
   let curr = nodeId
   const visited = new Set<string>([curr])
 
   while (childrenMap.has(curr)) {
-    const children = childrenMap.get(curr)!
-    if (children.length === 0) break
-    const latestChild = children[children.length - 1]
-    if (visited.has(latestChild.id)) break
-    visited.add(latestChild.id)
-    curr = latestChild.id
+    const nextChildId = getNextLeafChild(curr, childrenMap, visited)
+    if (!nextChildId) break
+    visited.add(nextChildId)
+    curr = nextChildId
   }
 
   return curr
+}
+
+function getAdjacentSibling(
+  siblings: ChatUIMessage[],
+  currentIndex: number,
+  direction: "prev" | "next",
+): ChatUIMessage | null {
+  if (direction === "prev") {
+    return currentIndex > 1 ? (siblings[currentIndex - 2] ?? null) : null
+  }
+  return currentIndex < siblings.length
+    ? (siblings[currentIndex] ?? null)
+    : null
 }
 
 /**
@@ -147,11 +227,5 @@ export function findSiblingByDirection(
     messages,
     currentMessageId,
   )
-  if (direction === "prev" && currentIndex > 1) {
-    return siblings[currentIndex - 2] ?? null
-  }
-  if (direction === "next" && currentIndex < siblings.length) {
-    return siblings[currentIndex] ?? null
-  }
-  return null
+  return getAdjacentSibling(siblings, currentIndex, direction)
 }

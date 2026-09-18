@@ -9,6 +9,7 @@ import type {
   ToolCallItem,
   TrendingArtifact,
 } from "@/components/Chat/types"
+import { ensureMessageParentIds } from "@/hooks/useTranscriptTree"
 
 export function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -545,28 +546,29 @@ export function applyOptimisticTurn({
   assistantMsg,
   editMessageId,
 }: ApplyOptimisticTurnOptions): ChatUIMessage[] {
+  const normalized = ensureMessageParentIds(messages)
   if (!editMessageId) {
-    const lastMsg = messages[messages.length - 1]
+    const lastMsg = normalized[normalized.length - 1]
     userMsg.parentId = userMsg.parentId ?? (lastMsg ? lastMsg.id : null)
     assistantMsg.parentId = userMsg.id
-    return [...messages, userMsg, assistantMsg]
+    return [...normalized, userMsg, assistantMsg]
   }
 
-  const target = messages.find((m) => m.id === editMessageId)
+  const target = normalized.find((m) => m.id === editMessageId)
   if (!target) {
-    return [...messages, userMsg, assistantMsg]
+    return [...normalized, userMsg, assistantMsg]
   }
 
   if (target.role === "user") {
     userMsg.parentId = target.parentId ?? null
     userMsg.forkedFromId = target.id
     assistantMsg.parentId = userMsg.id
-    return [...messages, userMsg, assistantMsg]
+    return [...normalized, userMsg, assistantMsg]
   }
 
   // Assistant regeneration or retry - create sibling assistant turn
   assistantMsg.parentId = target.parentId ?? null
-  return [...messages, assistantMsg]
+  return [...normalized, assistantMsg]
 }
 
 interface DispatchTurnOptions {
