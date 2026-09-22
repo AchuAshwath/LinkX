@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
@@ -32,10 +34,13 @@ from app.services.ai_image_utils import sanitize_image_urls as _clean_image_urls
 from app.services.ai_model_catalog import get_available_ai_models
 from app.services.ai_turn_accumulator import (
     TranscriptEditPayload,
+    _mark_running_tools_interrupted,
     append_or_update_draft_part,
     apply_transcript_branch,
     resolve_active_branch,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ai/threads", tags=["ai-threads"])
 
@@ -379,16 +384,65 @@ class ChatStreamContext(NamedTuple):
     effective_prompt: str
 
 
-async def _generate_chat_events(
+HEARTBEAT_INTERVAL_SECONDS = 12.0
+
+
+async def _cancel_pending_task(*, task: asyncio.Task[Any]) -> None:
+    if task.done():
+        return
+    task.cancel()
+    try:
+        await task
+    except (asyncio.CancelledError, StopAsyncIteration):
+        pass
+
+
+async def _fetch_anext(*, runner_iter: Any) -> Any:
+    return await runner_iter.__anext__()
+
+
+def _extract_completed_item(
     *,
-    ctx: ChatStreamContext,
-) -> AsyncGenerator[str, None]:
-    """Execute chat stream and yield formatted SSE events."""
-    accumulated_text = ""
-    assistant_parts: list[dict[str, Any]] = []
+    task: asyncio.Task[Any],
+    runner_iter: Any,
+) -> tuple[Any, asyncio.Task[Any] | None]:
+    try:
+        item = task.result()
+        return item, asyncio.create_task(_fetch_anext(runner_iter=runner_iter))
+    except StopAsyncIteration:
+        return None, None
 
-    target_model = ctx.body.model
 
+async def _stream_events_with_heartbeat(
+    *,
+    runner: AsyncGenerator[tuple[str, dict[str, Any]], None],
+    heartbeat_interval: float = HEARTBEAT_INTERVAL_SECONDS,
+) -> AsyncGenerator[tuple[str, dict[str, Any]] | str, None]:
+    """Yield stream runner events, interleaving SSE comments (pings) during idle intervals."""
+    runner_iter = runner.__aiter__()
+    next_task: asyncio.Task[Any] | None = asyncio.create_task(
+        _fetch_anext(runner_iter=runner_iter)
+    )
+
+    try:
+        while next_task is not None:
+            done, _ = await asyncio.wait({next_task}, timeout=heartbeat_interval)
+            if not done:
+                yield ": ping\n\n"
+                continue
+            item, next_task = _extract_completed_item(
+                task=next_task, runner_iter=runner_iter
+            )
+            if item is not None:
+                yield item
+    finally:
+        if next_task is not None:
+            await _cancel_pending_task(task=next_task)
+
+
+def _build_chat_runner(
+    *, ctx: ChatStreamContext
+) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
     active_path = resolve_active_branch(
         messages=ctx.thread.transcript.get("messages", []),
         active_leaf_id=ctx.thread.active_leaf_id,
@@ -397,31 +451,88 @@ async def _generate_chat_events(
         "messages": active_path,
         "active_leaf_id": ctx.thread.active_leaf_id,
     }
+    return default_chat_stream_runner(
+        message=ctx.effective_prompt,
+        transcript=transcript_copy,
+        model=ctx.body.model,
+        images=ctx.clean_images or None,
+        user_id=ctx.user_id_str,
+        session=ctx.session,
+        thread_id=str(ctx.thread.id),
+        thread=ctx.thread,
+    )
+
+
+def _process_stream_item(
+    *,
+    item: tuple[str, dict[str, Any]],
+    ctx: ChatStreamContext,
+    assistant_parts: list[dict[str, Any]],
+) -> tuple[str, str | None]:
+    event_name, payload = item
+    if event_name == "done":
+        return "", None
+    delta = _collect_stream_part(
+        event_name=event_name,
+        payload=payload,
+        assistant_parts=assistant_parts,
+    )
+    _maybe_link_draft_post(
+        thread=ctx.thread,
+        session=ctx.session,
+        event_name=event_name,
+        payload=payload,
+    )
+    return delta, format_sse(event=event_name, data=payload)
+
+
+async def _persist_partial_turn_safely(
+    *,
+    ctx: ChatStreamContext,
+    accumulated_text: str,
+    assistant_parts: list[dict[str, Any]],
+) -> None:
+    if not assistant_parts and not accumulated_text:
+        return
+    _mark_running_tools_interrupted(assistant_parts)
     try:
-        async for event_name, payload in default_chat_stream_runner(
-            message=ctx.effective_prompt,
-            transcript=transcript_copy,
-            model=target_model,
-            images=ctx.clean_images or None,
-            user_id=ctx.user_id_str,
+        await _save_assistant_turn(
             session=ctx.session,
-            thread_id=str(ctx.thread.id),
-        ):
-            if event_name == "done":
+            thread=ctx.thread,
+            payload=AssistantTurnPayload(
+                body=ctx.body,
+                accumulated_text=accumulated_text,
+                assistant_parts=assistant_parts,
+            ),
+        )
+    except Exception as save_err:
+        logger.warning(
+            "Failed to save partial assistant turn on disconnect: %s", save_err
+        )
+
+
+async def _generate_chat_events(
+    *,
+    ctx: ChatStreamContext,
+) -> AsyncGenerator[str, None]:
+    """Execute chat stream and yield formatted SSE events."""
+    accumulated_text = ""
+    assistant_parts: list[dict[str, Any]] = []
+
+    runner = _build_chat_runner(ctx=ctx)
+    try:
+        async for item in _stream_events_with_heartbeat(runner=runner):
+            if isinstance(item, str):
+                yield item
                 continue
-            delta = _collect_stream_part(
-                event_name=event_name,
-                payload=payload,
+            delta, sse_chunk = _process_stream_item(
+                item=item,
+                ctx=ctx,
                 assistant_parts=assistant_parts,
             )
             accumulated_text += delta
-            _maybe_link_draft_post(
-                thread=ctx.thread,
-                session=ctx.session,
-                event_name=event_name,
-                payload=payload,
-            )
-            yield format_sse(event=event_name, data=payload)
+            if sse_chunk:
+                yield sse_chunk
 
         await _save_assistant_turn(
             session=ctx.session,
@@ -434,6 +545,13 @@ async def _generate_chat_events(
         )
         yield format_sse(event="done", data={})
 
+    except (asyncio.CancelledError, GeneratorExit):
+        await _persist_partial_turn_safely(
+            ctx=ctx,
+            accumulated_text=accumulated_text,
+            assistant_parts=assistant_parts,
+        )
+        raise
     except Exception as exc:
         yield format_sse(event="error", data={"message": str(exc)})
 

@@ -257,18 +257,33 @@ function useThreadDrafts() {
   return { threadDrafts, setThreadDraft, clearThreadDraft }
 }
 
-function useInitialActiveThread(
-  threads: ChatThreadPublic[],
-  initialThreadId: string | undefined,
-  activeThreadId: string | null,
-  setActiveThreadId: (id: string) => void,
-) {
+interface InitialActiveThreadOptions {
+  threads: ChatThreadPublic[]
+  initialThreadId?: string
+  activeThreadId: string | null
+  isStreaming: boolean
+  isAutoRun?: boolean
+  setActiveThreadId: (id: string) => void
+}
+
+function useInitialActiveThread({
+  threads,
+  initialThreadId,
+  activeThreadId,
+  isStreaming,
+  isAutoRun,
+  setActiveThreadId,
+}: InitialActiveThreadOptions) {
   const initialLoadedRef = React.useRef(false)
   React.useEffect(() => {
     if (initialLoadedRef.current) {
       return
     }
-    if (activeThreadId) {
+    if (isAutoRun) {
+      initialLoadedRef.current = true
+      return
+    }
+    if (activeThreadId || isStreaming) {
       initialLoadedRef.current = true
       return
     }
@@ -281,7 +296,14 @@ function useInitialActiveThread(
       setActiveThreadId(threads[0].id)
       initialLoadedRef.current = true
     }
-  }, [threads, initialThreadId, activeThreadId, setActiveThreadId])
+  }, [
+    threads,
+    initialThreadId,
+    activeThreadId,
+    isStreaming,
+    isAutoRun,
+    setActiveThreadId,
+  ])
 }
 
 function useCreateThreadMutation(
@@ -730,12 +752,14 @@ function useThreadActions({
 function useChatEngine({
   threads,
   initialThreadId,
+  isAutoRun,
   selectedModelId,
   core,
   queueState,
 }: {
   threads: ChatThreadPublic[]
   initialThreadId?: string
+  isAutoRun?: boolean
   selectedModelId: string
   core: ChatFeedCore
   queueState: TurnQueueState
@@ -748,12 +772,15 @@ function useChatEngine({
     startStream: core.streamState.startStream,
   })
 
-  useInitialActiveThread(
+  useInitialActiveThread({
     threads,
     initialThreadId,
-    core.activeThreadId,
-    core.setActiveThreadId,
-  )
+    activeThreadId: core.activeThreadId,
+    isStreaming: core.streamState.isStreaming,
+    isAutoRun,
+    setActiveThreadId: core.setActiveThreadId,
+  })
+
   useThreadTranscript({
     activeThreadId: core.activeThreadId,
     streamingThreadId: core.streamState.streamingThreadId,
@@ -948,6 +975,7 @@ export interface UseAIChatFeedStateProps {
   threads: ChatThreadPublic[]
   selectedModelId: string
   initialThreadId?: string
+  isAutoRun?: boolean
 }
 
 export function useAIChatFeedState(options: UseAIChatFeedStateProps) {
@@ -963,10 +991,12 @@ export function useAIChatFeedState(options: UseAIChatFeedStateProps) {
   const { handleSendMessage } = useChatEngine({
     threads: options.threads,
     initialThreadId: options.initialThreadId,
+    isAutoRun: options.isAutoRun,
     selectedModelId: options.selectedModelId,
     core,
     queueState,
   })
+
   const threadActions = useThreadActions({
     core,
     queueState,

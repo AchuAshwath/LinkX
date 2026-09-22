@@ -10,13 +10,15 @@ import {
 import { DeleteThreadConfirmDialog } from "@/components/Chat/DeleteThreadConfirmDialog"
 import { PromptForm } from "@/components/Chat/PromptForm"
 import { RenameThreadDialog } from "@/components/Chat/RenameThreadDialog"
+import {
+  type AIChatUrlParams,
+  getAIChatUrlParams,
+  useAIChatContext,
+} from "@/context/AIChatContext"
 import { useAIChatFeedState } from "@/hooks/useAIChatFeedState"
+import { useAIModelSelection } from "@/hooks/useAIModelSelection"
 
-interface AISearchParams {
-  threadId?: string
-  prompt?: string
-  autoRun?: boolean
-}
+type AISearchParams = AIChatUrlParams
 
 export const Route = createFileRoute("/_layout/ai")({
   validateSearch: (search: Record<string, unknown>): AISearchParams => ({
@@ -33,49 +35,6 @@ export const Route = createFileRoute("/_layout/ai")({
     ],
   }),
 })
-
-const AI_MODEL_STORAGE_KEY = "linkx_ai_selected_model"
-
-function getStoredModel(): string | null {
-  try {
-    return window?.localStorage?.getItem(AI_MODEL_STORAGE_KEY) ?? null
-  } catch {
-    return null
-  }
-}
-
-function persistStoredModel(modelId: string): void {
-  try {
-    window?.localStorage?.setItem(AI_MODEL_STORAGE_KEY, modelId)
-  } catch {
-    // ignore
-  }
-}
-
-function getInitialStoredModel(): string {
-  return getStoredModel() || ""
-}
-
-function resolveFallbackModel(modelsData?: {
-  default_model?: string | null
-  data?: { id: string }[]
-}): string {
-  return modelsData?.default_model || modelsData?.data?.[0]?.id || ""
-}
-
-function computeReconciledModel(modelsData?: {
-  default_model?: string | null
-  data?: { id: string }[]
-}): string | null {
-  if (!modelsData) return null
-  const available = modelsData.data ?? []
-  if (available.length === 0) return null
-  const saved = getStoredModel()
-  if (!saved || !available.some((m) => m.id === saved)) {
-    return resolveFallbackModel(modelsData)
-  }
-  return null
-}
 
 function filterAndSortThreads(
   threadList: ChatThreadPublic[],
@@ -100,42 +59,38 @@ function filterAndSortThreads(
   return result
 }
 
-function getUrlSearchParams(): AISearchParams {
-  if (typeof window === "undefined") return {}
-  try {
-    const params = new URLSearchParams(window.location.search)
-    return {
-      threadId: params.get("threadId") || undefined,
-      prompt: params.get("prompt") || undefined,
-      autoRun: params.get("autoRun") === "true",
+function cleanTransientUrlParams(url: URL): boolean {
+  let changed = false
+  for (const key of ["autoRun", "prompt"]) {
+    if (url.searchParams.has(key)) {
+      url.searchParams.delete(key)
+      changed = true
     }
-  } catch {
-    return {}
   }
+  return changed
+}
+
+function syncThreadIdParam(url: URL, activeThreadId: string | null): boolean {
+  const current = url.searchParams.get("threadId")
+  if (activeThreadId && current !== activeThreadId) {
+    url.searchParams.set("threadId", activeThreadId)
+    return true
+  }
+  if (!activeThreadId && current) {
+    url.searchParams.delete("threadId")
+    return true
+  }
+  return false
 }
 
 function syncBrowserUrl(activeThreadId: string | null) {
   if (typeof window === "undefined") return
   try {
     const url = new URL(window.location.href)
-    let changed = false
-    if (url.searchParams.has("autoRun")) {
-      url.searchParams.delete("autoRun")
-      changed = true
-    }
-    if (url.searchParams.has("prompt")) {
-      url.searchParams.delete("prompt")
-      changed = true
-    }
-    const currentParam = url.searchParams.get("threadId")
-    if (activeThreadId && currentParam !== activeThreadId) {
-      url.searchParams.set("threadId", activeThreadId)
-      changed = true
-    } else if (!activeThreadId && currentParam) {
-      url.searchParams.delete("threadId")
-      changed = true
-    }
-    if (changed) {
+    if (url.pathname !== "/ai") return
+    const transientChanged = cleanTransientUrlParams(url)
+    const threadChanged = syncThreadIdParam(url, activeThreadId)
+    if (transientChanged || threadChanged) {
       window.history.replaceState({}, "", url.pathname + url.search)
     }
   } catch {
@@ -146,41 +101,38 @@ function syncBrowserUrl(activeThreadId: string | null) {
 function useAutoRunPrompt({
   autoRun,
   prompt,
+  hasExplicitThreadId,
+  activeThreadId,
+  handleNewChat,
   handleSendMessage,
 }: {
   autoRun?: boolean
   prompt?: string
+  hasExplicitThreadId: boolean
+  activeThreadId: string | null
+  handleNewChat: () => void
   handleSendMessage: (text: string) => void
 }) {
-  const executedRef = React.useRef(false)
+  const executedPromptRef = React.useRef<string | null>(null)
   React.useEffect(() => {
-    if (!autoRun || !prompt || executedRef.current) return
-    executedRef.current = true
+    if (!autoRun || !prompt) return
+    if (executedPromptRef.current === prompt) return
+
+    if (!hasExplicitThreadId && activeThreadId !== null) {
+      handleNewChat()
+      return
+    }
+
+    executedPromptRef.current = prompt
     handleSendMessage(prompt)
-  }, [autoRun, prompt, handleSendMessage])
-}
-
-function useAIModelSelection() {
-  const { data: modelsData } = useQuery({
-    queryKey: ["ai-models"],
-    queryFn: () => AiThreadsService.listAiModels(),
-  })
-
-  const [selectedModelId, setSelectedModelIdState] = React.useState<string>(
-    getInitialStoredModel,
-  )
-
-  const setSelectedModelId = React.useCallback((modelId: string) => {
-    setSelectedModelIdState(modelId)
-    persistStoredModel(modelId)
-  }, [])
-
-  React.useEffect(() => {
-    const nextModel = computeReconciledModel(modelsData)
-    if (nextModel) setSelectedModelId(nextModel)
-  }, [modelsData, setSelectedModelId])
-
-  return { selectedModelId, setSelectedModelId, modelsData }
+  }, [
+    autoRun,
+    prompt,
+    hasExplicitThreadId,
+    activeThreadId,
+    handleNewChat,
+    handleSendMessage,
+  ])
 }
 
 function useThreadSidebarFilters(threads: ChatThreadPublic[]) {
@@ -412,29 +364,37 @@ function AIChatCenterColumn({
   )
 }
 
-function AIPage() {
-  const search = React.useMemo(() => getUrlSearchParams(), [])
+interface AIPageViewProps {
+  feedState: ReturnType<typeof useAIChatFeedState>
+  threads: ChatThreadPublic[]
+  isThreadsLoading: boolean
+  selectedModelId: string
+  setSelectedModelId: (id: string) => void
+  modelsData?: {
+    default_model?: string | null
+    data?: { id: string; name?: string }[]
+  }
+  searchThreadId?: string
+  autoRun?: boolean
+  prompt?: string
+}
+
+function AIPageView({
+  feedState,
+  threads,
+  isThreadsLoading,
+  selectedModelId,
+  setSelectedModelId,
+  modelsData,
+  searchThreadId,
+  autoRun,
+  prompt,
+}: AIPageViewProps) {
   const queryClient = useQueryClient()
   const promptInputRef = React.useRef<HTMLTextAreaElement>(null)
   const [openMenuThreadId, setOpenMenuThreadId] = React.useState<string | null>(
     null,
   )
-
-  const { selectedModelId, setSelectedModelId, modelsData } =
-    useAIModelSelection()
-
-  const { data: threadsData, isLoading: isThreadsLoading } = useQuery({
-    queryKey: ["ai-threads"],
-    queryFn: () => AiThreadsService.listChatThreads({ skip: 0, limit: 100 }),
-  })
-
-  const threads = threadsData?.data ?? []
-
-  const feedState = useAIChatFeedState({
-    threads,
-    selectedModelId,
-    initialThreadId: search.threadId,
-  })
 
   const sidebarFilters = useThreadSidebarFilters(threads)
 
@@ -455,8 +415,11 @@ function AIPage() {
   const isCurrentThreadBusy = isCurrentThreadStreaming || isCurrentThreadQueued
 
   useAutoRunPrompt({
-    autoRun: search.autoRun,
-    prompt: search.prompt,
+    autoRun,
+    prompt,
+    hasExplicitThreadId: Boolean(searchThreadId),
+    activeThreadId: feedState.activeThreadId,
+    handleNewChat: feedState.handleNewChat,
     handleSendMessage: feedState.handleSendMessage,
   })
 
@@ -599,4 +562,60 @@ function AIPage() {
       />
     </div>
   )
+}
+
+function AIPageFallback({ search }: { search: AISearchParams }) {
+  const { selectedModelId, setSelectedModelId, modelsData } =
+    useAIModelSelection()
+
+  const { data: threadsData, isLoading: isThreadsLoading } = useQuery({
+    queryKey: ["ai-threads"],
+    queryFn: () => AiThreadsService.listChatThreads({ skip: 0, limit: 100 }),
+  })
+
+  const threads = threadsData?.data ?? []
+
+  const feedState = useAIChatFeedState({
+    threads,
+    selectedModelId,
+    initialThreadId: search.threadId,
+    isAutoRun: Boolean(search.autoRun || search.prompt),
+  })
+
+  return (
+    <AIPageView
+      feedState={feedState}
+      threads={threads}
+      isThreadsLoading={isThreadsLoading}
+      selectedModelId={selectedModelId}
+      setSelectedModelId={setSelectedModelId}
+      modelsData={modelsData}
+      searchThreadId={search.threadId}
+      autoRun={search.autoRun}
+      prompt={search.prompt}
+    />
+  )
+}
+
+function AIPage() {
+  const search = getAIChatUrlParams()
+  const context = useAIChatContext()
+
+  if (context) {
+    return (
+      <AIPageView
+        feedState={context.feedState}
+        threads={context.threads}
+        isThreadsLoading={context.isThreadsLoading}
+        selectedModelId={context.selectedModelId}
+        setSelectedModelId={context.setSelectedModelId}
+        modelsData={context.modelsData}
+        searchThreadId={search.threadId}
+        autoRun={search.autoRun}
+        prompt={search.prompt}
+      />
+    )
+  }
+
+  return <AIPageFallback search={search} />
 }

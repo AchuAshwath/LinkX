@@ -458,3 +458,25 @@ def test_chat_stream_filters_malformed_image_schemes(
     assert len(parts) == 2
     assert parts[0]["text"] == "Check this"
     assert parts[1]["image_url"]["url"] == "https://example.com/valid.jpg"
+
+
+@pytest.mark.anyio
+async def test_stream_events_with_heartbeat_emits_ping() -> None:
+    import asyncio
+
+    from app.api.routes.ai_threads import _stream_events_with_heartbeat
+
+    async def slow_runner():
+        yield ("thought", {"content": "thinking"})
+        await asyncio.sleep(0.05)
+        yield ("text_delta", {"content": "hello"})
+
+    events = []
+    async for item in _stream_events_with_heartbeat(
+        runner=slow_runner(), heartbeat_interval=0.02
+    ):
+        events.append(item)
+
+    assert ("thought", {"content": "thinking"}) in events
+    assert ": ping\n\n" in events
+    assert ("text_delta", {"content": "hello"}) in events

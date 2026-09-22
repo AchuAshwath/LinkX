@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { AiThreadsService } from "@/client"
+import { AIChatProvider } from "@/context/AIChatContext"
 import { Route } from "@/routes/_layout/ai"
 
 // Mock AiThreadsService
@@ -15,6 +16,10 @@ vi.mock("@/client", async () => {
       createChatThread: vi.fn(),
       updateChatThread: vi.fn(),
       deleteChatThread: vi.fn(),
+      listAiModels: vi.fn().mockResolvedValue({
+        data: [{ id: "gpt-5.4", name: "GPT-5.4" }],
+        default_model: "gpt-5.4",
+      }),
     },
   }
 })
@@ -330,5 +335,148 @@ describe("AIPage component with PostgreSQL backend persistence", () => {
     expect(
       await screen.findByText("What would you like to create?"),
     ).toBeInTheDocument()
+  })
+
+  it("preserves active streaming when unmounting and remounting AIPage under AIChatProvider (navigation resilience)", async () => {
+    let controller: ReadableStreamDefaultController<Uint8Array> | null = null
+    const stream = new ReadableStream<Uint8Array>({
+      start(ctrl) {
+        controller = ctrl
+      },
+    })
+    const fetchMock = vi.fn().mockImplementation(async () => {
+      return new Response(stream, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      })
+    })
+    globalThis.fetch = fetchMock
+
+    const Component = Route.options.component as React.ComponentType
+
+    function TestApp({ showPage }: { showPage: boolean }) {
+      return (
+        <AIChatProvider>
+          {showPage ? <Component /> : <div>Navigated Away to Home</div>}
+        </AIChatProvider>
+      )
+    }
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const { rerender } = render(
+      <QueryClientProvider client={queryClient}>
+        <TestApp showPage={true} />
+      </QueryClientProvider>,
+    )
+
+    await screen.findByText("Rich Markdown & Typography")
+    const input = screen.getByPlaceholderText("Ask anything")
+    fireEvent.change(input, { target: { value: "Streaming prompt" } })
+    fireEvent.submit(input.closest("form")!)
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalled()
+    })
+
+    // Simulate navigation away to another page (e.g. /home)
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <TestApp showPage={false} />
+      </QueryClientProvider>,
+    )
+    expect(screen.getByText("Navigated Away to Home")).toBeInTheDocument()
+
+    // While away on another page, the stream emits text delta
+    const encoder = new TextEncoder()
+    controller!.enqueue(
+      encoder.encode(
+        `event: text_delta\ndata: {"content": "Data arrived while away"}\n\n`,
+      ),
+    )
+
+    // Simulate navigation back to /ai
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <TestApp showPage={true} />
+      </QueryClientProvider>,
+    )
+
+    // The text delta should be visible and retained!
+    expect(
+      await screen.findByText("Data arrived while away"),
+    ).toBeInTheDocument()
+
+    controller!.close()
+  })
+
+  it("handles autoRun prompt navigation without clobbering to older thread-1 (Issue #135)", async () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/ai?prompt=What%20are%20the%20trending%20topics&autoRun=true",
+    )
+    const Component = Route.options.component as React.ComponentType
+    renderWithClient(
+      <AIChatProvider>
+        <Component />
+      </AIChatProvider>,
+    )
+
+    await waitFor(() => {
+      expect(AiThreadsService.createChatThread).toHaveBeenCalledWith({
+        requestBody: {
+          origin: "composer",
+          prompt: "What are the trending topics",
+        },
+      })
+    })
+
+    // Must not have selected older thread-1
+    expect(AiThreadsService.getChatThread).not.toHaveBeenCalledWith({
+      id: "thread-1",
+    })
+  })
+
+  it("isolates autoRun prompt into a new thread when transitioning from an existing thread", async () => {
+    window.history.replaceState({}, "", "/ai?threadId=thread-1")
+    const Component = Route.options.component as React.ComponentType
+
+    function TestApp({ url }: { url: string }) {
+      window.history.replaceState({}, "", url)
+      return (
+        <AIChatProvider>
+          <Component />
+        </AIChatProvider>
+      )
+    }
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const { rerender } = render(
+      <QueryClientProvider client={queryClient}>
+        <TestApp url="/ai?threadId=thread-1" />
+      </QueryClientProvider>,
+    )
+
+    await screen.findByText("Rich Markdown & Typography")
+    vi.mocked(AiThreadsService.createChatThread).mockClear()
+
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <TestApp url="/ai?prompt=What%20is%20trending&autoRun=true" />
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => {
+      expect(AiThreadsService.createChatThread).toHaveBeenCalledWith({
+        requestBody: {
+          origin: "composer",
+          prompt: "What is trending",
+        },
+      })
+    })
   })
 })
