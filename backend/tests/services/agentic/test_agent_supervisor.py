@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+import pytest
 from sqlmodel import Session, select
 
 from app import crud
@@ -285,3 +286,39 @@ class TestAgentSupervisorDraftManagement:
 
         assert res["post_id"] == str(post.id)
         assert res["content"] == "Transcript branch post"
+
+
+class TestAgentSupervisorScrapingTools:
+    @pytest.mark.anyio
+    async def test_agent_supervisor_scraping_tools_config_propagation(self) -> None:
+        """Verify scrape_live_explore_trends tool passes config and clamps max_topics."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app.services.agentic.agent_supervisor import _build_scraping_tools
+
+        mock_ctx = CopilotContext(
+            user_id=str(uuid.uuid4()),
+            session=MagicMock(),
+        )
+        tools = _build_scraping_tools(mock_ctx)
+        scrape_tool = next(
+            (t for t in tools if t.name == "scrape_live_explore_trends"), None
+        )
+        assert scrape_tool is not None
+
+        with (
+            patch(
+                "app.services.agentic.agent_supervisor.raw_scrape_live_explore_trends",
+                new_callable=AsyncMock,
+                return_value={"status": "persisted", "topics": []},
+            ) as mock_raw,
+            patch("app.crud.get_latest_trending_topics", return_value=[]),
+        ):
+            fake_config = {"configurable": {"thread_id": "t1"}, "callbacks": []}
+            res = await scrape_tool.ainvoke({"max_topics": 10}, config=fake_config)
+
+            mock_raw.assert_called_once()
+            _, kwargs = mock_raw.call_args
+            assert kwargs["max_topics"] == 3
+            assert kwargs["config"]["configurable"]["thread_id"] == "t1"
+            assert res["status"] == "persisted"

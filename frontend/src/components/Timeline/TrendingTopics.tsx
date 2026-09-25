@@ -1,9 +1,11 @@
 import { useNavigate } from "@tanstack/react-router"
 import { Bot, Loader2, RefreshCw } from "lucide-react"
 import * as React from "react"
-import type { TrendingTopicPublic } from "@/client"
+import type { ChatThreadPublic, TrendingTopicPublic } from "@/client"
 import { Button } from "@/components/ui/button"
+import { useAIChatContext } from "@/context/AIChatContext"
 import { formatRelativeTime } from "@/utils"
+import { isScrapeThread, SCRAPE_PROMPT } from "@/utils/scrapeThread"
 
 export type TrendingTopic = TrendingTopicPublic
 
@@ -56,11 +58,10 @@ function TrendingHeader({
         variant="ghost"
         size="icon"
         onClick={onRefresh}
-        disabled={isPending}
-        className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-full transition-colors cursor-pointer disabled:opacity-100"
+        className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-full transition-colors cursor-pointer"
         title={
           isPending
-            ? "Refreshing trends in background..."
+            ? "Extracting trends in background (click to queue another scrape)"
             : "Refresh trending topics from X"
         }
         aria-label="Refresh trending topics from X"
@@ -93,7 +94,6 @@ function TrendingEmptyState({ isPending, onRefresh }: EmptyProps) {
         variant="outline"
         size="sm"
         onClick={onRefresh}
-        disabled={isPending}
         className="text-xs h-8 gap-1.5 rounded-full hover:text-primary hover:border-primary"
       >
         <RefreshCw
@@ -166,28 +166,40 @@ function TrendingTopicRow({ topic, isDrafting = false, onDraft }: RowProps) {
   )
 }
 
-export function TrendingTopics({
-  topics,
-  title = "Trending Topics",
-  lastScrapedAt,
-  onTopicDraft,
-}: TrendingTopicsProps) {
+function useScrapeThreadStatus(
+  chatContext: ReturnType<typeof useAIChatContext>,
+  threads: ChatThreadPublic[],
+): boolean {
+  return React.useMemo(() => {
+    if (!chatContext?.feedState) return false
+    return threads.some(
+      (t) =>
+        isScrapeThread(t) &&
+        (chatContext.feedState.isThreadStreaming(t.id) ||
+          chatContext.feedState.isThreadQueued(t.id)),
+    )
+  }, [chatContext, threads])
+}
+
+function useTrendingTopicsActions(onTopicDraft?: (title: string) => void) {
   const navigate = useNavigate()
 
-  const handleRefresh = () => {
+  const handleRefresh = React.useCallback(() => {
     navigate({
       to: "/ai",
       search: {
-        prompt: "Refresh trending topics from X",
+        prompt: SCRAPE_PROMPT,
         autoRun: true,
       },
     })
-  }
+  }, [navigate])
 
-  const handleDraftClick = (topic: TrendingTopicPublic) => {
-    if (onTopicDraft) {
-      onTopicDraft(topic.topic_title)
-    } else {
+  const handleDraftClick = React.useCallback(
+    (topic: TrendingTopicPublic) => {
+      if (onTopicDraft) {
+        onTopicDraft(topic.topic_title)
+        return
+      }
       navigate({
         to: "/ai",
         search: {
@@ -195,8 +207,45 @@ export function TrendingTopics({
           autoRun: true,
         },
       })
-    }
-  }
+    },
+    [navigate, onTopicDraft],
+  )
+
+  return { handleRefresh, handleDraftClick }
+}
+
+function TrendingTopicsList({
+  topics,
+  onDraftClick,
+}: {
+  topics: TrendingTopicPublic[]
+  onDraftClick: (topic: TrendingTopicPublic) => void
+}) {
+  return (
+    <div className="w-full divide-y divide-border/30">
+      {topics.slice(0, 3).map((topic) => (
+        <TrendingTopicRow
+          key={topic.id}
+          topic={topic}
+          isDrafting={false}
+          onDraft={() => onDraftClick(topic)}
+        />
+      ))}
+    </div>
+  )
+}
+
+export function TrendingTopics({
+  topics,
+  title = "Trending Topics",
+  lastScrapedAt,
+  onTopicDraft,
+}: TrendingTopicsProps) {
+  const chatContext = useAIChatContext()
+  const threads = chatContext?.threads ?? []
+  const isRefreshing = useScrapeThreadStatus(chatContext, threads)
+  const { handleRefresh, handleDraftClick } =
+    useTrendingTopicsActions(onTopicDraft)
 
   const relativeTime = React.useMemo(() => {
     if (!lastScrapedAt) return null
@@ -208,23 +257,17 @@ export function TrendingTopics({
       <TrendingHeader
         title={title}
         relativeTime={relativeTime}
-        isPending={false}
+        isPending={isRefreshing}
         onRefresh={handleRefresh}
       />
 
       {topics.length === 0 ? (
-        <TrendingEmptyState isPending={false} onRefresh={handleRefresh} />
+        <TrendingEmptyState
+          isPending={isRefreshing}
+          onRefresh={handleRefresh}
+        />
       ) : (
-        <div className="w-full divide-y divide-border/30">
-          {topics.slice(0, 3).map((topic) => (
-            <TrendingTopicRow
-              key={topic.id}
-              topic={topic}
-              isDrafting={false}
-              onDraft={() => handleDraftClick(topic)}
-            />
-          ))}
-        </div>
+        <TrendingTopicsList topics={topics} onDraftClick={handleDraftClick} />
       )}
     </div>
   )

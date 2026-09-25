@@ -409,3 +409,40 @@ class TestOtherPerceptionTools:
             res = await inspect_page_session_state(user_id="user-test-2", platform="x")
             assert res["connected"] is True
             assert res["authenticated"] is True
+
+    @pytest.mark.anyio
+    async def test_extract_timelines_per_topic_timeout_handling(self) -> None:
+        """Verify _extract_timelines_for_candidates handles per-topic timeout gracefully."""
+        from app.services.agentic.scraping_extraction import (
+            _extract_timelines_for_candidates,
+        )
+
+        mock_page = MagicMock()
+        selected_topics = [
+            {"topic_title": "Slow Topic", "topic_url": "https://x.com/topic/slow"},
+            {"topic_title": "Fast Topic", "topic_url": "https://x.com/topic/fast"},
+        ]
+
+        async def fake_extract_flow(
+            *, page: Any, topic_url: str, selectors: Any, mouse: Any = None
+        ) -> tuple[str, list[dict[str, Any]]]:
+            del page, selectors, mouse
+            if "slow" in topic_url:
+                raise TimeoutError("Extraction timed out")
+            return "Fast summary", [{"text": "Fast tweet"}]
+
+        with patch(
+            "app.services.agentic.scraping_extraction._extract_single_topic_flow",
+            side_effect=fake_extract_flow,
+        ):
+            tweets_map, summaries, failed = await _extract_timelines_for_candidates(
+                page=mock_page,
+                selected_topics=selected_topics,
+                selectors={},
+            )
+
+            assert len(failed) == 1
+            assert failed[0]["topic_url"] == "https://x.com/topic/slow"
+            assert failed[0]["reason"] == "timeout"
+            assert "https://x.com/topic/fast" in tweets_map
+            assert summaries.get("https://x.com/topic/fast") == "Fast summary"

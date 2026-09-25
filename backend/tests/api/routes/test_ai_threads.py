@@ -458,3 +458,66 @@ def test_chat_stream_filters_malformed_image_schemes(
     assert len(parts) == 2
     assert parts[0]["text"] == "Check this"
     assert parts[1]["image_url"]["url"] == "https://example.com/valid.jpg"
+
+
+@pytest.mark.anyio
+async def test_stream_events_with_heartbeat_emits_ping() -> None:
+    import asyncio
+
+    from app.api.routes.ai_threads import _stream_events_with_heartbeat
+
+    async def slow_runner():
+        yield ("thought", {"content": "thinking"})
+        await asyncio.sleep(0.05)
+        yield ("text_delta", {"content": "hello"})
+
+    events = []
+    async for item in _stream_events_with_heartbeat(
+        runner=slow_runner(), heartbeat_interval=0.02
+    ):
+        events.append(item)
+
+    assert ("thought", {"content": "thinking"}) in events
+    assert ": ping\n\n" in events
+    assert ("text_delta", {"content": "hello"}) in events
+
+
+@pytest.mark.anyio
+async def test_persist_partial_turn_safely_on_disconnect(db: Session) -> None:
+    from app.api.routes.ai_threads import (
+        ChatMessageRequest,
+        ChatStreamContext,
+        _persist_partial_turn_safely,
+    )
+
+    thread = create_random_chat_thread(db)
+    body = ChatMessageRequest(message="What is LinkX?", model="gpt-5.4")
+    ctx = ChatStreamContext(
+        thread=thread,
+        session=db,
+        body=body,
+        clean_images=[],
+        user_id_str=str(thread.owner_id),
+        effective_prompt="What is LinkX?",
+    )
+    assistant_parts = [
+        {"type": "thought", "text": "Analyzing query"},
+        {"type": "text", "text": "LinkX is a"},
+        {"type": "tool_call", "id": "t1", "name": "browser_tool", "state": "running"},
+    ]
+    with patch(
+        "app.api.routes.ai_threads.generate_ai_thread_title",
+        return_value="LinkX Overview",
+    ):
+        await _persist_partial_turn_safely(
+            ctx=ctx,
+            accumulated_text="LinkX is a",
+            assistant_parts=assistant_parts,
+        )
+
+    db.refresh(thread)
+    msgs = thread.transcript.get("messages", [])
+    assert len(msgs) == 1
+    assert msgs[0]["role"] == "assistant"
+    tool_part = next(p for p in msgs[0]["parts"] if p.get("type") == "tool_call")
+    assert tool_part["state"] == "cancelled"
