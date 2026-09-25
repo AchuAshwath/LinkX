@@ -119,7 +119,7 @@ async def scrape_live_explore_trends(
     user_id: str,
     max_topics: int = 3,
     headless: bool = True,
-    session: Any = None,
+    **kwargs: Any,
 ) -> dict[str, Any]:
     """Execute live stealth scraping on X.com Explore, auto-heal broken selectors,
     and persist trending topics + Grok summaries to PostgreSQL via ScrapingGraph."""
@@ -128,7 +128,7 @@ async def scrape_live_explore_trends(
             user_id=user_id,
             max_topics=max_topics,
             headless=headless,
-            session=session,
+            **kwargs,
         )
         return {
             "status": report.status,

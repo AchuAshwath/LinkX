@@ -479,4 +479,90 @@ describe("AIPage component with PostgreSQL backend persistence", () => {
       })
     })
   })
+
+  function setupScrapeThreadScenario({
+    title,
+    transcriptText,
+    searchUrl,
+  }: {
+    title: string
+    transcriptText: string
+    searchUrl: string
+  }) {
+    const scrapeThread = {
+      id: "thread-scrape-dedicated",
+      title,
+      origin: "trending",
+      message_count: 2,
+      is_archived: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      owner_id: "user-1",
+    }
+
+    vi.mocked(AiThreadsService.listChatThreads).mockResolvedValue({
+      data: [scrapeThread, mockThreads[0]],
+      count: 2,
+    })
+    vi.mocked(AiThreadsService.getChatThread).mockResolvedValue({
+      ...scrapeThread,
+      transcript: {
+        messages: [
+          {
+            id: "m-scrape-1",
+            role: "assistant",
+            parts: [{ type: "text", text: transcriptText }],
+          },
+        ],
+      },
+    })
+    vi.mocked(AiThreadsService.createChatThread).mockClear()
+    window.history.replaceState({}, "", searchUrl)
+  }
+
+  it("always creates a new thread on 'Refresh trending topics from X' even if an older scrape thread exists", async () => {
+    setupScrapeThreadScenario({
+      title: "Trending Topics",
+      transcriptText: "Previous trending topics report",
+      searchUrl:
+        "/ai?prompt=Refresh%20trending%20topics%20from%20X&autoRun=true",
+    })
+
+    const Component = Route.options.component as React.ComponentType
+    renderWithClient(
+      <AIChatProvider>
+        <Component />
+      </AIChatProvider>,
+    )
+
+    // Should create a brand new thread for this scrape run
+    await waitFor(() => {
+      expect(AiThreadsService.createChatThread).toHaveBeenCalledWith({
+        requestBody: {
+          origin: "trending",
+          prompt: "Refresh trending topics from X",
+          topic_keyword: "trending_scrape",
+        },
+      })
+    })
+  })
+
+  it("targets explicit scrape threadId when provided in search params without creating a new thread", async () => {
+    setupScrapeThreadScenario({
+      title: "Refresh trending topics from X",
+      transcriptText: "Dedicated scrape transcript",
+      searchUrl:
+        "/ai?threadId=thread-scrape-dedicated&prompt=Refresh%20trending%20topics%20from%20X&autoRun=true",
+    })
+
+    const Component = Route.options.component as React.ComponentType
+    renderWithClient(
+      <AIChatProvider>
+        <Component />
+      </AIChatProvider>,
+    )
+
+    await screen.findByText("Dedicated scrape transcript")
+    expect(AiThreadsService.createChatThread).not.toHaveBeenCalled()
+  })
 })

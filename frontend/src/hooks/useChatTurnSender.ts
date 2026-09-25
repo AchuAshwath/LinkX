@@ -637,6 +637,7 @@ interface ExecuteSendOptions extends UseChatTurnSenderProps {
   text: string
   attachedImages?: File[]
   editMessageId?: string
+  targetThreadIdOverride?: string
   isResolvingThreadRef: React.MutableRefObject<boolean>
 }
 
@@ -653,8 +654,10 @@ async function executeChatTurnSend(options: ExecuteSendOptions) {
   try {
     const base64Images = await convertFilesToDataUrls(options.attachedImages)
     const promptText = resolvePromptText({ trimmedText, hasImages })
+    const activeOrOverride =
+      options.targetThreadIdOverride ?? options.activeThreadId
     const targetThreadId = await resolveTargetThreadId({
-      activeThreadId: options.activeThreadId,
+      activeThreadId: activeOrOverride,
       promptText,
       createThreadMutation: options.createThreadMutation,
       setActiveThreadId: options.setActiveThreadId,
@@ -662,7 +665,7 @@ async function executeChatTurnSend(options: ExecuteSendOptions) {
     if (!targetThreadId) return
 
     if (!options.editMessageId) {
-      options.clearThreadDraft(options.activeThreadId)
+      options.clearThreadDraft(activeOrOverride)
     }
 
     const isBusy = options.isStreaming || options.streamingThreadId !== null
@@ -697,12 +700,18 @@ export function useChatTurnSender(props: UseChatTurnSenderProps) {
   const isResolvingThreadRef = React.useRef(false)
 
   return React.useCallback(
-    (text: string, attachedImages?: File[], editMessageId?: string) =>
+    (
+      text: string,
+      attachedImages?: File[],
+      editMessageId?: string,
+      targetThreadIdOverride?: string,
+    ) =>
       executeChatTurnSend({
         ...props,
         text,
         attachedImages,
         editMessageId,
+        targetThreadIdOverride,
         isResolvingThreadRef,
       }),
     [props],

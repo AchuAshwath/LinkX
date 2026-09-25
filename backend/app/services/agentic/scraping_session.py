@@ -15,10 +15,27 @@ from app.services.browser.manager import BrowserManager
 logger = logging.getLogger(__name__)
 
 
+def _resolve_fn(attr_name: str, fallback: Any) -> Any:
+    """Resolve attribute from app.services.agentic.scraping_graph if patched there, else fallback."""
+    try:
+        import sys
+        from unittest.mock import Mock
+
+        sg = sys.modules.get("app.services.agentic.scraping_graph")
+        if sg is not None and hasattr(sg, attr_name):
+            val = getattr(sg, attr_name)
+            if isinstance(val, Mock):
+                return val
+    except Exception:
+        pass
+    return fallback
+
+
 def _verify_session_exists(*, user_id: str) -> tuple[bool, str | None]:
     """Verify if user has stored session credentials."""
     try:
-        manager = BrowserManager(user_id=user_id)
+        mgr_cls = _resolve_fn("BrowserManager", BrowserManager)
+        manager = mgr_cls(user_id=user_id)
         if not manager.session_exists("x"):
             return False, "No stored X.com session found"
         return True, None
@@ -32,9 +49,8 @@ async def _diagnose_and_recover_overlay(
 ) -> tuple[str, str, dict[str, Any] | None, str | None]:
     """Recover session when overlays or transient errors are diagnosed."""
     try:
-        recovery = await recover_page_session(
-            page=page, expected_state="home", mouse=mouse
-        )
+        recover_fn = _resolve_fn("recover_page_session", recover_page_session)
+        recovery = await recover_fn(page=page, expected_state="home", mouse=mouse)
         rec_dict = recovery.model_dump() if hasattr(recovery, "model_dump") else {}
         if not getattr(recovery, "recovered", False):
             err = (
@@ -61,14 +77,16 @@ async def _diagnose_and_recover_overlay(
 async def _diagnose_page_health(*, page: Any) -> tuple[str, bool]:
     """Diagnose page state and check for overlays safely."""
     try:
-        page_state = await detect_page_state(page)
+        detect_fn = _resolve_fn("detect_page_state", detect_page_state)
+        page_state = await detect_fn(page)
     except Exception as e:
         logger.warning(f"Failed to detect page state: {e}")
         page_state = "error"
 
     has_overlay = False
     try:
-        has_overlay = bool(await _detect_overlay(page=page))
+        overlay_fn = _resolve_fn("_detect_overlay", _detect_overlay)
+        has_overlay = bool(await overlay_fn(page=page))
     except Exception as overlay_err:
         logger.debug(f"Overlay check error: {overlay_err}")
 

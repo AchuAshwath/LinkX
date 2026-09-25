@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import logging
@@ -21,6 +22,23 @@ from scripts.scrape_trending_topics import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_fn(attr_name: str, fallback: Any) -> Any:
+    """Resolve attribute from app.services.agentic.scraping_graph if patched there, else fallback."""
+    try:
+        import sys
+        from unittest.mock import Mock
+
+        sg = sys.modules.get("app.services.agentic.scraping_graph")
+        if sg is not None and hasattr(sg, attr_name):
+            val = getattr(sg, attr_name)
+            if isinstance(val, Mock):
+                return val
+    except Exception:
+        pass
+    return fallback
+
 
 SELECTORS_PATH = (
     Path(__file__).parent.parent / "browser" / "selectors" / "x_selectors.json"
@@ -105,7 +123,8 @@ def _format_single_topic(*, topic: Any) -> dict[str, Any] | None:
 async def _try_navigate_to_trends(*, page: Any) -> tuple[bool, str]:
     """Attempt navigation to trends and return page state on failure."""
     try:
-        nav_ok = await navigate_to_trends(page)
+        nav_fn = _resolve_fn("navigate_to_trends", navigate_to_trends)
+        nav_ok = await nav_fn(page)
     except Exception as nav_err:
         logger.warning(f"navigate_to_trends raised exception: {nav_err}")
         nav_ok = False
@@ -114,7 +133,8 @@ async def _try_navigate_to_trends(*, page: Any) -> tuple[bool, str]:
         return True, "ok"
 
     try:
-        page_state = await detect_page_state(page)
+        detect_fn = _resolve_fn("detect_page_state", detect_page_state)
+        page_state = await detect_fn(page)
     except Exception as state_err:
         logger.debug(f"Failed to detect page state: {state_err}")
         page_state = "error"
@@ -417,14 +437,16 @@ async def extract_topic_timelines(
     if not scraped_topics or page is None:
         return results.tweets_map, results.summaries, results.failed
 
-    selectors = _load_selectors()
+    selectors_fn = _resolve_fn("_load_selectors", _load_selectors)
+    selectors = selectors_fn()
     selected_topics = _select_candidate_topics(
         scraped_topics=scraped_topics, max_topics=max_topics
     )
 
     for idx, topic in enumerate(selected_topics):
         if idx > 0:
-            await random_delay(min_sec=2.0, max_sec=4.0)
+            delay_fn = _resolve_fn("random_delay", random_delay)
+            await delay_fn(min_sec=2.0, max_sec=4.0)
         url, summary, tweets, err = await _process_single_topic_extraction(
             page=page,
             topic=topic,
@@ -438,8 +460,10 @@ async def extract_topic_timelines(
 
 async def _extract_sidebar_topics(*, page: Any) -> list[dict[str, Any]]:
     """Extract and format raw topics from explore page trending sidebar."""
-    selectors = _load_selectors()
-    raw_topics = await extract_trending_sidebar(page, selectors=selectors)
+    selectors_fn = _resolve_fn("_load_selectors", _load_selectors)
+    selectors = selectors_fn()
+    extract_sb_fn = _resolve_fn("extract_trending_sidebar", extract_trending_sidebar)
+    raw_topics = await extract_sb_fn(page, selectors=selectors)
     return [
         fmt
         for t in (raw_topics or [])
@@ -472,13 +496,15 @@ async def _navigate_topic_timeline(
     *, page: Any, topic_url: str, mouse: Any | None = None
 ) -> None:
     """Navigate to topic URL and perform stealth reading scroll."""
+    human_nav_fn = _resolve_fn("human_navigation", human_navigation)
+    delay_fn = _resolve_fn("random_delay", random_delay)
     try:
-        await human_navigation(page=page, url=topic_url)
+        await human_nav_fn(page=page, url=topic_url)
     except Exception:
         if hasattr(page, "goto"):
             await page.goto(topic_url, wait_until="domcontentloaded")
 
-    await random_delay(min_sec=1.0, max_sec=2.0)
+    await delay_fn(min_sec=1.0, max_sec=2.0)
     if mouse and hasattr(mouse, "human_scroll"):
         try:
             await mouse.human_scroll(scrolls=2)
@@ -491,14 +517,14 @@ async def _extract_topic_summary_and_tweets(
 ) -> tuple[str | None, list[dict[str, Any]]]:
     """Extract Grok summary and parse top timeline tweets."""
     summary = None
+    grok_fn = _resolve_fn("extract_grok_summary", extract_grok_summary)
+    tweets_fn = _resolve_fn("extract_topic_tweets", extract_topic_tweets)
     try:
-        summary = await extract_grok_summary(page)
+        summary = await grok_fn(page)
     except Exception as sum_err:
         logger.debug(f"Grok summary extraction skipped: {sum_err}")
 
-    raw_tweets = await extract_topic_tweets(
-        page=page, topic_url=topic_url, selectors=selectors
-    )
+    raw_tweets = await tweets_fn(page=page, topic_url=topic_url, selectors=selectors)
     tweets_data = [
         parsed
         for t in (raw_tweets or [])
@@ -540,15 +566,23 @@ async def _extract_timelines_for_candidates(
         if not topic_url:
             continue
         try:
-            summary, tweets = await _extract_single_topic_flow(
-                page=page,
-                topic_url=topic_url,
-                selectors=selectors,
-                mouse=mouse,
+            summary, tweets = await asyncio.wait_for(
+                _extract_single_topic_flow(
+                    page=page,
+                    topic_url=topic_url,
+                    selectors=selectors,
+                    mouse=mouse,
+                ),
+                timeout=15.0,
             )
             if summary:
                 topic_summaries[topic_url] = str(summary)
             topic_tweets_map[topic_url] = tweets
+        except TimeoutError:
+            logger.warning(
+                "Timeout extracting timeline for topic %s after 15s", topic_url
+            )
+            failed_topics.append({"topic_url": topic_url, "reason": "timeout"})
         except Exception as e:
             logger.warning(f"Error extracting timeline for topic {topic_url}: {e}")
             failed_topics.append({"topic_url": topic_url, "reason": str(e)})

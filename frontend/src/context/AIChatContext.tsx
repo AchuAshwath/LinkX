@@ -56,10 +56,12 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const threads = React.useMemo(() => threadsData?.data ?? [], [threadsData])
   const urlParams = React.useMemo(() => getAIChatUrlParams(), [])
 
+  const initialThreadId = urlParams.threadId
+
   const feedState = useAIChatFeedState({
     threads,
     selectedModelId,
-    initialThreadId: urlParams.threadId,
+    initialThreadId,
     isAutoRun: Boolean(urlParams.autoRun || urlParams.prompt),
   })
 

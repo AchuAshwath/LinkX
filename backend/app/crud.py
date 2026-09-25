@@ -327,23 +327,48 @@ def generate_thread_title(prompt: str) -> str:
     return _truncate_title(title) if title else "New conversation"
 
 
+def _is_trending_scrape_thread(thread_in: ChatThreadCreate) -> bool:
+    if thread_in.origin == "trending" or thread_in.topic_keyword == "trending_scrape":
+        return True
+    if thread_in.prompt and re.match(
+        r"^(refresh|scrape|extract)\s+(x\s+)?(trending|trends|live\s+trends)",
+        thread_in.prompt.strip(),
+        re.IGNORECASE,
+    ):
+        return True
+    return False
+
+
 def create_chat_thread(
     *, session: Session, thread_in: ChatThreadCreate, owner_id: uuid.UUID
 ) -> ChatThread:
     """Create a new chat thread, auto-generating initial title if prompt provided."""
     prompt_text = thread_in.prompt.strip() if thread_in.prompt else None
-    title = generate_thread_title(prompt_text) if prompt_text else "New conversation"
+    is_scrape = _is_trending_scrape_thread(thread_in)
+    topic_keyword: str | None
+    if is_scrape:
+        title = "Trending Topics"
+        origin = "trending"
+        topic_keyword = thread_in.topic_keyword or "trending_scrape"
+    else:
+        title = (
+            generate_thread_title(prompt_text) if prompt_text else "New conversation"
+        )
+        origin = thread_in.origin or "composer"
+        topic_keyword = thread_in.topic_keyword
+
     transcript: dict[str, Any] = {"messages": []}
     message_count = 0
 
     db_thread = ChatThread(
         owner_id=owner_id,
         title=title,
-        origin=thread_in.origin,
+        origin=origin,
         post_id=thread_in.post_id,
-        topic_keyword=thread_in.topic_keyword,
+        topic_keyword=topic_keyword,
         message_count=message_count,
         is_archived=False,
+        is_custom_title=is_scrape,
         transcript=transcript,
     )
     session.add(db_thread)

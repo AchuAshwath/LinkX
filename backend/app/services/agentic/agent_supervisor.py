@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from langchain_core.messages import SystemMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 from langgraph.prebuilt import create_react_agent
 from sqlmodel import Session
@@ -363,18 +364,25 @@ def _build_scraping_tools(ctx: CopilotContext) -> list[BaseTool]:
     """Build live web perception tools."""
 
     @tool
-    async def scrape_live_explore_trends(max_topics: int = 3) -> dict[str, Any]:
+    async def scrape_live_explore_trends(
+        max_topics: int = 3,
+        config: RunnableConfig = ...,  # type: ignore[assignment]
+    ) -> dict[str, Any]:
         """Scrape fresh trending topics directly from X.com Explore."""
+        bounded_max_topics = min(max(1, max_topics), 3)
         raw_result = await raw_scrape_live_explore_trends(
             user_id=ctx.user_id,
-            max_topics=max_topics,
+            max_topics=bounded_max_topics,
             headless=True,
             session=ctx.session,
+            config=config,
         )
         try:
             assert ctx.user_uuid is not None
             fresh = crud.get_latest_trending_topics(
-                session=ctx.session, user_id=ctx.user_uuid, limit=max_topics
+                session=ctx.session,
+                user_id=ctx.user_uuid,
+                limit=bounded_max_topics,
             )
             raw_result["topics"] = [
                 {

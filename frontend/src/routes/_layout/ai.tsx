@@ -83,11 +83,17 @@ function syncThreadIdParam(url: URL, activeThreadId: string | null): boolean {
   return false
 }
 
-function syncBrowserUrl(activeThreadId: string | null) {
+function syncBrowserUrl(
+  activeThreadId: string | null,
+  targetThreadId?: string,
+  isAutoRunPending?: boolean,
+) {
   if (typeof window === "undefined") return
   try {
     const url = new URL(window.location.href)
     if (url.pathname !== "/ai") return
+    if (isAutoRunPending) return
+    if (targetThreadId && activeThreadId !== targetThreadId) return
     const transientChanged = cleanTransientUrlParams(url)
     const threadChanged = syncThreadIdParam(url, activeThreadId)
     if (transientChanged || threadChanged) {
@@ -98,27 +104,50 @@ function syncBrowserUrl(activeThreadId: string | null) {
   }
 }
 
+interface AutoRunPromptOptions {
+  autoRun?: boolean
+  prompt?: string
+  targetThreadId?: string
+  isThreadsLoading?: boolean
+  activeThreadId: string | null
+  setActiveThreadId: (id: string | null) => void
+  handleNewChat: () => void
+  handleSendMessage: (
+    text: string,
+    images?: File[],
+    editMessageId?: string,
+    targetThreadIdOverride?: string,
+  ) => Promise<void>
+}
+
 function useAutoRunPrompt({
   autoRun,
   prompt,
-  hasExplicitThreadId,
+  targetThreadId,
+  isThreadsLoading,
   activeThreadId,
+  setActiveThreadId,
   handleNewChat,
   handleSendMessage,
-}: {
-  autoRun?: boolean
-  prompt?: string
-  hasExplicitThreadId: boolean
-  activeThreadId: string | null
-  handleNewChat: () => void
-  handleSendMessage: (text: string) => void
-}) {
+}: AutoRunPromptOptions) {
   const executedPromptRef = React.useRef<string | null>(null)
+
   React.useEffect(() => {
     if (!autoRun || !prompt) return
+    if (isThreadsLoading) return
     if (executedPromptRef.current === prompt) return
 
-    if (!hasExplicitThreadId && activeThreadId !== null) {
+    if (targetThreadId) {
+      if (activeThreadId !== targetThreadId) {
+        setActiveThreadId(targetThreadId)
+        return
+      }
+      executedPromptRef.current = prompt
+      handleSendMessage(prompt, undefined, undefined, targetThreadId)
+      return
+    }
+
+    if (activeThreadId !== null) {
       handleNewChat()
       return
     }
@@ -128,8 +157,10 @@ function useAutoRunPrompt({
   }, [
     autoRun,
     prompt,
-    hasExplicitThreadId,
+    targetThreadId,
+    isThreadsLoading,
     activeThreadId,
+    setActiveThreadId,
     handleNewChat,
     handleSendMessage,
   ])
@@ -379,6 +410,165 @@ interface AIPageViewProps {
   prompt?: string
 }
 
+function computeIsAutoRunPending({
+  autoRun,
+  prompt,
+  isThreadsLoading,
+  activeThreadId,
+  targetThreadId,
+}: {
+  autoRun?: boolean
+  prompt?: string
+  isThreadsLoading: boolean
+  activeThreadId: string | null
+  targetThreadId?: string
+}): boolean {
+  if (!autoRun || !prompt) return false
+  if (isThreadsLoading) return true
+  if (targetThreadId) return activeThreadId !== targetThreadId
+  return activeThreadId !== null
+}
+
+function useSyncActiveThreadWithTarget(
+  effectiveTargetThreadId: string | undefined,
+  activeThreadId: string | null,
+  setActiveThreadId: (id: string | null) => void,
+) {
+  const prevRef = React.useRef(effectiveTargetThreadId)
+  React.useEffect(() => {
+    if (!effectiveTargetThreadId) return
+    if (effectiveTargetThreadId === prevRef.current) return
+    prevRef.current = effectiveTargetThreadId
+    if (activeThreadId !== effectiveTargetThreadId) {
+      setActiveThreadId(effectiveTargetThreadId)
+    }
+  }, [effectiveTargetThreadId, activeThreadId, setActiveThreadId])
+}
+
+function useBrowserHistoryPopstate(
+  activeThreadId: string | null,
+  setActiveThreadId: (id: string | null) => void,
+) {
+  React.useEffect(() => {
+    function handlePopState() {
+      const params = new URLSearchParams(window.location.search)
+      const tid = params.get("threadId") || null
+      if (tid !== activeThreadId) {
+        setActiveThreadId(tid)
+      }
+    }
+    window.addEventListener("popstate", handlePopState)
+    return () => window.removeEventListener("popstate", handlePopState)
+  }, [activeThreadId, setActiveThreadId])
+}
+
+function useAIPageNavigation({
+  feedState,
+  isThreadsLoading,
+  searchThreadId,
+  autoRun,
+  prompt,
+}: {
+  feedState: ReturnType<typeof useAIChatFeedState>
+  isThreadsLoading: boolean
+  searchThreadId?: string
+  autoRun?: boolean
+  prompt?: string
+}) {
+  const effectiveTargetThreadId = searchThreadId
+
+  useAutoRunPrompt({
+    autoRun,
+    prompt,
+    targetThreadId: effectiveTargetThreadId,
+    isThreadsLoading,
+    activeThreadId: feedState.activeThreadId,
+    setActiveThreadId: feedState.setActiveThreadId,
+    handleNewChat: feedState.handleNewChat,
+    handleSendMessage: feedState.handleSendMessage,
+  })
+
+  useSyncActiveThreadWithTarget(
+    effectiveTargetThreadId,
+    feedState.activeThreadId,
+    feedState.setActiveThreadId,
+  )
+
+  const isAutoRunPending = computeIsAutoRunPending({
+    autoRun,
+    prompt,
+    isThreadsLoading,
+    activeThreadId: feedState.activeThreadId,
+    targetThreadId: effectiveTargetThreadId,
+  })
+
+  React.useEffect(() => {
+    syncBrowserUrl(
+      feedState.activeThreadId,
+      effectiveTargetThreadId,
+      isAutoRunPending,
+    )
+  }, [feedState.activeThreadId, effectiveTargetThreadId, isAutoRunPending])
+
+  useBrowserHistoryPopstate(
+    feedState.activeThreadId,
+    feedState.setActiveThreadId,
+  )
+}
+
+function useDismissMenusOnOutsideClick({
+  openMenuThreadId,
+  setOpenMenuThreadId,
+  isSortMenuOpen,
+  setIsSortMenuOpen,
+}: {
+  openMenuThreadId: string | null
+  setOpenMenuThreadId: (id: string | null) => void
+  isSortMenuOpen: boolean
+  setIsSortMenuOpen: (open: boolean) => void
+}) {
+  React.useEffect(() => {
+    function handleClickOutside() {
+      setOpenMenuThreadId(null)
+      setIsSortMenuOpen(false)
+    }
+    if (openMenuThreadId || isSortMenuOpen) {
+      document.addEventListener("click", handleClickOutside)
+      return () => document.removeEventListener("click", handleClickOutside)
+    }
+  }, [openMenuThreadId, isSortMenuOpen, setOpenMenuThreadId, setIsSortMenuOpen])
+}
+
+function AIPageDialogs({
+  mutations,
+}: {
+  mutations: ReturnType<typeof useThreadMutations>
+}) {
+  return (
+    <>
+      <RenameThreadDialog
+        thread={mutations.threadToRename}
+        isOpen={Boolean(mutations.threadToRename)}
+        isPending={mutations.updateThreadMutation.isPending}
+        onClose={() => mutations.setThreadToRename(null)}
+        onConfirm={mutations.handleConfirmRename}
+      />
+
+      <DeleteThreadConfirmDialog
+        thread={mutations.threadToDelete}
+        isOpen={Boolean(mutations.threadToDelete)}
+        isPending={mutations.deleteThreadMutation.isPending}
+        onClose={() => mutations.setThreadToDelete(null)}
+        onConfirm={() => {
+          if (mutations.threadToDelete) {
+            mutations.deleteThreadMutation.mutate(mutations.threadToDelete.id)
+          }
+        }}
+      />
+    </>
+  )
+}
+
 function AIPageView({
   feedState,
   threads,
@@ -406,6 +596,21 @@ function AIPageView({
     handleThreadDeleted: feedState.handleThreadDeleted,
   })
 
+  useAIPageNavigation({
+    feedState,
+    isThreadsLoading,
+    searchThreadId,
+    autoRun,
+    prompt,
+  })
+
+  useDismissMenusOnOutsideClick({
+    openMenuThreadId,
+    setOpenMenuThreadId,
+    isSortMenuOpen: sidebarFilters.isSortMenuOpen,
+    setIsSortMenuOpen: sidebarFilters.setIsSortMenuOpen,
+  })
+
   const isCurrentThreadStreaming = feedState.isThreadStreaming(
     feedState.activeThreadId,
   )
@@ -414,46 +619,6 @@ function AIPageView({
   )
   const isCurrentThreadBusy = isCurrentThreadStreaming || isCurrentThreadQueued
 
-  useAutoRunPrompt({
-    autoRun,
-    prompt,
-    hasExplicitThreadId: Boolean(searchThreadId),
-    activeThreadId: feedState.activeThreadId,
-    handleNewChat: feedState.handleNewChat,
-    handleSendMessage: feedState.handleSendMessage,
-  })
-
-  React.useEffect(() => {
-    syncBrowserUrl(feedState.activeThreadId)
-  }, [feedState.activeThreadId])
-
-  React.useEffect(() => {
-    function handlePopState() {
-      const params = new URLSearchParams(window.location.search)
-      const tid = params.get("threadId") || null
-      if (tid !== feedState.activeThreadId) {
-        feedState.setActiveThreadId(tid)
-      }
-    }
-    window.addEventListener("popstate", handlePopState)
-    return () => window.removeEventListener("popstate", handlePopState)
-  }, [feedState.activeThreadId, feedState.setActiveThreadId])
-
-  React.useEffect(() => {
-    function handleClickOutside() {
-      setOpenMenuThreadId(null)
-      sidebarFilters.setIsSortMenuOpen(false)
-    }
-    if (openMenuThreadId || sidebarFilters.isSortMenuOpen) {
-      document.addEventListener("click", handleClickOutside)
-      return () => document.removeEventListener("click", handleClickOutside)
-    }
-  }, [
-    openMenuThreadId,
-    sidebarFilters.isSortMenuOpen,
-    sidebarFilters.setIsSortMenuOpen,
-  ])
-
   function onNewChatClick() {
     feedState.handleNewChat()
     setTimeout(() => promptInputRef.current?.focus(), 50)
@@ -461,25 +626,7 @@ function AIPageView({
 
   return (
     <div className="flex w-full h-[calc(100vh-3.5rem)] lg:h-screen overflow-hidden bg-background text-foreground">
-      <RenameThreadDialog
-        thread={mutations.threadToRename}
-        isOpen={Boolean(mutations.threadToRename)}
-        isPending={mutations.updateThreadMutation.isPending}
-        onClose={() => mutations.setThreadToRename(null)}
-        onConfirm={mutations.handleConfirmRename}
-      />
-
-      <DeleteThreadConfirmDialog
-        thread={mutations.threadToDelete}
-        isOpen={Boolean(mutations.threadToDelete)}
-        isPending={mutations.deleteThreadMutation.isPending}
-        onClose={() => mutations.setThreadToDelete(null)}
-        onConfirm={() => {
-          if (mutations.threadToDelete) {
-            mutations.deleteThreadMutation.mutate(mutations.threadToDelete.id)
-          }
-        }}
-      />
+      <AIPageDialogs mutations={mutations} />
 
       <AIChatCenterColumn
         activeThreadId={feedState.activeThreadId}
@@ -574,11 +721,12 @@ function AIPageFallback({ search }: { search: AISearchParams }) {
   })
 
   const threads = threadsData?.data ?? []
+  const initialThreadId = search.threadId
 
   const feedState = useAIChatFeedState({
     threads,
     selectedModelId,
-    initialThreadId: search.threadId,
+    initialThreadId,
     isAutoRun: Boolean(search.autoRun || search.prompt),
   })
 
@@ -590,7 +738,7 @@ function AIPageFallback({ search }: { search: AISearchParams }) {
       selectedModelId={selectedModelId}
       setSelectedModelId={setSelectedModelId}
       modelsData={modelsData}
-      searchThreadId={search.threadId}
+      searchThreadId={initialThreadId}
       autoRun={search.autoRun}
       prompt={search.prompt}
     />

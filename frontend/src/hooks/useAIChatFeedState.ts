@@ -18,6 +18,7 @@ import {
   findSiblingByDirection,
   resolveActiveBranch,
 } from "@/hooks/useTranscriptTree"
+import { isScrapePrompt } from "@/utils/scrapeThread"
 
 function shouldSkipTranscriptSync({
   activeThreadId,
@@ -33,22 +34,64 @@ function shouldSkipTranscriptSync({
   return queuedThreadIds.includes(activeThreadId)
 }
 
-function isPendingMessage(m: ChatUIMessage, serverIds: Set<string>): boolean {
+function isMatchingLastServerUser(
+  m: ChatUIMessage,
+  lastServerUserText?: string,
+): boolean {
+  if (m.role !== "user" || !lastServerUserText) return false
+  const userText = m.parts?.find((p) => p.type === "text")?.text?.trim()
+  return userText === lastServerUserText
+}
+
+function isTurnMessagePending(
+  m: ChatUIMessage,
+  serverIds: Set<string>,
+  lastServerUserText?: string,
+): boolean {
   if (serverIds.has(m.id)) return false
-  if (m.id.startsWith("local_")) return true
-  return m.status === "queued" || m.status === "streaming"
+  if (isMatchingLastServerUser(m, lastServerUserText)) return false
+  if (m.status === "queued" || m.status === "streaming") return true
+  return m.id.startsWith("local_")
+}
+
+function extractPendingTurnMessages(
+  current: ChatUIMessage[],
+  transcriptMessages: ChatUIMessage[],
+): ChatUIMessage[] {
+  const serverIds = new Set(transcriptMessages.map((m) => m.id))
+  const lastServer = transcriptMessages[transcriptMessages.length - 1]
+  const lastServerUserText =
+    lastServer?.role === "user"
+      ? lastServer.parts?.find((p) => p.type === "text")?.text?.trim()
+      : undefined
+
+  return current.filter((m) =>
+    isTurnMessagePending(m, serverIds, lastServerUserText),
+  )
 }
 
 function hasActiveTurn(messages: ChatUIMessage[]): boolean {
   return messages.some((m) => m.status === "queued" || m.status === "streaming")
 }
 
+function attachParentToServerTail(
+  pendingTurns: ChatUIMessage[],
+  lastServerMsg?: ChatUIMessage,
+) {
+  if (!lastServerMsg || pendingTurns.length === 0) return
+  const first = pendingTurns[0]
+  if (first && first.parentId == null) {
+    pendingTurns[0] = { ...first, parentId: lastServerMsg.id }
+  }
+}
+
 function mergePendingTurns(
   current: ChatUIMessage[],
   transcriptMessages: ChatUIMessage[],
 ): ChatUIMessage[] {
-  const serverIds = new Set(transcriptMessages.map((m) => m.id))
-  const pendingTurns = current.filter((m) => isPendingMessage(m, serverIds))
+  const pendingTurns = extractPendingTurnMessages(current, transcriptMessages)
+  const lastServer = transcriptMessages[transcriptMessages.length - 1]
+  attachParentToServerTail(pendingTurns, lastServer)
   return [...transcriptMessages, ...pendingTurns]
 }
 
@@ -141,13 +184,23 @@ function syncTranscriptToState({
     React.SetStateAction<Record<string, ChatUIMessage[]>>
   >
 }) {
-  setMessagesByThread((prev) => ({
-    ...prev,
-    [threadId]: resolveMergedTranscriptMessages({
-      current: prev[threadId] ?? [],
+  setMessagesByThread((prev) => {
+    const current = prev[threadId] ?? []
+    const merged = resolveMergedTranscriptMessages({
+      current,
       transcriptMessages,
-    }),
-  }))
+    })
+    if (
+      current.length === merged.length &&
+      current.every((m, idx) => m.id === merged[idx]?.id)
+    ) {
+      return prev
+    }
+    return {
+      ...prev,
+      [threadId]: merged,
+    }
+  })
 }
 
 function syncLeafIdToState({
@@ -168,13 +221,7 @@ function syncLeafIdToState({
   })
 }
 
-function useThreadTranscript({
-  activeThreadId,
-  streamingThreadId,
-  queuedThreadIds,
-  setMessagesByThread,
-  setActiveLeafIdByThread,
-}: {
+interface ThreadTranscriptProps {
   activeThreadId: string | null
   streamingThreadId: string | null
   queuedThreadIds: string[]
@@ -184,7 +231,46 @@ function useThreadTranscript({
   setActiveLeafIdByThread: React.Dispatch<
     React.SetStateAction<Record<string, string | null>>
   >
+}
+
+function syncThreadDetailToState({
+  threadId,
+  detail,
+  setMessagesByThread,
+  setActiveLeafIdByThread,
+}: {
+  threadId: string
+  detail: unknown
+  setMessagesByThread: React.Dispatch<
+    React.SetStateAction<Record<string, ChatUIMessage[]>>
+  >
+  setActiveLeafIdByThread: React.Dispatch<
+    React.SetStateAction<Record<string, string | null>>
+  >
 }) {
+  const messages = extractTranscriptMessages(detail, threadId)
+  if (messages) {
+    syncTranscriptToState({
+      threadId,
+      transcriptMessages: messages,
+      setMessagesByThread,
+    })
+  }
+  const leafId = extractServerActiveLeafId(detail, threadId)
+  syncLeafIdToState({
+    threadId,
+    leafId,
+    setActiveLeafIdByThread,
+  })
+}
+
+function useThreadTranscript({
+  activeThreadId,
+  streamingThreadId,
+  queuedThreadIds,
+  setMessagesByThread,
+  setActiveLeafIdByThread,
+}: ThreadTranscriptProps) {
   const { data: activeThreadDetail } = useQuery({
     queryKey: ["ai-thread", activeThreadId],
     queryFn: () => AiThreadsService.getChatThread({ id: activeThreadId! }),
@@ -203,22 +289,10 @@ function useThreadTranscript({
       return
     }
 
-    const messages = extractTranscriptMessages(
-      activeThreadDetail,
-      activeThreadId,
-    )
-    if (messages) {
-      syncTranscriptToState({
-        threadId: activeThreadId,
-        transcriptMessages: messages,
-        setMessagesByThread,
-      })
-    }
-
-    const leafId = extractServerActiveLeafId(activeThreadDetail, activeThreadId)
-    syncLeafIdToState({
+    syncThreadDetailToState({
       threadId: activeThreadId,
-      leafId,
+      detail: activeThreadDetail,
+      setMessagesByThread,
       setActiveLeafIdByThread,
     })
   }, [
@@ -311,10 +385,16 @@ function useCreateThreadMutation(
   setActiveThreadId: (id: string) => void,
 ) {
   return useMutation({
-    mutationFn: (prompt?: string) =>
-      AiThreadsService.createChatThread({
-        requestBody: { origin: "composer", prompt },
-      }),
+    mutationFn: (prompt?: string) => {
+      const isTrending = isScrapePrompt(prompt)
+      return AiThreadsService.createChatThread({
+        requestBody: {
+          origin: isTrending ? "trending" : "composer",
+          prompt,
+          topic_keyword: isTrending ? "trending_scrape" : undefined,
+        },
+      })
+    },
     onSuccess: (newThread) => {
       queryClient.invalidateQueries({ queryKey: ["ai-threads"] })
       setActiveThreadId(newThread.id)
@@ -674,19 +754,22 @@ function executeThreadDeletion({
   setMessagesByThread((prev) => removeThreadMessages(prev, deletedId))
 }
 
-function useThreadActions({
-  core,
-  queueState,
-  handleSendMessage,
-}: {
+interface ThreadActionsProps {
   core: ChatFeedCore
   queueState: TurnQueueState
   handleSendMessage: (
     text: string,
     attachedImages?: File[],
     editMessageId?: string,
+    targetThreadIdOverride?: string,
   ) => Promise<void>
-}) {
+}
+
+function useThreadActions({
+  core,
+  queueState,
+  handleSendMessage,
+}: ThreadActionsProps) {
   const { streamingThreadId, stop: stopStream } = core.streamState
   const {
     activeThreadId,
@@ -818,6 +901,7 @@ interface UseMessageEditingProps {
     text: string,
     attachedImages?: File[],
     editMessageId?: string,
+    targetThreadIdOverride?: string,
   ) => Promise<void>
   stopStream: () => void
   isStreaming: boolean
@@ -932,6 +1016,7 @@ function assembleFeedState({
     text: string,
     attachedImages?: File[],
     editMessageId?: string,
+    targetThreadIdOverride?: string,
   ) => Promise<void>
   editingState: ReturnType<typeof useMessageEditing>
 }) {
