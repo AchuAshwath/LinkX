@@ -15,7 +15,7 @@ from app.services.browser.manager import BrowserManager
 logger = logging.getLogger(__name__)
 
 
-def _resolve_fn(attr_name: str, fallback: Any) -> Any:
+def _resolve_fn(*, attr_name: str, fallback: Any) -> Any:
     """Resolve attribute from app.services.agentic.scraping_graph if patched there, else fallback."""
     try:
         import sys
@@ -34,7 +34,7 @@ def _resolve_fn(attr_name: str, fallback: Any) -> Any:
 def _verify_session_exists(*, user_id: str) -> tuple[bool, str | None]:
     """Verify if user has stored session credentials."""
     try:
-        mgr_cls = _resolve_fn("BrowserManager", BrowserManager)
+        mgr_cls = _resolve_fn(attr_name="BrowserManager", fallback=BrowserManager)
         manager = mgr_cls(user_id=user_id)
         if not manager.session_exists("x"):
             return False, "No stored X.com session found"
@@ -49,7 +49,9 @@ async def _diagnose_and_recover_overlay(
 ) -> tuple[str, str, dict[str, Any] | None, str | None]:
     """Recover session when overlays or transient errors are diagnosed."""
     try:
-        recover_fn = _resolve_fn("recover_page_session", recover_page_session)
+        recover_fn = _resolve_fn(
+            attr_name="recover_page_session", fallback=recover_page_session
+        )
         recovery = await recover_fn(page=page, expected_state="home", mouse=mouse)
         rec_dict = recovery.model_dump() if hasattr(recovery, "model_dump") else {}
         if not getattr(recovery, "recovered", False):
@@ -77,7 +79,9 @@ async def _diagnose_and_recover_overlay(
 async def _diagnose_page_health(*, page: Any) -> tuple[str, bool]:
     """Diagnose page state and check for overlays safely."""
     try:
-        detect_fn = _resolve_fn("detect_page_state", detect_page_state)
+        detect_fn = _resolve_fn(
+            attr_name="detect_page_state", fallback=detect_page_state
+        )
         page_state = await detect_fn(page)
     except Exception as e:
         logger.warning(f"Failed to detect page state: {e}")
@@ -85,7 +89,7 @@ async def _diagnose_page_health(*, page: Any) -> tuple[str, bool]:
 
     has_overlay = False
     try:
-        overlay_fn = _resolve_fn("_detect_overlay", _detect_overlay)
+        overlay_fn = _resolve_fn(attr_name="_detect_overlay", fallback=_detect_overlay)
         has_overlay = bool(await overlay_fn(page=page))
     except Exception as overlay_err:
         logger.debug(f"Overlay check error: {overlay_err}")

@@ -58,11 +58,10 @@ function TrendingHeader({
         variant="ghost"
         size="icon"
         onClick={onRefresh}
-        disabled={isPending}
-        className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-full transition-colors cursor-pointer disabled:opacity-100"
+        className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-full transition-colors cursor-pointer"
         title={
           isPending
-            ? "Refreshing trends in background..."
+            ? "Extracting trends in background (click to queue another scrape)"
             : "Refresh trending topics from X"
         }
         aria-label="Refresh trending topics from X"
@@ -95,7 +94,6 @@ function TrendingEmptyState({ isPending, onRefresh }: EmptyProps) {
         variant="outline"
         size="sm"
         onClick={onRefresh}
-        disabled={isPending}
         className="text-xs h-8 gap-1.5 rounded-full hover:text-primary hover:border-primary"
       >
         <RefreshCw

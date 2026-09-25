@@ -24,7 +24,7 @@ from scripts.scrape_trending_topics import (
 logger = logging.getLogger(__name__)
 
 
-def _resolve_fn(attr_name: str, fallback: Any) -> Any:
+def _resolve_fn(*, attr_name: str, fallback: Any) -> Any:
     """Resolve attribute from app.services.agentic.scraping_graph if patched there, else fallback."""
     try:
         import sys
@@ -123,7 +123,9 @@ def _format_single_topic(*, topic: Any) -> dict[str, Any] | None:
 async def _try_navigate_to_trends(*, page: Any) -> tuple[bool, str]:
     """Attempt navigation to trends and return page state on failure."""
     try:
-        nav_fn = _resolve_fn("navigate_to_trends", navigate_to_trends)
+        nav_fn = _resolve_fn(
+            attr_name="navigate_to_trends", fallback=navigate_to_trends
+        )
         nav_ok = await nav_fn(page)
     except Exception as nav_err:
         logger.warning(f"navigate_to_trends raised exception: {nav_err}")
@@ -133,7 +135,9 @@ async def _try_navigate_to_trends(*, page: Any) -> tuple[bool, str]:
         return True, "ok"
 
     try:
-        detect_fn = _resolve_fn("detect_page_state", detect_page_state)
+        detect_fn = _resolve_fn(
+            attr_name="detect_page_state", fallback=detect_page_state
+        )
         page_state = await detect_fn(page)
     except Exception as state_err:
         logger.debug(f"Failed to detect page state: {state_err}")
@@ -437,7 +441,7 @@ async def extract_topic_timelines(
     if not scraped_topics or page is None:
         return results.tweets_map, results.summaries, results.failed
 
-    selectors_fn = _resolve_fn("_load_selectors", _load_selectors)
+    selectors_fn = _resolve_fn(attr_name="_load_selectors", fallback=_load_selectors)
     selectors = selectors_fn()
     selected_topics = _select_candidate_topics(
         scraped_topics=scraped_topics, max_topics=max_topics
@@ -445,7 +449,7 @@ async def extract_topic_timelines(
 
     for idx, topic in enumerate(selected_topics):
         if idx > 0:
-            delay_fn = _resolve_fn("random_delay", random_delay)
+            delay_fn = _resolve_fn(attr_name="random_delay", fallback=random_delay)
             await delay_fn(min_sec=2.0, max_sec=4.0)
         url, summary, tweets, err = await _process_single_topic_extraction(
             page=page,
@@ -460,9 +464,11 @@ async def extract_topic_timelines(
 
 async def _extract_sidebar_topics(*, page: Any) -> list[dict[str, Any]]:
     """Extract and format raw topics from explore page trending sidebar."""
-    selectors_fn = _resolve_fn("_load_selectors", _load_selectors)
+    selectors_fn = _resolve_fn(attr_name="_load_selectors", fallback=_load_selectors)
     selectors = selectors_fn()
-    extract_sb_fn = _resolve_fn("extract_trending_sidebar", extract_trending_sidebar)
+    extract_sb_fn = _resolve_fn(
+        attr_name="extract_trending_sidebar", fallback=extract_trending_sidebar
+    )
     raw_topics = await extract_sb_fn(page, selectors=selectors)
     return [
         fmt
@@ -496,8 +502,8 @@ async def _navigate_topic_timeline(
     *, page: Any, topic_url: str, mouse: Any | None = None
 ) -> None:
     """Navigate to topic URL and perform stealth reading scroll."""
-    human_nav_fn = _resolve_fn("human_navigation", human_navigation)
-    delay_fn = _resolve_fn("random_delay", random_delay)
+    human_nav_fn = _resolve_fn(attr_name="human_navigation", fallback=human_navigation)
+    delay_fn = _resolve_fn(attr_name="random_delay", fallback=random_delay)
     try:
         await human_nav_fn(page=page, url=topic_url)
     except Exception:
@@ -517,8 +523,12 @@ async def _extract_topic_summary_and_tweets(
 ) -> tuple[str | None, list[dict[str, Any]]]:
     """Extract Grok summary and parse top timeline tweets."""
     summary = None
-    grok_fn = _resolve_fn("extract_grok_summary", extract_grok_summary)
-    tweets_fn = _resolve_fn("extract_topic_tweets", extract_topic_tweets)
+    grok_fn = _resolve_fn(
+        attr_name="extract_grok_summary", fallback=extract_grok_summary
+    )
+    tweets_fn = _resolve_fn(
+        attr_name="extract_topic_tweets", fallback=extract_topic_tweets
+    )
     try:
         summary = await grok_fn(page)
     except Exception as sum_err:

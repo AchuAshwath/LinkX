@@ -5,7 +5,7 @@ import {
   isScrapePrompt,
   isScrapeThread,
   SCRAPE_PROMPT,
-} from "../scrapeThread"
+} from "@/utils/scrapeThread"
 
 describe("scrapeThread utilities", () => {
   describe("isScrapePrompt", () => {

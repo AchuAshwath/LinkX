@@ -434,7 +434,7 @@ function useSyncActiveThreadWithTarget(
   activeThreadId: string | null,
   setActiveThreadId: (id: string | null) => void,
 ) {
-  const prevRef = React.useRef(effectiveTargetThreadId)
+  const prevRef = React.useRef<string | undefined>(undefined)
   React.useEffect(() => {
     if (!effectiveTargetThreadId) return
     if (effectiveTargetThreadId === prevRef.current) return

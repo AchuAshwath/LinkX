@@ -327,7 +327,7 @@ def generate_thread_title(prompt: str) -> str:
     return _truncate_title(title) if title else "New conversation"
 
 
-def _is_trending_scrape_thread(thread_in: ChatThreadCreate) -> bool:
+def _is_trending_scrape_thread(*, thread_in: ChatThreadCreate) -> bool:
     if thread_in.origin == "trending" or thread_in.topic_keyword == "trending_scrape":
         return True
     if thread_in.prompt and re.match(
@@ -344,7 +344,7 @@ def create_chat_thread(
 ) -> ChatThread:
     """Create a new chat thread, auto-generating initial title if prompt provided."""
     prompt_text = thread_in.prompt.strip() if thread_in.prompt else None
-    is_scrape = _is_trending_scrape_thread(thread_in)
+    is_scrape = _is_trending_scrape_thread(thread_in=thread_in)
     topic_keyword: str | None
     if is_scrape:
         title = "Trending Topics"
