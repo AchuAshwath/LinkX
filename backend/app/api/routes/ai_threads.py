@@ -34,6 +34,7 @@ from app.services.ai_image_utils import sanitize_image_urls as _clean_image_urls
 from app.services.ai_model_catalog import get_available_ai_models
 from app.services.ai_turn_accumulator import (
     TranscriptEditPayload,
+    _mark_running_tools_interrupted,
     append_or_update_draft_part,
     apply_transcript_branch,
     resolve_active_branch,
@@ -485,6 +486,31 @@ def _process_stream_item(
     return delta, format_sse(event=event_name, data=payload)
 
 
+async def _persist_partial_turn_safely(
+    *,
+    ctx: ChatStreamContext,
+    accumulated_text: str,
+    assistant_parts: list[dict[str, Any]],
+) -> None:
+    if not assistant_parts and not accumulated_text:
+        return
+    _mark_running_tools_interrupted(assistant_parts)
+    try:
+        await _save_assistant_turn(
+            session=ctx.session,
+            thread=ctx.thread,
+            payload=AssistantTurnPayload(
+                body=ctx.body,
+                accumulated_text=accumulated_text,
+                assistant_parts=assistant_parts,
+            ),
+        )
+    except Exception as save_err:
+        logger.warning(
+            "Failed to save partial assistant turn on disconnect: %s", save_err
+        )
+
+
 async def _generate_chat_events(
     *,
     ctx: ChatStreamContext,
@@ -520,6 +546,11 @@ async def _generate_chat_events(
         yield format_sse(event="done", data={})
 
     except (asyncio.CancelledError, GeneratorExit):
+        await _persist_partial_turn_safely(
+            ctx=ctx,
+            accumulated_text=accumulated_text,
+            assistant_parts=assistant_parts,
+        )
         raise
     except Exception as exc:
         yield format_sse(event="error", data={"message": str(exc)})
