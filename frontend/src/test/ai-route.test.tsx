@@ -86,6 +86,7 @@ describe("AIPage component with PostgreSQL backend persistence", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.setItem("access_token", "test-token")
     try {
       window.history.replaceState({}, "", "/")
     } catch {

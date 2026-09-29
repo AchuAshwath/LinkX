@@ -1,5 +1,10 @@
 import * as React from "react"
 import type { DraftArtifact, TrendingArtifact } from "@/components/Chat/types"
+import {
+  clearAuthAndRedirect,
+  getStoredToken,
+  isJwtExpired,
+} from "@/utils/auth"
 
 export interface StreamEventHandlers {
   onThought?: (content: string) => void
@@ -117,11 +122,9 @@ async function streamResponse(
   handlers.onDone?.()
 }
 
-function getAuthToken(): string {
-  if (typeof window !== "undefined" && typeof localStorage !== "undefined") {
-    return localStorage.getItem("access_token") || ""
-  }
-  return ""
+function handleAuthExpired(handlers: StreamEventHandlers, message: string) {
+  handlers.onError?.(message)
+  clearAuthAndRedirect()
 }
 
 async function executeChatStreamRequest({
@@ -141,7 +144,15 @@ async function executeChatStreamRequest({
   editMessageId?: string
   signal: AbortSignal
 }) {
-  const token = getAuthToken()
+  const token = getStoredToken()
+  if (!token || isJwtExpired(token)) {
+    handleAuthExpired(
+      handlers,
+      "Authentication session expired. Please log in again.",
+    )
+    return
+  }
+
   const response = await fetch(`/api/v1/ai/threads/${threadId}/chat`, {
     method: "POST",
     headers: {
@@ -156,6 +167,14 @@ async function executeChatStreamRequest({
     }),
     signal,
   })
+
+  if (response.status === 401) {
+    handleAuthExpired(
+      handlers,
+      "Your session has expired. Redirecting to login...",
+    )
+    return
+  }
 
   await streamResponse(response, handlers)
 }

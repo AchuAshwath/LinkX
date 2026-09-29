@@ -87,6 +87,7 @@ describe("Multi-thread prompt queuing and stream isolation", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.setItem("access_token", "test-token")
     window.history.replaceState({}, "", "/")
     vi.mocked(AiThreadsService.listChatThreads).mockResolvedValue({
       data: mockThreads,

@@ -11,17 +11,18 @@ import { ApiError, OpenAPI } from "./client"
 import { ThemeProvider } from "./components/theme-provider"
 import { Toaster } from "./components/ui/sonner"
 import "./index.css"
+
+import { clearAuthAndRedirect, getStoredToken } from "@/utils/auth"
 import { routeTree } from "./routeTree.gen"
 
 OpenAPI.BASE = import.meta.env.VITE_API_URL || ""
 OpenAPI.TOKEN = async () => {
-  return localStorage.getItem("access_token") || ""
+  return getStoredToken()
 }
 
 const handleApiError = (error: Error) => {
   if (error instanceof ApiError && error.status === 401) {
-    localStorage.removeItem("access_token")
-    window.location.href = "/login"
+    clearAuthAndRedirect()
   }
 }
 const queryClient = new QueryClient({
