@@ -131,6 +131,23 @@ interface PostInputFormBodyProps {
   setIsScheduleOpen: (open: boolean) => void
 }
 
+function useTextareaAutoResize(
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>,
+  content: string,
+) {
+  React.useEffect(() => {
+    const el = textareaRef.current
+    if (!el || content === undefined) return
+    const adjustHeight = () => {
+      el.style.height = "auto"
+      el.style.height = `${el.scrollHeight}px`
+    }
+    adjustHeight()
+    window.addEventListener("resize", adjustHeight)
+    return () => window.removeEventListener("resize", adjustHeight)
+  }, [textareaRef, content])
+}
+
 function PostInputFormBody({
   username,
   channel,
@@ -157,6 +174,8 @@ function PostInputFormBody({
   isScheduleOpen,
   setIsScheduleOpen,
 }: PostInputFormBodyProps) {
+  useTextareaAutoResize(textareaRef, content)
+
   const handleKeyDown = useComposerKeyboard({
     isAiMode,
     scheduledAt,
@@ -164,6 +183,15 @@ function PostInputFormBody({
     onAiDraftSubmit,
     handleSubmit,
   })
+
+  const handleInputChange = React.useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      e.target.style.height = "auto"
+      e.target.style.height = `${e.target.scrollHeight}px`
+      handleContentChange(e)
+    },
+    [handleContentChange],
+  )
 
   return (
     <div className="flex-1 min-w-0">
@@ -182,7 +210,7 @@ function PostInputFormBody({
       <textarea
         ref={textareaRef}
         value={content}
-        onChange={handleContentChange}
+        onChange={handleInputChange}
         onKeyDown={handleKeyDown}
         placeholder={
           isAiMode
@@ -191,7 +219,7 @@ function PostInputFormBody({
         }
         aria-label="Post content"
         rows={2}
-        className="w-full bg-transparent border-0 outline-none resize-none text-[15px] sm:text-[16px] leading-relaxed placeholder:text-muted-foreground/60 focus:outline-none focus:ring-0 p-0 text-foreground min-h-[64px]"
+        className="w-full bg-transparent border-0 outline-none resize-none text-[15px] sm:text-[16px] leading-relaxed placeholder:text-muted-foreground/60 focus:outline-none focus:ring-0 p-0 text-foreground min-h-[72px] max-h-[360px] overflow-y-auto"
         data-testid="post-content-textarea"
       />
 
@@ -281,7 +309,13 @@ function useComposerLifecycle({
 
   React.useEffect(() => {
     if (!autoFocus) return
-    const timer = setTimeout(() => textareaRef.current?.focus(), 50)
+    const timer = setTimeout(() => {
+      const el = textareaRef.current
+      if (!el) return
+      el.focus()
+      const len = el.value.length
+      el.setSelectionRange(len, len)
+    }, 50)
     return () => clearTimeout(timer)
   }, [autoFocus, textareaRef])
 }

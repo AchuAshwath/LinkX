@@ -163,12 +163,52 @@ function UserMessageBubble({
   )
 }
 
-function renderToolOrDraftPart(
-  part: ChatUIMessage["parts"][number],
+interface RenderToolOrDraftOptions {
+  part: ChatUIMessage["parts"][number]
+  index: number
+  sources: SourceUrlPart[]
+  onDraftTopic?: (topicTitle: string) => void
+}
+
+function getToolCallItem(part: ToolCallPart, index: number): ToolCallItem {
+  if (part.tool) return part.tool
+  return {
+    id: part.toolCallId || `tool-${index}`,
+    name: part.name || "tool",
+    state: part.state || "completed",
+    input: part.input,
+    output: part.output,
+  }
+}
+
+function renderToolCallPart(part: ToolCallPart, index: number) {
+  const toolItem = getToolCallItem(part, index)
+  return (
+    <ToolCallAccordion
+      key={toolItem.id || `tool-${index}`}
+      toolCalls={[toolItem]}
+    />
+  )
+}
+
+function renderDraftArtifactPart(
+  part: ChatUIMessage["parts"][number] & { type: "draft_artifact" },
   index: number,
-  sources: SourceUrlPart[],
-  onDraftTopic?: (topicTitle: string) => void,
 ) {
+  return (
+    <DraftArtifactCard
+      key={part.artifact.id || `draft-${index}`}
+      artifact={part.artifact}
+    />
+  )
+}
+
+function renderToolOrDraftPart({
+  part,
+  index,
+  sources,
+  onDraftTopic,
+}: RenderToolOrDraftOptions) {
   if (part.type === "tool-web_search") {
     return (
       <WebSearchPart
@@ -179,28 +219,10 @@ function renderToolOrDraftPart(
     )
   }
   if (part.type === "tool-call" || part.type === "tool_call") {
-    const toolPart = part as ToolCallPart
-    const toolItem: ToolCallItem = toolPart.tool ?? {
-      id: toolPart.toolCallId || `tool-${index}`,
-      name: toolPart.name || "tool",
-      state: toolPart.state || "completed",
-      input: toolPart.input,
-      output: toolPart.output,
-    }
-    return (
-      <ToolCallAccordion
-        key={toolItem.id || `tool-${index}`}
-        toolCalls={[toolItem]}
-      />
-    )
+    return renderToolCallPart(part as ToolCallPart, index)
   }
   if (part.type === "draft_artifact") {
-    return (
-      <DraftArtifactCard
-        key={part.artifact.id || `draft-${index}`}
-        artifact={part.artifact}
-      />
-    )
+    return renderDraftArtifactPart(part, index)
   }
   if (part.type === "trending_artifact") {
     return (
@@ -242,7 +264,12 @@ function AssistantPartRenderer({
   if (part.type === "text") {
     return <TextPart key={`text-${index}`} part={part} />
   }
-  return renderToolOrDraftPart(part, index, sources, onDraftTopic)
+  return renderToolOrDraftPart({
+    part,
+    index,
+    sources,
+    onDraftTopic,
+  })
 }
 
 function AssistantQueuedNotice({ status }: { status?: string }) {
