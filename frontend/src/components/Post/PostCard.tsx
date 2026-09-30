@@ -839,6 +839,10 @@ export const PostCard = React.memo(function PostCard(props: PostCardProps) {
 
   // Wire onEdit to open the dialog instead of inline edit
   const handleEdit = React.useCallback(() => {
+    if (!props.post.id || props.post.id === "draft-artifact") {
+      props.onEdit?.(props.post.id)
+      return
+    }
     setEditDialogOpen(true)
     props.onEdit?.(props.post.id)
   }, [props])

@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import * as React from "react"
 import { PostsService } from "@/client"
 import type { DraftArtifact } from "@/components/Chat/types"
@@ -15,6 +15,7 @@ export interface DraftArtifactCardProps {
   author?: { name: string; username: string; avatarUrl?: string | null }
   onSchedule?: (artifact: DraftArtifact) => void
   onSendToComposer?: (artifact: DraftArtifact) => void
+  onEdit?: (artifact: DraftArtifact) => void
   onPublish?: (artifact: DraftArtifact) => void
   onDelete?: (artifact: DraftArtifact) => void
   onPreview?: (artifact: DraftArtifact) => void
@@ -91,11 +92,135 @@ function usePublishPostMutation() {
   })
 }
 
+function isValidPostId(id: unknown): id is string {
+  if (typeof id !== "string") return false
+  if (id.length === 0) return false
+  return id !== "draft-artifact"
+}
+
+function resolveValidPostId(artifact: DraftArtifact): string | undefined {
+  if (isValidPostId(artifact.postId)) return artifact.postId
+  if (isValidPostId(artifact.id)) return artifact.id
+  return undefined
+}
+
+function useLivePost(artifact: DraftArtifact) {
+  const validPostId = resolveValidPostId(artifact)
+  return useQuery({
+    queryKey: ["posts", validPostId],
+    queryFn: () => PostsService.readPost({ postId: validPostId! }),
+    enabled: Boolean(validPostId),
+  })
+}
+
+function useDraftPlatform(artifactPlatform?: string, livePlatform?: string) {
+  const [platform, setPlatform] = React.useState<Platform>(() =>
+    resolveInitialPlatform(artifactPlatform),
+  )
+
+  React.useEffect(() => {
+    const next = livePlatform || artifactPlatform
+    if (next) {
+      setPlatform(resolveInitialPlatform(next))
+    }
+  }, [livePlatform, artifactPlatform])
+
+  return [platform, setPlatform] as const
+}
+
+interface DraftActionHandlers {
+  artifact: DraftArtifact
+  onPublish?: (artifact: DraftArtifact) => void
+  onEdit?: (artifact: DraftArtifact) => void
+  onSendToComposer?: (artifact: DraftArtifact) => void
+  onPreview?: (artifact: DraftArtifact) => void
+  setPreviewOpen: (open: boolean) => void
+}
+
+function resolveActionPostId(
+  postId: unknown,
+  artifact: DraftArtifact,
+): string | undefined {
+  if (isValidPostId(postId)) return postId
+  return resolveValidPostId(artifact)
+}
+
+function usePublishAction(
+  artifact: DraftArtifact,
+  onPublish?: (artifact: DraftArtifact) => void,
+  publishMutation?: ReturnType<typeof usePublishPostMutation>,
+) {
+  const { showErrorToast } = useCustomToast()
+  return React.useCallback(
+    (postId?: string) => {
+      if (onPublish) {
+        onPublish(artifact)
+        return
+      }
+      const targetId = resolveActionPostId(postId, artifact)
+      if (targetId) {
+        publishMutation?.mutate(targetId)
+        return
+      }
+      showErrorToast(
+        "Cannot publish: Draft has not been saved to database yet.",
+      )
+    },
+    [artifact, onPublish, publishMutation, showErrorToast],
+  )
+}
+
+function useEditAction(
+  artifact: DraftArtifact,
+  onEdit?: (artifact: DraftArtifact) => void,
+  onSendToComposer?: (artifact: DraftArtifact) => void,
+) {
+  const { showErrorToast } = useCustomToast()
+  return React.useCallback(
+    (postId?: string) => {
+      const targetId = resolveActionPostId(postId, artifact)
+      if (!targetId) {
+        showErrorToast("Cannot edit: Draft has not been saved to database yet.")
+        return
+      }
+      onEdit?.(artifact)
+      onSendToComposer?.(artifact)
+    },
+    [artifact, onEdit, onSendToComposer, showErrorToast],
+  )
+}
+
+function useDraftCardActions({
+  artifact,
+  onPublish,
+  onEdit,
+  onSendToComposer,
+  onPreview,
+  setPreviewOpen,
+}: DraftActionHandlers) {
+  const publishMutation = usePublishPostMutation()
+  const handlePublish = usePublishAction(artifact, onPublish, publishMutation)
+  const handleEdit = useEditAction(artifact, onEdit, onSendToComposer)
+
+  const handlePreview = React.useCallback(() => {
+    setPreviewOpen(true)
+    onPreview?.(artifact)
+  }, [artifact, onPreview, setPreviewOpen])
+
+  return {
+    handlePublish,
+    handleEdit,
+    handlePreview,
+    isPublishing: publishMutation.isPending,
+  }
+}
+
 export function DraftArtifactCard({
   artifact,
   author,
   onSchedule: _onSchedule,
   onSendToComposer,
+  onEdit,
   onPublish,
   onDelete,
   onPreview,
@@ -103,49 +228,37 @@ export function DraftArtifactCard({
 }: DraftArtifactCardProps) {
   const { user } = useAuth()
   const [previewOpen, setPreviewOpen] = React.useState(false)
-  const [currentPlatform, setCurrentPlatform] = React.useState<Platform>(() =>
-    resolveInitialPlatform(artifact.platform),
+  const { data: livePost } = useLivePost(artifact)
+  const [currentPlatform, setCurrentPlatform] = useDraftPlatform(
+    artifact.platform,
+    livePost?.platform,
   )
 
-  React.useEffect(() => {
-    if (artifact.platform) {
-      setCurrentPlatform(resolveInitialPlatform(artifact.platform))
-    }
-  }, [artifact.platform])
+  const actions = useDraftCardActions({
+    artifact,
+    onPublish,
+    onEdit,
+    onSendToComposer,
+    onPreview,
+    setPreviewOpen,
+  })
 
   const postAuthor = React.useMemo(
     () => resolvePostAuthor(author, user),
     [author, user],
   )
 
-  const publishMutation = usePublishPostMutation()
-
-  const handlePublish = React.useCallback(
-    (postId: string) => {
-      if (onPublish) {
-        onPublish(artifact)
-        return
-      }
-      if (postId && postId !== "draft-artifact") {
-        publishMutation.mutate(postId)
-      }
-    },
-    [artifact, onPublish, publishMutation],
-  )
-
-  const handlePreview = React.useCallback(() => {
-    setPreviewOpen(true)
-    onPreview?.(artifact)
-  }, [artifact, onPreview])
-
   const postData = React.useMemo(
     () =>
       createDraftPostData({
-        artifact,
+        artifact: {
+          ...artifact,
+          content: livePost?.content ?? artifact.content,
+        },
         author: postAuthor,
         platform: currentPlatform,
       }),
-    [artifact, postAuthor, currentPlatform],
+    [artifact, livePost?.content, postAuthor, currentPlatform],
   )
 
   const previewData = React.useMemo(
@@ -158,11 +271,11 @@ export function DraftArtifactCard({
       <DraftPost
         post={postData}
         onPlatformChange={(_, p) => setCurrentPlatform(p)}
-        onPublish={handlePublish}
-        onPreview={handlePreview}
-        onEdit={onSendToComposer ? () => onSendToComposer(artifact) : undefined}
+        onPublish={actions.handlePublish}
+        onPreview={actions.handlePreview}
+        onEdit={actions.handleEdit}
         onDelete={onDelete ? () => onDelete(artifact) : undefined}
-        isPublishing={publishMutation.isPending}
+        isPublishing={actions.isPublishing}
       />
       <PostPreviewDialog
         open={previewOpen}
