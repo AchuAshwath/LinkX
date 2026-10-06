@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, useRouter } from "@tanstack/react-router"
 import * as React from "react"
 import { AiThreadsService, type ChatThreadPublic } from "@/client"
 import { AIChatFeed } from "@/components/Chat/AIChatFeed"
@@ -12,8 +12,8 @@ import { PromptForm } from "@/components/Chat/PromptForm"
 import { RenameThreadDialog } from "@/components/Chat/RenameThreadDialog"
 import {
   type AIChatUrlParams,
-  getAIChatUrlParams,
   useAIChatContext,
+  useAIChatUrlParams,
 } from "@/context/AIChatContext"
 import { useAIChatFeedState } from "@/hooks/useAIChatFeedState"
 import { useAIModelSelection } from "@/hooks/useAIModelSelection"
@@ -83,6 +83,69 @@ function syncThreadIdParam(url: URL, activeThreadId: string | null): boolean {
   return false
 }
 
+function commitHistoryEntry(
+  threadId: string | null,
+  targetUrl: string,
+  replace?: boolean,
+) {
+  if (replace) {
+    window.history.replaceState({ threadId }, "", targetUrl)
+  } else {
+    window.history.pushState({ threadId }, "", targetUrl)
+  }
+  window.dispatchEvent(new PopStateEvent("popstate"))
+}
+
+function updateThreadBrowserUrl(
+  threadId: string | null,
+  options?: { replace?: boolean },
+) {
+  if (typeof window === "undefined") return
+  try {
+    const url = new URL(window.location.href)
+    if (url.pathname !== "/ai") return
+    cleanTransientUrlParams(url)
+    const changed = syncThreadIdParam(url, threadId)
+    if (!changed && !options?.replace) return
+    const targetUrl = url.pathname + (url.search || "")
+    commitHistoryEntry(threadId, targetUrl, options?.replace)
+  } catch {
+    // ignore
+  }
+}
+
+function useThreadNavigation() {
+  const router = useRouter({ warn: false })
+
+  const navigateToThread = React.useCallback(
+    (threadId: string | null, options?: { replace?: boolean }) => {
+      const replace = options?.replace ?? false
+      if (router?.navigate) {
+        router.navigate({
+          to: "/ai",
+          search: (prev: Record<string, unknown>) => {
+            const next = { ...prev }
+            delete next.autoRun
+            delete next.prompt
+            if (threadId) {
+              next.threadId = threadId
+            } else {
+              delete next.threadId
+            }
+            return next
+          },
+          replace,
+        })
+      } else {
+        updateThreadBrowserUrl(threadId, { replace })
+      }
+    },
+    [router],
+  )
+
+  return { navigateToThread }
+}
+
 function syncBrowserUrl(
   activeThreadId: string | null,
   targetThreadId?: string,
@@ -97,7 +160,7 @@ function syncBrowserUrl(
     const transientChanged = cleanTransientUrlParams(url)
     const threadChanged = syncThreadIdParam(url, activeThreadId)
     if (transientChanged || threadChanged) {
-      window.history.replaceState({}, "", url.pathname + url.search)
+      commitHistoryEntry(activeThreadId, url.pathname + url.search, true)
     }
   } catch {
     // ignore
@@ -218,6 +281,7 @@ interface ThreadMutationsOptions {
   setActiveThreadId: (id: string | null) => void
   threads: ChatThreadPublic[]
   handleThreadDeleted: (deletedId: string) => void
+  navigateToThread?: (id: string | null, opts?: { replace?: boolean }) => void
 }
 
 function useThreadMutations({
@@ -226,6 +290,7 @@ function useThreadMutations({
   setActiveThreadId,
   threads,
   handleThreadDeleted,
+  navigateToThread,
 }: ThreadMutationsOptions) {
   const [threadToRename, setThreadToRename] =
     React.useState<ChatThreadPublic | null>(null)
@@ -259,7 +324,9 @@ function useThreadMutations({
       handleThreadDeleted(deletedId)
       if (activeThreadId === deletedId) {
         const remaining = threads.filter((t) => t.id !== deletedId)
-        setActiveThreadId(remaining.length > 0 ? remaining[0].id : null)
+        const nextId = remaining.length > 0 ? remaining[0].id : null
+        setActiveThreadId(nextId)
+        navigateToThread?.(nextId, { replace: true })
       }
       setThreadToDelete(null)
     },
@@ -434,13 +501,27 @@ function useSyncActiveThreadWithTarget(
   activeThreadId: string | null,
   setActiveThreadId: (id: string | null) => void,
 ) {
-  const prevRef = React.useRef<string | undefined>(undefined)
+  const prevRef = React.useRef<string | undefined>(effectiveTargetThreadId)
+  const isInitialMount = React.useRef(true)
+
   React.useEffect(() => {
-    if (!effectiveTargetThreadId) return
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      if (
+        effectiveTargetThreadId &&
+        activeThreadId !== effectiveTargetThreadId
+      ) {
+        setActiveThreadId(effectiveTargetThreadId)
+      }
+      return
+    }
+
     if (effectiveTargetThreadId === prevRef.current) return
     prevRef.current = effectiveTargetThreadId
-    if (activeThreadId !== effectiveTargetThreadId) {
-      setActiveThreadId(effectiveTargetThreadId)
+
+    const nextId = effectiveTargetThreadId ?? null
+    if (activeThreadId !== nextId) {
+      setActiveThreadId(nextId)
     }
   }, [effectiveTargetThreadId, activeThreadId, setActiveThreadId])
 }
@@ -587,6 +668,7 @@ function AIPageView({
   )
 
   const sidebarFilters = useThreadSidebarFilters(threads)
+  const { navigateToThread } = useThreadNavigation()
 
   const mutations = useThreadMutations({
     queryClient,
@@ -594,6 +676,7 @@ function AIPageView({
     setActiveThreadId: feedState.setActiveThreadId,
     threads,
     handleThreadDeleted: feedState.handleThreadDeleted,
+    navigateToThread,
   })
 
   useAIPageNavigation({
@@ -621,6 +704,7 @@ function AIPageView({
 
   function onNewChatClick() {
     feedState.handleNewChat()
+    navigateToThread(null, { replace: false })
     setTimeout(() => promptInputRef.current?.focus(), 50)
   }
 
@@ -689,6 +773,7 @@ function AIPageView({
           onSelect: (threadId) => {
             if (threadId !== feedState.activeThreadId) {
               feedState.setActiveThreadId(threadId)
+              navigateToThread(threadId, { replace: false })
             }
           },
           onStartRename: (t) => {
@@ -746,7 +831,7 @@ function AIPageFallback({ search }: { search: AISearchParams }) {
 }
 
 function AIPage() {
-  const search = getAIChatUrlParams()
+  const search = useAIChatUrlParams()
   const context = useAIChatContext()
 
   if (context) {

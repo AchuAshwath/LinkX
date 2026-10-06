@@ -44,6 +44,37 @@ export function getAIChatUrlParams(): AIChatUrlParams {
   }
 }
 
+function areChatUrlParamsEqual(
+  a: AIChatUrlParams,
+  b: AIChatUrlParams,
+): boolean {
+  if (a.threadId !== b.threadId) return false
+  if (a.prompt !== b.prompt) return false
+  if (a.autoRun !== b.autoRun) return false
+  return true
+}
+
+export function useAIChatUrlParams(): AIChatUrlParams {
+  const [params, setParams] = React.useState<AIChatUrlParams>(() =>
+    getAIChatUrlParams(),
+  )
+
+  React.useEffect(() => {
+    function handleUpdate() {
+      setParams(getAIChatUrlParams())
+    }
+    window.addEventListener("popstate", handleUpdate)
+    return () => window.removeEventListener("popstate", handleUpdate)
+  }, [])
+
+  const current = getAIChatUrlParams()
+  if (!areChatUrlParamsEqual(current, params)) {
+    return current
+  }
+
+  return params
+}
+
 export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const { selectedModelId, setSelectedModelId, modelsData } =
     useAIModelSelection()
