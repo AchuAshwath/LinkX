@@ -566,4 +566,115 @@ describe("AIPage component with PostgreSQL backend persistence", () => {
     await screen.findByText("Dedicated scrape transcript")
     expect(AiThreadsService.createChatThread).not.toHaveBeenCalled()
   })
+
+  it("updates URL with threadId when a thread is clicked in sidebar", async () => {
+    window.history.replaceState({}, "", "/ai")
+    const Component = Route.options.component as React.ComponentType
+    renderWithClient(
+      <AIChatProvider>
+        <Component />
+      </AIChatProvider>,
+    )
+
+    await screen.findByText("Showcase markdown capabilities")
+
+    const archivedThreadBtn = await screen.findByText("Archived Discussion")
+    fireEvent.click(archivedThreadBtn)
+
+    await waitFor(() => {
+      expect(window.location.search).toContain("threadId=thread-archived")
+    })
+  })
+
+  it("returns to previous thread or new chat on browser Back button popstate", async () => {
+    window.history.replaceState({}, "", "/ai?threadId=thread-1")
+    const Component = Route.options.component as React.ComponentType
+    renderWithClient(
+      <AIChatProvider>
+        <Component />
+      </AIChatProvider>,
+    )
+
+    await screen.findByText("Rich Markdown & Typography")
+
+    // Click Archived Discussion
+    const archivedThreadBtn = await screen.findByText("Archived Discussion")
+    fireEvent.click(archivedThreadBtn)
+
+    await waitFor(() => {
+      expect(window.location.search).toContain("threadId=thread-archived")
+    })
+
+    // Simulate browser Back button: URL goes back to /ai?threadId=thread-1
+    window.history.pushState(
+      { threadId: "thread-1" },
+      "",
+      "/ai?threadId=thread-1",
+    )
+    window.dispatchEvent(new PopStateEvent("popstate"))
+
+    await waitFor(() => {
+      expect(AiThreadsService.getChatThread).toHaveBeenLastCalledWith({
+        id: "thread-1",
+      })
+    })
+  })
+
+  it("clears threadId from URL and switches to New Chat view on clicking New Chat", async () => {
+    window.history.replaceState({}, "", "/ai?threadId=thread-1")
+    const Component = Route.options.component as React.ComponentType
+    renderWithClient(
+      <AIChatProvider>
+        <Component />
+      </AIChatProvider>,
+    )
+
+    await screen.findByText("Rich Markdown & Typography")
+
+    const newChatBtns = await screen.findAllByRole("button", {
+      name: /new chat/i,
+    })
+    fireEvent.click(newChatBtns[0])
+
+    await waitFor(() => {
+      expect(window.location.search).not.toContain("threadId=")
+      expect(
+        screen.getByText("What would you like to create?"),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it("transitions URL cleanly to next thread when deleting active thread", async () => {
+    window.history.replaceState({}, "", "/ai?threadId=thread-1")
+    const Component = Route.options.component as React.ComponentType
+    renderWithClient(
+      <AIChatProvider>
+        <Component />
+      </AIChatProvider>,
+    )
+
+    await screen.findByText("Rich Markdown & Typography")
+
+    // Open kebab menu for thread-1 and click Delete
+    const kebabButtons = await screen.findAllByRole("button", {
+      name: /thread options/i,
+    })
+    fireEvent.click(kebabButtons[0])
+
+    const deleteBtn = await screen.findByRole("menuitem", { name: /delete/i })
+    fireEvent.click(deleteBtn)
+
+    // Confirm delete in dialog
+    const confirmBtn = await screen.findByRole("button", {
+      name: /^delete chat$/i,
+    })
+    fireEvent.click(confirmBtn)
+
+    await waitFor(() => {
+      expect(AiThreadsService.deleteChatThread).toHaveBeenCalledWith({
+        id: "thread-1",
+      })
+      expect(window.location.search).toContain("threadId=thread-archived")
+    })
+  })
 })
