@@ -231,6 +231,7 @@ interface ThreadTranscriptProps {
   setActiveLeafIdByThread: React.Dispatch<
     React.SetStateAction<Record<string, string | null>>
   >
+  onModelLoaded?: (modelId?: string | null) => void
 }
 
 function syncThreadDetailToState({
@@ -270,12 +271,19 @@ function useThreadTranscript({
   queuedThreadIds,
   setMessagesByThread,
   setActiveLeafIdByThread,
+  onModelLoaded,
 }: ThreadTranscriptProps) {
   const { data: activeThreadDetail } = useQuery({
     queryKey: ["ai-thread", activeThreadId],
     queryFn: () => AiThreadsService.getChatThread({ id: activeThreadId! }),
     enabled: Boolean(activeThreadId),
   })
+
+  React.useEffect(() => {
+    if (activeThreadDetail) {
+      onModelLoaded?.(activeThreadDetail.model)
+    }
+  }, [activeThreadDetail, onModelLoaded])
 
   React.useEffect(() => {
     if (
@@ -383,6 +391,7 @@ function useInitialActiveThread({
 function useCreateThreadMutation(
   queryClient: ReturnType<typeof useQueryClient>,
   setActiveThreadId: (id: string) => void,
+  selectedModelId?: string,
 ) {
   return useMutation({
     mutationFn: (prompt?: string) => {
@@ -392,6 +401,7 @@ function useCreateThreadMutation(
           origin: isTrending ? "trending" : "composer",
           prompt,
           topic_keyword: isTrending ? "trending_scrape" : undefined,
+          model: selectedModelId || undefined,
         },
       })
     },
@@ -837,6 +847,7 @@ function useChatEngine({
   initialThreadId,
   isAutoRun,
   selectedModelId,
+  setSelectedModelId,
   core,
   queueState,
 }: {
@@ -844,6 +855,7 @@ function useChatEngine({
   initialThreadId?: string
   isAutoRun?: boolean
   selectedModelId: string
+  setSelectedModelId?: (modelId?: string | null) => void
   core: ChatFeedCore
   queueState: TurnQueueState
 }) {
@@ -870,11 +882,13 @@ function useChatEngine({
     queuedThreadIds: queueState.queuedThreadIds,
     setMessagesByThread: core.setMessagesByThread,
     setActiveLeafIdByThread: core.setActiveLeafIdByThread,
+    onModelLoaded: setSelectedModelId,
   })
 
   const createThreadMutation = useCreateThreadMutation(
     core.queryClient,
     core.setActiveThreadId,
+    selectedModelId,
   )
 
   const handleSendMessage = useChatTurnSender({
@@ -1059,6 +1073,7 @@ function assembleFeedState({
 export interface UseAIChatFeedStateProps {
   threads: ChatThreadPublic[]
   selectedModelId: string
+  setSelectedModelId?: (modelId?: string | null) => void
   initialThreadId?: string
   isAutoRun?: boolean
 }
@@ -1078,6 +1093,7 @@ export function useAIChatFeedState(options: UseAIChatFeedStateProps) {
     initialThreadId: options.initialThreadId,
     isAutoRun: options.isAutoRun,
     selectedModelId: options.selectedModelId,
+    setSelectedModelId: options.setSelectedModelId,
     core,
     queueState,
   })
