@@ -17,7 +17,10 @@ vi.mock("@/client", async () => {
       updateChatThread: vi.fn(),
       deleteChatThread: vi.fn(),
       listAiModels: vi.fn().mockResolvedValue({
-        data: [{ id: "gpt-5.4", name: "GPT-5.4" }],
+        data: [
+          { id: "gpt-5.4", name: "GPT-5.4" },
+          { id: "gpt-5.6-sol", name: "GPT-5.6 Sol" },
+        ],
         default_model: "gpt-5.4",
       }),
     },
@@ -430,6 +433,7 @@ describe("AIPage component with PostgreSQL backend persistence", () => {
         requestBody: {
           origin: "composer",
           prompt: "What are the trending topics",
+          model: "gpt-5.4",
         },
       })
     })
@@ -476,6 +480,7 @@ describe("AIPage component with PostgreSQL backend persistence", () => {
         requestBody: {
           origin: "composer",
           prompt: "What is trending",
+          model: "gpt-5.4",
         },
       })
     })
@@ -543,6 +548,7 @@ describe("AIPage component with PostgreSQL backend persistence", () => {
           origin: "trending",
           prompt: "Refresh trending topics from X",
           topic_keyword: "trending_scrape",
+          model: "gpt-5.4",
         },
       })
     })
@@ -675,6 +681,48 @@ describe("AIPage component with PostgreSQL backend persistence", () => {
         id: "thread-1",
       })
       expect(window.location.search).toContain("threadId=thread-archived")
+    })
+  })
+
+  it("synchronizes selected model when loading a thread with persisted model", async () => {
+    vi.mocked(AiThreadsService.listChatThreads).mockResolvedValue({
+      data: [
+        {
+          id: "thread-model",
+          title: "Model Persistence Thread",
+          origin: "manual",
+          model: "gpt-5.6-sol",
+          message_count: 2,
+          is_archived: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          owner_id: "user-1",
+        },
+      ],
+      count: 1,
+    })
+    vi.mocked(AiThreadsService.getChatThread).mockResolvedValue({
+      id: "thread-model",
+      title: "Model Persistence Thread",
+      origin: "manual",
+      model: "gpt-5.6-sol",
+      message_count: 2,
+      is_archived: false,
+      transcript: { messages: [] },
+      owner_id: "user-1",
+    })
+
+    window.history.replaceState({}, "", "/ai?threadId=thread-model")
+
+    const Component = Route.options.component as React.ComponentType
+    renderWithClient(
+      <AIChatProvider>
+        <Component />
+      </AIChatProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText("GPT-5.6 Sol")).toBeInTheDocument()
     })
   })
 })

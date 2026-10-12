@@ -55,10 +55,16 @@ export function useAIModelSelection() {
     () => getStoredModel() || "",
   )
 
-  const setSelectedModelId = React.useCallback((modelId: string) => {
-    setSelectedModelIdState(modelId)
-    persistStoredModel(modelId)
-  }, [])
+  const setSelectedModelId = React.useCallback(
+    (modelId?: string | null) => {
+      const resolved = modelId || resolveFallbackModel(modelsData) || ""
+      if (resolved) {
+        setSelectedModelIdState(resolved)
+        persistStoredModel(resolved)
+      }
+    },
+    [modelsData],
+  )
 
   React.useEffect(() => {
     const nextModel = computeReconciledModel(modelsData)

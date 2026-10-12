@@ -366,6 +366,7 @@ def create_chat_thread(
         origin=origin,
         post_id=thread_in.post_id,
         topic_keyword=topic_keyword,
+        model=thread_in.model,
         message_count=message_count,
         is_archived=False,
         is_custom_title=is_scrape,
@@ -447,6 +448,34 @@ def update_chat_thread(
     session.commit()
     session.refresh(db_thread)
     return db_thread
+
+
+def sync_chat_thread_model(
+    *, session: Session, db_thread: ChatThread, model: str | None
+) -> ChatThread:
+    """Sync selected model to thread if model changed."""
+    if not model or db_thread.model == model:
+        return db_thread
+    db_thread.model = model
+    session.add(db_thread)
+    session.commit()
+    session.refresh(db_thread)
+    return db_thread
+
+
+def apply_ai_thread_title(
+    *, session: Session, db_thread: ChatThread, ai_title: str | None
+) -> None:
+    """Apply generated AI title if thread does not have a custom title and within initial turns."""
+    session.refresh(db_thread)
+    trimmed_title = ai_title.strip() if ai_title else ""
+    is_eligible = not db_thread.is_custom_title and db_thread.message_count <= 2
+    if trimmed_title and is_eligible:
+        db_thread.title = trimmed_title
+        db_thread.updated_at = datetime.now(timezone.utc)
+        session.add(db_thread)
+        session.commit()
+        session.refresh(db_thread)
 
 
 def delete_chat_thread(*, session: Session, thread_id: uuid.UUID) -> None:
