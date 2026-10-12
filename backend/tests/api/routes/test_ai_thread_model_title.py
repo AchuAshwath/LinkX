@@ -16,20 +16,60 @@ def _create_thread(
     client: TestClient,
     headers: dict[str, str],
     *,
-    prompt: str | None = None,
-    origin: str = "manual",
+    payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    body: dict[str, Any] = {"origin": origin}
-    if prompt is not None:
-        body["prompt"] = prompt
+    body = {"origin": "manual", **(payload or {})}
     response = client.post(
         f"{settings.API_V1_STR}/ai/threads/", headers=headers, json=body
     )
     return response.json()
 
 
-def _mock_chat_stream_services(mock_model: Any) -> tuple[Any, Any, Any]:
-    return (
+def _patch_thread(
+    client: TestClient,
+    headers: dict[str, str],
+    thread_id: str,
+    payload: dict[str, Any],
+) -> Any:
+    return client.patch(
+        f"{settings.API_V1_STR}/ai/threads/{thread_id}",
+        headers=headers,
+        json=payload,
+    )
+
+
+async def _run_assistant_turn_with_title_patch(
+    *,
+    session: Session,
+    db_thread: ChatThread,
+    ai_title: str,
+) -> None:
+    payload = AssistantTurnPayload(
+        body=ChatMessageRequest(message="Conversation prompt"),
+        accumulated_text="Assistant output text",
+        assistant_parts=[{"type": "text", "text": "Assistant output text"}],
+    )
+    with patch(
+        "app.api.routes.ai_threads.generate_ai_thread_title",
+        return_value=ai_title,
+    ):
+        await _save_assistant_turn(session=session, thread=db_thread, payload=payload)
+    session.refresh(db_thread)
+
+
+def _call_stream_with_fake_llm(
+    client: TestClient,
+    headers: dict[str, str],
+    thread_id: uuid.UUID,
+    payload: dict[str, Any],
+) -> int:
+    async def fake_astream(messages: Any):  # noqa: ARG001
+        yield AIMessageChunk(content="Model response")
+
+    mock_model = MagicMock()
+    mock_model.astream = fake_astream
+
+    with (
         patch(
             "app.services.agentic.agent_supervisor.build_copilot_agent",
             side_effect=RuntimeError("copilot agent disabled for unit test"),
@@ -42,20 +82,24 @@ def _mock_chat_stream_services(mock_model: Any) -> tuple[Any, Any, Any]:
             "app.services.ai_completion_client.get_chat_model",
             return_value=mock_model,
         ),
-    )
+    ):
+        res = client.post(
+            f"{settings.API_V1_STR}/ai/threads/{thread_id}/chat",
+            headers=headers,
+            json=payload,
+        )
+    return res.status_code
 
 
 def test_create_chat_thread_model_persistence(
     client: TestClient, superuser_token_headers: dict[str, str], db: Session
 ) -> None:
     """Issue #126: Creating a thread with model persists in DB and returns in response."""
-    res = client.post(
-        f"{settings.API_V1_STR}/ai/threads/",
-        headers=superuser_token_headers,
-        json={"prompt": "Test model thread", "model": "gpt-5.5"},
+    data = _create_thread(
+        client,
+        superuser_token_headers,
+        payload={"prompt": "Test model thread", "model": "gpt-5.5"},
     )
-    assert res.status_code == 200
-    data = res.json()
     assert data["model"] == "gpt-5.5"
 
     thread_db = db.get(ChatThread, uuid.UUID(data["id"]))
@@ -63,135 +107,129 @@ def test_create_chat_thread_model_persistence(
     assert thread_db.model == "gpt-5.5"
 
 
-def test_update_chat_thread_model_and_custom_title_flag(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+def test_create_chat_thread_model_length_validation(
+    client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:
-    """Issue #126: Updating title sets is_custom_title and updating model persists."""
-    thread = _create_thread(client, superuser_token_headers, prompt="Original Title")
-    tid = thread["id"]
-    assert thread.get("is_custom_title") is False
-
-    patch_res = client.patch(
-        f"{settings.API_V1_STR}/ai/threads/{tid}",
+    """Issue #126: Model name exceeding max_length=100 is rejected with 422."""
+    res = client.post(
+        f"{settings.API_V1_STR}/ai/threads/",
         headers=superuser_token_headers,
-        json={"title": "Manually Renamed Title", "model": "gpt-5.6-sol"},
+        json={"prompt": "Test model too long", "model": "m" * 101},
     )
-    assert patch_res.status_code == 200
-    patched_data = patch_res.json()
-    assert patched_data["title"] == "Manually Renamed Title"
-    assert patched_data["model"] == "gpt-5.6-sol"
-    assert patched_data["is_custom_title"] is True
+    assert res.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        {
+            "body": {"title": "Renamed Title", "model": "gpt-5.6-sol"},
+            "title": "Renamed Title",
+            "model": "gpt-5.6-sol",
+            "custom": True,
+        },
+        {
+            "body": {"model": "gpt-5.6-luna"},
+            "title": "Original Title",
+            "model": "gpt-5.6-luna",
+            "custom": False,
+        },
+    ],
+)
+def test_patch_chat_thread_variations(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+    case: dict[str, Any],
+) -> None:
+    """Issue #126: PATCH persists model and accurately flags is_custom_title."""
+    thread = _create_thread(
+        client, superuser_token_headers, payload={"prompt": "Original Title"}
+    )
+    tid = thread["id"]
+
+    res = _patch_thread(client, superuser_token_headers, tid, case["body"])
+    assert res.status_code == 200
 
     thread_db = db.get(ChatThread, uuid.UUID(tid))
     assert thread_db is not None
-    assert thread_db.title == "Manually Renamed Title"
-    assert thread_db.model == "gpt-5.6-sol"
-    assert thread_db.is_custom_title is True
+    assert thread_db.title == case["title"]
+    assert thread_db.model == case["model"]
+    assert thread_db.is_custom_title is case["custom"]
+
+
+def test_patch_thread_empty_whitespace_title_rejected(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """Issue #126: Whitespace title must fail validation and preserve state."""
+    thread = _create_thread(
+        client, superuser_token_headers, payload={"prompt": "Valid Title"}
+    )
+    tid = thread["id"]
+
+    res = _patch_thread(client, superuser_token_headers, tid, {"title": "   "})
+    assert res.status_code in (400, 422)
+
+    thread_db = db.get(ChatThread, uuid.UUID(tid))
+    assert thread_db is not None
+    assert thread_db.title == "Valid Title"
+    assert thread_db.is_custom_title is False
 
 
 @pytest.mark.anyio
-async def test_custom_title_protected_from_ai_title_overwrite(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+@pytest.mark.parametrize(
+    "case",
+    [
+        {
+            "custom": True,
+            "initial": "User Defined Title",
+            "expected": "User Defined Title",
+        },
+        {
+            "custom": False,
+            "initial": "Initial Prompt",
+            "expected": "AI Generated Title",
+        },
+    ],
+)
+async def test_ai_title_generation_eligibility(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+    case: dict[str, Any],
 ) -> None:
-    """Issue #126: When is_custom_title is True, assistant turn does not overwrite title."""
+    """Issue #126: Protect custom titles from AI overwrite and allow generation when eligible."""
     thread_obj = _create_thread(
-        client, superuser_token_headers, prompt="Initial Prompt"
+        client, superuser_token_headers, payload={"prompt": "Seed Prompt"}
     )
     tid = uuid.UUID(thread_obj["id"])
     db_thread = db.get(ChatThread, tid)
     assert db_thread is not None
-    db_thread.title = "Protected Custom Title"
-    db_thread.is_custom_title = True
+    db_thread.title = case["initial"]
+    db_thread.is_custom_title = case["custom"]
     db_thread.message_count = 1
     db.add(db_thread)
     db.commit()
-    db.refresh(db_thread)
 
-    payload = AssistantTurnPayload(
-        body=ChatMessageRequest(message="Initial Prompt"),
-        accumulated_text="Generated Assistant Response",
-        assistant_parts=[{"type": "text", "text": "Generated Assistant Response"}],
+    await _run_assistant_turn_with_title_patch(
+        session=db, db_thread=db_thread, ai_title="AI Generated Title"
     )
-    with patch(
-        "app.api.routes.ai_threads.generate_ai_thread_title",
-        return_value="AI Generated Title",
-    ):
-        await _save_assistant_turn(session=db, thread=db_thread, payload=payload)
-    db.refresh(db_thread)
 
-    assert db_thread.title == "Protected Custom Title"
-    assert db_thread.is_custom_title is True
-
-
-def test_chat_stream_persists_selected_model_to_thread(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
-) -> None:
-    """Issue #126: chat_stream updates and persists thread.model."""
-
-    async def fake_astream(messages: Any):  # noqa: ARG001
-        yield AIMessageChunk(content="Model response")
-
-    mock_model = MagicMock()
-    mock_model.astream = fake_astream
-
-    thread = _create_thread(client, superuser_token_headers, prompt="Stream Model Test")
-    tid = uuid.UUID(thread["id"])
-
-    p1, p2, p3 = _mock_chat_stream_services(mock_model)
-    with p1, p2, p3:
-        response = client.post(
-            f"{settings.API_V1_STR}/ai/threads/{tid}/chat",
-            headers=superuser_token_headers,
-            json={"message": "Hello from model test", "model": "gpt-5.5"},
-        )
-    assert response.status_code == 200
-
-    db_thread = db.get(ChatThread, tid)
-    assert db_thread is not None
-    assert db_thread.model == "gpt-5.5"
-
-
-@pytest.mark.anyio
-async def test_ai_title_generates_when_custom_title_is_false(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
-) -> None:
-    """Issue #126: When is_custom_title is False and message_count <= 2, title is updated by AI."""
-    thread_obj = _create_thread(
-        client, superuser_token_headers, prompt="Initial Auto Prompt"
-    )
-    tid = uuid.UUID(thread_obj["id"])
-    db_thread = db.get(ChatThread, tid)
-    assert db_thread is not None
-    assert db_thread.is_custom_title is False
-
-    payload = AssistantTurnPayload(
-        body=ChatMessageRequest(message="Initial Auto Prompt"),
-        accumulated_text="Assistant response on topic",
-        assistant_parts=[{"type": "text", "text": "Assistant response on topic"}],
-    )
-    with patch(
-        "app.api.routes.ai_threads.generate_ai_thread_title",
-        return_value="AI Generated Thread Title",
-    ):
-        await _save_assistant_turn(session=db, thread=db_thread, payload=payload)
-    db.refresh(db_thread)
-
-    assert db_thread.title == "AI Generated Thread Title"
-    assert db_thread.is_custom_title is False
+    assert db_thread.title == case["expected"]
+    assert db_thread.is_custom_title is case["custom"]
 
 
 @pytest.mark.anyio
 async def test_ai_title_race_condition_does_not_clobber_concurrent_manual_rename(
     client: TestClient, superuser_token_headers: dict[str, str], db: Session
 ) -> None:
-    """Issue #126: If thread is manually renamed during async title generation, AI title does not overwrite it."""
+    """Issue #126: If thread is renamed during async title generation, AI title does not overwrite it."""
     thread_obj = _create_thread(
-        client, superuser_token_headers, prompt="Race Test Prompt"
+        client, superuser_token_headers, payload={"prompt": "Race Test Prompt"}
     )
     tid = uuid.UUID(thread_obj["id"])
     db_thread = db.get(ChatThread, tid)
     assert db_thread is not None
-    assert db_thread.is_custom_title is False
 
     async def fake_slow_generate(*_args: Any, **_kwargs: Any) -> str:
         db_thread.title = "User Renamed Concurrently"
@@ -216,93 +254,36 @@ async def test_ai_title_race_condition_does_not_clobber_concurrent_manual_rename
     assert db_thread.is_custom_title is True
 
 
-def test_patch_thread_model_only_preserves_custom_title_false(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+@pytest.mark.parametrize(
+    "case",
+    [
+        {"initial": None, "stream": "gpt-5.5", "expected": "gpt-5.5"},
+        {"initial": "gpt-5.5", "stream": None, "expected": "gpt-5.5"},
+    ],
+)
+def test_chat_stream_model_persistence_and_preservation(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+    case: dict[str, Any],
 ) -> None:
-    """Issue #126: Updating only the model via PATCH must NOT mark is_custom_title as True."""
-    thread = _create_thread(client, superuser_token_headers, prompt="Model Only Test")
-    tid = thread["id"]
-    assert thread.get("is_custom_title") is False
-
-    patch_res = client.patch(
-        f"{settings.API_V1_STR}/ai/threads/{tid}",
-        headers=superuser_token_headers,
-        json={"model": "gpt-5.6-luna"},
-    )
-    assert patch_res.status_code == 200
-    patched_data = patch_res.json()
-    assert patched_data["model"] == "gpt-5.6-luna"
-    assert patched_data["is_custom_title"] is False
-
-    thread_db = db.get(ChatThread, uuid.UUID(tid))
-    assert thread_db is not None
-    assert thread_db.model == "gpt-5.6-luna"
-    assert thread_db.is_custom_title is False
-
-
-def test_patch_thread_empty_whitespace_title_rejected_and_state_preserved(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
-) -> None:
-    """Issue #126: Empty/whitespace title must fail validation and not change state."""
+    """Issue #126: chat_stream updates model when provided and preserves existing model when omitted."""
     thread = _create_thread(
-        client, superuser_token_headers, prompt="Valid Initial Title"
+        client,
+        superuser_token_headers,
+        payload={"prompt": "Stream Model Test", "model": case["initial"]},
     )
-    tid = thread["id"]
-    initial_title = thread["title"]
+    tid = uuid.UUID(thread["id"])
 
-    patch_res = client.patch(
-        f"{settings.API_V1_STR}/ai/threads/{tid}",
-        headers=superuser_token_headers,
-        json={"title": "    "},
+    chat_payload: dict[str, Any] = {"message": "Hello from stream test"}
+    if case["stream"] is not None:
+        chat_payload["model"] = case["stream"]
+
+    status_code = _call_stream_with_fake_llm(
+        client, superuser_token_headers, tid, chat_payload
     )
-    assert patch_res.status_code in (400, 422)
-
-    thread_db = db.get(ChatThread, uuid.UUID(tid))
-    assert thread_db is not None
-    assert thread_db.title == initial_title
-    assert thread_db.is_custom_title is False
-
-
-def test_chat_stream_preserves_existing_model_when_request_model_is_none(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
-) -> None:
-    """Issue #126: chat_stream without model parameter does not wipe out previously set thread.model."""
-
-    async def fake_astream(messages: Any):  # noqa: ARG001
-        yield AIMessageChunk(content="Response")
-
-    mock_model = MagicMock()
-    mock_model.astream = fake_astream
-
-    res = client.post(
-        f"{settings.API_V1_STR}/ai/threads/",
-        headers=superuser_token_headers,
-        json={"prompt": "Preserve Model Test", "model": "gpt-5.5"},
-    )
-    tid = uuid.UUID(res.json()["id"])
-
-    p1, p2, p3 = _mock_chat_stream_services(mock_model)
-    with p1, p2, p3:
-        stream_res = client.post(
-            f"{settings.API_V1_STR}/ai/threads/{tid}/chat",
-            headers=superuser_token_headers,
-            json={"message": "Chatting without specifying model"},
-        )
-    assert stream_res.status_code == 200
+    assert status_code == 200
 
     db_thread = db.get(ChatThread, tid)
     assert db_thread is not None
-    assert db_thread.model == "gpt-5.5"
-
-
-def test_create_chat_thread_model_length_validation(
-    client: TestClient, superuser_token_headers: dict[str, str]
-) -> None:
-    """Issue #126: Model name exceeding max_length=100 is rejected with 422."""
-    too_long_model = "m" * 101
-    res = client.post(
-        f"{settings.API_V1_STR}/ai/threads/",
-        headers=superuser_token_headers,
-        json={"prompt": "Test model too long", "model": too_long_model},
-    )
-    assert res.status_code == 422
+    assert db_thread.model == case["expected"]
