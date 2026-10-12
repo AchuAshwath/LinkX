@@ -288,23 +288,25 @@ def build_message_history(
     """Convert JSONB transcript into LangChain messages with token-aware context budgeting."""
     max_hist = int(kwargs.get("max_history_messages", 10))
     budget = int(kwargs.get("token_budget", DEFAULT_TOKEN_BUDGET))
-    model = kwargs.get("model")
+    model = str(kwargs.get("model") or "gpt-4o")
     clean_images = sanitize_image_urls(images=images) if images else None
 
     base_msgs = _assemble_prompt_messages(
         transcript, current_message, clean_images, max_hist
     )
-    if estimate_total_tokens(base_msgs, model=model) <= budget:
+    if estimate_total_tokens(messages=base_msgs, model=model) <= budget:
         return base_msgs
 
-    pruned = prune_tool_call_outputs(transcript, max_chars=300)
+    pruned = prune_tool_call_outputs(transcript=transcript, max_chars=300)
     pruned_msgs = _assemble_prompt_messages(
         pruned, current_message, clean_images, max_hist
     )
-    if estimate_total_tokens(pruned_msgs, model=model) <= budget:
+    if estimate_total_tokens(messages=pruned_msgs, model=model) <= budget:
         return pruned_msgs
 
-    return apply_sliding_window_budget(pruned_msgs, token_budget=budget, model=model)
+    return apply_sliding_window_budget(
+        messages=pruned_msgs, token_budget=budget, model=model
+    )
 
 
 _build_message_history = build_message_history

@@ -344,13 +344,13 @@ def test_token_budgeting_on_branched_transcript() -> None:
 
     sys_prompt = SystemMessage(content="You are a helpful assistant.")
     lc_messages_b = _to_langchain_messages(path=active_path_b, sys_prompt=sys_prompt)
-    budgeted_b = apply_sliding_window_budget(lc_messages_b, token_budget=500)
+    budgeted_b = apply_sliding_window_budget(messages=lc_messages_b, token_budget=500)
     assert len(budgeted_b) == 5
-    assert estimate_total_tokens(budgeted_b) < 100
+    assert estimate_total_tokens(messages=budgeted_b) < 100
 
     # Branch A's massive message forces sliding window truncation
     active_path_a = resolve_active_branch(messages=messages, active_leaf_id="msg_a2a")
     lc_messages_a = _to_langchain_messages(path=active_path_a, sys_prompt=sys_prompt)
-    budgeted_a = apply_sliding_window_budget(lc_messages_a, token_budget=500)
+    budgeted_a = apply_sliding_window_budget(messages=lc_messages_a, token_budget=500)
     assert len(budgeted_a) < len(lc_messages_a)
     assert len(budgeted_a) == 2
