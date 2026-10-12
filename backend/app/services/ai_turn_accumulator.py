@@ -184,17 +184,86 @@ def _mark_running_tools_interrupted(parts: list[dict[str, Any]]) -> None:
             _cancel_single_tool_part(part)
 
 
+STOPPED_BY_USER_MARKER = "*(Generation stopped by user)*"
+
+
+def _format_stopped_turn_parts(
+    *, parts: list[dict[str, Any]], accumulated_text: str = ""
+) -> None:
+    _mark_running_tools_interrupted(parts)
+    for part in reversed(parts):
+        if isinstance(part, dict) and part.get("type") == "text":
+            existing = str(part.get("text", "")).strip()
+            suffix = (
+                f"\n\n{STOPPED_BY_USER_MARKER}" if existing else STOPPED_BY_USER_MARKER
+            )
+            part["text"] = f"{existing}{suffix}" if existing else STOPPED_BY_USER_MARKER
+            return
+    prefix = accumulated_text.strip()
+    if prefix:
+        parts.append({"type": "text", "text": f"{prefix}\n\n{STOPPED_BY_USER_MARKER}"})
+    else:
+        parts.append({"type": "text", "text": STOPPED_BY_USER_MARKER})
+
+
+def _is_interrupted_assistant(msg: dict[str, Any]) -> bool:
+    return msg.get("role") == "assistant" and bool(msg.get("interrupted"))
+
+
+def _calculate_parts_text_length(parts: list[dict[str, Any]]) -> int:
+    return sum(
+        len(p.get("text", ""))
+        for p in parts
+        if isinstance(p, dict) and isinstance(p.get("text"), str)
+    )
+
+
+def _maybe_update_existing_interrupted_turn(
+    *, session: Any, target: Any, parts: list[dict[str, Any]]
+) -> bool:
+    """If the active leaf is already an interrupted assistant turn, update it in-place and return True."""
+    transcript = dict(getattr(target, "transcript", None) or {})
+    messages = list(transcript.get("messages", []))
+    if not messages or not _is_interrupted_assistant(messages[-1]):
+        return False
+
+    last_msg = messages[-1]
+    existing_len = _calculate_parts_text_length(last_msg.get("parts", []))
+    new_len = _calculate_parts_text_length(parts)
+    if new_len > existing_len or len(parts) > len(last_msg.get("parts", [])):
+        last_msg["parts"] = parts
+        transcript["messages"] = messages
+        target.transcript = transcript
+        try:
+            session.add(target)
+            session.commit()
+        except Exception as exc:
+            logger.warning("Failed to update existing interrupted turn: %s", exc)
+    return True
+
+
 def persist_interrupted_turn(
-    *, session: Any, thread: Any, thread_id: Any, parts: list[dict[str, Any]]
+    *,
+    session: Any,
+    thread: Any = None,
+    parts: list[dict[str, Any]],
+    **kwargs: Any,
 ) -> None:
     """Save partial assistant turn to DB when request is cancelled or disconnected."""
     if not session:
         return
-    _mark_running_tools_interrupted(parts)
-    if not parts:
-        parts.append({"type": "text", "text": "*(Generation stopped)*"})
+    accumulated_text = str(kwargs.get("accumulated_text", ""))
+    thread_id = kwargs.get("thread_id")
+    _format_stopped_turn_parts(parts=parts, accumulated_text=accumulated_text)
     target = thread or _resolve_target_thread(session=session, thread_id=thread_id)
-    parent_id = getattr(target, "active_leaf_id", None) if target else None
+    if not target:
+        return
+    if _maybe_update_existing_interrupted_turn(
+        session=session, target=target, parts=parts
+    ):
+        return
+
+    parent_id = getattr(target, "active_leaf_id", None)
     msg = {
         "id": f"msg_{uuid.uuid4().hex[:12]}",
         "role": "assistant",
@@ -203,8 +272,6 @@ def persist_interrupted_turn(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "interrupted": True,
     }
-    if not target:
-        return
     try:
         from app import crud
 

@@ -34,9 +34,9 @@ from app.services.ai_image_utils import sanitize_image_urls as _clean_image_urls
 from app.services.ai_model_catalog import get_available_ai_models
 from app.services.ai_turn_accumulator import (
     TranscriptEditPayload,
-    _mark_running_tools_interrupted,
     append_or_update_draft_part,
     apply_transcript_branch,
+    persist_interrupted_turn,
     resolve_active_branch,
 )
 
@@ -439,6 +439,10 @@ async def _stream_events_with_heartbeat(
     finally:
         if next_task is not None:
             await _cancel_pending_task(task=next_task)
+        try:
+            await runner.aclose()
+        except Exception:
+            pass
 
 
 def _build_chat_runner(
@@ -493,23 +497,12 @@ async def _persist_partial_turn_safely(
     accumulated_text: str,
     assistant_parts: list[dict[str, Any]],
 ) -> None:
-    if not assistant_parts and not accumulated_text:
-        return
-    _mark_running_tools_interrupted(assistant_parts)
-    try:
-        await _save_assistant_turn(
-            session=ctx.session,
-            thread=ctx.thread,
-            payload=AssistantTurnPayload(
-                body=ctx.body,
-                accumulated_text=accumulated_text,
-                assistant_parts=assistant_parts,
-            ),
-        )
-    except Exception as save_err:
-        logger.warning(
-            "Failed to save partial assistant turn on disconnect: %s", save_err
-        )
+    persist_interrupted_turn(
+        session=ctx.session,
+        thread=ctx.thread,
+        parts=assistant_parts,
+        accumulated_text=accumulated_text,
+    )
 
 
 async def _generate_chat_events(
