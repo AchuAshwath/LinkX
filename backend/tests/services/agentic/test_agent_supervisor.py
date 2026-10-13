@@ -276,16 +276,139 @@ class TestAgentSupervisorDraftManagement:
         }
 
         tools = build_copilot_tools(
-            user_id=str(user.id),
-            session=db,
-            thread_id=str(thread.id),
-            transcript=transcript,
+            ctx=CopilotContext(
+                user_id=str(user.id),
+                session=db,
+                thread_id=str(thread.id),
+                transcript=transcript,
+            )
         )
         get_tool = _get_tool_by_name(tools, "get_latest_draft_post")
         res = get_tool.invoke({})
 
         assert res["post_id"] == str(post.id)
         assert res["content"] == "Transcript branch post"
+
+    def test_parallel_save_draft_tools_concurrent_execution_thread_safety(
+        self, db: Session
+    ) -> None:
+        """Verify parallel calls to save_draft_post from concurrent threads don't collide on db session."""
+        import concurrent.futures
+
+        user = _make_user(db=db)
+        thread = _make_thread(db=db, user=user)
+
+        tools = build_copilot_tools(
+            user_id=str(user.id),
+            session=db,
+            thread_id=str(thread.id),
+        )
+        save_tool = _get_tool_by_name(tools, "save_draft_post")
+
+        def _run_save(*, idx: int) -> dict[str, Any]:
+            return save_tool.invoke(
+                {
+                    "content": f"Concurrent drafted post {idx} from founders.",
+                    "platform": "x",
+                }
+            )
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            futures = [executor.submit(_run_save, idx=i) for i in range(4)]
+            results = [f.result() for f in concurrent.futures.as_completed(futures)]
+
+        assert len(results) == 4
+        for res in results:
+            assert "error" not in res
+            assert res.get("status") == "draft"
+            assert res.get("post_id") is not None
+
+        posts = db.exec(select(Post).where(Post.owner_id == user.id)).all()
+        assert len(posts) == 4
+
+    def test_parallel_mixed_draft_tools_thread_safety(self, db: Session) -> None:
+        """Verify concurrent mixed tool calls (save, update, get) operate safely without transaction collision."""
+        import concurrent.futures
+
+        user = _make_user(db=db)
+        thread = _make_thread(db=db, user=user)
+        initial_post = Post(
+            content="Seed draft post for concurrent edits",
+            owner_id=user.id,
+            platform="x",
+            status="draft",
+        )
+        db.add(initial_post)
+        db.commit()
+        db.refresh(initial_post)
+        thread.post_id = initial_post.id
+        db.add(thread)
+        db.commit()
+
+        tools = build_copilot_tools(
+            user_id=str(user.id),
+            session=db,
+            thread_id=str(thread.id),
+        )
+        save_tool = _get_tool_by_name(tools, "save_draft_post")
+        update_tool = _get_tool_by_name(tools, "update_draft_post")
+        get_tool = _get_tool_by_name(tools, "get_latest_draft_post")
+
+        def _worker(*, task_type: str, item_id: int) -> dict[str, Any]:
+            if task_type == "save":
+                return save_tool.invoke(
+                    {"content": f"New post from thread {item_id}", "platform": "x"}
+                )
+            if task_type == "update":
+                return update_tool.invoke(
+                    {"refined_content": f"Updated copy iteration {item_id}"}
+                )
+            return get_tool.invoke({})
+
+        tasks = [
+            ("save", 1),
+            ("update", 2),
+            ("get", 3),
+            ("save", 4),
+            ("update", 5),
+            ("get", 6),
+        ]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+            futures = [
+                executor.submit(_worker, task_type=t[0], item_id=t[1]) for t in tasks
+            ]
+            results = [f.result() for f in concurrent.futures.as_completed(futures)]
+
+        assert len(results) == 6
+        for res in results:
+            assert "error" not in res
+
+    def test_synchronized_session_auto_rollback_on_exception(self, db: Session) -> None:
+        """Verify dirty session objects are evicted and rolled back when an exception occurs inside synchronized_session."""
+        from app.services.agentic.agent_supervisor import CopilotContext
+
+        user = _make_user(db=db)
+        ctx = CopilotContext(user_id=str(user.id), session=db)
+
+        # Stage an entity inside the session then raise an exception
+        try:
+            with ctx.synchronized_session() as session:
+                dirty_post = Post(
+                    content="Orphaned uncommitted entity",
+                    owner_id=user.id,
+                    platform="x",
+                )
+                session.add(dirty_post)
+                raise RuntimeError("Simulated failure inside tool body")
+        except RuntimeError:
+            pass
+
+        # Verify dirty post was rolled back and is not in session.new
+        assert len(db.new) == 0
+        posts = db.exec(
+            select(Post).where(Post.content == "Orphaned uncommitted entity")
+        ).all()
+        assert len(posts) == 0
 
 
 class TestAgentSupervisorScrapingTools:

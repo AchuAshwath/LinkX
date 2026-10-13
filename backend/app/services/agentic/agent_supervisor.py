@@ -7,8 +7,11 @@ database queries, live Playwright scraping, LLM post curation, and PostgreSQL pe
 from __future__ import annotations
 
 import logging
+import threading
 import uuid
-from dataclasses import dataclass
+from collections.abc import Generator
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
@@ -116,6 +119,7 @@ class CopilotContext:
     session: Session
     thread_id: str | None = None
     transcript: dict[str, Any] | None = None
+    lock: threading.RLock = field(default_factory=threading.RLock)
 
     @property
     def user_uuid(self) -> uuid.UUID | None:
@@ -124,15 +128,29 @@ class CopilotContext:
         except (ValueError, TypeError):
             return None
 
+    @contextmanager
+    def synchronized_session(self) -> Generator[Session, None, None]:
+        """Provide thread-safe synchronized access to the shared database session."""
+        with self.lock:
+            try:
+                yield self.session
+            except Exception:
+                try:
+                    self.session.rollback()
+                except Exception:
+                    pass
+                raise
+
 
 def _resolve_by_post_id(*, ctx: CopilotContext, post_id: str) -> Post | None:
     if post_id.strip().lower() in ("none", "null", "undefined"):
         return None
     try:
         p_uuid = uuid.UUID(post_id.strip())
-        post = crud.get_post(session=ctx.session, post_id=p_uuid)
-        if post and post.owner_id == ctx.user_uuid:
-            return post
+        with ctx.synchronized_session() as session:
+            post = crud.get_post(session=session, post_id=p_uuid)
+            if post and post.owner_id == ctx.user_uuid:
+                return post
     except (ValueError, TypeError):
         pass
     return None
@@ -168,13 +186,15 @@ def _resolve_by_thread_id(*, ctx: CopilotContext) -> Post | None:
         return None
     try:
         t_uuid = uuid.UUID(ctx.thread_id)
-        thread = ctx.session.get(ChatThread, t_uuid)
-        if thread and thread.post_id:
+        with ctx.synchronized_session() as session:
+            thread = session.get(ChatThread, t_uuid)
+            if not thread or not thread.post_id:
+                return None
             if _post_belongs_to_inactive_branch(
                 thread=thread, active_transcript=ctx.transcript
             ):
                 return None
-            post = crud.get_post(session=ctx.session, post_id=thread.post_id)
+            post = crud.get_post(session=session, post_id=thread.post_id)
             if post and post.owner_id == ctx.user_uuid:
                 return post
     except Exception as exc:
@@ -264,11 +284,12 @@ def _link_post_to_thread(*, ctx: CopilotContext, post_id: uuid.UUID | None) -> N
         return
     try:
         t_uuid = uuid.UUID(ctx.thread_id)
-        thread = ctx.session.get(ChatThread, t_uuid)
-        if thread and thread.post_id != post_id:
-            thread.post_id = post_id
-            ctx.session.add(thread)
-            ctx.session.commit()
+        with ctx.synchronized_session() as session:
+            thread = session.get(ChatThread, t_uuid)
+            if thread and thread.post_id != post_id:
+                thread.post_id = post_id
+                session.add(thread)
+                session.commit()
     except Exception as exc:
         logger.debug("Could not link post to thread: %s", exc)
 
@@ -281,9 +302,10 @@ def _build_trend_tools(ctx: CopilotContext) -> list[BaseTool]:
         """Query recent trending topics from LinkX database."""
         try:
             assert ctx.user_uuid is not None
-            topics = crud.get_latest_trending_topics(
-                session=ctx.session, user_id=ctx.user_uuid, limit=limit
-            )
+            with ctx.synchronized_session() as session:
+                topics = crud.get_latest_trending_topics(
+                    session=session, user_id=ctx.user_uuid, limit=limit
+                )
             today_utc = datetime.now(timezone.utc).date()
             has_today = False
             latest_str = None
@@ -332,9 +354,10 @@ def _build_trend_tools(ctx: CopilotContext) -> list[BaseTool]:
         topic_id: str, max_tweets: int = 5
     ) -> dict[str, Any] | None:
         """Retrieve topic tweets and Grok summary for a topic ID."""
-        res = raw_get_topic_tweets_and_summary(
-            topic_id=topic_id, max_tweets=max_tweets, session=ctx.session
-        )
+        with ctx.synchronized_session() as session:
+            res = raw_get_topic_tweets_and_summary(
+                topic_id=topic_id, max_tweets=max_tweets, session=session
+            )
         return res.model_dump() if res else None
 
     return [get_latest_scraped_trends, get_topic_tweets_and_summary]
@@ -346,15 +369,17 @@ def _build_context_tools(ctx: CopilotContext) -> list[BaseTool]:
     @tool
     def get_recent_post_history(limit: int = 5) -> list[dict[str, Any]]:
         """Retrieve the user's recently published posts."""
-        posts = raw_get_recent_post_history(
-            user_id=ctx.user_id, limit=limit, session=ctx.session
-        )
+        with ctx.synchronized_session() as session:
+            posts = raw_get_recent_post_history(
+                user_id=ctx.user_id, limit=limit, session=session
+            )
         return [p.model_dump() for p in posts]
 
     @tool
     def get_social_account_status() -> dict[str, Any]:
         """Check user's X.com and LinkedIn account connection status."""
-        res = raw_get_social_account_status(user_id=ctx.user_id, session=ctx.session)
+        with ctx.synchronized_session() as session:
+            res = raw_get_social_account_status(user_id=ctx.user_id, session=session)
         return res.model_dump()
 
     return [get_recent_post_history, get_social_account_status]
@@ -379,11 +404,12 @@ def _build_scraping_tools(ctx: CopilotContext) -> list[BaseTool]:
         )
         try:
             assert ctx.user_uuid is not None
-            fresh = crud.get_latest_trending_topics(
-                session=ctx.session,
-                user_id=ctx.user_uuid,
-                limit=bounded_max_topics,
-            )
+            with ctx.synchronized_session() as session:
+                fresh = crud.get_latest_trending_topics(
+                    session=session,
+                    user_id=ctx.user_uuid,
+                    limit=bounded_max_topics,
+                )
             raw_result["topics"] = [
                 {
                     "id": str(t.id),
@@ -456,19 +482,20 @@ def _build_get_latest_draft_tool(ctx: CopilotContext) -> BaseTool:
     @tool
     def get_latest_draft_post() -> dict[str, Any]:
         """Retrieve the current active draft post."""
-        post = _resolve_target_post(ctx=ctx)
-        if not post:
-            return {"message": "No active draft post found for this conversation."}
-        return {
-            "post_id": str(post.id),
-            "id": str(post.id),
-            "postId": str(post.id),
-            "content": post.content,
-            "platform": post.platform,
-            "status": post.status,
-            "char_count": len(post.content),
-            "updated_at": post.updated_at.isoformat() if post.updated_at else None,
-        }
+        with ctx.synchronized_session():
+            post = _resolve_target_post(ctx=ctx)
+            if not post:
+                return {"message": "No active draft post found for this conversation."}
+            return {
+                "post_id": str(post.id),
+                "id": str(post.id),
+                "postId": str(post.id),
+                "content": post.content,
+                "platform": post.platform,
+                "status": post.status,
+                "char_count": len(post.content),
+                "updated_at": post.updated_at.isoformat() if post.updated_at else None,
+            }
 
     return get_latest_draft_post
 
@@ -477,16 +504,17 @@ def _build_save_draft_tool(ctx: CopilotContext) -> BaseTool:
     @tool
     def save_draft_post(content: str, platform: str = "x") -> dict[str, Any]:
         """Persist a BRAND NEW post draft to PostgreSQL."""
-        post = raw_save_draft_post(
-            user_id=ctx.user_id,
-            content=content,
-            platform=platform,
-            session=ctx.session,
-        )
-        if not post:
-            return {"error": "Failed to save post draft to database"}
-        _link_post_to_thread(ctx=ctx, post_id=post.id)
-        return _format_post_card(post=post)
+        with ctx.synchronized_session() as session:
+            post = raw_save_draft_post(
+                user_id=ctx.user_id,
+                content=content,
+                platform=platform,
+                session=session,
+            )
+            if not post:
+                return {"error": "Failed to save post draft to database"}
+            _link_post_to_thread(ctx=ctx, post_id=post.id)
+            return _format_post_card(post=post)
 
     return save_draft_post
 
@@ -497,29 +525,30 @@ def _build_update_draft_tool(ctx: CopilotContext) -> BaseTool:
         refined_content: str, post_id: str | None = None
     ) -> dict[str, Any]:
         """Update an existing draft post in PostgreSQL with refined content."""
-        target = _resolve_target_post(ctx=ctx, post_id=post_id)
-        if not target:
-            created = raw_save_draft_post(
+        with ctx.synchronized_session() as session:
+            target = _resolve_target_post(ctx=ctx, post_id=post_id)
+            if not target:
+                created = raw_save_draft_post(
+                    user_id=ctx.user_id,
+                    content=refined_content,
+                    platform="x",
+                    session=session,
+                )
+                if not created:
+                    return {"error": "Failed to update or create draft post"}
+                _link_post_to_thread(ctx=ctx, post_id=created.id)
+                return _format_post_card(post=created, updated=True)
+
+            post = raw_update_post_in_db(
+                post_id=str(target.id),
                 user_id=ctx.user_id,
                 content=refined_content,
-                platform="x",
-                session=ctx.session,
+                session=session,
             )
-            if not created:
-                return {"error": "Failed to update or create draft post"}
-            _link_post_to_thread(ctx=ctx, post_id=created.id)
-            return _format_post_card(post=created, updated=True)
-
-        post = raw_update_post_in_db(
-            post_id=str(target.id),
-            user_id=ctx.user_id,
-            content=refined_content,
-            session=ctx.session,
-        )
-        if not post:
-            return {"error": f"Failed to update post with ID {target.id}"}
-        _link_post_to_thread(ctx=ctx, post_id=post.id)
-        return _format_post_card(post=post, updated=True)
+            if not post:
+                return {"error": f"Failed to update post with ID {target.id}"}
+            _link_post_to_thread(ctx=ctx, post_id=post.id)
+            return _format_post_card(post=post, updated=True)
 
     return update_draft_post
 
@@ -531,24 +560,25 @@ def _build_schedule_draft_tool(ctx: CopilotContext) -> BaseTool:
     ) -> dict[str, Any]:
         """Schedule an existing draft post for future publication."""
         try:
-            target = _resolve_target_post(ctx=ctx, post_id=post_id)
-            if not target:
-                return {"error": "No post found to schedule"}
-            scheduled_dt = datetime.fromisoformat(scheduled_at_iso)
-            if scheduled_dt.tzinfo is None:
-                scheduled_dt = scheduled_dt.replace(tzinfo=timezone.utc)
-            post_in = PostUpdate(status="scheduled", scheduled_at=scheduled_dt)
-            updated = crud.update_post(
-                session=ctx.session, db_post=target, post_in=post_in
-            )
-            return {
-                "post_id": str(updated.id),
-                "id": str(updated.id),
-                "status": updated.status,
-                "scheduled_at": updated.scheduled_at.isoformat()
-                if updated.scheduled_at
-                else None,
-            }
+            with ctx.synchronized_session() as session:
+                target = _resolve_target_post(ctx=ctx, post_id=post_id)
+                if not target:
+                    return {"error": "No post found to schedule"}
+                scheduled_dt = datetime.fromisoformat(scheduled_at_iso)
+                if scheduled_dt.tzinfo is None:
+                    scheduled_dt = scheduled_dt.replace(tzinfo=timezone.utc)
+                post_in = PostUpdate(status="scheduled", scheduled_at=scheduled_dt)
+                updated = crud.update_post(
+                    session=session, db_post=target, post_in=post_in
+                )
+                return {
+                    "post_id": str(updated.id),
+                    "id": str(updated.id),
+                    "status": updated.status,
+                    "scheduled_at": updated.scheduled_at.isoformat()
+                    if updated.scheduled_at
+                    else None,
+                }
         except Exception as e:
             return {"error": f"Failed to schedule post: {e}"}
 
@@ -567,24 +597,27 @@ def _build_draft_tools(ctx: CopilotContext) -> list[BaseTool]:
 
 def build_copilot_tools(
     *,
-    user_id: str,
-    session: Session,
+    ctx: CopilotContext | None = None,
+    user_id: str | None = None,
+    session: Session | None = None,
     thread_id: str | None = None,
-    transcript: dict[str, Any] | None = None,
 ) -> list[BaseTool]:
     """Construct context-bound tools for the authenticated user and database session."""
-    ctx = CopilotContext(
-        user_id=user_id,
-        session=session,
-        thread_id=thread_id,
-        transcript=transcript,
-    )
+    if ctx is not None:
+        active_ctx = ctx
+    else:
+        assert user_id is not None and session is not None
+        active_ctx = CopilotContext(
+            user_id=user_id,
+            session=session,
+            thread_id=thread_id,
+        )
     return [
-        *_build_trend_tools(ctx),
-        *_build_context_tools(ctx),
-        *_build_scraping_tools(ctx),
+        *_build_trend_tools(active_ctx),
+        *_build_context_tools(active_ctx),
+        *_build_scraping_tools(active_ctx),
         *_build_curation_tools(),
-        *_build_draft_tools(ctx),
+        *_build_draft_tools(active_ctx),
     ]
 
 
@@ -613,12 +646,7 @@ def build_copilot_agent(
 ) -> Any:
     """Compile a LangGraph ReAct agent equipped with LinkX tools."""
     chat_model = get_chat_model(model=model, streaming=True)
-    tools = build_copilot_tools(
-        user_id=ctx.user_id,
-        session=ctx.session,
-        thread_id=ctx.thread_id,
-        transcript=ctx.transcript,
-    )
+    tools = build_copilot_tools(ctx=ctx)
     prompt_text = COPILOT_AGENT_SYSTEM_PROMPT + _build_active_draft_prompt(ctx=ctx)
 
     return create_react_agent(
