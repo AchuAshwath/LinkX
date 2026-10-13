@@ -142,6 +142,48 @@ def recover_unclosed_thought_at_eof(
     return items
 
 
+REASONING_MARKER_RE = re.compile(
+    r"^\s*(?:\d+\.\s+)?(?:"
+    r"I(?:'m| am| will| need| should| must| have to|'ll)?\s+(?:thinking|formulating|analyzing|planning|brainstorming|drafting|considering|pondering|evaluating|deciding|reviewing|going to|need to|trying to)\b|"
+    r"(?:Let me|Let's|Lets)\s+(?:think|consider|formulate|analyze|plan|draft|figure|break down|start by|see)\b|"
+    r"(?:Thinking|Analyzing|Formulating|Brainstorming|Strategy|Notes|Plan|Thought process|Internal thought|Angle|Tone)\b|"
+    r"(?:The user|User)\s+(?:wants|is asking|asked|needs|requires)\b|"
+    r"(?:First|Second|Third|Next|Finally),\s+(?:I will|I need to|let me|we should|I should|analyze|consider)\b|"
+    r"Step \d+:\s*(?:Brainstorm|Plan|Analyze|Think)\b|"
+    r"(?:Okay|Alright|Hmm|Wait),\s*(?:let me|I need|I will|so|what if)\b"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _find_non_reasoning_start(*, paragraphs: list[str]) -> int:
+    for idx, para in enumerate(paragraphs):
+        if not REASONING_MARKER_RE.search(para):
+            return idx
+    return -1
+
+
+def extract_fallback_text_from_thought(*, thought_text: str) -> str:
+    """Extract assistant response copy from thought text when closing tag is missing."""
+    clean = CLOSE_THOUGHT_RE.sub("", thought_text).strip()
+    if not clean:
+        return ""
+
+    m_trans = UNCLOSED_THOUGHT_TRANSITION_RE.search(clean)
+    if m_trans:
+        return clean[m_trans.end() :].strip()
+
+    paragraphs = [p for p in re.split(r"\n\s*\n", clean) if p.strip()]
+    if not paragraphs:
+        return ""
+
+    start_idx = _find_non_reasoning_start(paragraphs=paragraphs)
+    if start_idx != -1:
+        return "\n\n".join(paragraphs[start_idx:]).strip()
+
+    return clean
+
+
 def _consume_chunk(
     *, chunk: str, buffer: str, in_thought: bool
 ) -> tuple[str, bool, list[tuple[str, str]]]:
@@ -171,26 +213,87 @@ async def _stream_eof_recovered(
             yield ev
 
 
+async def _stream_fallback_promoted(
+    *,
+    accumulated: list[str],
+    delay: float,
+) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
+    """Emit promoted assistant text when whole stream terminated without any text_delta."""
+    fallback = extract_fallback_text_from_thought(thought_text="".join(accumulated))
+    if not fallback.strip():
+        return
+    async for ev in stream_text_smoothly(
+        fallback, event_type="text_delta", delay=delay
+    ):
+        yield ev
+
+
+class StreamContext:
+    """Tracks streaming buffer, thought tags, and fallback promotion state."""
+
+    def __init__(self) -> None:
+        self.in_thought = False
+        self.buffer = ""
+        self.has_text_delta = False
+        self.accumulated_thought: list[str] = []
+
+    def record_event(self, *, event_type: str, content: str) -> None:
+        if event_type == "text_delta" and content.strip():
+            self.has_text_delta = True
+        elif event_type == "thought":
+            self.accumulated_thought.append(content)
+
+    @property
+    def should_promote_thought_fallback(self) -> bool:
+        if not self.in_thought:
+            return False
+        if self.has_text_delta:
+            return False
+        return bool(self.accumulated_thought)
+
+
+async def _stream_chunk_events(
+    *,
+    ctx: StreamContext,
+    chunk: str,
+    delay: float,
+) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
+    ctx.buffer, ctx.in_thought, events = _consume_chunk(
+        chunk=chunk, buffer=ctx.buffer, in_thought=ctx.in_thought
+    )
+    for ev_type, content in events:
+        ctx.record_event(event_type=ev_type, content=content)
+        async for ev in stream_text_smoothly(content, event_type=ev_type, delay=delay):
+            yield ev
+
+
+async def _stream_drained_tail(
+    *,
+    ctx: StreamContext,
+    delay: float,
+) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
+    async for ev in _stream_eof_recovered(
+        buffer=ctx.buffer, in_thought=ctx.in_thought, delay=delay
+    ):
+        ctx.record_event(event_type=ev[0], content=ev[1].get("content", ""))
+        yield ev
+
+    if ctx.should_promote_thought_fallback:
+        async for ev in _stream_fallback_promoted(
+            accumulated=ctx.accumulated_thought, delay=delay
+        ):
+            yield ev
+
+
 async def stream_parsed_chunks(
     raw_chunks: AsyncGenerator[str, None],
     *,
     delay: float = 0.015,
 ) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
     """Parse streaming raw LLM tokens for <thought> tags and route to thought or text_delta events."""
-    in_thought = False
-    buffer = ""
-
+    ctx = StreamContext()
     async for chunk in raw_chunks:
-        buffer, in_thought, events = _consume_chunk(
-            chunk=chunk, buffer=buffer, in_thought=in_thought
-        )
-        for ev_type, content in events:
-            async for ev in stream_text_smoothly(
-                content, event_type=ev_type, delay=delay
-            ):
-                yield ev
-
-    async for ev in _stream_eof_recovered(
-        buffer=buffer, in_thought=in_thought, delay=delay
-    ):
+        async for ev in _stream_chunk_events(ctx=ctx, chunk=chunk, delay=delay):
+            yield ev
+    async for ev in _stream_drained_tail(ctx=ctx, delay=delay):
         yield ev

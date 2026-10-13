@@ -26,7 +26,10 @@ from app.services.ai_prompt_builder import (
     build_message_history,
 )
 from app.services.ai_stream_parser import (
+    StreamContext,
+    extract_fallback_text_from_thought,
     process_buffer_step,
+    recover_unclosed_thought_at_eof,
     stream_parsed_chunks,
 )
 from app.services.ai_turn_accumulator import (
@@ -74,9 +77,8 @@ def _handle_start_event(
 ) -> tuple[list[tuple[str, dict[str, Any]]], str]:
     emitted: list[tuple[str, dict[str, Any]]] = []
     if thought_buffer:
-        emitted.append(
-            ("thought" if in_thought else "text_delta", {"content": thought_buffer})
-        )
+        ev_type = "thought" if in_thought else "text_delta"
+        emitted.append((ev_type, {"content": thought_buffer}))
     emitted.append(
         (
             "tool_start",
@@ -195,7 +197,7 @@ def _handle_supervisor_event(
     kind = event.get("event")
     if kind == "on_tool_start":
         evs, buf = _handle_start_event(event, thought_buffer, in_thought)
-        return evs, buf, in_thought
+        return evs, buf, False
     if kind == "on_tool_end":
         return _handle_tool_end_events(event), thought_buffer, in_thought
     if kind == "on_chat_model_stream":
@@ -207,24 +209,56 @@ def _handle_supervisor_event(
     return [], thought_buffer, in_thought
 
 
+def _recover_remaining_buffer(
+    *, ctx: StreamContext
+) -> list[tuple[str, dict[str, Any]]]:
+    if not ctx.buffer:
+        return []
+    events: list[tuple[str, dict[str, Any]]] = []
+    for ev_type, content in recover_unclosed_thought_at_eof(
+        buffer=ctx.buffer, in_thought=ctx.in_thought
+    ):
+        ctx.record_event(event_type=ev_type, content=content)
+        events.append((ev_type, {"content": content}))
+    return events
+
+
+def _recover_fallback_text(*, ctx: StreamContext) -> list[tuple[str, dict[str, Any]]]:
+    if not ctx.should_promote_thought_fallback:
+        return []
+    fallback = extract_fallback_text_from_thought(
+        thought_text="".join(ctx.accumulated_thought)
+    )
+    if not fallback.strip():
+        return []
+    return [("text_delta", {"content": fallback})]
+
+
+def _drain_supervisor_eof(
+    *,
+    ctx: StreamContext,
+) -> list[tuple[str, dict[str, Any]]]:
+    return _recover_remaining_buffer(ctx=ctx) + _recover_fallback_text(ctx=ctx)
+
+
 async def _stream_agent_supervisor_events(
     *,
     agent: Any,
     messages: list[Any],
 ) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
     """Process LangGraph agent stream events and yield chat SSE tuples."""
-    in_thought = False
-    thought_buffer = ""
+    ctx = StreamContext()
 
     async for event in agent.astream_events({"messages": messages}, version="v2"):
-        events, thought_buffer, in_thought = _handle_supervisor_event(
-            event, thought_buffer, in_thought
+        events, ctx.buffer, ctx.in_thought = _handle_supervisor_event(
+            event, ctx.buffer, ctx.in_thought
         )
         for ev in events:
+            ctx.record_event(event_type=ev[0], content=ev[1].get("content", ""))
             yield ev
 
-    if thought_buffer:
-        yield ("thought" if in_thought else "text_delta", {"content": thought_buffer})
+    for ev in _drain_supervisor_eof(ctx=ctx):
+        yield ev
 
 
 async def default_chat_stream_runner(

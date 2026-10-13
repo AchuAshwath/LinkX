@@ -228,3 +228,84 @@ async def test_stream_parsed_chunks_redos_and_long_payload_resilience() -> None:
 
     text_content = "".join(c for ev, c in events if ev == "text_delta")
     assert "Result" in text_content
+
+
+@pytest.mark.anyio
+async def test_stream_parsed_chunks_unclosed_thought_promotes_when_zero_text_delta_emitted() -> (
+    None
+):
+    """Issue #129: When unclosed thought paragraphs end with newlines and EOF is reached,
+    parser must not allow all text to be swallowed with 0 text_delta events."""
+
+    async def stream_ending_with_trailing_newlines() -> AsyncGenerator[str, None]:
+        yield "<thought>I am formulating the strategy.\n\nI need to think carefully.\n\n"
+        yield "The most important habit of successful founders is daily execution.\n\n"
+        yield "Focus relentlessly on your core value proposition.\n\n"
+        yield "Keep building every single day.\n\n"
+
+    events = []
+    async for ev, data in stream_parsed_chunks(
+        stream_ending_with_trailing_newlines(), delay=0
+    ):
+        events.append((ev, data["content"]))
+
+    text_deltas = [c for ev, c in events if ev == "text_delta"]
+    assert len(text_deltas) > 0, f"Expected text_delta, but got only: {events}"
+    full_text = "".join(text_deltas)
+    assert "Keep building every single day." in full_text
+
+
+@pytest.mark.anyio
+async def test_stream_parsed_chunks_single_line_unclosed_thought() -> None:
+    """Adversarial Test: Single-line unclosed thought with no newlines must not be swallowed."""
+
+    async def single_line_stream() -> AsyncGenerator[str, None]:
+        yield "<thought>Short single line post copy without any newlines"
+
+    events = []
+    async for ev, data in stream_parsed_chunks(single_line_stream(), delay=0):
+        events.append((ev, data["content"]))
+
+    text_deltas = [c for ev, c in events if ev == "text_delta"]
+    assert len(text_deltas) > 0
+    full_text = "".join(text_deltas)
+    assert "Short single line post copy" in full_text
+
+
+@pytest.mark.anyio
+async def test_stream_parsed_chunks_pure_reasoning_does_not_emit_empty_strings() -> (
+    None
+):
+    """Adversarial Test: Pure reasoning stream with no copy should never emit empty string text deltas."""
+
+    async def pure_reasoning_stream() -> AsyncGenerator[str, None]:
+        yield "<thought>I am formulating the strategy.\n\nI need to think carefully."
+
+    events = []
+    async for ev, data in stream_parsed_chunks(pure_reasoning_stream(), delay=0):
+        events.append((ev, data["content"]))
+
+    # Verify no empty string tokens were yielded
+    assert all(len(c) > 0 for _, c in events)
+    text_deltas = [c for ev, c in events if ev == "text_delta"]
+    assert len(text_deltas) > 0
+
+
+@pytest.mark.anyio
+async def test_stream_parsed_chunks_closed_thought_without_text_does_not_promote_thought_to_text() -> (
+    None
+):
+    """Spec Requirement: When thought tag is properly closed and model ends without post copy,
+    internal thoughts must NOT be leaked/promoted into text_delta."""
+
+    async def closed_thought_only_stream() -> AsyncGenerator[str, None]:
+        yield "<thought>Internal confidential reasoning only</thought>"
+
+    events = []
+    async for ev, data in stream_parsed_chunks(closed_thought_only_stream(), delay=0):
+        events.append((ev, data["content"]))
+
+    thoughts = [c for ev, c in events if ev == "thought"]
+    text_deltas = [c for ev, c in events if ev == "text_delta"]
+    assert "Internal confidential reasoning only" in "".join(thoughts)
+    assert len(text_deltas) == 0
