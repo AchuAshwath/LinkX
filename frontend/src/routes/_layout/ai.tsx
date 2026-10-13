@@ -811,6 +811,7 @@ function AIPageFallback({ search }: { search: AISearchParams }) {
   const feedState = useAIChatFeedState({
     threads,
     selectedModelId,
+    setSelectedModelId,
     initialThreadId,
     isAutoRun: Boolean(search.autoRun || search.prompt),
   })

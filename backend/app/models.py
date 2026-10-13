@@ -340,6 +340,7 @@ class ChatThreadBase(SQLModel):
     origin: str = Field(
         default="manual", max_length=20
     )  # "composer" | "trending" | "manual"
+    model: str | None = Field(default=None, max_length=100)
     is_custom_title: bool = Field(default=False)
     active_leaf_id: str | None = Field(default=None, max_length=100)
 
@@ -349,11 +350,13 @@ class ChatThreadCreate(SQLModel):
     prompt: str | None = Field(default=None, max_length=25000)
     post_id: uuid.UUID | None = None
     topic_keyword: str | None = Field(default=None, max_length=200)
+    model: str | None = Field(default=None, max_length=100)
 
 
 class ChatThreadUpdate(SQLModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     is_archived: bool | None = None
+    model: str | None = Field(default=None, max_length=100)
     is_custom_title: bool | None = None
     active_leaf_id: str | None = Field(default=None, max_length=100)
 

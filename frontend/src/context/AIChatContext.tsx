@@ -92,6 +92,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const feedState = useAIChatFeedState({
     threads,
     selectedModelId,
+    setSelectedModelId,
     initialThreadId,
     isAutoRun: Boolean(urlParams.autoRun || urlParams.prompt),
   })

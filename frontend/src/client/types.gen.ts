@@ -48,11 +48,13 @@ export type ChatThreadCreate = {
     prompt?: (string | null);
     post_id?: (string | null);
     topic_keyword?: (string | null);
+    model?: (string | null);
 };
 
 export type ChatThreadDetail = {
     title: string;
     origin?: string;
+    model?: (string | null);
     is_custom_title?: boolean;
     active_leaf_id?: (string | null);
     id: string;
@@ -71,6 +73,7 @@ export type ChatThreadDetail = {
 export type ChatThreadPublic = {
     title: string;
     origin?: string;
+    model?: (string | null);
     is_custom_title?: boolean;
     active_leaf_id?: (string | null);
     id: string;
@@ -91,6 +94,7 @@ export type ChatThreadsPublic = {
 export type ChatThreadUpdate = {
     title?: (string | null);
     is_archived?: (boolean | null);
+    model?: (string | null);
     is_custom_title?: (boolean | null);
     active_leaf_id?: (string | null);
 };

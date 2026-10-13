@@ -322,17 +322,18 @@ async def _save_assistant_turn(
         message=assistant_msg,
     )
 
-    if thread.message_count <= 2 and not getattr(thread, "is_custom_title", False):
+    if thread.message_count <= 2 and not thread.is_custom_title:
         try:
             ai_title = await generate_ai_thread_title(
                 user_prompt=payload.body.message.strip() or "Image analysis",
                 assistant_response=payload.accumulated_text,
                 model=payload.body.model,
             )
-            if ai_title:
-                thread.title = ai_title
-                session.add(thread)
-                session.commit()
+            crud.apply_ai_thread_title(
+                session=session,
+                db_thread=thread,
+                ai_title=ai_title,
+            )
         except Exception:
             pass
 
@@ -603,6 +604,12 @@ async def chat_stream(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Message content or at least one image is required",
         )
+
+    crud.sync_chat_thread_model(
+        session=session,
+        db_thread=thread,
+        model=body.model,
+    )
 
     _ensure_user_turn_saved(
         session=session,

@@ -271,6 +271,18 @@ export const ChatThreadCreateSchema = {
                 }
             ],
             title: 'Topic Keyword'
+        },
+        model: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Model'
         }
     },
     type: 'object',
@@ -289,6 +301,18 @@ export const ChatThreadDetailSchema = {
             maxLength: 20,
             title: 'Origin',
             default: 'manual'
+        },
+        model: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Model'
         },
         is_custom_title: {
             type: 'boolean',
@@ -397,6 +421,18 @@ export const ChatThreadPublicSchema = {
             maxLength: 20,
             title: 'Origin',
             default: 'manual'
+        },
+        model: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Model'
         },
         is_custom_title: {
             type: 'boolean',
@@ -513,6 +549,18 @@ export const ChatThreadUpdateSchema = {
                 }
             ],
             title: 'Is Archived'
+        },
+        model: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Model'
         },
         is_custom_title: {
             anyOf: [
