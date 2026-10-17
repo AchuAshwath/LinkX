@@ -36,7 +36,7 @@ def test_count_tokens_exact_accuracy() -> None:
     import tiktoken
 
     enc = tiktoken.encoding_for_model("gpt-4o")
-    text = "LinkX Copilot crafts engaging posts for founders."
+    text = "LinkX Bot crafts engaging posts for founders."
     expected = len(enc.encode(text))
     assert count_tokens(text=text, model="gpt-4o") == expected
 

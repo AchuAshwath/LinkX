@@ -71,8 +71,8 @@ def _call_stream_with_fake_llm(
 
     with (
         patch(
-            "app.services.agentic.agent_supervisor.build_copilot_agent",
-            side_effect=RuntimeError("copilot agent disabled for unit test"),
+            "app.services.agentic.agent_supervisor.build_bot_agent",
+            side_effect=RuntimeError("bot agent disabled for unit test"),
         ),
         patch(
             "app.services.ai_completion_client.stream_direct_openai_proxy",

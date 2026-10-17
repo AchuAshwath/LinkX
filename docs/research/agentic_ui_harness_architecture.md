@@ -72,7 +72,7 @@ OpenAI's Codex CLI and its underlying **Codex App Server protocol** power autono
 | **Turn Retry** | Not implemented (must type new prompt) | Branches from preceding turn | Re-invokes last turn with incremented attempt seed | **High Value**: Re-invoke from last user turn. |
 | **Interruption & Cancellation** | `asyncio.CancelledError` caught, in-flight tools marked `cancelled`, partial turn persisted | Process signal SIGINT caught, sub-process terminated, turn persisted | Intercepted via JSON-RPC `abort`, tools marked `cancelled`, locks freed | **Good Engineering**: LinkX matches Codex/Pi pattern. |
 | **Tool Payload Truncation** | >300 chars replaced with `[Output truncated...]` | Truncated in display; full output in file session | Compaction drops bulky payloads from active prompt | **Good Engineering**: LinkX prevents context blowout. |
-| **Context Window Budgeting** | Sliding window dropping middle messages, pinning root system + latest prompt | Sliding window + selective branch pruning | Semantic auto-compaction (summarizes older turns) | **Good for now**: Sufficient for social media copilot; add summarization later. |
+| **Context Window Budgeting** | Sliding window dropping middle messages, pinning root system + latest prompt | Sliding window + selective branch pruning | Semantic auto-compaction (summarizes older turns) | **Good for now**: Sufficient for social media bot; add summarization later. |
 | **Client State Sync** | Dual state: TanStack Query + local `messagesByThread` + `turnQueue` | Single source: client is thin renderer of harness event stream | Single source: client renders App Server state | **Architectural Flaw**: Causes the thread-switching race condition. |
 
 ---
@@ -121,7 +121,7 @@ In Pi and Codex, this bug is structurally impossible because **the client does n
 ### What is "Too Much" (Avoid):
 1. **Filesystem Git Snapshots & Workspace Rollback**:
    - Codex and Pi manage git worktrees, file modification rollbacks, and bash sandboxes.
-   - LinkX is a **social media copilot and marketing strategist**, not a local coding daemon executing shell commands. Snapshotting local disk state is unnecessary.
+   - LinkX is a **social media bot and marketing strategist**, not a local coding daemon executing shell commands. Snapshotting local disk state is unnecessary.
 2. **Terminal TUI & LSP Language Servers**:
    - Pi has a complex curses-like terminal UI with syntax highlighting and LSP integration. LinkX is a rich web application with Tailwind, React, and Markdown rendering.
 

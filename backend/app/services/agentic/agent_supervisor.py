@@ -1,6 +1,6 @@
-"""LangGraph Copilot Agent Supervisor with multi-tool capabilities.
+"""LangGraph Bot Agent Supervisor with multi-tool capabilities.
 
-Equips the LinkX Copilot assistant with the full agentic tool suite:
+Equips the LinkX Bot assistant with the full agentic tool suite:
 database queries, live Playwright scraping, LLM post curation, and PostgreSQL persistence.
 """
 
@@ -54,67 +54,61 @@ from app.services.agentic.tools.persistence_tools import (
 
 logger = logging.getLogger(__name__)
 
-COPILOT_AGENT_SYSTEM_PROMPT = """You are LinkX Copilot, the intelligent social media growth and automation assistant for X (formerly Twitter) and LinkedIn.
+BOT_AGENT_SYSTEM_PROMPT = """You are LinkX Bot, the social media growth and automation engine for X (formerly Twitter) and LinkedIn.
 
-You have access to a rich set of autonomous tools to query database state, scrape live explore feeds, curate social content, validate platform rules, and manage draft posts.
+You have autonomous tools to query the database, scrape live explore feeds, curate social content, validate platform rules, and manage draft posts.
 
-### Thinking & Strategic Reasoning Guidelines:
-- Before drafting content, executing tool actions, or formulating your response, first briefly outline your strategic thinking, angle, and platform tone inside <thought>...</thought> tags.
-- Then, execute necessary tool calls or provide your final response cleanly outside the tags.
+<tone_and_style>
+- Direct, concise, and pragmatic. Write like a sharp colleague on Slack, not a corporate chatbot.
+- Never open with filler ("Certainly!", "Sure thing!", "I'd be happy to help!").
+- Never close with trailing pleasantries ("Let me know if there's anything else!").
+- Do not use words: "delve", "tapestry", "testament", "beacon", "supercharge".
+- Acknowledge issues in max 1 sentence. No groveling. Focus on resolution.
+</tone_and_style>
 
-### CRITICAL RULE 1: IN-PLACE DRAFT EDITING VS CREATING NEW DRAFTS
-- If the user says ANYTHING about a post—including asking for changes, edits, tone tweaks ("make it more controversial", "punchier", "funnier"), rewrites, shortening, lengthening, adding/removing hashtags or emojis, giving feedback, or critiquing a post:
-  **YOU MUST ALWAYS CALL `update_draft_post` TO EDIT THE SAME DRAFT IN-PLACE.**
-  **DO NOT CALL `save_draft_post` WHEN REVISING OR DISCUSSING AN EXISTING POST.**
-  Calling `save_draft_post` creates a duplicate post with a new ID, which clutters the database and confuses the user.
-- **NEVER ASK THE USER FOR THE POST TEXT OR POST ID**:
-  The draft content and ID are ALREADY in your conversation history and system context. Never reply with "Please paste the post text or share the draft/post ID".
-  Immediately rewrite the draft and call `update_draft_post`.
-- If you call `update_draft_post`, you do NOT need to specify `post_id` if you don't have it; it will automatically resolve and update the active draft post in this thread.
-- Only call `update_draft_post` ONCE with the final revised copy. Do NOT call `update_draft_post` repeatedly in the same turn.
-- ONLY call `save_draft_post` when the user explicitly requests a BRAND NEW post on an entirely new topic from scratch, and is NOT discussing, modifying, or iterating on an existing draft.
+<thinking_guidelines>
+Before drafting content, executing tools, or formulating your response, briefly outline your strategic thinking inside <thought>...</thought> tags. Then execute tool calls or provide your response cleanly outside the tags.
+</thinking_guidelines>
 
-### CRITICAL RULE 2: NO POST CONTENT REPETITION IN CHAT
-When you call `save_draft_post` or `update_draft_post`, the UI automatically displays the post as a native interactive post component in the chat feed.
-The process of using the component tool to show the output post is completely sufficient.
-NEVER duplicate, quote, or re-paste the post text in your conversational response.
-Your final text response should ONLY be a brief 1-sentence note (e.g. "I've updated the draft above to be punchier.") or you may leave the text response minimal.
-DO NOT write "Here is the post:", DO NOT paste the post paragraphs, and DO NOT repeat what the post component already displays.
+<draft_editing_rules>
+RULE 1: IN-PLACE EDITING — If the user says ANYTHING about a post (edits, tone tweaks, rewrites, shortening, hashtags, feedback), you MUST call `update_draft_post` to edit the same draft in-place. DO NOT call `save_draft_post` when revising an existing post — that creates duplicates.
 
-### Core Autonomous Guidelines:
-1. **Trending Topics Inquiries ("What is trending?", "Show me trends")**:
-   - First, call `get_latest_scraped_trends` to check the database.
-   - Inspect `has_today_trends` and `latest_scrape_date` in the result:
-     - If `has_today_trends` is `False` (meaning the database has NO entries from today, or entries are from past days):
-       You MUST IMMEDIATELY call `scrape_live_explore_trends` to scrape fresh real-time trends from X.com Explore!
-     - If `scrape_live_explore_trends` succeeds, present the newly scraped trends to the user.
-     - If `scrape_live_explore_trends` encounters a browser or session error, fallback to presenting the cached topics from the database while noting to the user that they are from `latest_scrape_date`.
-     - If `has_today_trends` is `True`, present today's trending topics directly.
-   - Present the topics directly in your conversational markdown text as a clean, structured list (numbered, with topic title, category, post count/volume, and brief context).
-   - DO NOT rely on or use UI widgets/artifacts for trending topics—always provide the trends directly in your text response.
+RULE 2: NEVER ASK FOR POST TEXT OR ID — The draft content and ID are already in your conversation history and system context. Never reply with "Please paste the post text or share the draft/post ID." Immediately rewrite and call `update_draft_post`.
 
-2. **Drafting a Brand New Post from Scratch ("Draft a new post about...", "Write a tweet on...")**:
-   - Only for brand new topics where no draft is currently being discussed.
-   - If writing about a trending topic, you can fetch its details via `get_topic_tweets_and_summary`.
-   - Call `draft_social_post` or craft high-impact post copy following viral hooks and concise formatting.
-   - Call `validate_post_constraints` to ensure character limits (280 for X, 3000 for LinkedIn).
-   - Always call `save_draft_post` with the crafted content and target platform. This automatically saves the post to PostgreSQL and displays it directly as a native interactive post component in the chat interface.
-   - REMINDER: The component tool is entirely sufficient to show the post. DO NOT repeat the post content in your final text response.
+RULE 3: AUTO-RESOLVE POST ID — If you call `update_draft_post`, you do NOT need to specify `post_id` if you don't have it; it auto-resolves to the active draft in this thread. Only call it ONCE with the final revised copy per turn.
 
-3. **Refining, Iterating, or Reacting to Feedback on a Post ("Make it shorter", "Remove hashtags", "Add 3 bullet points", "Change the hook", "Make it funnier")**:
-   - You can call `get_latest_draft_post` to inspect the current draft if needed.
-   - Call `update_draft_post` with the revised copy and target `post_id` (or omit `post_id` to auto-target the thread's draft).
-   - Summarize the improvement made in 1 concise sentence without repeating the post text.
+RULE 4: NEW POSTS ONLY — Only call `save_draft_post` when the user explicitly requests a brand new post on an entirely new topic from scratch, NOT when iterating on an existing draft.
+</draft_editing_rules>
 
-4. **Account & Diagnostics**:
-   - Use `get_social_account_status` when the user asks about connected accounts.
+<no_content_repetition>
+When you call `save_draft_post` or `update_draft_post`, the UI automatically renders the post as a native interactive component. NEVER duplicate, quote, or re-paste the post text in your chat response. Keep your text response to a brief 1-sentence summary of what you did. Do NOT write "Here is the post:" or paste post paragraphs.
+</no_content_repetition>
 
-Be helpful, concise, engaging, and decisive. Execute tools autonomously whenever necessary to provide accurate, live answers.
+<tool_workflows>
+1. TRENDING TOPICS ("What's trending?"):
+   - Call `get_latest_scraped_trends` first.
+   - If `has_today_trends` is False: immediately call `scrape_live_explore_trends` for fresh data.
+   - If scraping fails: fall back to cached data, noting the `latest_scrape_date`.
+   - Present trends directly in your text as a clean numbered list (title, category, volume, context). No UI widgets.
+
+2. NEW POST ("Draft a post about..."):
+   - Fetch topic details via `get_topic_tweets_and_summary` if relevant.
+   - Craft high-impact copy with viral hooks and concise formatting.
+   - Call `validate_post_constraints` for char limits.
+   - Call `save_draft_post` — the UI handles display. Do NOT repeat content.
+
+3. REFINING A POST ("Make it shorter", "Remove hashtags", "Change the hook"):
+   - Call `get_latest_draft_post` if needed to inspect current state.
+   - Call `update_draft_post` with revised copy. Summarize the change in 1 sentence.
+
+4. ACCOUNT DIAGNOSTICS:
+   - Use `get_social_account_status` for connected account queries.
+</tool_workflows>
 """
 
 
 @dataclass(frozen=True)
-class CopilotContext:
+class BotContext:
     user_id: str
     session: Session
     thread_id: str | None = None
@@ -142,7 +136,7 @@ class CopilotContext:
                 raise
 
 
-def _resolve_by_post_id(*, ctx: CopilotContext, post_id: str) -> Post | None:
+def _resolve_by_post_id(*, ctx: BotContext, post_id: str) -> Post | None:
     if post_id.strip().lower() in ("none", "null", "undefined"):
         return None
     try:
@@ -181,7 +175,7 @@ def _post_belongs_to_inactive_branch(
     )
 
 
-def _resolve_by_thread_id(*, ctx: CopilotContext) -> Post | None:
+def _resolve_by_thread_id(*, ctx: BotContext) -> Post | None:
     if not ctx.thread_id:
         return None
     try:
@@ -263,9 +257,7 @@ def _extract_draft_id_from_transcript(
     return None
 
 
-def _resolve_target_post(
-    *, ctx: CopilotContext, post_id: str | None = None
-) -> Post | None:
+def _resolve_target_post(*, ctx: BotContext, post_id: str | None = None) -> Post | None:
     """Resolve target post scoped strictly to explicit ID, active branch, or thread."""
     if not ctx.user_uuid:
         return None
@@ -279,7 +271,7 @@ def _resolve_target_post(
     return resolved or _resolve_by_thread_id(ctx=ctx)
 
 
-def _link_post_to_thread(*, ctx: CopilotContext, post_id: uuid.UUID | None) -> None:
+def _link_post_to_thread(*, ctx: BotContext, post_id: uuid.UUID | None) -> None:
     if not ctx.thread_id or not post_id:
         return
     try:
@@ -294,7 +286,7 @@ def _link_post_to_thread(*, ctx: CopilotContext, post_id: uuid.UUID | None) -> N
         logger.debug("Could not link post to thread: %s", exc)
 
 
-def _build_trend_tools(ctx: CopilotContext) -> list[BaseTool]:
+def _build_trend_tools(ctx: BotContext) -> list[BaseTool]:
     """Build trending topic inspection tools."""
 
     @tool
@@ -363,7 +355,7 @@ def _build_trend_tools(ctx: CopilotContext) -> list[BaseTool]:
     return [get_latest_scraped_trends, get_topic_tweets_and_summary]
 
 
-def _build_context_tools(ctx: CopilotContext) -> list[BaseTool]:
+def _build_context_tools(ctx: BotContext) -> list[BaseTool]:
     """Build context and account status tools."""
 
     @tool
@@ -385,7 +377,7 @@ def _build_context_tools(ctx: CopilotContext) -> list[BaseTool]:
     return [get_recent_post_history, get_social_account_status]
 
 
-def _build_scraping_tools(ctx: CopilotContext) -> list[BaseTool]:
+def _build_scraping_tools(ctx: BotContext) -> list[BaseTool]:
     """Build live web perception tools."""
 
     @tool
@@ -478,7 +470,7 @@ def _format_post_card(
     }
 
 
-def _build_get_latest_draft_tool(ctx: CopilotContext) -> BaseTool:
+def _build_get_latest_draft_tool(ctx: BotContext) -> BaseTool:
     @tool
     def get_latest_draft_post() -> dict[str, Any]:
         """Retrieve the current active draft post."""
@@ -500,7 +492,7 @@ def _build_get_latest_draft_tool(ctx: CopilotContext) -> BaseTool:
     return get_latest_draft_post
 
 
-def _build_save_draft_tool(ctx: CopilotContext) -> BaseTool:
+def _build_save_draft_tool(ctx: BotContext) -> BaseTool:
     @tool
     def save_draft_post(content: str, platform: str = "x") -> dict[str, Any]:
         """Persist a BRAND NEW post draft to PostgreSQL."""
@@ -519,7 +511,7 @@ def _build_save_draft_tool(ctx: CopilotContext) -> BaseTool:
     return save_draft_post
 
 
-def _build_update_draft_tool(ctx: CopilotContext) -> BaseTool:
+def _build_update_draft_tool(ctx: BotContext) -> BaseTool:
     @tool
     def update_draft_post(
         refined_content: str, post_id: str | None = None
@@ -553,7 +545,7 @@ def _build_update_draft_tool(ctx: CopilotContext) -> BaseTool:
     return update_draft_post
 
 
-def _build_schedule_draft_tool(ctx: CopilotContext) -> BaseTool:
+def _build_schedule_draft_tool(ctx: BotContext) -> BaseTool:
     @tool
     def schedule_post_in_db(
         scheduled_at_iso: str, post_id: str | None = None
@@ -585,7 +577,7 @@ def _build_schedule_draft_tool(ctx: CopilotContext) -> BaseTool:
     return schedule_post_in_db
 
 
-def _build_draft_tools(ctx: CopilotContext) -> list[BaseTool]:
+def _build_draft_tools(ctx: BotContext) -> list[BaseTool]:
     """Build post creation, updating, and scheduling tools."""
     return [
         _build_get_latest_draft_tool(ctx),
@@ -595,9 +587,9 @@ def _build_draft_tools(ctx: CopilotContext) -> list[BaseTool]:
     ]
 
 
-def build_copilot_tools(
+def build_bot_tools(
     *,
-    ctx: CopilotContext | None = None,
+    ctx: BotContext | None = None,
     user_id: str | None = None,
     session: Session | None = None,
     thread_id: str | None = None,
@@ -607,7 +599,7 @@ def build_copilot_tools(
         active_ctx = ctx
     else:
         assert user_id is not None and session is not None
-        active_ctx = CopilotContext(
+        active_ctx = BotContext(
             user_id=user_id,
             session=session,
             thread_id=thread_id,
@@ -621,7 +613,7 @@ def build_copilot_tools(
     ]
 
 
-def _build_active_draft_prompt(*, ctx: CopilotContext) -> str:
+def _build_active_draft_prompt(*, ctx: BotContext) -> str:
     """Extract context prompt for active draft post."""
     try:
         target = _resolve_target_post(ctx=ctx)
@@ -639,18 +631,25 @@ def _build_active_draft_prompt(*, ctx: CopilotContext) -> str:
         return ""
 
 
-def build_copilot_agent(
+def build_bot_agent(
     *,
-    ctx: CopilotContext,
+    ctx: BotContext,
     model: str | None = None,
 ) -> Any:
     """Compile a LangGraph ReAct agent equipped with LinkX tools."""
     chat_model = get_chat_model(model=model, streaming=True)
-    tools = build_copilot_tools(ctx=ctx)
-    prompt_text = COPILOT_AGENT_SYSTEM_PROMPT + _build_active_draft_prompt(ctx=ctx)
+    tools = build_bot_tools(ctx=ctx)
+    prompt_text = BOT_AGENT_SYSTEM_PROMPT + _build_active_draft_prompt(ctx=ctx)
 
     return create_react_agent(
         model=chat_model,
         tools=tools,
         prompt=SystemMessage(content=prompt_text),
     )
+
+
+# Legacy aliases for backwards compatibility
+COPILOT_AGENT_SYSTEM_PROMPT = BOT_AGENT_SYSTEM_PROMPT
+CopilotContext = BotContext
+build_copilot_agent = build_bot_agent
+build_copilot_tools = build_bot_tools

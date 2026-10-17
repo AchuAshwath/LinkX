@@ -1,7 +1,7 @@
 """AI Model Catalog Service.
 
 Provides model discovery, filtering, friendly display names, and default
-model resolution for LinkX chat and copilot features.
+model resolution for LinkX chat and bot features.
 """
 
 from typing import Any

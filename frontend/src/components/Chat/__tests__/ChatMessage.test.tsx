@@ -161,7 +161,7 @@ describe("ChatMessage component", () => {
       parts: [
         {
           type: "text",
-          text: "<thought>Keep the response brief, friendly, and establish role.</thought>\n\nI'm LinkX Copilot — your AI assistant.",
+          text: "<thought>Keep the response brief, friendly, and establish role.</thought>\n\nI'm LinkX Bot — your AI assistant.",
         },
       ],
     }
@@ -170,7 +170,7 @@ describe("ChatMessage component", () => {
     // Thought content is in the thinking accordion, not rendered as raw tags
     expect(screen.queryByText(/<thought>/)).not.toBeInTheDocument()
     expect(
-      screen.getByText(/I'm LinkX Copilot — your AI assistant\./),
+      screen.getByText(/I'm LinkX Bot — your AI assistant\./),
     ).toBeInTheDocument()
     // Thinking summary button is visible
     expect(

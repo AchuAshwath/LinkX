@@ -336,8 +336,8 @@ async def test_real_default_chat_stream_runner_cancellation_no_duplicate_turns(
 
     with (
         patch(
-            "app.services.agentic.agent_supervisor.build_copilot_agent",
-            side_effect=RuntimeError("copilot disabled for direct stream test"),
+            "app.services.agentic.agent_supervisor.build_bot_agent",
+            side_effect=RuntimeError("bot disabled for direct stream test"),
         ),
         patch(
             "app.services.ai_completion_client.get_chat_model",

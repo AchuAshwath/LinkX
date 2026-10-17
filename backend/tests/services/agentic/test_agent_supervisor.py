@@ -1,4 +1,4 @@
-"""Tests for LangGraph Copilot Agent Supervisor draft management and in-place editing."""
+"""Tests for LangGraph Bot Agent Supervisor draft management and in-place editing."""
 
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ from sqlmodel import Session, select
 from app import crud
 from app.models import ChatThread, ChatThreadCreate, Post, PostCreate, User, UserCreate
 from app.services.agentic.agent_supervisor import (
-    COPILOT_AGENT_SYSTEM_PROMPT,
-    CopilotContext,
-    build_copilot_agent,
-    build_copilot_tools,
+    BOT_AGENT_SYSTEM_PROMPT,
+    BotContext,
+    build_bot_agent,
+    build_bot_tools,
 )
 from tests.utils.utils import random_email, random_lower_string
 
@@ -48,22 +48,18 @@ def _get_tool_by_name(tools: list[Any], name: str) -> Any:
 
 
 class TestAgentSupervisorDraftManagement:
-    def test_copilot_agent_system_prompt_rules(self) -> None:
+    def test_bot_agent_system_prompt_rules(self) -> None:
         """Verify prompt contains strict rules for in-place editing and no repetition."""
-        assert (
-            "IN-PLACE DRAFT EDITING VS CREATING NEW DRAFTS"
-            in COPILOT_AGENT_SYSTEM_PROMPT
-        )
-        assert "update_draft_post" in COPILOT_AGENT_SYSTEM_PROMPT
-        assert (
-            "DO NOT CALL `save_draft_post` WHEN REVISING" in COPILOT_AGENT_SYSTEM_PROMPT
-        )
-        assert "NO POST CONTENT REPETITION" in COPILOT_AGENT_SYSTEM_PROMPT
-        assert "get_latest_draft_post" in COPILOT_AGENT_SYSTEM_PROMPT
+        assert "LinkX Bot" in BOT_AGENT_SYSTEM_PROMPT
+        assert "IN-PLACE EDITING" in BOT_AGENT_SYSTEM_PROMPT
+        assert "update_draft_post" in BOT_AGENT_SYSTEM_PROMPT
+        assert "DO NOT call `save_draft_post` when revising" in BOT_AGENT_SYSTEM_PROMPT
+        assert "no_content_repetition" in BOT_AGENT_SYSTEM_PROMPT
+        assert "get_latest_draft_post" in BOT_AGENT_SYSTEM_PROMPT
 
-    def test_build_copilot_tools_includes_latest_draft_tool(self, db: Session) -> None:
+    def test_build_bot_tools_includes_latest_draft_tool(self, db: Session) -> None:
         user = _make_user(db=db)
-        tools = build_copilot_tools(user_id=str(user.id), session=db)
+        tools = build_bot_tools(user_id=str(user.id), session=db)
         tool_names = [t.name for t in tools]
         assert "get_latest_draft_post" in tool_names
         assert "save_draft_post" in tool_names
@@ -72,7 +68,7 @@ class TestAgentSupervisorDraftManagement:
 
     def test_get_latest_draft_post_empty(self, db: Session) -> None:
         user = _make_user(db=db)
-        tools = build_copilot_tools(user_id=str(user.id), session=db)
+        tools = build_bot_tools(user_id=str(user.id), session=db)
         get_tool = _get_tool_by_name(tools, "get_latest_draft_post")
 
         result = get_tool.invoke({})
@@ -83,7 +79,7 @@ class TestAgentSupervisorDraftManagement:
         thread = _make_thread(db=db, user=user)
         assert thread.post_id is None
 
-        tools = build_copilot_tools(
+        tools = build_bot_tools(
             user_id=str(user.id), session=db, thread_id=str(thread.id)
         )
         save_tool = _get_tool_by_name(tools, "save_draft_post")
@@ -104,7 +100,7 @@ class TestAgentSupervisorDraftManagement:
         user = _make_user(db=db)
         thread = _make_thread(db=db, user=user)
 
-        tools = build_copilot_tools(
+        tools = build_bot_tools(
             user_id=str(user.id), session=db, thread_id=str(thread.id)
         )
         save_tool = _get_tool_by_name(tools, "save_draft_post")
@@ -122,7 +118,7 @@ class TestAgentSupervisorDraftManagement:
         user = _make_user(db=db)
         thread = _make_thread(db=db, user=user)
 
-        tools = build_copilot_tools(
+        tools = build_bot_tools(
             user_id=str(user.id), session=db, thread_id=str(thread.id)
         )
         save_tool = _get_tool_by_name(tools, "save_draft_post")
@@ -148,7 +144,7 @@ class TestAgentSupervisorDraftManagement:
         user = _make_user(db=db)
         thread = _make_thread(db=db, user=user)
 
-        tools = build_copilot_tools(
+        tools = build_bot_tools(
             user_id=str(user.id), session=db, thread_id=str(thread.id)
         )
         update_tool = _get_tool_by_name(tools, "update_draft_post")
@@ -167,7 +163,7 @@ class TestAgentSupervisorDraftManagement:
         user = _make_user(db=db)
         thread = _make_thread(db=db, user=user)
 
-        tools = build_copilot_tools(
+        tools = build_bot_tools(
             user_id=str(user.id), session=db, thread_id=str(thread.id)
         )
         save_tool = _get_tool_by_name(tools, "save_draft_post")
@@ -181,22 +177,18 @@ class TestAgentSupervisorDraftManagement:
         assert sched_res["post_id"] == saved["post_id"]
         assert sched_res["status"] == "scheduled"
 
-    def test_build_copilot_agent_compilation(self, db: Session) -> None:
+    def test_build_bot_agent_compilation(self, db: Session) -> None:
         user = _make_user(db=db)
-        ctx = CopilotContext(
-            user_id=str(user.id), session=db, thread_id="some-thread-id"
-        )
-        agent = build_copilot_agent(ctx=ctx)
+        ctx = BotContext(user_id=str(user.id), session=db, thread_id="some-thread-id")
+        agent = build_bot_agent(ctx=ctx)
         assert agent is not None
 
-    def test_build_copilot_agent_injects_active_draft_context(
-        self, db: Session
-    ) -> None:
+    def test_build_bot_agent_injects_active_draft_context(self, db: Session) -> None:
         user = _make_user(db=db)
         thread = _make_thread(db=db, user=user)
 
         # Save an active draft
-        tools = build_copilot_tools(
+        tools = build_bot_tools(
             user_id=str(user.id), session=db, thread_id=str(thread.id)
         )
         save_tool = _get_tool_by_name(tools, "save_draft_post")
@@ -205,18 +197,18 @@ class TestAgentSupervisorDraftManagement:
         )
         assert "post_id" in save_res
 
-        ctx = CopilotContext(user_id=str(user.id), session=db, thread_id=str(thread.id))
-        agent = build_copilot_agent(ctx=ctx)
+        ctx = BotContext(user_id=str(user.id), session=db, thread_id=str(thread.id))
+        agent = build_bot_agent(ctx=ctx)
         assert agent is not None
 
-    def test_copilot_tools_isolated_across_threads(self, db: Session) -> None:
+    def test_bot_tools_isolated_across_threads(self, db: Session) -> None:
         """Verify that drafts created in Thread A do NOT bleed into Thread B."""
         user = _make_user(db=db)
         thread_a = _make_thread(db=db, user=user)
         thread_b = _make_thread(db=db, user=user)
 
         # Thread A saves a draft
-        tools_a = build_copilot_tools(
+        tools_a = build_bot_tools(
             user_id=str(user.id), session=db, thread_id=str(thread_a.id)
         )
         save_tool_a = _get_tool_by_name(tools_a, "save_draft_post")
@@ -226,7 +218,7 @@ class TestAgentSupervisorDraftManagement:
         assert "post_id" in res_a
 
         # Thread B checks for active draft
-        tools_b = build_copilot_tools(
+        tools_b = build_bot_tools(
             user_id=str(user.id), session=db, thread_id=str(thread_b.id)
         )
         get_tool_b = _get_tool_by_name(tools_b, "get_latest_draft_post")
@@ -275,8 +267,8 @@ class TestAgentSupervisorDraftManagement:
             ]
         }
 
-        tools = build_copilot_tools(
-            ctx=CopilotContext(
+        tools = build_bot_tools(
+            ctx=BotContext(
                 user_id=str(user.id),
                 session=db,
                 thread_id=str(thread.id),
@@ -298,7 +290,7 @@ class TestAgentSupervisorDraftManagement:
         user = _make_user(db=db)
         thread = _make_thread(db=db, user=user)
 
-        tools = build_copilot_tools(
+        tools = build_bot_tools(
             user_id=str(user.id),
             session=db,
             thread_id=str(thread.id),
@@ -345,7 +337,7 @@ class TestAgentSupervisorDraftManagement:
         db.add(thread)
         db.commit()
 
-        tools = build_copilot_tools(
+        tools = build_bot_tools(
             user_id=str(user.id),
             session=db,
             thread_id=str(thread.id),
@@ -385,10 +377,10 @@ class TestAgentSupervisorDraftManagement:
 
     def test_synchronized_session_auto_rollback_on_exception(self, db: Session) -> None:
         """Verify dirty session objects are evicted and rolled back when an exception occurs inside synchronized_session."""
-        from app.services.agentic.agent_supervisor import CopilotContext
+        from app.services.agentic.agent_supervisor import BotContext
 
         user = _make_user(db=db)
-        ctx = CopilotContext(user_id=str(user.id), session=db)
+        ctx = BotContext(user_id=str(user.id), session=db)
 
         # Stage an entity inside the session then raise an exception
         try:
@@ -419,7 +411,7 @@ class TestAgentSupervisorScrapingTools:
 
         from app.services.agentic.agent_supervisor import _build_scraping_tools
 
-        mock_ctx = CopilotContext(
+        mock_ctx = BotContext(
             user_id=str(uuid.uuid4()),
             session=MagicMock(),
         )
