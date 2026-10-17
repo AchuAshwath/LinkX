@@ -1,3 +1,4 @@
+from typing import Any
 from unittest.mock import patch
 
 from langchain_core.messages import (
@@ -8,10 +9,13 @@ from langchain_core.messages import (
     ToolMessage,
 )
 
-from app.services.ai_chat_runner import LINKX_SYSTEM_PROMPT
+from app.services.agentic.agent_supervisor import BOT_AGENT_SYSTEM_PROMPT
+from app.services.ai_chat_runner import LINKX_SYSTEM_PROMPT, _build_message_history
 from app.services.ai_context_budgeter import (
+    MIN_PROMPT_CACHE_THRESHOLD,
     TOOL_TRUNCATION_NOTICE,
     apply_sliding_window_budget,
+    audit_prompt_cache_metrics,
     count_tokens,
     estimate_message_tokens,
     estimate_total_tokens,
@@ -36,7 +40,7 @@ def test_count_tokens_exact_accuracy() -> None:
     import tiktoken
 
     enc = tiktoken.encoding_for_model("gpt-4o")
-    text = "LinkX Copilot crafts engaging posts for founders."
+    text = "LinkX Bot crafts engaging posts for founders."
     expected = len(enc.encode(text))
     assert count_tokens(text=text, model="gpt-4o") == expected
 
@@ -362,3 +366,91 @@ def test_count_tokens_unicode_and_unknown_models() -> None:
     assert tokens > 0
     assert count_tokens(text="") == 0
     assert count_tokens(text=None) == 0  # type: ignore[arg-type]
+
+
+def test_system_prompts_exceed_minimum_prompt_cache_threshold() -> None:
+    """Verify system prompts meet >=1,024 token minimum for Anthropic & OpenAI prefix caching."""
+    linkx_prompt_tokens = count_tokens(text=LINKX_SYSTEM_PROMPT, model="gpt-4o")
+    bot_agent_tokens = count_tokens(text=BOT_AGENT_SYSTEM_PROMPT, model="gpt-4o")
+
+    assert linkx_prompt_tokens >= MIN_PROMPT_CACHE_THRESHOLD, (
+        f"LINKX_SYSTEM_PROMPT has {linkx_prompt_tokens} tokens, "
+        f"which is below MIN_PROMPT_CACHE_THRESHOLD ({MIN_PROMPT_CACHE_THRESHOLD})."
+    )
+    assert bot_agent_tokens >= MIN_PROMPT_CACHE_THRESHOLD, (
+        f"BOT_AGENT_SYSTEM_PROMPT has {bot_agent_tokens} tokens, "
+        f"which is below MIN_PROMPT_CACHE_THRESHOLD ({MIN_PROMPT_CACHE_THRESHOLD})."
+    )
+
+    assert "Do not use em dashes" in LINKX_SYSTEM_PROMPT
+    assert "Do not use em dashes" in BOT_AGENT_SYSTEM_PROMPT
+
+
+def test_audit_prompt_cache_metrics_scenarios() -> None:
+    """Verify prompt cache audit metrics calculation across single, multi-turn, and edge cases."""
+    # Scenario 1: Empty messages
+    empty_audit = audit_prompt_cache_metrics(messages=[])
+    assert empty_audit["total_tokens"] == 0
+    assert empty_audit["system_tokens"] == 0
+    assert empty_audit["is_eligible"] is False
+    assert empty_audit["static_prefix_eligible"] is False
+    assert empty_audit["cache_ratio_pct"] == 0.0
+
+    # Scenario 2: Single turn with production system prompt (qualifies for prefix caching)
+    single_turn_messages: list[BaseMessage] = [
+        SystemMessage(content=LINKX_SYSTEM_PROMPT),
+        HumanMessage(content="Write a tweet about AI and developer productivity."),
+    ]
+    single_audit = audit_prompt_cache_metrics(messages=single_turn_messages)
+    assert single_audit["total_tokens"] > MIN_PROMPT_CACHE_THRESHOLD
+    assert single_audit["system_tokens"] >= MIN_PROMPT_CACHE_THRESHOLD
+    assert single_audit["is_eligible"] is True
+    assert single_audit["static_prefix_eligible"] is True
+    assert single_audit["potential_cached_tokens"] == single_audit["system_tokens"]
+    assert single_audit["cache_ratio_pct"] > 80.0
+
+    # Scenario 3: Sub-threshold prompt
+    short_messages: list[BaseMessage] = [
+        SystemMessage(content="You are a helpful assistant."),
+        HumanMessage(content="Hello"),
+    ]
+    short_audit = audit_prompt_cache_metrics(messages=short_messages)
+    assert short_audit["is_eligible"] is False
+    assert short_audit["static_prefix_eligible"] is False
+    assert short_audit["potential_cached_tokens"] == 0
+    assert short_audit["cache_ratio_pct"] == 0.0
+
+
+def test_multi_turn_prefix_monotonic_stability() -> None:
+    """Verify that multi-turn history preserves an invariant system prefix across 20 turns."""
+    transcript: dict[str, list[dict[str, Any]]] = {"messages": []}
+
+    for turn in range(1, 21):
+        user_text = f"Turn {turn} user inquiry about marketing strategy."
+        asst_text = f"Turn {turn} assistant tactical recommendations and outline."
+
+        built = _build_message_history(
+            transcript=transcript,
+            current_message=user_text,
+        )
+
+        # 1. SystemMessage is always at index 0 and identical
+        assert isinstance(built[0], SystemMessage)
+        assert built[0].content == LINKX_SYSTEM_PROMPT
+
+        # 2. Current user message is always at the tail
+        assert isinstance(built[-1], HumanMessage)
+        assert built[-1].content == user_text
+
+        # 3. Cache audit maintains static prefix qualification throughout all 20 turns
+        metrics = audit_prompt_cache_metrics(messages=built)
+        assert metrics["static_prefix_eligible"] is True
+        assert metrics["potential_cached_tokens"] >= MIN_PROMPT_CACHE_THRESHOLD
+
+        # Append turn to transcript for next iteration
+        transcript["messages"].append(
+            {"role": "user", "parts": [{"type": "text", "text": user_text}]}
+        )
+        transcript["messages"].append(
+            {"role": "assistant", "parts": [{"type": "text", "text": asst_text}]}
+        )

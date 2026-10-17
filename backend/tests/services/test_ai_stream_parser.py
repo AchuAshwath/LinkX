@@ -11,7 +11,7 @@ from app.services.ai_stream_parser import (
 
 @pytest.mark.anyio
 async def test_stream_text_smoothly() -> None:
-    text = "LinkX Copilot stream test"
+    text = "LinkX Bot stream test"
     events: list[tuple[str, str]] = []
     async for ev, data in stream_text_smoothly(text, delay=0):
         events.append((ev, data["content"]))

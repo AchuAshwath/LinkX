@@ -40,16 +40,16 @@ describe("DraftArtifactCard component", () => {
   const artifact: DraftArtifact = {
     postId: "post-123",
     content:
-      "Excited to announce the new LinkX AI Copilot release! Automate multi-channel social posting.",
+      "Excited to announce the new LinkX Bot release! Automate multi-channel social posting.",
     platform: "linkx",
     status: "draft",
-    characterCount: 92,
+    characterCount: 85,
   }
 
   it("renders drafted post content and default user author", () => {
     renderWithClient(<DraftArtifactCard artifact={artifact} />)
     expect(
-      screen.getByText(/Excited to announce the new LinkX AI Copilot release!/),
+      screen.getByText(/Excited to announce the new LinkX Bot release!/),
     ).toBeInTheDocument()
     expect(screen.getByText(/Ashwath N/)).toBeInTheDocument()
     expect(screen.getByText(/@admin/)).toBeInTheDocument()

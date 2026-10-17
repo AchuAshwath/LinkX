@@ -284,12 +284,12 @@ async def default_chat_stream_runner(
     if user_id and session:
         try:
             from app.services.agentic.agent_supervisor import (
-                CopilotContext,
-                build_copilot_agent,
+                BotContext,
+                build_bot_agent,
             )
 
-            agent = build_copilot_agent(
-                ctx=CopilotContext(
+            agent = build_bot_agent(
+                ctx=BotContext(
                     user_id=user_id,
                     session=session,
                     thread_id=thread_id,

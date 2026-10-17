@@ -3,6 +3,7 @@ from typing import Any
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 DEFAULT_TOKEN_BUDGET = 12000
+MIN_PROMPT_CACHE_THRESHOLD = 1024
 TOOL_TRUNCATION_NOTICE = "[Output truncated to 300 chars...]"
 HISTORICAL_SCRAPE_NOTICE = (
     "Historical tool scrape payload collapsed to conserve context window."
@@ -233,3 +234,30 @@ def apply_sliding_window_budget(
     if groups and isinstance(groups[-1][0], HumanMessage):
         fallback = [groups[-1][0]]
     return prefix + fallback
+
+
+def audit_prompt_cache_metrics(
+    *,
+    messages: list[BaseMessage],
+    model: str = "gpt-4o",
+) -> dict[str, Any]:
+    """Calculate token count and prompt caching eligibility/hit potential for a message list."""
+    total_tokens = estimate_total_tokens(messages=messages, model=model)
+    system_tokens = 0
+    if messages and isinstance(messages[0], SystemMessage):
+        system_tokens = estimate_message_tokens(message=messages[0], model=model)
+
+    is_eligible = total_tokens >= MIN_PROMPT_CACHE_THRESHOLD
+    static_prefix_eligible = system_tokens >= MIN_PROMPT_CACHE_THRESHOLD
+
+    potential_cached_tokens = system_tokens if static_prefix_eligible else 0
+    cache_ratio = (potential_cached_tokens / total_tokens) if total_tokens > 0 else 0.0
+
+    return {
+        "total_tokens": total_tokens,
+        "system_tokens": system_tokens,
+        "is_eligible": is_eligible,
+        "static_prefix_eligible": static_prefix_eligible,
+        "potential_cached_tokens": potential_cached_tokens,
+        "cache_ratio_pct": round(cache_ratio * 100, 1),
+    }
