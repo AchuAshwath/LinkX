@@ -308,6 +308,14 @@ export interface HandlerFactoryOptions {
   >
 }
 
+function hasMessageContent(m: ChatUIMessage): boolean {
+  if (m.parts.length === 0) return false
+  return m.parts.some((p) => {
+    if (p.type === "text") return Boolean(p.text?.trim())
+    return true
+  })
+}
+
 function createAbortHandler({
   assistantMsgId,
   targetThreadId,
@@ -318,17 +326,19 @@ function createAbortHandler({
       const msgs = prev[targetThreadId] ?? []
       return {
         ...prev,
-        [targetThreadId]: msgs.map((m) => {
-          if (m.id !== assistantMsgId) return m
-          const hasContent = m.parts.length > 0
-          return {
-            ...m,
-            status: "done" as const,
-            parts: hasContent
-              ? m.parts
-              : [{ type: "text" as const, text: "*(Generation stopped)*" }],
-          }
-        }),
+        [targetThreadId]: msgs
+          .map((m) => {
+            if (m.id !== assistantMsgId) return m
+            return {
+              ...m,
+              status: "done" as const,
+              interrupted: true,
+            }
+          })
+          .filter((m) => {
+            if (m.id !== assistantMsgId) return true
+            return hasMessageContent(m)
+          }),
       }
     })
 }

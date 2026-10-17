@@ -23,6 +23,7 @@ export interface PromptFormProps {
   onSubmit: (text: string, images?: File[]) => void
   onStop?: () => void
   onEditLastUserMessage?: () => void
+  onRecallLastPrompt?: () => string | null | undefined
   isBusy?: boolean
   placeholder?: string
   selectedModelId?: string
@@ -136,6 +137,7 @@ export function PromptForm({
   onSubmit,
   onStop,
   onEditLastUserMessage,
+  onRecallLastPrompt,
   isBusy = false,
   placeholder = "Ask anything",
   selectedModelId,
@@ -156,6 +158,7 @@ export function PromptForm({
     onValueChange,
     onSubmit,
     onEditLastUserMessage,
+    onRecallLastPrompt,
     autoFocus,
     inputRef,
   })

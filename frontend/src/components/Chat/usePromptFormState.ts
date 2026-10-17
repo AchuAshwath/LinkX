@@ -13,17 +13,29 @@ function normalizeModels(models?: (AIModelOption | string)[]): AIModelOption[] {
   return models.map((m) => (typeof m === "string" ? { id: m, name: m } : m))
 }
 
+function hasModifierKey(event: React.KeyboardEvent): boolean {
+  if (event.shiftKey || event.altKey) return true
+  return Boolean(event.ctrlKey || event.metaKey)
+}
+
+function hasCommandModifier(event: React.KeyboardEvent): boolean {
+  return Boolean(event.ctrlKey || event.metaKey)
+}
+
 function isPlainEnterPress(
   event: React.KeyboardEvent<HTMLTextAreaElement>,
 ): boolean {
   if (event.key !== "Enter") return false
-  if (event.shiftKey) return false
+  if (hasModifierKey(event)) return false
   return !event.nativeEvent.isComposing
 }
 
-function hasModifierKey(event: React.KeyboardEvent): boolean {
-  if (event.shiftKey || event.altKey) return true
-  return Boolean(event.ctrlKey || event.metaKey)
+function isCommandEnterPress(
+  event: React.KeyboardEvent<HTMLTextAreaElement>,
+): boolean {
+  if (event.key !== "Enter") return false
+  if (!hasCommandModifier(event)) return false
+  return !event.nativeEvent.isComposing
 }
 
 function isPlainArrowUpPress(
@@ -148,6 +160,7 @@ interface PromptFormActionsOptions {
   clearImages: () => void
   stopAndReset: () => void
   onEditLastUserMessage?: () => void
+  onRecallLastPrompt?: () => string | null | undefined
 }
 
 function usePromptFormActions({
@@ -158,6 +171,7 @@ function usePromptFormActions({
   clearImages,
   stopAndReset,
   onEditLastUserMessage,
+  onRecallLastPrompt,
 }: PromptFormActionsOptions) {
   const handleSubmit = React.useCallback(
     (event?: React.FormEvent) => {
@@ -176,7 +190,7 @@ function usePromptFormActions({
 
   const handleKeyDown = React.useCallback(
     (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (isPlainEnterPress(event)) {
+      if (isPlainEnterPress(event) || isCommandEnterPress(event)) {
         event.preventDefault()
         handleSubmit()
         return
@@ -184,10 +198,24 @@ function usePromptFormActions({
       const empty = isInputEmpty(input, selectedImages.length)
       if (isPlainArrowUpPress(event, empty)) {
         event.preventDefault()
+        if (onRecallLastPrompt) {
+          const recalled = onRecallLastPrompt()
+          if (recalled) {
+            updateInput(recalled)
+          }
+          return
+        }
         onEditLastUserMessage?.()
       }
     },
-    [input, selectedImages.length, handleSubmit, onEditLastUserMessage],
+    [
+      input,
+      selectedImages.length,
+      handleSubmit,
+      onRecallLastPrompt,
+      updateInput,
+      onEditLastUserMessage,
+    ],
   )
 
   const hasContent = !isInputEmpty(input, selectedImages.length)
@@ -203,6 +231,7 @@ export interface UsePromptFormStateProps {
   onValueChange?: (value: string) => void
   onSubmit: (text: string, images?: File[]) => void
   onEditLastUserMessage?: () => void
+  onRecallLastPrompt?: () => string | null | undefined
   autoFocus?: boolean
   inputRef?: React.RefObject<HTMLTextAreaElement | null>
 }
@@ -259,6 +288,7 @@ export function usePromptFormState({
   onValueChange,
   onSubmit,
   onEditLastUserMessage,
+  onRecallLastPrompt,
   autoFocus = false,
   inputRef,
 }: UsePromptFormStateProps) {
@@ -288,6 +318,7 @@ export function usePromptFormState({
     clearImages: attachments.clearImages,
     stopAndReset: voiceInput.stopAndReset,
     onEditLastUserMessage,
+    onRecallLastPrompt,
   })
   const normalizedModels = React.useMemo(
     () => normalizeModels(models),

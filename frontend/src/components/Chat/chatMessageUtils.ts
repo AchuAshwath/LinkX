@@ -231,6 +231,34 @@ export interface AssistantRenderState {
   otherParts: ChatUIMessage["parts"]
   assistantText: string
   createdAt?: string
+  isInterrupted: boolean
+  hasVisibleContent: boolean
+}
+
+const STOPPED_PATTERN = /\s*\*\((?:Generation stopped(?: by user)?)\)\*\s*$/i
+
+function cleanStoppedTextParts(parts: ChatUIMessage["parts"]): {
+  cleaned: ChatUIMessage["parts"]
+  wasStopped: boolean
+} {
+  let wasStopped = false
+  const cleaned = parts
+    .map((part) => {
+      if (part.type !== "text" || !part.text) return part
+      if (STOPPED_PATTERN.test(part.text)) {
+        wasStopped = true
+        const text = part.text.replace(STOPPED_PATTERN, "").trim()
+        return { ...part, text }
+      }
+      return part
+    })
+    .filter((part) => {
+      if (part.type === "text") {
+        return Boolean(part.text?.trim())
+      }
+      return true
+    })
+  return { cleaned, wasStopped }
 }
 
 function extractDraftArtifactPostId(
@@ -277,28 +305,39 @@ export function prepareAssistantRenderState(
     message.parts,
   )
   const dedupedParts = deduplicateDraftContentFromTextParts(cleanedParts)
-  const sources = dedupedParts.filter(
+  const { cleaned: sanitizedParts, wasStopped } =
+    cleanStoppedTextParts(dedupedParts)
+  const sources = sanitizedParts.filter(
     (part): part is SourceUrlPart => part.type === "source-url",
   )
   const combinedThought = buildCombinedThought({
-    dedupedParts,
+    dedupedParts: sanitizedParts,
     extractedThought,
   })
   const collectedTools = collectTools(cleanedParts)
-  const webSearchPart = dedupedParts.find(
+  const webSearchPart = sanitizedParts.find(
     (p): p is WebSearchToolPart => p.type === "tool-web_search",
   )
-  const hasResponseStarted = checkHasResponseStarted(dedupedParts)
+  const hasResponseStarted = checkHasResponseStarted(sanitizedParts)
   const hasThoughtOrTools = checkHasThoughtOrTools({
     combinedThought,
     hasTools: collectedTools.length > 0,
     isStreaming,
     hasResponseStarted,
   })
-  const rawOtherParts = dedupedParts.filter((p) =>
+  const rawOtherParts = sanitizedParts.filter((p) =>
     isOtherPart(p, hasThoughtOrTools),
   )
   const otherParts = deduplicateDraftArtifactParts(rawOtherParts)
+
+  const assistantText = extractTextParts(sanitizedParts)
+  const hasVisibleContent = Boolean(
+    message.status === "queued" ||
+      message.status === "error" ||
+      hasThoughtOrTools ||
+      otherParts.length > 0 ||
+      assistantText.trim(),
+  )
 
   return {
     combinedThought,
@@ -307,8 +346,10 @@ export function prepareAssistantRenderState(
     webSearchPart,
     hasResponseStarted,
     hasThoughtOrTools,
+    hasVisibleContent,
     otherParts,
-    assistantText: extractTextParts(dedupedParts),
+    assistantText,
     createdAt: getMessageTimestamp(message),
+    isInterrupted: Boolean(message.interrupted || wasStopped),
   }
 }

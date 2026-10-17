@@ -89,7 +89,13 @@ function UserMessageFooter({
 }) {
   const showBranchSwitcher = Boolean(branchInfo && branchInfo.totalVersions > 1)
   return (
-    <div className="flex items-center gap-1.5 pr-2 pt-0.5">
+    <div className="flex items-center justify-end gap-1.5 pr-2 pt-0.5">
+      <ChatMessageActions
+        textToCopy={text}
+        createdAt={createdAt}
+        align="end"
+        onEdit={onStartEdit ? () => onStartEdit(messageId) : undefined}
+      />
       {showBranchSwitcher && (
         <BranchSwitcher
           currentIndex={branchInfo!.currentIndex}
@@ -98,12 +104,6 @@ function UserMessageFooter({
           onNext={() => onSwitchBranch?.("next")}
         />
       )}
-      <ChatMessageActions
-        textToCopy={text}
-        createdAt={createdAt}
-        align="end"
-        onEdit={onStartEdit ? () => onStartEdit(messageId) : undefined}
-      />
     </div>
   )
 }
@@ -343,6 +343,13 @@ function AssistantMessageActions({
   )
 }
 
+function canDisplayAssistantBubble(
+  isStreaming: boolean,
+  hasVisibleContent: boolean,
+): boolean {
+  return isStreaming || hasVisibleContent
+}
+
 function AssistantMessageBubble({
   message,
   isStreaming,
@@ -363,6 +370,9 @@ function AssistantMessageBubble({
   onRetry?: () => void
 }) {
   const state = prepareAssistantRenderState(message, isStreaming)
+  if (!canDisplayAssistantBubble(isStreaming, state.hasVisibleContent)) {
+    return null
+  }
 
   return (
     <div className="group relative flex flex-col items-start w-full">

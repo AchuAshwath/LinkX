@@ -25,7 +25,7 @@ export function BranchSwitcher({
     <div
       data-slot="branch-switcher"
       className={cn(
-        "inline-flex items-center gap-0.5 rounded-full border border-border/40 bg-muted/40 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground select-none transition-colors",
+        "inline-flex items-center gap-0.5 text-xs text-muted-foreground select-none",
         className,
       )}
     >
@@ -35,16 +35,16 @@ export function BranchSwitcher({
         disabled={isFirst}
         onClick={onPrevious}
         className={cn(
-          "flex size-4.5 items-center justify-center rounded-full transition-colors",
+          "flex size-5 items-center justify-center rounded text-muted-foreground/70 transition-colors",
           isFirst
-            ? "opacity-30 cursor-not-allowed text-muted-foreground"
-            : "hover:bg-muted/80 hover:text-foreground cursor-pointer active:scale-95",
+            ? "opacity-30 cursor-not-allowed"
+            : "hover:text-foreground cursor-pointer active:scale-95",
         )}
       >
-        <ChevronLeft className="size-3" />
+        <ChevronLeft className="size-3.5" />
       </button>
 
-      <span className="px-1 text-[10px] tabular-nums tracking-tight">
+      <span className="px-0.5 text-[11px] tabular-nums font-normal text-muted-foreground/80">
         {currentIndex} of {totalVersions}
       </span>
 
@@ -54,13 +54,13 @@ export function BranchSwitcher({
         disabled={isLast}
         onClick={onNext}
         className={cn(
-          "flex size-4.5 items-center justify-center rounded-full transition-colors",
+          "flex size-5 items-center justify-center rounded text-muted-foreground/70 transition-colors",
           isLast
-            ? "opacity-30 cursor-not-allowed text-muted-foreground"
-            : "hover:bg-muted/80 hover:text-foreground cursor-pointer active:scale-95",
+            ? "opacity-30 cursor-not-allowed"
+            : "hover:text-foreground cursor-pointer active:scale-95",
         )}
       >
-        <ChevronRight className="size-3" />
+        <ChevronRight className="size-3.5" />
       </button>
     </div>
   )

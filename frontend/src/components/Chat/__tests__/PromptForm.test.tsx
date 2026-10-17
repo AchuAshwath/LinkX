@@ -56,6 +56,31 @@ describe("PromptForm component", () => {
     expect(handleSubmit).not.toHaveBeenCalled()
   })
 
+  it("submits multiline prompt on Cmd+Enter or Ctrl+Enter", () => {
+    const handleSubmit = vi.fn()
+    render(
+      <PromptForm
+        onSubmit={handleSubmit}
+        onStop={vi.fn()}
+        isBusy={false}
+        placeholder="Ask anything…"
+      />,
+    )
+
+    const textarea = screen.getByPlaceholderText("Ask anything…")
+    fireEvent.change(textarea, { target: { value: "Line 1\nLine 2" } })
+
+    // Cmd+Enter (Mac)
+    fireEvent.keyDown(textarea, { key: "Enter", metaKey: true })
+    expect(handleSubmit).toHaveBeenCalledWith("Line 1\nLine 2")
+    expect(textarea).toHaveValue("")
+
+    // Ctrl+Enter (Windows/Linux)
+    fireEvent.change(textarea, { target: { value: "Multiline text" } })
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true })
+    expect(handleSubmit).toHaveBeenCalledWith("Multiline text")
+  })
+
   it("shows stop button when isBusy is true and calls onStop", () => {
     const handleStop = vi.fn()
     render(
@@ -186,6 +211,50 @@ describe("PromptForm component", () => {
     // Test with modifier keys on empty input
     fireEvent.change(textarea, { target: { value: "" } })
     fireEvent.keyDown(textarea, { key: "ArrowUp", shiftKey: true })
+    expect(handleEditLast).not.toHaveBeenCalled()
+  })
+
+  it("recalls last user prompt into composer when ArrowUp is pressed on empty input and onRecallLastPrompt is provided", () => {
+    const handleRecallLastPrompt = vi
+      .fn()
+      .mockReturnValue("Recalled previous prompt")
+    const handleEditLast = vi.fn()
+    render(
+      <PromptForm
+        onSubmit={vi.fn()}
+        onEditLastUserMessage={handleEditLast}
+        onRecallLastPrompt={handleRecallLastPrompt}
+        placeholder="Ask anything…"
+      />,
+    )
+
+    const textarea = screen.getByPlaceholderText(
+      "Ask anything…",
+    ) as HTMLTextAreaElement
+    fireEvent.keyDown(textarea, { key: "ArrowUp" })
+    expect(handleRecallLastPrompt).toHaveBeenCalledTimes(1)
+    expect(textarea.value).toBe("Recalled previous prompt")
+    expect(handleEditLast).not.toHaveBeenCalled()
+  })
+
+  it("does not update input when onRecallLastPrompt returns null or empty string", () => {
+    const handleRecallLastPrompt = vi.fn().mockReturnValue(null)
+    const handleEditLast = vi.fn()
+    render(
+      <PromptForm
+        onSubmit={vi.fn()}
+        onEditLastUserMessage={handleEditLast}
+        onRecallLastPrompt={handleRecallLastPrompt}
+        placeholder="Ask anything…"
+      />,
+    )
+
+    const textarea = screen.getByPlaceholderText(
+      "Ask anything…",
+    ) as HTMLTextAreaElement
+    fireEvent.keyDown(textarea, { key: "ArrowUp" })
+    expect(handleRecallLastPrompt).toHaveBeenCalledTimes(1)
+    expect(textarea.value).toBe("")
     expect(handleEditLast).not.toHaveBeenCalled()
   })
 

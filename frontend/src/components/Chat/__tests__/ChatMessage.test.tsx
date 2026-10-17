@@ -390,4 +390,44 @@ describe("ChatMessage component", () => {
     fireEvent.click(retryBtn)
     expect(onRetry).toHaveBeenCalledWith("msg-err-1")
   })
+
+  it("cleanly halts partial content without any stopped badges, labels, or raw italics marker", () => {
+    const message: ChatUIMessage = {
+      id: "msg-stopped-1",
+      role: "assistant",
+      parts: [
+        {
+          type: "text",
+          text: "Here is partial content...\n\n*(Generation stopped by user)*",
+        },
+      ],
+      status: "done",
+      interrupted: true,
+    }
+
+    render(<ChatMessage message={message} isStreaming={false} />)
+
+    expect(screen.getByText("Here is partial content...")).toBeInTheDocument()
+    expect(screen.queryByText(/stopped/i)).not.toBeInTheDocument()
+    expect(
+      screen.queryByText("*(Generation stopped by user)*"),
+    ).not.toBeInTheDocument()
+  })
+
+  it("discards empty assistant message when stopped before any response was produced", () => {
+    const message: ChatUIMessage = {
+      id: "msg-stopped-2",
+      role: "assistant",
+      parts: [{ type: "text", text: "*(Generation stopped by user)*" }],
+      status: "done",
+      interrupted: true,
+    }
+
+    const { container } = render(
+      <ChatMessage message={message} isStreaming={false} />,
+    )
+
+    expect(container.firstChild).toBeNull()
+    expect(screen.queryByText(/stopped/i)).not.toBeInTheDocument()
+  })
 })
