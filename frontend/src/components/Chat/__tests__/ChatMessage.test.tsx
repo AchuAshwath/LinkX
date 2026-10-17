@@ -348,29 +348,126 @@ describe("ChatMessage component", () => {
     expect(onCancelEdit).toHaveBeenCalledTimes(2)
   })
 
-  it("renders regenerate button on latest assistant message and triggers onRegenerate", () => {
-    const onRegenerate = vi.fn()
+  it.each([
+    { isStreaming: true, isChatStreaming: false, desc: "direct isStreaming" },
+    {
+      isStreaming: false,
+      isChatStreaming: true,
+      desc: "feed-wide isChatStreaming",
+    },
+  ])("hides edit button for user message when $desc", ({
+    isStreaming,
+    isChatStreaming,
+  }) => {
+    const onStartEdit = vi.fn()
     const message: ChatUIMessage = {
-      id: "msg-asst-1",
-      role: "assistant",
-      parts: [{ type: "text", text: "Assistant response" }],
-      status: "done",
+      id: "msg-user-stream",
+      role: "user",
+      parts: [{ type: "text", text: "Prompt under stream" }],
     }
 
     render(
       <ChatMessage
         message={message}
-        isLatestAssistant={true}
-        isStreaming={false}
-        onRegenerate={onRegenerate}
+        isStreaming={isStreaming}
+        isChatStreaming={isChatStreaming}
+        onStartEdit={onStartEdit}
+      />,
+    )
+    expect(screen.queryByLabelText("Edit message")).not.toBeInTheDocument()
+  })
+
+  it("does not render UserMessageEditForm when isStreaming is true", () => {
+    const onSaveEdit = vi.fn()
+    const message: ChatUIMessage = {
+      id: "msg-user-stream-edit",
+      role: "user",
+      parts: [{ type: "text", text: "Editable prompt" }],
+    }
+
+    render(
+      <ChatMessage
+        message={message}
+        isEditing={true}
+        isStreaming={true}
+        onSaveEdit={onSaveEdit}
       />,
     )
 
-    const regenBtn = screen.getByLabelText("Regenerate response")
-    expect(regenBtn).toBeInTheDocument()
+    expect(
+      screen.queryByDisplayValue("Editable prompt"),
+    ).not.toBeInTheDocument()
+    expect(screen.getByText("Editable prompt")).toBeInTheDocument()
+  })
 
-    fireEvent.click(regenBtn)
-    expect(onRegenerate).toHaveBeenCalledWith("msg-asst-1")
+  it.each([
+    {
+      role: "user" as const,
+      id: "msg-user-branch",
+      isStreaming: false,
+      isChatStreaming: true,
+    },
+    {
+      role: "assistant" as const,
+      id: "msg-asst-branch",
+      isStreaming: true,
+      isChatStreaming: false,
+    },
+  ])("disables branch switcher controls during streaming ($role)", ({
+    role,
+    id,
+    isStreaming,
+    isChatStreaming,
+  }) => {
+    const onSwitch = vi.fn()
+    const message: ChatUIMessage = {
+      id,
+      role,
+      parts: [{ type: "text", text: "Turn text" }],
+    }
+
+    render(
+      <ChatMessage
+        message={message}
+        isStreaming={isStreaming}
+        isChatStreaming={isChatStreaming}
+        branchInfo={{ currentIndex: 1, totalVersions: 2 }}
+        onSwitchBranch={onSwitch}
+      />,
+    )
+
+    const prevBtn = screen.getByRole("button", { name: "Previous version" })
+    const nextBtn = screen.getByRole("button", { name: "Next version" })
+
+    expect(prevBtn.getAttribute("disabled")).not.toBeNull()
+    expect(nextBtn.getAttribute("disabled")).not.toBeNull()
+  })
+
+  it("renders branch switcher on the right side of message actions in user message", () => {
+    const message: ChatUIMessage = {
+      id: "msg-user-branch-pos",
+      role: "user",
+      parts: [{ type: "text", text: "Multi-branch prompt" }],
+    }
+
+    const { container } = render(
+      <ChatMessage
+        message={message}
+        branchInfo={{ currentIndex: 1, totalVersions: 2 }}
+        onSwitchBranch={vi.fn()}
+      />,
+    )
+
+    const actions = container.querySelector('[data-slot="message-actions"]')
+    const switcher = container.querySelector('[data-slot="branch-switcher"]')
+    expect(actions).toBeInTheDocument()
+    expect(switcher).toBeInTheDocument()
+    expect(
+      Boolean(
+        actions!.compareDocumentPosition(switcher!) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+    ).toBe(true)
   })
 
   it("renders retry button when assistant status is error and triggers onRetry", () => {

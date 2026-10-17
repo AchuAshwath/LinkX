@@ -1,4 +1,4 @@
-import { Check, Copy, Pencil, RotateCw } from "lucide-react"
+import { Check, Copy, Pencil } from "lucide-react"
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
@@ -59,8 +59,14 @@ function CopyButton({ textToCopy }: { textToCopy: string }) {
   )
 }
 
-function EditButton({ onEdit }: { onEdit?: () => void }) {
-  if (!onEdit) return null
+function EditButton({
+  onEdit,
+  disabled = false,
+}: {
+  onEdit?: () => void
+  disabled?: boolean
+}) {
+  if (!onEdit || disabled) return null
   return (
     <button
       type="button"
@@ -69,32 +75,6 @@ function EditButton({ onEdit }: { onEdit?: () => void }) {
       className="flex size-6 items-center justify-center rounded-md text-muted-foreground/70 hover:bg-muted/60 hover:text-foreground transition-colors cursor-pointer"
     >
       <Pencil className="size-3" />
-    </button>
-  )
-}
-
-function RegenerateButton({
-  onRegenerate,
-  isLatestAssistant,
-  isStreaming,
-}: {
-  onRegenerate?: () => void
-  isLatestAssistant: boolean
-  isStreaming: boolean
-}) {
-  const canRegenerate = Boolean(
-    onRegenerate && isLatestAssistant && !isStreaming,
-  )
-  if (!canRegenerate) return null
-
-  return (
-    <button
-      type="button"
-      aria-label="Regenerate response"
-      onClick={onRegenerate}
-      className="flex size-6 items-center justify-center rounded-md text-muted-foreground/70 hover:bg-muted/60 hover:text-foreground transition-colors cursor-pointer"
-    >
-      <RotateCw className="size-3" />
     </button>
   )
 }
@@ -118,8 +98,6 @@ export function ChatMessageActions({
   align = "start",
   className,
   onEdit,
-  onRegenerate,
-  isLatestAssistant = false,
   isStreaming = false,
 }: ChatMessageActionsProps) {
   const isEndAligned = align === "end"
@@ -136,17 +114,12 @@ export function ChatMessageActions({
       {isEndAligned ? (
         <>
           <TimeBadge createdAt={createdAt} />
-          <EditButton onEdit={onEdit} />
+          <EditButton onEdit={onEdit} disabled={isStreaming} />
           <CopyButton textToCopy={textToCopy} />
         </>
       ) : (
         <>
           <CopyButton textToCopy={textToCopy} />
-          <RegenerateButton
-            onRegenerate={onRegenerate}
-            isLatestAssistant={isLatestAssistant}
-            isStreaming={isStreaming}
-          />
           <TimeBadge createdAt={createdAt} />
         </>
       )}

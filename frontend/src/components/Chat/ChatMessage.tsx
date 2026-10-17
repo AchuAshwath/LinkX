@@ -30,6 +30,7 @@ export { extractImageUrls, extractTextParts, isValidImageUrl }
 export interface ChatMessageProps {
   message: ChatUIMessage
   isStreaming?: boolean
+  isChatStreaming?: boolean
   isLatestAssistant?: boolean
   isEditing?: boolean
   branchInfo?: BranchVersionInfo
@@ -72,6 +73,27 @@ function UserTextBubble({ text }: { text: string }) {
   )
 }
 
+function MessageBranchControl({
+  branchInfo,
+  onSwitchBranch,
+  disabled,
+}: {
+  branchInfo?: BranchVersionInfo
+  onSwitchBranch?: (direction: "prev" | "next") => void
+  disabled: boolean
+}) {
+  if (!branchInfo || branchInfo.totalVersions <= 1) return null
+  return (
+    <BranchSwitcher
+      currentIndex={branchInfo.currentIndex}
+      totalVersions={branchInfo.totalVersions}
+      onPrevious={() => onSwitchBranch?.("prev")}
+      onNext={() => onSwitchBranch?.("next")}
+      disabled={disabled}
+    />
+  )
+}
+
 function UserMessageFooter({
   branchInfo,
   onSwitchBranch,
@@ -79,6 +101,7 @@ function UserMessageFooter({
   createdAt,
   onStartEdit,
   messageId,
+  isStreaming = false,
 }: {
   branchInfo?: BranchVersionInfo
   onSwitchBranch?: (direction: "prev" | "next") => void
@@ -86,24 +109,25 @@ function UserMessageFooter({
   createdAt?: string
   onStartEdit?: (id: string) => void
   messageId: string
+  isStreaming?: boolean
 }) {
-  const showBranchSwitcher = Boolean(branchInfo && branchInfo.totalVersions > 1)
+  const onEdit =
+    !isStreaming && onStartEdit ? () => onStartEdit(messageId) : undefined
+
   return (
     <div className="flex items-center justify-end gap-1.5 pr-2 pt-0.5">
       <ChatMessageActions
         textToCopy={text}
         createdAt={createdAt}
         align="end"
-        onEdit={onStartEdit ? () => onStartEdit(messageId) : undefined}
+        isStreaming={isStreaming}
+        onEdit={onEdit}
       />
-      {showBranchSwitcher && (
-        <BranchSwitcher
-          currentIndex={branchInfo!.currentIndex}
-          totalVersions={branchInfo!.totalVersions}
-          onPrevious={() => onSwitchBranch?.("prev")}
-          onNext={() => onSwitchBranch?.("next")}
-        />
-      )}
+      <MessageBranchControl
+        branchInfo={branchInfo}
+        onSwitchBranch={onSwitchBranch}
+        disabled={isStreaming}
+      />
     </div>
   )
 }
@@ -116,6 +140,7 @@ function UserMessageBubble({
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
+  isStreaming = false,
 }: {
   message: ChatUIMessage
   isEditing?: boolean
@@ -124,12 +149,14 @@ function UserMessageBubble({
   onStartEdit?: (id: string) => void
   onCancelEdit?: () => void
   onSaveEdit?: (id: string, newText: string) => void
+  isStreaming?: boolean
 }) {
   const text = extractTextParts(message.parts)
   const imageUrls = extractImageUrls(message.parts)
   const createdAt = getMessageTimestamp(message)
 
-  if (isEditing && onSaveEdit) {
+  const isEditActive = Boolean(isEditing && !isStreaming)
+  if (isEditActive && onSaveEdit) {
     return (
       <div className="group relative flex flex-col items-end w-full">
         <UserMessageEditForm
@@ -158,6 +185,7 @@ function UserMessageBubble({
         createdAt={createdAt}
         onStartEdit={onStartEdit}
         messageId={message.id}
+        isStreaming={isStreaming}
       />
     </div>
   )
@@ -300,45 +328,39 @@ function AssistantRetryButton({ onRetry }: { onRetry?: () => void }) {
 
 function AssistantMessageActions({
   isStreaming,
+  isChatStreaming = false,
   assistantText,
   createdAt,
-  onRegenerate,
-  isLatestAssistant,
   branchInfo,
   onSwitchBranch,
 }: {
   isStreaming: boolean
+  isChatStreaming?: boolean
   assistantText: string
   createdAt?: string
-  onRegenerate?: () => void
-  isLatestAssistant?: boolean
   branchInfo?: BranchVersionInfo
   onSwitchBranch?: (direction: "prev" | "next") => void
 }) {
-  const showBranchSwitcher = Boolean(branchInfo && branchInfo.totalVersions > 1)
-  const canShowActions = !isStreaming && Boolean(assistantText)
-  if (!showBranchSwitcher && !canShowActions) return null
+  const isGenerating = Boolean(isStreaming || isChatStreaming)
+  const hasBranch = Boolean(branchInfo && branchInfo.totalVersions > 1)
+  const canShowActions = !isGenerating && Boolean(assistantText)
+  if (!hasBranch && !canShowActions) return null
 
   return (
     <div className="flex items-center gap-1.5 pl-2 pt-0.5">
-      {showBranchSwitcher && (
-        <BranchSwitcher
-          currentIndex={branchInfo!.currentIndex}
-          totalVersions={branchInfo!.totalVersions}
-          onPrevious={() => onSwitchBranch?.("prev")}
-          onNext={() => onSwitchBranch?.("next")}
-        />
-      )}
       {canShowActions && (
         <ChatMessageActions
           textToCopy={assistantText}
           createdAt={createdAt}
           align="start"
-          onRegenerate={onRegenerate}
-          isLatestAssistant={isLatestAssistant}
-          isStreaming={isStreaming}
+          isStreaming={isGenerating}
         />
       )}
+      <MessageBranchControl
+        branchInfo={branchInfo}
+        onSwitchBranch={onSwitchBranch}
+        disabled={isGenerating}
+      />
     </div>
   )
 }
@@ -353,20 +375,18 @@ function canDisplayAssistantBubble(
 function AssistantMessageBubble({
   message,
   isStreaming,
-  isLatestAssistant,
+  isChatStreaming = false,
   branchInfo,
   onSwitchBranch,
   onDraftTopic,
-  onRegenerate,
   onRetry,
 }: {
   message: ChatUIMessage
   isStreaming: boolean
-  isLatestAssistant?: boolean
+  isChatStreaming?: boolean
   branchInfo?: BranchVersionInfo
   onSwitchBranch?: (direction: "prev" | "next") => void
   onDraftTopic?: (topicTitle: string) => void
-  onRegenerate?: () => void
   onRetry?: () => void
 }) {
   const state = prepareAssistantRenderState(message, isStreaming)
@@ -410,10 +430,9 @@ function AssistantMessageBubble({
       </Message>
       <AssistantMessageActions
         isStreaming={isStreaming}
+        isChatStreaming={isChatStreaming}
         assistantText={state.assistantText}
         createdAt={state.createdAt}
-        onRegenerate={onRegenerate}
-        isLatestAssistant={isLatestAssistant}
         branchInfo={branchInfo}
         onSwitchBranch={onSwitchBranch}
       />
@@ -424,7 +443,7 @@ function AssistantMessageBubble({
 export function ChatMessage({
   message,
   isStreaming = false,
-  isLatestAssistant = false,
+  isChatStreaming,
   isEditing = false,
   branchInfo,
   onSwitchBranch,
@@ -432,9 +451,10 @@ export function ChatMessage({
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
-  onRegenerate,
   onRetry,
 }: ChatMessageProps) {
+  const isGenerating = Boolean(isChatStreaming || isStreaming)
+
   if (message.role === "user") {
     return (
       <UserMessageBubble
@@ -445,6 +465,7 @@ export function ChatMessage({
         onStartEdit={onStartEdit}
         onCancelEdit={onCancelEdit}
         onSaveEdit={onSaveEdit}
+        isStreaming={isGenerating}
       />
     )
   }
@@ -453,11 +474,10 @@ export function ChatMessage({
     <AssistantMessageBubble
       message={message}
       isStreaming={isStreaming}
-      isLatestAssistant={isLatestAssistant}
+      isChatStreaming={isGenerating}
       branchInfo={branchInfo}
       onSwitchBranch={onSwitchBranch}
       onDraftTopic={onDraftTopic}
-      onRegenerate={onRegenerate ? () => onRegenerate(message.id) : undefined}
       onRetry={onRetry ? () => onRetry(message.id) : undefined}
     />
   )
