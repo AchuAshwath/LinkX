@@ -300,6 +300,8 @@ export type XVerifyResponse = {
 
 export type AdminReadSchedulerStatusResponse = (unknown);
 
+export type AdminTriggerSchedulerRunResponse = (unknown);
+
 export type AiThreadsListAiModelsResponse = (AIModelsPublic);
 
 export type AiThreadsCreateChatThreadData = {

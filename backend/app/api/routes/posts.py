@@ -404,14 +404,18 @@ async def retry_failed_post(
     try:
         validate_transition(
             current_status=post.status,
-            target_status="scheduled",
+            target_status="publishing",
             manual_retry=True,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    post.status = "scheduled"
-    post.next_retry_at = datetime.now(timezone.utc)
+    post.status = "publishing"
+    post.publishing_started_at = datetime.now(timezone.utc)
+    post.retry_count = 0
+    post.error_code = None
+    post.error_message = None
+    post.next_retry_at = None
     post.updated_at = datetime.now(timezone.utc)
     session.add(post)
     session.commit()

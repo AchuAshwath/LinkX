@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     # 60 minutes * 24 hours * 8 days = 8 days
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
     FRONTEND_HOST: str = "http://localhost:5173"
-    ENVIRONMENT: Literal["local", "staging", "production"] = "local"
+    ENVIRONMENT: Literal["local", "staging", "production", "testing"] = "local"
     SESSIONS_DIR: Path = (
         Path(__file__).resolve().parent.parent.parent.parent / "sessions"
     )
@@ -112,8 +112,12 @@ class Settings(BaseSettings):
     # Space-separated scopes: openid profile email w_member_social (per LINKEDIN_SETUP.md).
     LINKEDIN_SCOPES: str = "openid profile email w_member_social"
 
-    # Redis (for OAuth session/token storage)
+    # Redis (for OAuth session/token storage and distributed locks)
     REDIS_URL: str = "redis://redis:6379/0"
+
+    # Background Post Scheduler
+    SCHEDULER_ENABLED: bool = True
+    SCHEDULER_POLL_INTERVAL_SECONDS: int = 30
 
     # AI Proxy / Router (CLIProxyAPI, OpenAI-compatible proxy, LiteLLM)
     OPENAI_API_COMPATIBLE_API_KEY: str | None = None
@@ -123,7 +127,7 @@ class Settings(BaseSettings):
     AI_MODEL: str = "openai/gpt-5.6-luna"
     VISION_AI_MODEL: str = "openai/gpt-5.6-luna"
 
-    def _check_default_secret(self, var_name: str, value: str | None) -> None:
+    def _check_default_secret(self, *, var_name: str, value: str | None) -> None:
         if value == "changethis":
             message = (
                 f'The value of {var_name} is "changethis", '
@@ -136,10 +140,13 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _enforce_non_default_secrets(self) -> Self:
-        self._check_default_secret("SECRET_KEY", self.SECRET_KEY)
-        self._check_default_secret("POSTGRES_PASSWORD", self.POSTGRES_PASSWORD)
+        self._check_default_secret(var_name="SECRET_KEY", value=self.SECRET_KEY)
         self._check_default_secret(
-            "FIRST_SUPERUSER_PASSWORD", self.FIRST_SUPERUSER_PASSWORD
+            var_name="POSTGRES_PASSWORD", value=self.POSTGRES_PASSWORD
+        )
+        self._check_default_secret(
+            var_name="FIRST_SUPERUSER_PASSWORD",
+            value=self.FIRST_SUPERUSER_PASSWORD,
         )
 
         return self

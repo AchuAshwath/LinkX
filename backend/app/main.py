@@ -1,3 +1,8 @@
+import asyncio
+import logging
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager, suppress
+
 import sentry_sdk
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
@@ -8,9 +13,41 @@ from app.api.main import api_router
 from app.api.routes.docs import router as docs_router
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
+
 
 def custom_generate_unique_id(route: APIRoute) -> str:
     return f"{route.tags[0]}-{route.name}"
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
+    """Manage application startup and shutdown lifecycle including background scheduler."""
+    task = None
+    if settings.SCHEDULER_ENABLED and settings.ENVIRONMENT != "testing":
+        redis_client = None
+        try:
+            import redis
+
+            redis_client = redis.from_url(settings.REDIS_URL)  # type: ignore[no-untyped-call]
+        except Exception as exc:
+            logger.debug("Redis unavailable for scheduler background loop: %s", exc)
+
+        from app.services.scheduler import run_scheduler_background_loop
+
+        task = asyncio.create_task(
+            run_scheduler_background_loop(
+                poll_interval_seconds=settings.SCHEDULER_POLL_INTERVAL_SECONDS,
+                redis_client=redis_client,
+            )
+        )
+
+    yield
+
+    if task is not None:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
 
 
 if settings.SENTRY_DSN and settings.ENVIRONMENT != "local":
@@ -22,6 +59,7 @@ app = FastAPI(
     docs_url=None,  # Disable default docs to use custom
     redoc_url=None,  # Disable redoc
     generate_unique_id_function=custom_generate_unique_id,
+    lifespan=lifespan,
 )
 
 # Mount static files for media uploads
