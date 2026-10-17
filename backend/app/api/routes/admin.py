@@ -72,3 +72,28 @@ def read_scheduler_status(*, session: SessionDep) -> Any:
             for p in failed_recent
         ],
     }
+
+
+@router.post("/scheduler/run-now")
+async def trigger_scheduler_run(*, session: SessionDep) -> Any:
+    """Manually trigger immediate execution of due scheduled posts."""
+    from app.core.config import settings
+    from app.services.scheduler import SchedulerService
+
+    redis_client = None
+    try:
+        import redis
+
+        redis_client = redis.from_url(settings.REDIS_URL)  # type: ignore[no-untyped-call]
+    except Exception:
+        pass
+
+    scheduler = SchedulerService()
+    summary = await scheduler.process_due_posts(
+        session=session, redis_client=redis_client
+    )
+    return {
+        "status": "success",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "summary": summary,
+    }

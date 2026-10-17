@@ -3,9 +3,9 @@ from __future__ import annotations
 ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "draft": {"scheduled", "publishing"},
     "scheduled": {"publishing", "failed"},
-    "publishing": {"published", "failed"},
+    "publishing": {"published", "failed", "scheduled"},
     "published": set(),
-    "failed": {"scheduled"},
+    "failed": {"scheduled", "publishing"},
 }
 
 
@@ -25,5 +25,10 @@ def validate_transition(
     if target_status not in allowed_targets:
         raise ValueError(f"Invalid transition: {current_status} -> {target_status}")
 
-    if current_status == "failed" and target_status == "scheduled" and not manual_retry:
+    is_unauthorized_retry = (
+        (current_status == "failed")
+        and (target_status == "scheduled")
+        and not manual_retry
+    )
+    if is_unauthorized_retry:
         raise ValueError("failed -> scheduled is only allowed via manual retry")

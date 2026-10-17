@@ -142,6 +142,43 @@ def test_retry_requires_failed_status(
     assert response.json()["detail"] == "Only failed posts can be retried"
 
 
+def test_retry_failed_post_success(
+    client: TestClient,
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, headers = _create_user_with_auth(client=client, db=db)
+    post = _create_post(
+        db=db,
+        owner_id=user.id,
+        content="failed post being retried",
+    )
+    post.status = "failed"
+    post.error_code = "RATE_LIMITED"
+    post.error_message = "Rate limited previously"
+    db.add(post)
+    db.commit()
+
+    async def _mock_publish(*, session: Session, post: Post) -> None:
+        post.status = "published"
+        post.external_post_id = "ext-retry-success-123"
+        session.add(post)
+        session.commit()
+        return None
+
+    monkeypatch.setattr("app.api.routes.posts.publish_post", _mock_publish)
+
+    response = client.post(
+        f"{settings.API_V1_STR}/posts/{post.id}/retry",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "published"
+    assert data["external_post_id"] == "ext-retry-success-123"
+
+
 def test_publish_endpoint_is_idempotent_when_external_id_exists(
     client: TestClient,
     db: Session,

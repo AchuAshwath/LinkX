@@ -44,7 +44,7 @@ ALLOWED_MEDIA_TYPES = {
 MAX_MEDIA_SIZE = 5 * 1024 * 1024  # 5 MB
 
 
-def normalize_uploaded_image(content: bytes) -> tuple[bytes, str, str]:
+def normalize_uploaded_image(*, content: bytes) -> tuple[bytes, str, str]:
     """Validate and normalize raw image bytes to standard web formats.
 
     Returns:
@@ -90,7 +90,7 @@ async def upload_media(
             detail="File size exceeds maximum limit of 5MB",
         )
 
-    out_bytes, final_ext, final_content_type = normalize_uploaded_image(content)
+    out_bytes, final_ext, final_content_type = normalize_uploaded_image(content=content)
 
     filename = f"{uuid.uuid4()}{final_ext}"
     settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -404,24 +404,42 @@ async def retry_failed_post(
     try:
         validate_transition(
             current_status=post.status,
-            target_status="scheduled",
+            target_status="publishing",
             manual_retry=True,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    post.status = "scheduled"
-    post.next_retry_at = datetime.now(timezone.utc)
+    post.status = "publishing"
+    post.publishing_started_at = datetime.now(timezone.utc)
+    post.retry_count = 0
+    post.error_code = None
+    post.error_message = None
+    post.next_retry_at = None
     post.updated_at = datetime.now(timezone.utc)
     session.add(post)
     session.commit()
     session.refresh(post)
 
-    failure = await publish_post(
-        session=session,
-        post=post,
-    )
+    try:
+        failure = await publish_post(
+            session=session,
+            post=post,
+        )
+    except Exception as exc:
+        post.status = "failed"
+        post.error_code = "MANUAL_RETRY_ERROR"
+        post.error_message = str(exc)[:990]
+        post.updated_at = datetime.now(timezone.utc)
+        session.add(post)
+        session.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Publishing failed: {exc}",
+        ) from exc
+
     if failure:
+        session.refresh(post)
         _raise_publish_failure(failure=failure)
 
     return _serialize_post_with_author(session=session, post=post)
