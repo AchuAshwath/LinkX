@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react"
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { PromptForm } from "../PromptForm"
 
 describe("PromptForm component", () => {
@@ -187,5 +187,547 @@ describe("PromptForm component", () => {
     fireEvent.change(textarea, { target: { value: "" } })
     fireEvent.keyDown(textarea, { key: "ArrowUp", shiftKey: true })
     expect(handleEditLast).not.toHaveBeenCalled()
+  })
+
+  it("attaches image when pasted from clipboard into textarea", () => {
+    window.URL.createObjectURL = vi.fn().mockReturnValue("blob:preview-paste")
+    window.URL.revokeObjectURL = vi.fn()
+
+    const handleSubmit = vi.fn()
+    render(<PromptForm onSubmit={handleSubmit} placeholder="Ask anything…" />)
+
+    const textarea = screen.getByPlaceholderText("Ask anything…")
+    const imageFile = new File(["paste-bytes"], "clipboard.png", {
+      type: "image/png",
+    })
+
+    const pasteEvent = new Event("paste", { bubbles: true, cancelable: true })
+    Object.defineProperty(pasteEvent, "clipboardData", {
+      value: {
+        items: [
+          {
+            kind: "file",
+            type: "image/png",
+            getAsFile: () => imageFile,
+          },
+        ],
+        files: [imageFile],
+        types: ["Files"],
+      },
+    })
+
+    fireEvent(textarea, pasteEvent)
+
+    expect(window.URL.createObjectURL).toHaveBeenCalledWith(imageFile)
+    expect(window.URL.createObjectURL).toHaveBeenCalledTimes(1)
+  })
+
+  it("attaches image files when dropped onto composer", () => {
+    window.URL.createObjectURL = vi.fn().mockReturnValue("blob:preview-drop")
+    window.URL.revokeObjectURL = vi.fn()
+
+    const { container } = render(
+      <PromptForm onSubmit={vi.fn()} placeholder="Ask anything…" />,
+    )
+
+    const form =
+      container.querySelector("form") || (container.firstChild as HTMLElement)
+    const dropFile = new File(["drop-bytes"], "dropped.jpg", {
+      type: "image/jpeg",
+    })
+
+    fireEvent.dragOver(form, { dataTransfer: { types: ["Files"] } })
+    fireEvent.drop(form, {
+      dataTransfer: {
+        files: [dropFile],
+        types: ["Files"],
+      },
+    })
+
+    expect(window.URL.createObjectURL).toHaveBeenCalledWith(dropFile)
+  })
+
+  describe("adversarial edge cases", () => {
+    let blobCounter = 0
+
+    beforeEach(() => {
+      blobCounter = 0
+      window.URL.createObjectURL = vi
+        .fn()
+        .mockImplementation(() => `blob:mock-preview-${++blobCounter}`)
+      window.URL.revokeObjectURL = vi.fn()
+    })
+
+    function makeFile(
+      name: string,
+      sizeBytes = 1024,
+      type = "image/png",
+    ): File {
+      return new File([new ArrayBuffer(sizeBytes)], name, { type })
+    }
+
+    function createPasteEvent({
+      items,
+      files,
+      clipboardData,
+    }: {
+      items?: { kind?: string; type?: string; getAsFile?: () => File | null }[]
+      files?: File[]
+      clipboardData?: Record<string, unknown> | null
+    }) {
+      const pasteEvent = new Event("paste", { bubbles: true, cancelable: true })
+      if (clipboardData !== undefined) {
+        Object.defineProperty(pasteEvent, "clipboardData", {
+          value: clipboardData,
+          configurable: true,
+        })
+      } else {
+        Object.defineProperty(pasteEvent, "clipboardData", {
+          value: {
+            items: items ?? [],
+            files: files ?? [],
+            types: items ? items.map((i) => i.type || "") : [],
+          },
+          configurable: true,
+        })
+      }
+      return pasteEvent
+    }
+
+    it("rejects pasting when max image limit (5) is already reached", () => {
+      const handleSubmit = vi.fn()
+      render(<PromptForm onSubmit={handleSubmit} placeholder="Ask anything…" />)
+
+      const textarea = screen.getByPlaceholderText("Ask anything…")
+
+      // Attach 5 images in first paste
+      const fiveImages = Array.from({ length: 5 }, (_, i) =>
+        makeFile(`img-${i}.png`),
+      )
+      const firstPaste = createPasteEvent({
+        items: fiveImages.map((file) => ({
+          kind: "file",
+          type: "image/png",
+          getAsFile: () => file,
+        })),
+        files: fiveImages,
+      })
+      fireEvent(textarea, firstPaste)
+
+      expect(window.URL.createObjectURL).toHaveBeenCalledTimes(5)
+
+      // Try pasting 6th image
+      const sixthImage = makeFile("sixth.png")
+      const secondPaste = createPasteEvent({
+        items: [
+          {
+            kind: "file",
+            type: "image/png",
+            getAsFile: () => sixthImage,
+          },
+        ],
+        files: [sixthImage],
+      })
+      fireEvent(textarea, secondPaste)
+
+      // createObjectURL should still be called only 5 times
+      expect(window.URL.createObjectURL).toHaveBeenCalledTimes(5)
+
+      // Submit and verify only 5 images are sent
+      const sendBtn = screen.getByLabelText("Send message")
+      fireEvent.click(sendBtn)
+      expect(handleSubmit).toHaveBeenCalledWith("", fiveImages)
+    })
+
+    it("truncates batch to remaining slots when pasting exceeds max image limit", () => {
+      const handleSubmit = vi.fn()
+      render(<PromptForm onSubmit={handleSubmit} placeholder="Ask anything…" />)
+
+      const textarea = screen.getByPlaceholderText("Ask anything…")
+      const sevenImages = Array.from({ length: 7 }, (_, i) =>
+        makeFile(`batch-${i}.png`),
+      )
+
+      const batchPaste = createPasteEvent({
+        items: sevenImages.map((file) => ({
+          kind: "file",
+          type: "image/png",
+          getAsFile: () => file,
+        })),
+        files: sevenImages,
+      })
+      fireEvent(textarea, batchPaste)
+
+      // Only first 5 should be accepted
+      expect(window.URL.createObjectURL).toHaveBeenCalledTimes(5)
+
+      const sendBtn = screen.getByLabelText("Send message")
+      fireEvent.click(sendBtn)
+      expect(handleSubmit).toHaveBeenCalledWith("", sevenImages.slice(0, 5))
+    })
+
+    it("does not block normal text pasting even when 5 images are attached", () => {
+      render(<PromptForm onSubmit={vi.fn()} placeholder="Ask anything…" />)
+
+      const textarea = screen.getByPlaceholderText("Ask anything…")
+      const fiveImages = Array.from({ length: 5 }, (_, i) =>
+        makeFile(`img-${i}.png`),
+      )
+
+      fireEvent(
+        textarea,
+        createPasteEvent({
+          items: fiveImages.map((file) => ({
+            kind: "file",
+            type: "image/png",
+            getAsFile: () => file,
+          })),
+          files: fiveImages,
+        }),
+      )
+
+      // Now paste plain text
+      const textPaste = createPasteEvent({
+        items: [
+          {
+            kind: "string",
+            type: "text/plain",
+            getAsFile: () => null,
+          },
+        ],
+      })
+      fireEvent(textarea, textPaste)
+
+      // Text paste must NOT be prevented
+      expect(textPaste.defaultPrevented).toBe(false)
+      expect(window.URL.createObjectURL).toHaveBeenCalledTimes(5)
+    })
+
+    it("filters mixed paste items, accepting images and ignoring non-image files", () => {
+      const handleSubmit = vi.fn()
+      render(<PromptForm onSubmit={handleSubmit} placeholder="Ask anything…" />)
+
+      const textarea = screen.getByPlaceholderText("Ask anything…")
+      const jpegFile = makeFile("photo.jpg", 2048, "image/jpeg")
+      const pdfFile = makeFile("doc.pdf", 4096, "application/pdf")
+      const pngFile = makeFile("chart.png", 1024, "image/png")
+      const csvFile = makeFile("data.csv", 512, "text/csv")
+
+      const mixedPaste = createPasteEvent({
+        items: [
+          { kind: "file", type: "image/jpeg", getAsFile: () => jpegFile },
+          { kind: "file", type: "application/pdf", getAsFile: () => pdfFile },
+          { kind: "file", type: "image/png", getAsFile: () => pngFile },
+          { kind: "file", type: "text/csv", getAsFile: () => csvFile },
+        ],
+        files: [jpegFile, pdfFile, pngFile, csvFile],
+      })
+
+      fireEvent(textarea, mixedPaste)
+
+      expect(mixedPaste.defaultPrevented).toBe(true)
+      expect(window.URL.createObjectURL).toHaveBeenCalledTimes(2)
+      expect(window.URL.createObjectURL).toHaveBeenCalledWith(jpegFile)
+      expect(window.URL.createObjectURL).toHaveBeenCalledWith(pngFile)
+
+      const sendBtn = screen.getByLabelText("Send message")
+      fireEvent.click(sendBtn)
+      expect(handleSubmit).toHaveBeenCalledWith("", [jpegFile, pngFile])
+    })
+
+    it("does not prevent default or attach anything when pasting non-image items only", () => {
+      render(<PromptForm onSubmit={vi.fn()} placeholder="Ask anything…" />)
+
+      const textarea = screen.getByPlaceholderText("Ask anything…")
+      const pdfFile = makeFile("doc.pdf", 4096, "application/pdf")
+
+      const nonImagePaste = createPasteEvent({
+        items: [
+          { kind: "file", type: "application/pdf", getAsFile: () => pdfFile },
+          { kind: "string", type: "text/plain", getAsFile: () => null },
+        ],
+        files: [pdfFile],
+      })
+
+      fireEvent(textarea, nonImagePaste)
+
+      expect(nonImagePaste.defaultPrevented).toBe(false)
+      expect(window.URL.createObjectURL).not.toHaveBeenCalled()
+      expect(screen.getByLabelText("Send message")).toBeDisabled()
+    })
+
+    it("rejects huge images (> 10MB) on paste and accepts valid ones in same batch", () => {
+      const handleSubmit = vi.fn()
+      render(<PromptForm onSubmit={handleSubmit} placeholder="Ask anything…" />)
+
+      const textarea = screen.getByPlaceholderText("Ask anything…")
+      const validImg = makeFile("valid.png", 2 * 1024 * 1024, "image/png")
+      const hugeImg = makeFile("huge.jpg", 11 * 1024 * 1024, "image/jpeg")
+
+      const pasteEvent = createPasteEvent({
+        items: [
+          { kind: "file", type: "image/png", getAsFile: () => validImg },
+          { kind: "file", type: "image/jpeg", getAsFile: () => hugeImg },
+        ],
+        files: [validImg, hugeImg],
+      })
+
+      fireEvent(textarea, pasteEvent)
+
+      expect(window.URL.createObjectURL).toHaveBeenCalledTimes(1)
+      expect(window.URL.createObjectURL).toHaveBeenCalledWith(validImg)
+
+      const sendBtn = screen.getByLabelText("Send message")
+      fireEvent.click(sendBtn)
+      expect(handleSubmit).toHaveBeenCalledWith("", [validImg])
+    })
+
+    it("handles null or undefined clipboardData gracefully without throwing", () => {
+      render(<PromptForm onSubmit={vi.fn()} placeholder="Ask anything…" />)
+
+      const textarea = screen.getByPlaceholderText("Ask anything…")
+
+      // clipboardData is null
+      const nullPaste = createPasteEvent({ clipboardData: null })
+      expect(() => fireEvent(textarea, nullPaste)).not.toThrow()
+      expect(nullPaste.defaultPrevented).toBe(false)
+
+      // clipboardData is empty object
+      const emptyPaste = createPasteEvent({ clipboardData: {} })
+      expect(() => fireEvent(textarea, emptyPaste)).not.toThrow()
+      expect(emptyPaste.defaultPrevented).toBe(false)
+    })
+
+    it("falls back to clipboardData.files when clipboardData.items is missing or empty", () => {
+      render(<PromptForm onSubmit={vi.fn()} placeholder="Ask anything…" />)
+
+      const textarea = screen.getByPlaceholderText("Ask anything…")
+      const fallbackFile = makeFile("fallback.png", 1024, "image/png")
+
+      const pasteEvent = createPasteEvent({
+        clipboardData: {
+          items: [],
+          files: [fallbackFile],
+        },
+      })
+
+      fireEvent(textarea, pasteEvent)
+
+      expect(window.URL.createObjectURL).toHaveBeenCalledWith(fallbackFile)
+      expect(window.URL.createObjectURL).toHaveBeenCalledTimes(1)
+    })
+
+    it("handles items with getAsFile throwing or returning null safely", () => {
+      render(<PromptForm onSubmit={vi.fn()} placeholder="Ask anything…" />)
+
+      const textarea = screen.getByPlaceholderText("Ask anything…")
+      const safeFile = makeFile("safe.png", 1024, "image/png")
+
+      const errorPaste = createPasteEvent({
+        items: [
+          {
+            kind: "file",
+            type: "image/png",
+            getAsFile: () => {
+              throw new Error("Disk read failure")
+            },
+          },
+          {
+            kind: "file",
+            type: "image/png",
+            getAsFile: () => null,
+          },
+          {
+            kind: "file",
+            type: "image/png",
+            getAsFile: () => safeFile,
+          },
+        ],
+      })
+
+      expect(() => fireEvent(textarea, errorPaste)).not.toThrow()
+      expect(window.URL.createObjectURL).toHaveBeenCalledTimes(1)
+      expect(window.URL.createObjectURL).toHaveBeenCalledWith(safeFile)
+    })
+
+    function createDragLeaveEvent(relatedTarget: EventTarget | null) {
+      const event = new Event("dragleave", { bubbles: true, cancelable: true })
+      Object.defineProperty(event, "relatedTarget", {
+        value: relatedTarget,
+        configurable: true,
+      })
+      return event
+    }
+
+    it("manages drag state transitions and resets on dragLeave when leaving container", () => {
+      const { container } = render(
+        <PromptForm onSubmit={vi.fn()} placeholder="Ask anything…" />,
+      )
+
+      const form =
+        container.querySelector("form") || (container.firstChild as HTMLElement)
+      const inputGroup = form.firstElementChild as HTMLElement
+
+      // Drag over should activate dragging style
+      fireEvent.dragOver(form, { dataTransfer: { types: ["Files"] } })
+      expect(inputGroup.className).toContain("border-primary/80")
+
+      // Drag leave with relatedTarget outside form resets dragging style
+      fireEvent(form, createDragLeaveEvent(document.body))
+      expect(inputGroup.className).not.toContain("border-primary/80")
+
+      // Drag over again
+      fireEvent.dragOver(form, { dataTransfer: { types: ["Files"] } })
+      expect(inputGroup.className).toContain("border-primary/80")
+
+      // Drag leave with relatedTarget null (leaving browser window) resets dragging style
+      fireEvent(form, createDragLeaveEvent(null))
+      expect(inputGroup.className).not.toContain("border-primary/80")
+    })
+
+    it("preserves isDragging state when dragLeave occurs onto a child within the form", () => {
+      const { container } = render(
+        <PromptForm onSubmit={vi.fn()} placeholder="Ask anything…" />,
+      )
+
+      const form =
+        container.querySelector("form") || (container.firstChild as HTMLElement)
+      const textarea = screen.getByPlaceholderText("Ask anything…")
+      const inputGroup = form.firstElementChild as HTMLElement
+
+      fireEvent.dragOver(form, { dataTransfer: { types: ["Files"] } })
+      expect(inputGroup.className).toContain("border-primary/80")
+
+      // Drag leave targeting the child textarea should NOT reset dragging
+      fireEvent(form, createDragLeaveEvent(textarea))
+      expect(inputGroup.className).toContain("border-primary/80")
+    })
+
+    it("resets isDragging and ignores non-image files on drop", () => {
+      const { container } = render(
+        <PromptForm onSubmit={vi.fn()} placeholder="Ask anything…" />,
+      )
+
+      const form =
+        container.querySelector("form") || (container.firstChild as HTMLElement)
+      const inputGroup = form.firstElementChild as HTMLElement
+      const pdfFile = makeFile("doc.pdf", 4096, "application/pdf")
+
+      fireEvent.dragOver(form, { dataTransfer: { types: ["Files"] } })
+      expect(inputGroup.className).toContain("border-primary/80")
+
+      fireEvent.drop(form, {
+        dataTransfer: {
+          files: [pdfFile],
+          types: ["Files"],
+        },
+      })
+
+      expect(inputGroup.className).not.toContain("border-primary/80")
+      expect(window.URL.createObjectURL).not.toHaveBeenCalled()
+    })
+
+    it("handles drop gracefully when dataTransfer or dataTransfer.files is null/undefined", () => {
+      const { container } = render(
+        <PromptForm onSubmit={vi.fn()} placeholder="Ask anything…" />,
+      )
+
+      const form =
+        container.querySelector("form") || (container.firstChild as HTMLElement)
+      const inputGroup = form.firstElementChild as HTMLElement
+
+      fireEvent.dragOver(form, { dataTransfer: { types: ["Files"] } })
+      expect(inputGroup.className).toContain("border-primary/80")
+
+      expect(() =>
+        fireEvent.drop(form, {
+          dataTransfer: null,
+        }),
+      ).not.toThrow()
+
+      expect(inputGroup.className).not.toContain("border-primary/80")
+    })
+
+    it("allows removing an attached image via remove button and revokes preview URL", () => {
+      render(<PromptForm onSubmit={vi.fn()} placeholder="Ask anything…" />)
+
+      const textarea = screen.getByPlaceholderText("Ask anything…")
+      const img1 = makeFile("img1.png")
+      const img2 = makeFile("img2.png")
+
+      fireEvent(
+        textarea,
+        createPasteEvent({
+          items: [
+            { kind: "file", type: "image/png", getAsFile: () => img1 },
+            { kind: "file", type: "image/png", getAsFile: () => img2 },
+          ],
+          files: [img1, img2],
+        }),
+      )
+
+      expect(window.URL.createObjectURL).toHaveBeenCalledTimes(2)
+
+      const removeButtons = screen.getAllByLabelText("Remove image")
+      expect(removeButtons).toHaveLength(2)
+
+      // Remove the first image
+      fireEvent.click(removeButtons[0])
+
+      expect(window.URL.revokeObjectURL).toHaveBeenCalledWith(
+        "blob:mock-preview-1",
+      )
+      expect(screen.getAllByLabelText("Remove image")).toHaveLength(1)
+    })
+
+    it("allows submission of attached image with empty prompt text", () => {
+      const handleSubmit = vi.fn()
+      render(<PromptForm onSubmit={handleSubmit} placeholder="Ask anything…" />)
+
+      const textarea = screen.getByPlaceholderText("Ask anything…")
+      const img1 = makeFile("photo.png")
+
+      fireEvent(
+        textarea,
+        createPasteEvent({
+          items: [{ kind: "file", type: "image/png", getAsFile: () => img1 }],
+          files: [img1],
+        }),
+      )
+
+      const sendBtn = screen.getByLabelText("Send message")
+      expect(sendBtn).not.toBeDisabled()
+
+      fireEvent.click(sendBtn)
+      expect(handleSubmit).toHaveBeenCalledWith("", [img1])
+      expect(window.URL.revokeObjectURL).toHaveBeenCalledWith(
+        "blob:mock-preview-1",
+      )
+    })
+
+    it("revokes preview URLs on component unmount", () => {
+      const { unmount } = render(
+        <PromptForm onSubmit={vi.fn()} placeholder="Ask anything…" />,
+      )
+
+      const textarea = screen.getByPlaceholderText("Ask anything…")
+      const img1 = makeFile("img1.png")
+
+      fireEvent(
+        textarea,
+        createPasteEvent({
+          items: [{ kind: "file", type: "image/png", getAsFile: () => img1 }],
+          files: [img1],
+        }),
+      )
+
+      expect(window.URL.createObjectURL).toHaveBeenCalledTimes(1)
+
+      unmount()
+
+      expect(window.URL.revokeObjectURL).toHaveBeenCalledWith(
+        "blob:mock-preview-1",
+      )
+    })
   })
 })

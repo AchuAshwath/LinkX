@@ -15,6 +15,7 @@ import {
   InputGroupButton,
   InputGroupTextarea,
 } from "@/components/ui/input-group"
+import { cn } from "@/lib/utils"
 
 export type { AIModelOption }
 
@@ -35,6 +36,102 @@ export interface PromptFormProps {
   onValueChange?: (value: string) => void
 }
 
+interface PromptFormToolbarProps {
+  actions?: React.ReactNode
+  fileInputRef: React.RefObject<HTMLInputElement | null>
+  activeModelId: string
+  normalizedModels: AIModelOption[]
+  handleSelectModel: (modelId: string) => void
+  isVoiceListening: boolean
+  isVoiceSupported: boolean
+  voiceError: string | null
+  handleToggleVoice: () => void
+  isBusy: boolean
+  hasContent: boolean
+  onStop?: () => void
+}
+
+function PromptFormToolbar(props: PromptFormToolbarProps) {
+  return (
+    <InputGroupAddon align="block-end" className="px-2 pb-1.5 pt-1">
+      <div className="flex items-center gap-1.5">
+        {props.actions ?? (
+          <button
+            type="button"
+            aria-label="Attach image"
+            onClick={() => props.fileInputRef.current?.click()}
+            className="flex size-7 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors cursor-pointer"
+          >
+            <Plus className="size-4" />
+          </button>
+        )}
+      </div>
+
+      <div className="flex items-center gap-1.5 ml-auto">
+        <ModelSelectorPill
+          selectedModelId={props.activeModelId}
+          models={props.normalizedModels}
+          onSelectModel={props.handleSelectModel}
+        />
+
+        <VoiceInputButton
+          isListening={props.isVoiceListening}
+          isSupported={props.isVoiceSupported}
+          onToggle={props.handleToggleVoice}
+          error={props.voiceError}
+          disabled={props.isBusy}
+        />
+
+        {Boolean(props.isBusy && props.hasContent && props.onStop) && (
+          <InputGroupButton
+            type="button"
+            size="icon-sm"
+            variant="outline"
+            aria-label="Stop generating"
+            className="size-8 rounded-full bg-muted border-border text-foreground hover:bg-muted/80 cursor-pointer"
+            onClick={props.onStop}
+          >
+            <Square className="size-3.5 fill-current" />
+          </InputGroupButton>
+        )}
+
+        <PromptSubmitButton
+          isBusy={props.isBusy}
+          hasContent={props.hasContent}
+          onStop={props.onStop}
+        />
+      </div>
+    </InputGroupAddon>
+  )
+}
+
+interface PromptComposerInputProps {
+  inputRef?: React.RefObject<HTMLTextAreaElement | null>
+  placeholder: string
+  value: string
+  onChange: (val: string) => void
+  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void
+}
+
+function PromptComposerInput({
+  inputRef,
+  placeholder,
+  value,
+  onChange,
+  onKeyDown,
+}: PromptComposerInputProps) {
+  return (
+    <InputGroupTextarea
+      ref={inputRef}
+      placeholder={placeholder}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className="min-h-[56px] px-3.5 pt-3 text-sm text-foreground placeholder:text-muted-foreground/80 leading-relaxed"
+      onKeyDown={onKeyDown}
+    />
+  )
+}
+
 export function PromptForm({
   onSubmit,
   onStop,
@@ -51,25 +148,7 @@ export function PromptForm({
   initialValue = "",
   onValueChange,
 }: PromptFormProps) {
-  const {
-    input,
-    updateInput,
-    effectiveInputRef,
-    fileInputRef,
-    selectedImages,
-    handleImageSelect,
-    handleRemoveImage,
-    activeModelId,
-    normalizedModels,
-    handleSelectModel,
-    isVoiceListening,
-    isVoiceSupported,
-    voiceError,
-    handleToggleVoice,
-    handleSubmit,
-    handleKeyDown,
-    hasContent,
-  } = usePromptFormState({
+  const formState = usePromptFormState({
     initialValue,
     selectedModelId,
     models,
@@ -82,80 +161,57 @@ export function PromptForm({
   })
 
   return (
-    <form onSubmit={handleSubmit} className={className}>
-      <InputGroup className="rounded-3xl border border-border/70 bg-[#121214]/95 backdrop-blur-md p-1.5 shadow-lg transition-all focus-within:border-border/70 focus-within:ring-0 focus-within:ring-offset-0 focus-within:outline-none focus:outline-none focus:ring-0 focus-within:!ring-0 focus-within:!border-border/70">
+    <form
+      onSubmit={formState.handleSubmit}
+      onPaste={formState.handlePaste}
+      onDragOver={formState.handleDragOver}
+      onDragLeave={formState.handleDragLeave}
+      onDrop={formState.handleDrop}
+      className={className}
+    >
+      <InputGroup
+        className={cn(
+          "rounded-3xl border border-border/70 bg-[#121214]/95 backdrop-blur-md p-1.5 shadow-lg transition-all focus-within:border-border/70 focus-within:ring-0 focus-within:ring-offset-0 focus-within:outline-none focus:outline-none focus:ring-0 focus-within:!ring-0 focus-within:!border-border/70",
+          formState.isDragging &&
+            "border-primary/80 ring-2 ring-primary/40 bg-[#18181c]",
+        )}
+      >
         <input
           type="file"
-          ref={fileInputRef}
+          ref={formState.fileInputRef}
           accept="image/*"
           multiple
           className="hidden"
-          onChange={handleImageSelect}
+          onChange={formState.handleImageSelect}
         />
 
         <AttachmentPreviewStrip
-          images={selectedImages}
-          onRemove={handleRemoveImage}
+          images={formState.selectedImages}
+          onRemove={formState.handleRemoveImage}
         />
 
-        <InputGroupTextarea
-          ref={effectiveInputRef}
+        <PromptComposerInput
+          inputRef={formState.effectiveInputRef}
           placeholder={placeholder}
-          value={input}
-          onChange={(event) => updateInput(event.target.value)}
-          className="min-h-[56px] px-3.5 pt-3 text-sm text-foreground placeholder:text-muted-foreground/80 leading-relaxed"
-          onKeyDown={handleKeyDown}
+          value={formState.input}
+          onChange={formState.updateInput}
+          onKeyDown={formState.handleKeyDown}
         />
 
-        <InputGroupAddon align="block-end" className="px-2 pb-1.5 pt-1">
-          <div className="flex items-center gap-1.5">
-            {actions ?? (
-              <button
-                type="button"
-                aria-label="Attach image"
-                onClick={() => fileInputRef.current?.click()}
-                className="flex size-7 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors cursor-pointer"
-              >
-                <Plus className="size-4" />
-              </button>
-            )}
-          </div>
-
-          <div className="flex items-center gap-1.5 ml-auto">
-            <ModelSelectorPill
-              selectedModelId={activeModelId}
-              models={normalizedModels}
-              onSelectModel={handleSelectModel}
-            />
-
-            <VoiceInputButton
-              isListening={isVoiceListening}
-              isSupported={isVoiceSupported}
-              onToggle={handleToggleVoice}
-              error={voiceError}
-              disabled={isBusy}
-            />
-
-            {isBusy && hasContent && onStop && (
-              <InputGroupButton
-                type="button"
-                size="icon-sm"
-                variant="outline"
-                aria-label="Stop generating"
-                className="size-8 rounded-full bg-muted border-border text-foreground hover:bg-muted/80 cursor-pointer"
-                onClick={onStop}
-              >
-                <Square className="size-3.5 fill-current" />
-              </InputGroupButton>
-            )}
-
-            <PromptSubmitButton
-              isBusy={isBusy}
-              hasContent={hasContent}
-              onStop={onStop}
-            />
-          </div>
-        </InputGroupAddon>
+        <PromptFormToolbar
+          actions={actions}
+          fileInputRef={formState.fileInputRef}
+          activeModelId={formState.activeModelId}
+          normalizedModels={formState.normalizedModels}
+          handleSelectModel={formState.handleSelectModel}
+          isVoiceListening={formState.isVoiceListening}
+          isVoiceSupported={formState.isVoiceSupported}
+          voiceError={formState.voiceError}
+          handleToggleVoice={formState.handleToggleVoice}
+          isBusy={isBusy}
+          hasContent={formState.hasContent}
+          onStop={onStop}
+        />
       </InputGroup>
     </form>
   )

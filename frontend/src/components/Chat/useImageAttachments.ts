@@ -4,15 +4,21 @@ import type { AttachmentImage } from "@/components/Chat/AttachmentPreviewStrip"
 export const MAX_IMAGE_COUNT = 5
 export const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024 // 10 MB
 
-function filterValidImageFiles(files: FileList | null): File[] {
-  if (!files || files.length === 0) return []
-  const valid: File[] = []
-  for (const file of Array.from(files)) {
-    if (!file.type.startsWith("image/")) continue
-    if (file.size > MAX_IMAGE_SIZE_BYTES) continue
-    valid.push(file)
-  }
-  return valid
+function isValidImageFile(file: File): boolean {
+  if (!file?.type) return false
+  if (!file.type.startsWith("image/")) return false
+  return file.size <= MAX_IMAGE_SIZE_BYTES
+}
+
+function toFileList(files: FileList | File[] | null | undefined): File[] {
+  if (!files) return []
+  return Array.isArray(files) ? files : Array.from(files)
+}
+
+function filterValidImageFiles(
+  files: FileList | File[] | null | undefined,
+): File[] {
+  return toFileList(files).filter(isValidImageFile)
 }
 
 function revokePreviews(images: AttachmentImage[]): void {
@@ -23,42 +29,59 @@ function revokePreviews(images: AttachmentImage[]): void {
   }
 }
 
+function appendValidFiles(
+  prev: AttachmentImage[],
+  validFiles: File[],
+): AttachmentImage[] {
+  const availableSlots = Math.max(0, MAX_IMAGE_COUNT - prev.length)
+  if (availableSlots <= 0) return prev
+  const allowedFiles = validFiles.slice(0, availableSlots)
+  if (allowedFiles.length === 0) return prev
+  const newImages = allowedFiles.map((file) => ({
+    file,
+    preview: URL.createObjectURL(file),
+  }))
+  return [...prev, ...newImages]
+}
+
+function removeImageAtIndex(
+  prev: AttachmentImage[],
+  index: number,
+): AttachmentImage[] {
+  const target = prev[index]
+  if (target?.preview) {
+    URL.revokeObjectURL(target.preview)
+  }
+  return prev.filter((_, i) => i !== index)
+}
+
 export function useImageAttachments() {
   const [selectedImages, setSelectedImages] = React.useState<AttachmentImage[]>(
     [],
   )
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
-  const handleImageSelect = React.useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const validFiles = filterValidImageFiles(e.target.files)
+  const addFiles = React.useCallback(
+    (files: FileList | File[] | null | undefined) => {
+      const validFiles = filterValidImageFiles(files)
       if (validFiles.length === 0) return
-
-      setSelectedImages((prev) => {
-        const availableSlots = Math.max(0, MAX_IMAGE_COUNT - prev.length)
-        const allowedFiles = validFiles.slice(0, availableSlots)
-        const newImages = allowedFiles.map((file) => ({
-          file,
-          preview: URL.createObjectURL(file),
-        }))
-        return [...prev, ...newImages]
-      })
-
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ""
-      }
+      setSelectedImages((prev) => appendValidFiles(prev, validFiles))
     },
     [],
   )
 
-  const handleRemoveImage = React.useCallback((index: number) => {
-    setSelectedImages((prev) => {
-      const target = prev[index]
-      if (target?.preview) {
-        URL.revokeObjectURL(target.preview)
+  const handleImageSelect = React.useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      addFiles(e.target.files)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
       }
-      return prev.filter((_, i) => i !== index)
-    })
+    },
+    [addFiles],
+  )
+
+  const handleRemoveImage = React.useCallback((index: number) => {
+    setSelectedImages((prev) => removeImageAtIndex(prev, index))
   }, [])
 
   const clearImages = React.useCallback(() => {
@@ -83,5 +106,6 @@ export function useImageAttachments() {
     handleImageSelect,
     handleRemoveImage,
     clearImages,
+    addFiles,
   }
 }

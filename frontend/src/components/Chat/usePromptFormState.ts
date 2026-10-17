@@ -1,9 +1,11 @@
 import * as React from "react"
 import type { AIModelOption } from "@/components/Chat/ModelSelectorPill"
 import { useImageAttachments } from "./useImageAttachments"
+import { usePromptDropPaste } from "./usePromptDropPaste"
 import { usePromptVoiceInput } from "./usePromptVoiceInput"
 
 export { useImageAttachments } from "./useImageAttachments"
+export { usePromptDropPaste } from "./usePromptDropPaste"
 export { usePromptVoiceInput } from "./usePromptVoiceInput"
 
 function normalizeModels(models?: (AIModelOption | string)[]): AIModelOption[] {
@@ -19,31 +21,23 @@ function isPlainEnterPress(
   return !event.nativeEvent.isComposing
 }
 
+function hasModifierKey(event: React.KeyboardEvent): boolean {
+  if (event.shiftKey || event.altKey) return true
+  return Boolean(event.ctrlKey || event.metaKey)
+}
+
 function isPlainArrowUpPress(
   event: React.KeyboardEvent<HTMLTextAreaElement>,
   isComposerEmpty: boolean,
 ): boolean {
   if (event.key !== "ArrowUp") return false
   if (!isComposerEmpty) return false
-  const hasModifiers =
-    event.shiftKey || event.altKey || event.ctrlKey || event.metaKey
-  if (hasModifiers) return false
+  if (hasModifierKey(event)) return false
   return !event.nativeEvent.isComposing
 }
 
 function isInputEmpty(text: string, imageCount: number): boolean {
   if (text.trim().length > 0) return false
-  return imageCount === 0
-}
-
-function shouldBlockSubmit({
-  text,
-  imageCount,
-}: {
-  text: string
-  imageCount: number
-}): boolean {
-  if (text.length > 0) return false
   return imageCount === 0
 }
 
@@ -65,10 +59,10 @@ function executePromptSubmit({
   stopAndReset,
 }: PromptSubmitPayload) {
   stopAndReset()
-  const text = input.trim()
-  if (shouldBlockSubmit({ text, imageCount: selectedImages.length })) {
+  if (isInputEmpty(input, selectedImages.length)) {
     return
   }
+  const text = input.trim()
   if (selectedImages.length > 0) {
     onSubmit(
       text,
@@ -165,30 +159,36 @@ function usePromptFormActions({
   stopAndReset,
   onEditLastUserMessage,
 }: PromptFormActionsOptions) {
-  function handleSubmit(event?: React.FormEvent) {
-    event?.preventDefault()
-    executePromptSubmit({
-      input,
-      selectedImages,
-      onSubmit,
-      updateInput,
-      clearImages,
-      stopAndReset,
-    })
-  }
+  const handleSubmit = React.useCallback(
+    (event?: React.FormEvent) => {
+      event?.preventDefault()
+      executePromptSubmit({
+        input,
+        selectedImages,
+        onSubmit,
+        updateInput,
+        clearImages,
+        stopAndReset,
+      })
+    },
+    [input, selectedImages, onSubmit, updateInput, clearImages, stopAndReset],
+  )
 
-  function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (isPlainEnterPress(event)) {
-      event.preventDefault()
-      handleSubmit()
-      return
-    }
-    const empty = isInputEmpty(input, selectedImages.length)
-    if (isPlainArrowUpPress(event, empty)) {
-      event.preventDefault()
-      onEditLastUserMessage?.()
-    }
-  }
+  const handleKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (isPlainEnterPress(event)) {
+        event.preventDefault()
+        handleSubmit()
+        return
+      }
+      const empty = isInputEmpty(input, selectedImages.length)
+      if (isPlainArrowUpPress(event, empty)) {
+        event.preventDefault()
+        onEditLastUserMessage?.()
+      }
+    },
+    [input, selectedImages.length, handleSubmit, onEditLastUserMessage],
+  )
 
   const hasContent = !isInputEmpty(input, selectedImages.length)
 
@@ -213,6 +213,7 @@ function assemblePromptState({
   attachments,
   voiceInput,
   actions,
+  dropPaste,
   normalizedModels,
 }: {
   modelSelection: ReturnType<typeof usePromptModelSelection>
@@ -220,6 +221,7 @@ function assemblePromptState({
   attachments: ReturnType<typeof useImageAttachments>
   voiceInput: ReturnType<typeof usePromptVoiceInput>
   actions: ReturnType<typeof usePromptFormActions>
+  dropPaste: ReturnType<typeof usePromptDropPaste>
   normalizedModels: AIModelOption[]
 }) {
   return {
@@ -240,6 +242,12 @@ function assemblePromptState({
     handleSubmit: actions.handleSubmit,
     handleKeyDown: actions.handleKeyDown,
     hasContent: actions.hasContent,
+    isDragging: dropPaste.isDragging,
+    handlePaste: dropPaste.handlePaste,
+    handleDragOver: dropPaste.handleDragOver,
+    handleDragLeave: dropPaste.handleDragLeave,
+    handleDrop: dropPaste.handleDrop,
+    addFiles: attachments.addFiles,
   }
 }
 
@@ -265,6 +273,9 @@ export function usePromptFormState({
     onValueChange,
   })
   const attachments = useImageAttachments()
+  const dropPaste = usePromptDropPaste({
+    addFiles: attachments.addFiles,
+  })
   const voiceInput = usePromptVoiceInput({
     input: inputSync.input,
     updateInput: inputSync.updateInput,
@@ -289,6 +300,7 @@ export function usePromptFormState({
     attachments,
     voiceInput,
     actions,
+    dropPaste,
     normalizedModels,
   })
 }
