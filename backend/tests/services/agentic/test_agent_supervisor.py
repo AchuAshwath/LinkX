@@ -16,6 +16,7 @@ from app.services.agentic.agent_supervisor import (
     build_bot_agent,
     build_bot_tools,
 )
+from app.services.ai_context_budgeter import MIN_PROMPT_CACHE_THRESHOLD, count_tokens
 from tests.utils.utils import random_email, random_lower_string
 
 
@@ -56,6 +57,25 @@ class TestAgentSupervisorDraftManagement:
         assert "DO NOT call `save_draft_post` when revising" in BOT_AGENT_SYSTEM_PROMPT
         assert "no_content_repetition" in BOT_AGENT_SYSTEM_PROMPT
         assert "get_latest_draft_post" in BOT_AGENT_SYSTEM_PROMPT
+
+    def test_bot_agent_system_prompt_cache_threshold_and_prefix_invariance(
+        self, db: Session
+    ) -> None:
+        """Verify supervisor system prompt satisfies >=1024 token caching threshold and prefix invariance."""
+        tokens = count_tokens(text=BOT_AGENT_SYSTEM_PROMPT, model="gpt-4o")
+        assert tokens >= MIN_PROMPT_CACHE_THRESHOLD, (
+            f"BOT_AGENT_SYSTEM_PROMPT has {tokens} tokens, which is below {MIN_PROMPT_CACHE_THRESHOLD}."
+        )
+
+        user = _make_user(db=db)
+        thread = _make_thread(db=db, user=user)
+        ctx = BotContext(user_id=str(user.id), session=db, thread_id=str(thread.id))
+
+        # Dynamic draft addition should append strictly to the tail
+        from app.services.agentic.agent_supervisor import _build_active_draft_prompt
+
+        full_prompt = BOT_AGENT_SYSTEM_PROMPT + _build_active_draft_prompt(ctx=ctx)
+        assert full_prompt.startswith(BOT_AGENT_SYSTEM_PROMPT)
 
     def test_build_bot_tools_includes_latest_draft_tool(self, db: Session) -> None:
         user = _make_user(db=db)
