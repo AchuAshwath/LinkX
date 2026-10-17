@@ -51,6 +51,27 @@ describe("useKeyboardShortcuts", () => {
     expect(onEscape).toHaveBeenCalledTimes(1)
   })
 
+  it.each([
+    { name: "Cmd+Shift+O", init: { key: "o", metaKey: true, shiftKey: true } },
+    { name: "Ctrl+Shift+O", init: { key: "O", ctrlKey: true, shiftKey: true } },
+    { name: "Alt+n", init: { key: "n", altKey: true } },
+    { name: "Alt+N", init: { key: "N", altKey: true } },
+  ])("triggers onNewChat on browser-safe shortcut $name", ({ init }) => {
+    const onToggleQuickSwitcher = vi.fn()
+    const onNewChat = vi.fn()
+
+    renderHook(() =>
+      useKeyboardShortcuts({
+        onToggleQuickSwitcher,
+        onNewChat,
+      }),
+    )
+
+    window.dispatchEvent(new KeyboardEvent("keydown", init))
+    expect(onNewChat).toHaveBeenCalledTimes(1)
+    expect(onToggleQuickSwitcher).not.toHaveBeenCalled()
+  })
+
   it("does not trigger hotkeys when isEnabled is false", () => {
     const onToggleQuickSwitcher = vi.fn()
     const onNewChat = vi.fn()

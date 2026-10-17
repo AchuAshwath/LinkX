@@ -388,6 +388,7 @@ interface AIChatCenterColumnProps {
   onRetry: (assistantMsgId: string) => void
   onSwitchBranch?: (messageId: string, direction: "prev" | "next") => void
   onEditLastUserMessage: () => void
+  onRecallLastPrompt?: () => string | null | undefined
 }
 
 function AIChatCenterColumn(props: AIChatCenterColumnProps) {
@@ -434,6 +435,7 @@ function AIChatCenterColumn(props: AIChatCenterColumnProps) {
           onSubmit={props.handleSendMessage}
           onStop={props.stopStream}
           onEditLastUserMessage={props.onEditLastUserMessage}
+          onRecallLastPrompt={props.onRecallLastPrompt}
           autoFocus
         />
       </div>
@@ -829,6 +831,7 @@ function AIPageCenterSection({
       onRetry={feedState.handleRetry}
       onSwitchBranch={feedState.handleSwitchBranch}
       onEditLastUserMessage={feedState.handleEditLastUserMessage}
+      onRecallLastPrompt={feedState.handleRecallLastUserPrompt}
     />
   )
 }

@@ -214,6 +214,50 @@ describe("PromptForm component", () => {
     expect(handleEditLast).not.toHaveBeenCalled()
   })
 
+  it("recalls last user prompt into composer when ArrowUp is pressed on empty input and onRecallLastPrompt is provided", () => {
+    const handleRecallLastPrompt = vi
+      .fn()
+      .mockReturnValue("Recalled previous prompt")
+    const handleEditLast = vi.fn()
+    render(
+      <PromptForm
+        onSubmit={vi.fn()}
+        onEditLastUserMessage={handleEditLast}
+        onRecallLastPrompt={handleRecallLastPrompt}
+        placeholder="Ask anything…"
+      />,
+    )
+
+    const textarea = screen.getByPlaceholderText(
+      "Ask anything…",
+    ) as HTMLTextAreaElement
+    fireEvent.keyDown(textarea, { key: "ArrowUp" })
+    expect(handleRecallLastPrompt).toHaveBeenCalledTimes(1)
+    expect(textarea.value).toBe("Recalled previous prompt")
+    expect(handleEditLast).not.toHaveBeenCalled()
+  })
+
+  it("does not update input when onRecallLastPrompt returns null or empty string", () => {
+    const handleRecallLastPrompt = vi.fn().mockReturnValue(null)
+    const handleEditLast = vi.fn()
+    render(
+      <PromptForm
+        onSubmit={vi.fn()}
+        onEditLastUserMessage={handleEditLast}
+        onRecallLastPrompt={handleRecallLastPrompt}
+        placeholder="Ask anything…"
+      />,
+    )
+
+    const textarea = screen.getByPlaceholderText(
+      "Ask anything…",
+    ) as HTMLTextAreaElement
+    fireEvent.keyDown(textarea, { key: "ArrowUp" })
+    expect(handleRecallLastPrompt).toHaveBeenCalledTimes(1)
+    expect(textarea.value).toBe("")
+    expect(handleEditLast).not.toHaveBeenCalled()
+  })
+
   it("attaches image when pasted from clipboard into textarea", () => {
     window.URL.createObjectURL = vi.fn().mockReturnValue("blob:preview-paste")
     window.URL.revokeObjectURL = vi.fn()

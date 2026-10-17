@@ -21,7 +21,19 @@ function isQuickSwitcherHotkey(event: KeyboardEvent): boolean {
   return isCommandKey(event, "k")
 }
 
+function isShiftCommandKey(event: KeyboardEvent, key: string): boolean {
+  if (event.key?.toLowerCase() !== key) return false
+  return event.shiftKey && isModifierActive(event)
+}
+
+function isAltKey(event: KeyboardEvent, key: string): boolean {
+  if (event.key?.toLowerCase() !== key) return false
+  return event.altKey && !event.metaKey && !event.ctrlKey
+}
+
 function isNewChatHotkey(event: KeyboardEvent): boolean {
+  if (isShiftCommandKey(event, "o")) return true
+  if (isAltKey(event, "n")) return true
   return isCommandKey(event, "n")
 }
 

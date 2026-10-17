@@ -141,6 +141,7 @@ export interface ChatUIMessage {
   parts: ChatMessagePart[]
   createdAt?: string
   status?: "queued" | "streaming" | "done" | "error"
+  interrupted?: boolean
 }
 
 export interface QueuedTurn {

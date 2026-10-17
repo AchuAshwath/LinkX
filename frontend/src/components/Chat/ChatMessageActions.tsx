@@ -128,7 +128,7 @@ export function ChatMessageActions({
     <div
       data-slot="message-actions"
       className={cn(
-        "flex items-center gap-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150 select-none py-1 text-xs text-muted-foreground",
+        "flex items-center gap-1.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto transition-opacity duration-150 select-none py-1 text-xs text-muted-foreground",
         isEndAligned ? "justify-end" : "justify-start",
         className,
       )}

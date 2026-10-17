@@ -1001,6 +1001,12 @@ function useMessageEditing({
     }
   }, [localMessages])
 
+  const handleRecallLastUserPrompt = React.useCallback((): string | null => {
+    const lastUser = findLastUserMessage(localMessages)
+    if (!lastUser) return null
+    return extractTextParts(lastUser.parts)
+  }, [localMessages])
+
   return {
     editingMessageId,
     handleStartEdit,
@@ -1009,6 +1015,7 @@ function useMessageEditing({
     handleRegenerate,
     handleRetry,
     handleEditLastUserMessage,
+    handleRecallLastUserPrompt,
   }
 }
 
@@ -1067,6 +1074,7 @@ function assembleFeedState({
     handleRegenerate: editingState.handleRegenerate,
     handleRetry: editingState.handleRetry,
     handleEditLastUserMessage: editingState.handleEditLastUserMessage,
+    handleRecallLastUserPrompt: editingState.handleRecallLastUserPrompt,
   }
 }
 
