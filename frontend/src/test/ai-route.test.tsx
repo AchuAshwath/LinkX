@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { AiThreadsService } from "@/client"
 import { AIChatProvider } from "@/context/AIChatContext"
@@ -723,6 +729,134 @@ describe("AIPage component with PostgreSQL backend persistence", () => {
 
     await waitFor(() => {
       expect(screen.getByText("GPT-5.6 Sol")).toBeInTheDocument()
+    })
+  })
+
+  it("opens quick switcher on Cmd+K and navigates to selected thread", async () => {
+    vi.mocked(AiThreadsService.listChatThreads).mockResolvedValue({
+      data: mockThreads,
+      count: mockThreads.length,
+    })
+    vi.mocked(AiThreadsService.getChatThread).mockImplementation((async ({
+      id,
+    }: {
+      id: string
+    }) => {
+      const found = mockThreads.find((t) => t.id === id)
+      return {
+        id,
+        title: found?.title || "Untitled",
+        origin: "manual",
+        message_count: found?.message_count ?? 0,
+        is_archived: found?.is_archived ?? false,
+        transcript: { messages: [] },
+        owner_id: "user-1",
+      }
+    }) as any)
+
+    window.history.replaceState({}, "", "/ai")
+
+    const Component = Route.options.component as React.ComponentType
+    renderWithClient(
+      <AIChatProvider>
+        <Component />
+      </AIChatProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText("Rich Markdown & Typography")).toBeInTheDocument()
+    })
+
+    // Press Cmd+K to open Quick Switcher
+    fireEvent.keyDown(window, { key: "k", metaKey: true })
+
+    // Quick Switcher dialog should be visible
+    const searchInput =
+      await screen.findByPlaceholderText(/search conversations/i)
+    expect(searchInput).toBeInTheDocument()
+
+    // Filter threads
+    fireEvent.change(searchInput, { target: { value: "Archived" } })
+    const listbox = screen.getByRole("listbox")
+    expect(within(listbox).getByText("Archived Discussion")).toBeInTheDocument()
+
+    // Select with Enter
+    fireEvent.keyDown(searchInput, { key: "Enter" })
+
+    // URL should have navigated to thread-archived
+    await waitFor(() => {
+      expect(window.location.search).toContain("threadId=thread-archived")
+    })
+  })
+
+  it("creates new chat on Cmd+N and focuses textarea", async () => {
+    vi.mocked(AiThreadsService.listChatThreads).mockResolvedValue({
+      data: mockThreads,
+      count: mockThreads.length,
+    })
+    vi.mocked(AiThreadsService.getChatThread).mockResolvedValue({
+      id: "thread-1",
+      title: "Rich Markdown & Typography",
+      origin: "manual",
+      message_count: 2,
+      is_archived: false,
+      transcript: { messages: [] },
+      owner_id: "user-1",
+    })
+
+    window.history.replaceState({}, "", "/ai?threadId=thread-1")
+
+    const Component = Route.options.component as React.ComponentType
+    renderWithClient(
+      <AIChatProvider>
+        <Component />
+      </AIChatProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText("Rich Markdown & Typography")).toBeInTheDocument()
+    })
+
+    // Press Cmd+N to start new chat
+    fireEvent.keyDown(window, { key: "n", metaKey: true })
+
+    await waitFor(() => {
+      expect(window.location.search).not.toContain("threadId=thread-1")
+    })
+  })
+
+  it("closes quick switcher dialog on Escape", async () => {
+    vi.mocked(AiThreadsService.listChatThreads).mockResolvedValue({
+      data: mockThreads,
+      count: mockThreads.length,
+    })
+
+    window.history.replaceState({}, "", "/ai")
+
+    const Component = Route.options.component as React.ComponentType
+    renderWithClient(
+      <AIChatProvider>
+        <Component />
+      </AIChatProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText("Rich Markdown & Typography")).toBeInTheDocument()
+    })
+
+    // Open switcher
+    fireEvent.keyDown(window, { key: "k", metaKey: true })
+    const searchInput =
+      await screen.findByPlaceholderText(/search conversations/i)
+    expect(searchInput).toBeInTheDocument()
+
+    // Press Escape
+    fireEvent.keyDown(window, { key: "Escape" })
+
+    await waitFor(() => {
+      expect(
+        screen.queryByPlaceholderText(/search conversations/i),
+      ).not.toBeInTheDocument()
     })
   })
 })

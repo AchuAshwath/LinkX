@@ -13,17 +13,29 @@ function normalizeModels(models?: (AIModelOption | string)[]): AIModelOption[] {
   return models.map((m) => (typeof m === "string" ? { id: m, name: m } : m))
 }
 
+function hasModifierKey(event: React.KeyboardEvent): boolean {
+  if (event.shiftKey || event.altKey) return true
+  return Boolean(event.ctrlKey || event.metaKey)
+}
+
+function hasCommandModifier(event: React.KeyboardEvent): boolean {
+  return Boolean(event.ctrlKey || event.metaKey)
+}
+
 function isPlainEnterPress(
   event: React.KeyboardEvent<HTMLTextAreaElement>,
 ): boolean {
   if (event.key !== "Enter") return false
-  if (event.shiftKey) return false
+  if (hasModifierKey(event)) return false
   return !event.nativeEvent.isComposing
 }
 
-function hasModifierKey(event: React.KeyboardEvent): boolean {
-  if (event.shiftKey || event.altKey) return true
-  return Boolean(event.ctrlKey || event.metaKey)
+function isCommandEnterPress(
+  event: React.KeyboardEvent<HTMLTextAreaElement>,
+): boolean {
+  if (event.key !== "Enter") return false
+  if (!hasCommandModifier(event)) return false
+  return !event.nativeEvent.isComposing
 }
 
 function isPlainArrowUpPress(
@@ -176,7 +188,7 @@ function usePromptFormActions({
 
   const handleKeyDown = React.useCallback(
     (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (isPlainEnterPress(event)) {
+      if (isPlainEnterPress(event) || isCommandEnterPress(event)) {
         event.preventDefault()
         handleSubmit()
         return

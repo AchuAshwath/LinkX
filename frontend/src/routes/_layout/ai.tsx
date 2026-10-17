@@ -10,6 +10,7 @@ import {
 import { DeleteThreadConfirmDialog } from "@/components/Chat/DeleteThreadConfirmDialog"
 import { PromptForm } from "@/components/Chat/PromptForm"
 import { RenameThreadDialog } from "@/components/Chat/RenameThreadDialog"
+import { ThreadQuickSwitcherDialog } from "@/components/Chat/ThreadQuickSwitcherDialog"
 import {
   type AIChatUrlParams,
   useAIChatContext,
@@ -17,6 +18,7 @@ import {
 } from "@/context/AIChatContext"
 import { useAIChatFeedState } from "@/hooks/useAIChatFeedState"
 import { useAIModelSelection } from "@/hooks/useAIModelSelection"
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
 
 type AISearchParams = AIChatUrlParams
 
@@ -388,73 +390,50 @@ interface AIChatCenterColumnProps {
   onEditLastUserMessage: () => void
 }
 
-function AIChatCenterColumn({
-  activeThreadId,
-  localMessages,
-  allMessages,
-  isCurrentThreadStreaming,
-  isCurrentThreadBusy,
-  isCurrentThreadQueued,
-  pendingQuestion,
-  threadDrafts,
-  setThreadDraft,
-  promptInputRef,
-  selectedModelId,
-  modelsData,
-  setSelectedModelId,
-  handleSendMessage,
-  handleQuestionAnswer,
-  stopStream,
-  editingMessageId,
-  onStartEdit,
-  onCancelEdit,
-  onSaveEdit,
-  onRegenerate,
-  onRetry,
-  onSwitchBranch,
-  onEditLastUserMessage,
-}: AIChatCenterColumnProps) {
-  const currentKey = activeThreadId ?? "new-chat"
-  const draftValue = threadDrafts[currentKey] ?? ""
-  const placeholderText = isCurrentThreadQueued
+function AIChatCenterColumn(props: AIChatCenterColumnProps) {
+  const currentKey = props.activeThreadId ?? "new-chat"
+  const draftValue = props.threadDrafts[currentKey] ?? ""
+  const placeholderText = props.isCurrentThreadQueued
     ? "Waiting in queue..."
     : "Ask anything"
 
   return (
     <div className="relative mx-auto flex min-h-0 w-full flex-1 max-w-2xl border-r-0 md:border-r border-border flex-col h-[calc(100vh-3.5rem)] lg:h-screen overflow-hidden">
       <AIChatFeed
-        localMessages={localMessages}
-        allMessages={allMessages}
-        isStreaming={isCurrentThreadStreaming}
-        pendingQuestion={pendingQuestion}
-        onSendMessage={handleSendMessage}
-        onQuestionAnswer={handleQuestionAnswer}
-        editingMessageId={editingMessageId}
-        onStartEdit={onStartEdit}
-        onCancelEdit={onCancelEdit}
-        onSaveEdit={onSaveEdit}
-        onRegenerate={onRegenerate}
-        onRetry={onRetry}
-        onSwitchBranch={onSwitchBranch}
+        localMessages={props.localMessages}
+        allMessages={props.allMessages}
+        isStreaming={props.isCurrentThreadStreaming}
+        pendingQuestion={props.pendingQuestion}
+        onSendMessage={props.handleSendMessage}
+        onQuestionAnswer={props.handleQuestionAnswer}
+        editingMessageId={props.editingMessageId}
+        onStartEdit={props.onStartEdit}
+        onCancelEdit={props.onCancelEdit}
+        onSaveEdit={props.onSaveEdit}
+        onRegenerate={props.onRegenerate}
+        onRetry={props.onRetry}
+        onSwitchBranch={props.onSwitchBranch}
       />
 
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-2 px-4 pb-4 shrink-0">
         <PromptForm
           key={currentKey}
-          inputRef={promptInputRef}
+          inputRef={props.promptInputRef}
           initialValue={draftValue}
-          onValueChange={(val) => setThreadDraft(activeThreadId, val)}
+          onValueChange={(val) =>
+            props.setThreadDraft(props.activeThreadId, val)
+          }
           placeholder={placeholderText}
-          isBusy={isCurrentThreadBusy}
-          selectedModelId={selectedModelId}
-          models={modelsData?.data?.map((m) => ({
+          isBusy={props.isCurrentThreadBusy}
+          selectedModelId={props.selectedModelId}
+          models={props.modelsData?.data?.map((m) => ({
             id: m.id,
             name: m.name || m.id,
           }))}
-          onSelectModel={setSelectedModelId}
-          onSubmit={handleSendMessage}
-          onStop={stopStream}
-          onEditLastUserMessage={onEditLastUserMessage}
+          onSelectModel={props.setSelectedModelId}
+          onSubmit={props.handleSendMessage}
+          onStop={props.stopStream}
+          onEditLastUserMessage={props.onEditLastUserMessage}
           autoFocus
         />
       </div>
@@ -620,11 +599,21 @@ function useDismissMenusOnOutsideClick({
   }, [openMenuThreadId, isSortMenuOpen, setOpenMenuThreadId, setIsSortMenuOpen])
 }
 
+interface AIPageDialogsProps {
+  mutations: ReturnType<typeof useThreadMutations>
+  isQuickSwitcherOpen: boolean
+  onCloseQuickSwitcher: () => void
+  onSelectThread: (threadId: string | null) => void
+  threads: ChatThreadPublic[]
+}
+
 function AIPageDialogs({
   mutations,
-}: {
-  mutations: ReturnType<typeof useThreadMutations>
-}) {
+  isQuickSwitcherOpen,
+  onCloseQuickSwitcher,
+  onSelectThread,
+  threads,
+}: AIPageDialogsProps) {
   return (
     <>
       <RenameThreadDialog
@@ -646,7 +635,201 @@ function AIPageDialogs({
           }
         }}
       />
+
+      <ThreadQuickSwitcherDialog
+        isOpen={isQuickSwitcherOpen}
+        onClose={onCloseQuickSwitcher}
+        onSelectThread={onSelectThread}
+        threads={threads}
+      />
     </>
+  )
+}
+
+interface AIPageShortcutsOptions {
+  feedState: ReturnType<typeof useAIChatFeedState>
+  navigateToThread: (id: string | null, opts?: { replace?: boolean }) => void
+  promptInputRef: React.RefObject<HTMLTextAreaElement | null>
+  isCurrentThreadStreaming: boolean
+}
+
+function useAIPageShortcuts({
+  feedState,
+  navigateToThread,
+  promptInputRef,
+  isCurrentThreadStreaming,
+}: AIPageShortcutsOptions) {
+  const [isQuickSwitcherOpen, setIsQuickSwitcherOpen] = React.useState(false)
+
+  const handleToggleQuickSwitcher = React.useCallback(() => {
+    setIsQuickSwitcherOpen((prev) => !prev)
+  }, [])
+
+  const handleCloseQuickSwitcher = React.useCallback(() => {
+    setIsQuickSwitcherOpen(false)
+  }, [])
+
+  const handleSelectSwitcherThread = React.useCallback(
+    (threadId: string | null) => {
+      feedState.setActiveThreadId(threadId)
+      navigateToThread(threadId, { replace: false })
+      setIsQuickSwitcherOpen(false)
+    },
+    [feedState, navigateToThread],
+  )
+
+  const onNewChatClick = React.useCallback(() => {
+    setIsQuickSwitcherOpen(false)
+    feedState.handleNewChat()
+    navigateToThread(null, { replace: false })
+    setTimeout(() => promptInputRef.current?.focus(), 50)
+  }, [feedState, navigateToThread, promptInputRef])
+
+  const handleEscape = React.useCallback(() => {
+    if (isQuickSwitcherOpen) {
+      setIsQuickSwitcherOpen(false)
+    } else if (isCurrentThreadStreaming) {
+      feedState.stopStream()
+    }
+  }, [isQuickSwitcherOpen, isCurrentThreadStreaming, feedState])
+
+  useKeyboardShortcuts({
+    onToggleQuickSwitcher: handleToggleQuickSwitcher,
+    onNewChat: onNewChatClick,
+    onEscape: handleEscape,
+  })
+
+  return {
+    isQuickSwitcherOpen,
+    handleCloseQuickSwitcher,
+    handleSelectSwitcherThread,
+    onNewChatClick,
+  }
+}
+
+interface AIPageSidebarProps {
+  sidebarFilters: ReturnType<typeof useThreadSidebarFilters>
+  feedState: ReturnType<typeof useAIChatFeedState>
+  openMenuThreadId: string | null
+  setOpenMenuThreadId: React.Dispatch<React.SetStateAction<string | null>>
+  isThreadsLoading: boolean
+  mutations: ReturnType<typeof useThreadMutations>
+  navigateToThread: (id: string | null, opts?: { replace?: boolean }) => void
+  onNewChatClick: () => void
+}
+
+function AIPageSidebar({
+  sidebarFilters,
+  feedState,
+  openMenuThreadId,
+  setOpenMenuThreadId,
+  isThreadsLoading,
+  mutations,
+  navigateToThread,
+  onNewChatClick,
+}: AIPageSidebarProps) {
+  return (
+    <AIThreadsSidebar
+      recentThreads={sidebarFilters.recentThreads}
+      archivedThreads={sidebarFilters.archivedThreads}
+      activeThreadId={feedState.activeThreadId}
+      openMenuThreadId={openMenuThreadId}
+      isLoading={isThreadsLoading}
+      streamingThreadId={feedState.streamingThreadId}
+      queuedThreadIds={feedState.queuedThreadIds}
+      filters={{
+        searchQuery: sidebarFilters.searchQuery,
+        isSearchOpen: sidebarFilters.isSearchOpen,
+        sortOrder: sidebarFilters.sortOrder,
+        isSortMenuOpen: sidebarFilters.isSortMenuOpen,
+        recentsOpen: sidebarFilters.recentsOpen,
+        archivedOpen: sidebarFilters.archivedOpen,
+      }}
+      filterHandlers={{
+        onToggleSearch: () => sidebarFilters.setIsSearchOpen((prev) => !prev),
+        onSearchChange: sidebarFilters.setSearchQuery,
+        onToggleSortMenu: () =>
+          sidebarFilters.setIsSortMenuOpen((prev) => !prev),
+        onSelectSortOrder: (newOrder) => {
+          sidebarFilters.setSortOrder(newOrder)
+          sidebarFilters.setIsSortMenuOpen(false)
+        },
+        onToggleRecents: () => sidebarFilters.setRecentsOpen((prev) => !prev),
+        onToggleArchived: () => sidebarFilters.setArchivedOpen((prev) => !prev),
+        onNewChat: onNewChatClick,
+      }}
+      actions={{
+        onSelect: (threadId) => {
+          if (threadId !== feedState.activeThreadId) {
+            feedState.setActiveThreadId(threadId)
+            navigateToThread(threadId, { replace: false })
+          }
+        },
+        onStartRename: (t) => {
+          setOpenMenuThreadId(null)
+          mutations.setThreadToRename(t)
+        },
+        onToggleArchive: (t) => {
+          setOpenMenuThreadId(null)
+          mutations.handleToggleArchive(t)
+        },
+        onDelete: (t) => {
+          setOpenMenuThreadId(null)
+          mutations.setThreadToDelete(t)
+        },
+        onToggleMenu: (id) =>
+          setOpenMenuThreadId((prev) => (prev === id ? null : id)),
+      }}
+    />
+  )
+}
+
+interface AIPageCenterSectionProps {
+  feedState: ReturnType<typeof useAIChatFeedState>
+  promptInputRef: React.RefObject<HTMLTextAreaElement | null>
+  selectedModelId: string
+  setSelectedModelId: (id: string) => void
+  modelsData?: { data?: { id: string; name?: string }[] }
+  isStreaming: boolean
+  isQueued: boolean
+}
+
+function AIPageCenterSection({
+  feedState,
+  promptInputRef,
+  selectedModelId,
+  setSelectedModelId,
+  modelsData,
+  isStreaming,
+  isQueued,
+}: AIPageCenterSectionProps) {
+  return (
+    <AIChatCenterColumn
+      activeThreadId={feedState.activeThreadId}
+      localMessages={feedState.localMessages}
+      allMessages={feedState.allMessages}
+      isCurrentThreadStreaming={isStreaming}
+      isCurrentThreadBusy={isStreaming || isQueued}
+      isCurrentThreadQueued={isQueued}
+      pendingQuestion={feedState.pendingQuestion}
+      threadDrafts={feedState.threadDrafts}
+      setThreadDraft={feedState.setThreadDraft}
+      promptInputRef={promptInputRef}
+      selectedModelId={selectedModelId}
+      modelsData={modelsData}
+      setSelectedModelId={setSelectedModelId}
+      handleSendMessage={feedState.handleSendMessage}
+      handleQuestionAnswer={feedState.handleQuestionAnswer}
+      stopStream={feedState.stopStream}
+      editingMessageId={feedState.editingMessageId}
+      onStartEdit={feedState.handleStartEdit}
+      onCancelEdit={feedState.handleCancelEdit}
+      onSaveEdit={feedState.handleEditMessage}
+      onRegenerate={feedState.handleRegenerate}
+      onRetry={feedState.handleRetry}
+      onSwitchBranch={feedState.handleSwitchBranch}
+      onEditLastUserMessage={feedState.handleEditLastUserMessage}
+    />
   )
 }
 
@@ -700,97 +883,42 @@ function AIPageView({
   const isCurrentThreadQueued = feedState.isThreadQueued(
     feedState.activeThreadId,
   )
-  const isCurrentThreadBusy = isCurrentThreadStreaming || isCurrentThreadQueued
-
-  function onNewChatClick() {
-    feedState.handleNewChat()
-    navigateToThread(null, { replace: false })
-    setTimeout(() => promptInputRef.current?.focus(), 50)
-  }
+  const shortcuts = useAIPageShortcuts({
+    feedState,
+    navigateToThread,
+    promptInputRef,
+    isCurrentThreadStreaming,
+  })
 
   return (
     <div className="flex w-full h-[calc(100vh-3.5rem)] lg:h-screen overflow-hidden bg-background text-foreground">
-      <AIPageDialogs mutations={mutations} />
-
-      <AIChatCenterColumn
-        activeThreadId={feedState.activeThreadId}
-        localMessages={feedState.localMessages}
-        allMessages={feedState.allMessages}
-        isCurrentThreadStreaming={isCurrentThreadStreaming}
-        isCurrentThreadBusy={isCurrentThreadBusy}
-        isCurrentThreadQueued={isCurrentThreadQueued}
-        pendingQuestion={feedState.pendingQuestion}
-        threadDrafts={feedState.threadDrafts}
-        setThreadDraft={feedState.setThreadDraft}
-        promptInputRef={promptInputRef}
-        selectedModelId={selectedModelId}
-        modelsData={modelsData}
-        setSelectedModelId={setSelectedModelId}
-        handleSendMessage={feedState.handleSendMessage}
-        handleQuestionAnswer={feedState.handleQuestionAnswer}
-        stopStream={feedState.stopStream}
-        editingMessageId={feedState.editingMessageId}
-        onStartEdit={feedState.handleStartEdit}
-        onCancelEdit={feedState.handleCancelEdit}
-        onSaveEdit={feedState.handleEditMessage}
-        onRegenerate={feedState.handleRegenerate}
-        onRetry={feedState.handleRetry}
-        onSwitchBranch={feedState.handleSwitchBranch}
-        onEditLastUserMessage={feedState.handleEditLastUserMessage}
+      <AIPageDialogs
+        mutations={mutations}
+        isQuickSwitcherOpen={shortcuts.isQuickSwitcherOpen}
+        onCloseQuickSwitcher={shortcuts.handleCloseQuickSwitcher}
+        onSelectThread={shortcuts.handleSelectSwitcherThread}
+        threads={threads}
       />
 
-      <AIThreadsSidebar
-        recentThreads={sidebarFilters.recentThreads}
-        archivedThreads={sidebarFilters.archivedThreads}
-        activeThreadId={feedState.activeThreadId}
+      <AIPageCenterSection
+        feedState={feedState}
+        promptInputRef={promptInputRef}
+        selectedModelId={selectedModelId}
+        setSelectedModelId={setSelectedModelId}
+        modelsData={modelsData}
+        isStreaming={isCurrentThreadStreaming}
+        isQueued={isCurrentThreadQueued}
+      />
+
+      <AIPageSidebar
+        sidebarFilters={sidebarFilters}
+        feedState={feedState}
         openMenuThreadId={openMenuThreadId}
-        isLoading={isThreadsLoading}
-        streamingThreadId={feedState.streamingThreadId}
-        queuedThreadIds={feedState.queuedThreadIds}
-        filters={{
-          searchQuery: sidebarFilters.searchQuery,
-          isSearchOpen: sidebarFilters.isSearchOpen,
-          sortOrder: sidebarFilters.sortOrder,
-          isSortMenuOpen: sidebarFilters.isSortMenuOpen,
-          recentsOpen: sidebarFilters.recentsOpen,
-          archivedOpen: sidebarFilters.archivedOpen,
-        }}
-        filterHandlers={{
-          onToggleSearch: () => sidebarFilters.setIsSearchOpen((prev) => !prev),
-          onSearchChange: sidebarFilters.setSearchQuery,
-          onToggleSortMenu: () =>
-            sidebarFilters.setIsSortMenuOpen((prev) => !prev),
-          onSelectSortOrder: (newOrder) => {
-            sidebarFilters.setSortOrder(newOrder)
-            sidebarFilters.setIsSortMenuOpen(false)
-          },
-          onToggleRecents: () => sidebarFilters.setRecentsOpen((prev) => !prev),
-          onToggleArchived: () =>
-            sidebarFilters.setArchivedOpen((prev) => !prev),
-          onNewChat: onNewChatClick,
-        }}
-        actions={{
-          onSelect: (threadId) => {
-            if (threadId !== feedState.activeThreadId) {
-              feedState.setActiveThreadId(threadId)
-              navigateToThread(threadId, { replace: false })
-            }
-          },
-          onStartRename: (t) => {
-            setOpenMenuThreadId(null)
-            mutations.setThreadToRename(t)
-          },
-          onToggleArchive: (t) => {
-            setOpenMenuThreadId(null)
-            mutations.handleToggleArchive(t)
-          },
-          onDelete: (t) => {
-            setOpenMenuThreadId(null)
-            mutations.setThreadToDelete(t)
-          },
-          onToggleMenu: (id) =>
-            setOpenMenuThreadId((prev) => (prev === id ? null : id)),
-        }}
+        setOpenMenuThreadId={setOpenMenuThreadId}
+        isThreadsLoading={isThreadsLoading}
+        mutations={mutations}
+        navigateToThread={navigateToThread}
+        onNewChatClick={shortcuts.onNewChatClick}
       />
     </div>
   )
