@@ -28,7 +28,7 @@ describe("BranchSwitcher component", () => {
       />,
     )
 
-    expect(screen.getByText("1 of 3")).toBeDefined()
+    expect(screen.getByText("1/3")).toBeDefined()
 
     const prevBtn = screen.getByRole("button", { name: "Previous version" })
     const nextBtn = screen.getByRole("button", { name: "Next version" })
@@ -53,7 +53,7 @@ describe("BranchSwitcher component", () => {
       />,
     )
 
-    expect(screen.getByText("3 of 3")).toBeDefined()
+    expect(screen.getByText("3/3")).toBeDefined()
 
     const prevBtn = screen.getByRole("button", { name: "Previous version" })
     const nextBtn = screen.getByRole("button", { name: "Next version" })
@@ -63,5 +63,34 @@ describe("BranchSwitcher component", () => {
 
     fireEvent.click(prevBtn)
     expect(onPrev).toHaveBeenCalledTimes(1)
+  })
+
+  it("disables both controls when disabled prop is true", () => {
+    const onPrev = vi.fn()
+    const onNext = vi.fn()
+
+    render(
+      <BranchSwitcher
+        currentIndex={2}
+        totalVersions={3}
+        onPrevious={onPrev}
+        onNext={onNext}
+        disabled={true}
+      />,
+    )
+
+    expect(screen.getByText("2/3")).toBeDefined()
+
+    const prevBtn = screen.getByRole("button", { name: "Previous version" })
+    const nextBtn = screen.getByRole("button", { name: "Next version" })
+
+    expect(prevBtn.getAttribute("disabled")).not.toBeNull()
+    expect(nextBtn.getAttribute("disabled")).not.toBeNull()
+
+    fireEvent.click(prevBtn)
+    expect(onPrev).not.toHaveBeenCalled()
+
+    fireEvent.click(nextBtn)
+    expect(onNext).not.toHaveBeenCalled()
   })
 })

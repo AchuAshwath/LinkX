@@ -100,6 +100,7 @@ export function AIChatFeed({
                     isStreaming={
                       isStreaming && index === localMessages.length - 1
                     }
+                    isChatStreaming={isStreaming}
                     isLatestAssistant={
                       message.role === "assistant" &&
                       index === lastAssistantIndex

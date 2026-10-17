@@ -880,8 +880,9 @@ function AIPageView({
     setIsSortMenuOpen: sidebarFilters.setIsSortMenuOpen,
   })
 
-  const isCurrentThreadStreaming = feedState.isThreadStreaming(
-    feedState.activeThreadId,
+  const isCurrentThreadStreaming = Boolean(
+    feedState.isThreadStreaming(feedState.activeThreadId) ||
+      (!feedState.activeThreadId && feedState.isStreaming),
   )
   const isCurrentThreadQueued = feedState.isThreadQueued(
     feedState.activeThreadId,

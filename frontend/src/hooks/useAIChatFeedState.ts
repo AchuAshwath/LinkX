@@ -686,7 +686,10 @@ function useThreadStreamingStatus({
 }) {
   const isThreadStreaming = React.useCallback(
     (threadId: string | null) =>
-      Boolean(threadId && streamingThreadId === threadId),
+      Boolean(
+        (threadId && streamingThreadId === threadId) ||
+          (!threadId && streamingThreadId !== null),
+      ),
     [streamingThreadId],
   )
 
@@ -944,6 +947,55 @@ function findLastUserMessage(messages: ChatUIMessage[]): ChatUIMessage | null {
   return null
 }
 
+interface ExecuteRegenerateTurnOptions {
+  localMessages: ChatUIMessage[]
+  assistantMsgId: string
+  isStreaming: boolean
+  stopStream: () => void
+  handleSendMessage: (
+    text: string,
+    attachedImages?: File[],
+    editMessageId?: string,
+    targetThreadIdOverride?: string,
+  ) => Promise<void>
+}
+
+async function executeRegenerateTurn({
+  localMessages,
+  assistantMsgId,
+  isStreaming,
+  stopStream,
+  handleSendMessage,
+}: ExecuteRegenerateTurnOptions): Promise<void> {
+  const preceding = findPrecedingUserMessage(localMessages, assistantMsgId)
+  if (!preceding) return
+  const text = extractTextParts(preceding.parts)
+  if (!text) return
+  if (isStreaming) {
+    stopStream()
+  }
+  await handleSendMessage(text, undefined, assistantMsgId)
+}
+
+function useStreamGuardReset(
+  isStreaming: boolean,
+  editingMessageId: string | null,
+  setEditingMessageId: (id: string | null) => void,
+) {
+  React.useEffect(() => {
+    if (isStreaming && editingMessageId) {
+      setEditingMessageId(null)
+    }
+  }, [isStreaming, editingMessageId, setEditingMessageId])
+}
+
+function usePromptRecall(localMessages: ChatUIMessage[]) {
+  return React.useCallback((): string | null => {
+    const lastUser = findLastUserMessage(localMessages)
+    return lastUser ? extractTextParts(lastUser.parts) : null
+  }, [localMessages])
+}
+
 function useMessageEditing({
   localMessages,
   handleSendMessage,
@@ -954,9 +1006,15 @@ function useMessageEditing({
     null,
   )
 
-  const handleStartEdit = React.useCallback((messageId: string) => {
-    setEditingMessageId(messageId)
-  }, [])
+  useStreamGuardReset(isStreaming, editingMessageId, setEditingMessageId)
+
+  const handleStartEdit = React.useCallback(
+    (messageId: string) => {
+      if (isStreaming) return
+      setEditingMessageId(messageId)
+    },
+    [isStreaming],
+  )
 
   const handleCancelEdit = React.useCallback(() => {
     setEditingMessageId(null)
@@ -964,25 +1022,22 @@ function useMessageEditing({
 
   const handleEditMessage = React.useCallback(
     async (messageId: string, newText: string) => {
+      if (isStreaming) return
       setEditingMessageId(null)
-      if (isStreaming) {
-        stopStream()
-      }
       await handleSendMessage(newText, undefined, messageId)
     },
-    [handleSendMessage, isStreaming, stopStream],
+    [handleSendMessage, isStreaming],
   )
 
   const handleRegenerate = React.useCallback(
     async (assistantMsgId: string) => {
-      const preceding = findPrecedingUserMessage(localMessages, assistantMsgId)
-      if (!preceding) return
-      const text = extractTextParts(preceding.parts)
-      if (!text) return
-      if (isStreaming) {
-        stopStream()
-      }
-      await handleSendMessage(text, undefined, assistantMsgId)
+      await executeRegenerateTurn({
+        localMessages,
+        assistantMsgId,
+        isStreaming,
+        stopStream,
+        handleSendMessage,
+      })
     },
     [handleSendMessage, isStreaming, localMessages, stopStream],
   )
@@ -995,17 +1050,14 @@ function useMessageEditing({
   )
 
   const handleEditLastUserMessage = React.useCallback(() => {
+    if (isStreaming) return
     const lastUser = findLastUserMessage(localMessages)
     if (lastUser) {
       setEditingMessageId(lastUser.id)
     }
-  }, [localMessages])
+  }, [isStreaming, localMessages])
 
-  const handleRecallLastUserPrompt = React.useCallback((): string | null => {
-    const lastUser = findLastUserMessage(localMessages)
-    if (!lastUser) return null
-    return extractTextParts(lastUser.parts)
-  }, [localMessages])
+  const handleRecallLastUserPrompt = usePromptRecall(localMessages)
 
   return {
     editingMessageId,
