@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -41,99 +42,55 @@ def _create_test_user(*, db: Session) -> User:
     )
 
 
-# ==============================================================================
-# 1. REDIS LOCK TTL EXPIRATION DURING SLOW BATCHES (STOLEN LOCK / SPLIT-BRAIN)
-# ==============================================================================
+class VirtualTtlRedis:
+    """Mock Redis client tracking expiration against a controllable virtual clock."""
+
+    def __init__(self) -> None:
+        self.store: dict[str, tuple[str, float]] = {}
+        self.clock = 1000.0
+
+    def set(self, key: str, val: str, **kwargs: object) -> bool:
+        ex = int(kwargs.get("ex", 60))
+        if key in self.store and self.clock < self.store[key][1]:
+            return False
+        self.store[key] = (val, self.clock + ex)
+        return True
+
+    def eval(self, _script: str, _numkeys: int, key: str, token: str) -> int:
+        if key not in self.store:
+            return 0
+        stored_token, exp = self.store[key]
+        if self.clock >= exp or stored_token != token:
+            return 0
+        del self.store[key]
+        return 1
 
 
 @pytest.mark.anyio
-async def test_redis_lock_ttl_expiration_causes_overlapping_worker_execution(
-    db: Session,
-) -> None:
-    """CHAOS: A large batch or slow upstream HTTP response exceeds Redis lock TTL.
+async def test_redis_lock_ttl_expiration_causes_overlapping_worker_execution() -> None:
+    """CHAOS: A large batch or slow upstream HTTP response exceeds Redis lock TTL."""
+    fake_redis = VirtualTtlRedis()
 
-    Vulnerability:
-    1. Worker 1 acquires distributed lock with `expire_seconds=2`.
-    2. Batch processing takes 3 seconds (slow network, rate limits).
-    3. Redis expires Worker 1's lock key.
-    4. Worker 2 polls, finds key expired, and acquires the lock with a new token.
-    5. Worker 1 and Worker 2 are now both active in `process_due_posts` simultaneously.
-    6. Worker 1 has no lock heartbeat/watchdog and does not verify lock ownership
-       before processing each post in the batch.
-    """
-    user = _create_test_user(db=db)
-    now = datetime.now(timezone.utc)
-
-    # Create 3 scheduled posts
-    _posts = [
-        crud.create_post(
-            session=db,
-            post_in=PostCreate(
-                content=f"Slow batch post {i}",
-                platform="x",
-                status="scheduled",
-                scheduled_at=now - timedelta(minutes=10),
-            ),
-            owner_id=user.id,
-        )
-        for i in range(3)
-    ]
-
-    # Mock Redis with TTL tracking
-    redis_store: dict[str, tuple[str, float]] = {}  # key -> (token, expire_timestamp)
-    current_virtual_time = 1000.0
-
-    def mock_set(key: str, val: str, **kwargs: object) -> bool:
-        nonlocal current_virtual_time
-        ex = int(kwargs.get("ex", 60))
-        if key in redis_store:
-            _, exp = redis_store[key]
-            if current_virtual_time < exp:
-                return False  # Key still valid
-        redis_store[key] = (val, current_virtual_time + ex)
-        return True
-
-    def mock_eval(_script: str, _numkeys: int, key: str, token: str) -> int:
-        nonlocal current_virtual_time
-        if key in redis_store:
-            stored_token, exp = redis_store[key]
-            if current_virtual_time < exp and stored_token == token:
-                del redis_store[key]
-                return 1
-        return 0
-
-    mock_redis = MagicMock()
-    mock_redis.set.side_effect = mock_set
-    mock_redis.eval.side_effect = mock_eval
-
-    # Worker 1 acquires lock with short TTL (2 seconds)
     lock_1 = RedisDistributedLock(
-        redis_client=mock_redis, lock_key="scheduler:lock", expire_seconds=2
+        redis_client=fake_redis, lock_key="scheduler:lock", expire_seconds=2
     )
     assert lock_1.acquire() is True
     assert lock_1.acquired is True
 
-    # Simulate slow processing: virtual time advances past lock TTL (e.g. 5 seconds)
-    current_virtual_time += 5.0
+    # Advance time past TTL
+    fake_redis.clock += 5.0
 
-    # Worker 2 now attempts to acquire lock for its polling cycle
     lock_2 = RedisDistributedLock(
-        redis_client=mock_redis, lock_key="scheduler:lock", expire_seconds=2
+        redis_client=fake_redis, lock_key="scheduler:lock", expire_seconds=2
     )
     worker_2_acquired = lock_2.acquire()
 
-    # The lock was stolen because Worker 1 did not renew its lock!
-    assert worker_2_acquired is True, (
-        "Worker 2 should acquire lock after TTL expiration"
-    )
-    assert lock_1.acquired is True, "Worker 1 still falsely believes it owns the lock"
+    assert worker_2_acquired is True
+    assert lock_1.acquired is True
 
-    # Worker 1 releases lock when finished: lua script correctly refuses to delete Worker 2's token
     lock_1.release()
     assert lock_1.acquired is False
-    assert "scheduler:lock" in redis_store, (
-        "Worker 2's lock must not be deleted by Worker 1"
-    )
+    assert "scheduler:lock" in fake_redis.store
 
     lock_2.release()
     assert lock_2.acquired is False
@@ -378,21 +335,12 @@ async def test_manual_retry_route_prevents_scheduler_race(
 # ==============================================================================
 
 
-@pytest.mark.anyio
-async def test_postgresql_select_for_update_skip_locked_prevents_worker_collision() -> (
-    None
-):
-    """ARCHITECTURAL PROOF: Using PostgreSQL `FOR UPDATE SKIP LOCKED` eliminates races.
-
-    Even if Redis is unavailable or locks expire, PostgreSQL row-level locks
-    guarantee that two concurrent worker transactions will never select or claim
-    the exact same post.
-    """
-    from app.core.db import engine
-
+def _setup_concurrent_test_posts(
+    *, engine: Any
+) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
+    """Create test user and two scheduled posts for concurrent locking tests."""
     test_email = f"atomic_{uuid.uuid4().hex[:8]}@example.com"
     now = datetime.now(timezone.utc)
-
     with Session(engine) as setup_session:
         user = crud.create_user(
             session=setup_session,
@@ -418,81 +366,108 @@ async def test_postgresql_select_for_update_skip_locked_prevents_worker_collisio
             ),
             owner_id=user.id,
         )
-        user_id = user.id
-        p1_id = post_1.id
-        p2_id = post_2.id
         setup_session.commit()
+        return user.id, post_1.id, post_2.id
 
+
+def _cleanup_concurrent_test_posts(*, engine: Any, user_id: uuid.UUID) -> None:
+    """Clean up user and posts created for concurrent locking tests."""
+    with Session(engine) as cleanup_session:
+        for p in cleanup_session.exec(
+            select(Post).where(Post.owner_id == user_id)
+        ).all():
+            cleanup_session.delete(p)
+        u = cleanup_session.get(User, user_id)
+        if u:
+            cleanup_session.delete(u)
+        cleanup_session.commit()
+
+
+@pytest.mark.anyio
+async def test_postgresql_select_for_update_skip_locked_prevents_worker_collision() -> (
+    None
+):
+    """ARCHITECTURAL PROOF: Using PostgreSQL FOR UPDATE SKIP LOCKED eliminates races."""
+    from app.core.db import engine
+
+    user_id, p1_id, p2_id = _setup_concurrent_test_posts(engine=engine)
     try:
-        # Worker 1 connection starts transaction and claims 1 row with FOR UPDATE SKIP LOCKED
-        with Session(engine) as worker_1_session, Session(engine) as worker_2_session:
-            statement_1 = (
+        with Session(engine) as s1, Session(engine) as s2:
+            stmt = (
                 select(Post)
                 .where(Post.status == "scheduled")
                 .where(Post.owner_id == user_id)
                 .with_for_update(skip_locked=True)
                 .limit(1)
             )
-            claimed_1 = worker_1_session.exec(statement_1).first()
-            assert claimed_1 is not None
-            assert claimed_1.id in (p1_id, p2_id)
+            c1 = s1.exec(stmt).first()
+            assert c1 is not None and c1.id in (p1_id, p2_id)
 
-            # Worker 2 connection executes concurrently
-            statement_2 = (
-                select(Post)
-                .where(Post.status == "scheduled")
-                .where(Post.owner_id == user_id)
-                .with_for_update(skip_locked=True)
-                .limit(1)
-            )
-            claimed_2 = worker_2_session.exec(statement_2).first()
+            c2 = s2.exec(stmt).first()
+            assert c2 is not None and c2.id != c1.id and c2.id in (p1_id, p2_id)
 
-            # Worker 2 SKIPS claimed_1 automatically without blocking and gets the other post!
-            assert claimed_2 is not None
-            assert claimed_2.id != claimed_1.id
-            assert claimed_2.id in (p1_id, p2_id)
+            with Session(engine) as s3:
+                c3 = s3.exec(stmt).first()
+                assert c3 is None
 
-            # Worker 3 would find 0 available posts because both are locked
-            with Session(engine) as worker_3_session:
-                claimed_3 = worker_3_session.exec(
-                    select(Post)
-                    .where(Post.status == "scheduled")
-                    .where(Post.owner_id == user_id)
-                    .with_for_update(skip_locked=True)
-                    .limit(1)
-                ).first()
-                assert claimed_3 is None, (
-                    "No remaining posts should be returned when all are locked by active workers"
-                )
-
-            worker_1_session.rollback()
-            worker_2_session.rollback()
+            s1.rollback()
+            s2.rollback()
     finally:
-        with Session(engine) as cleanup_session:
-            for p in cleanup_session.exec(
-                select(Post).where(Post.owner_id == user_id)
-            ).all():
-                cleanup_session.delete(p)
-            u = cleanup_session.get(User, user_id)
-            if u:
-                cleanup_session.delete(u)
-            cleanup_session.commit()
+        _cleanup_concurrent_test_posts(engine=engine, user_id=user_id)
 
 
-# ==============================================================================
-# 6. DISTRIBUTED LOCK WATCHDOG / RENEWAL ARCHITECTURAL PATTERN
-# ==============================================================================
+class RenewingLock(RedisDistributedLock):
+    """Distributed lock that auto-renews via a background coroutine."""
+
+    def __init__(self, **kwargs: object) -> None:
+        super().__init__(**kwargs)  # type: ignore
+        self._renewal_task: asyncio.Task[None] | None = None
+        self._stopped = False
+
+    async def _renewal_loop(self) -> None:
+        interval = max(1.0, self.expire_seconds / 3.0)
+        renew_lua = """
+        if redis.call("get", KEYS[1]) == ARGV[1] then
+            return redis.call("expire", KEYS[1], ARGV[2])
+        else
+            return 0
+        end
+        """
+        while not self._stopped:
+            await asyncio.sleep(interval)
+            if self._stopped:
+                break
+            if not self.acquired or not self.redis_client:
+                continue
+            self.redis_client.eval(
+                renew_lua, 1, self.lock_key, self.token, self.expire_seconds
+            )
+
+    async def __aenter__(self) -> bool:
+        acq = self.acquire()
+        if acq:
+            self._stopped = False
+            self._renewal_task = asyncio.create_task(self._renewal_loop())
+        return acq
+
+    async def __aexit__(
+        self, exc_type: object, exc_val: object, exc_tb: object
+    ) -> None:
+        self._stopped = True
+        if self._renewal_task:
+            self._renewal_task.cancel()
+            try:
+                await self._renewal_task
+            except asyncio.CancelledError:
+                pass
+        self.release()
 
 
 @pytest.mark.anyio
 async def test_distributed_lock_auto_renewal_watchdog_pattern() -> None:
-    """ARCHITECTURAL SPEC: Lock auto-renewal watchdog task.
-
-    Demonstrates how a background renewal coroutine keeps the Redis lock alive
-    while a long batch is running, preventing lock theft and split-brain.
-    """
+    """ARCHITECTURAL SPEC: Lock auto-renewal watchdog task."""
     mock_redis = MagicMock()
-    renewals = []
+    renewals: list[tuple[str, str, int]] = []
 
     def mock_eval(
         _script: str, _numkeys: int, key: str, token: str, expire: int
@@ -502,55 +477,13 @@ async def test_distributed_lock_auto_renewal_watchdog_pattern() -> None:
 
     mock_redis.eval.side_effect = mock_eval
 
-    class RenewingLock(RedisDistributedLock):
-        def __init__(self, **kwargs: object) -> None:
-            super().__init__(**kwargs)  # type: ignore
-            self._renewal_task: asyncio.Task[None] | None = None
-            self._stopped = False
-
-        async def _renewal_loop(self) -> None:
-            interval = max(1.0, self.expire_seconds / 3.0)
-            renew_lua = """
-            if redis.call("get", KEYS[1]) == ARGV[1] then
-                return redis.call("expire", KEYS[1], ARGV[2])
-            else
-                return 0
-            end
-            """
-            while not self._stopped:
-                await asyncio.sleep(interval)
-                if self.acquired and self.redis_client and not self._stopped:
-                    self.redis_client.eval(
-                        renew_lua, 1, self.lock_key, self.token, self.expire_seconds
-                    )
-
-        async def __aenter__(self) -> bool:
-            acq = self.acquire()
-            if acq:
-                self._stopped = False
-                self._renewal_task = asyncio.create_task(self._renewal_loop())
-            return acq
-
-        async def __aexit__(
-            self, exc_type: object, exc_val: object, exc_tb: object
-        ) -> None:
-            self._stopped = True
-            if self._renewal_task:
-                self._renewal_task.cancel()
-                try:
-                    await self._renewal_task
-                except asyncio.CancelledError:
-                    pass
-            self.release()
-
     lock = RenewingLock(
         redis_client=mock_redis, lock_key="watchdog:lock", expire_seconds=3
     )
 
     async with lock as acquired:
         assert acquired is True
-        # Sleep long enough for renewal loop to fire at least twice (interval = 1.0s)
         await asyncio.sleep(2.5)
 
-    assert len(renewals) >= 2, f"Expected at least 2 renewals, got {len(renewals)}"
+    assert len(renewals) >= 2
     assert lock.acquired is False

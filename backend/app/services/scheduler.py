@@ -20,7 +20,7 @@ from app.services.publishing import PublishFailure, publish_post
 logger = logging.getLogger(__name__)
 
 
-def _safe_int_status(val: Any) -> int | None:
+def _safe_int_status(*, val: Any) -> int | None:
     """Safely convert status code representation to int or None."""
     if val is None:
         return None
@@ -30,14 +30,14 @@ def _safe_int_status(val: Any) -> int | None:
         return None
 
 
-def _truncate_error_message(message: str, max_chars: int = 990) -> str:
+def _truncate_error_message(*, message: str, max_chars: int = 990) -> str:
     """Truncate message to fit within the database VARCHAR(1000) column."""
     if len(message) > max_chars:
         return f"{message[:max_chars]}..."
     return message
 
 
-def _extract_error_message(res: Any) -> str:
+def _extract_error_message(*, res: Any) -> str:
     """Extract error detail message safely from PublishFailure payload or dict."""
     if not hasattr(res, "payload") or res.payload is None:
         return "Publishing failed"
@@ -52,7 +52,7 @@ def _extract_error_message(res: Any) -> str:
     return "Publishing failed"
 
 
-def _extract_external_id(res: Any) -> str | None:
+def _extract_external_id(*, res: Any) -> str | None:
     """Extract external platform ID safely from publishing return value."""
     if isinstance(res, dict):
         val = res.get("external_id")
@@ -81,14 +81,14 @@ class ErrorClassifier:
 
     def is_retryable(self, *, status_code: Any = None) -> bool:
         """Determine whether the failure should trigger an automatic retry."""
-        code = _safe_int_status(status_code)
+        code = _safe_int_status(val=status_code)
         if code is None:
             return True  # Generic network/connection exceptions are retryable
         return code in self.RETRYABLE_STATUS_CODES
 
     def classify_error(self, *, status_code: Any = None) -> str:
         """Return a standardized error code string for telemetry and database records."""
-        code = _safe_int_status(status_code)
+        code = _safe_int_status(val=status_code)
         if code == 429:
             return "RATE_LIMITED"
         if code and 500 <= code < 600:
@@ -310,6 +310,29 @@ class SchedulerService:
 
         return list(session.exec(statement).all())
 
+    def claim_due_posts(
+        self,
+        *,
+        session: Session,
+        now: datetime | None = None,
+        owner_id: uuid.UUID | None = None,
+        limit: int = 100,
+    ) -> list[Post]:
+        """Atomically query and reserve due posts into 'publishing' status."""
+        due_posts = self.get_due_posts(
+            session=session, now=now, owner_id=owner_id, limit=limit
+        )
+        current_time = now or datetime.now(timezone.utc)
+        for post in due_posts:
+            post.status = "publishing"
+            post.publishing_started_at = current_time
+            session.add(post)
+        if due_posts:
+            session.commit()
+            for post in due_posts:
+                session.refresh(post)
+        return due_posts
+
     def recover_stale_posts(
         self,
         *,
@@ -332,13 +355,20 @@ class SchedulerService:
         )
         stale_posts = list(session.exec(statement).all())
         for post in stale_posts:
-            post.status = "scheduled"
-            post.retry_count += 1
-            post.error_code = "STALE_TIMEOUT"
-            post.error_message = f"Execution timed out or crashed while in publishing status after {stale_threshold_minutes}m"
-            post.next_retry_at = self.retry_policy.calculate_next_retry(
+            next_retry_at = self.retry_policy.calculate_next_retry(
                 retry_count=post.retry_count, now=current_time
             )
+            if next_retry_at is not None:
+                post.status = "scheduled"
+                post.retry_count += 1
+                post.error_code = "STALE_TIMEOUT"
+                post.error_message = f"Execution timed out or crashed while in publishing status after {stale_threshold_minutes}m"
+                post.next_retry_at = next_retry_at
+            else:
+                post.status = "failed"
+                post.error_code = "STALE_TIMEOUT"
+                post.error_message = f"Execution timed out or crashed while in publishing status after {stale_threshold_minutes}m (retries exhausted)"
+                post.next_retry_at = None
             session.add(post)
 
         if stale_posts:
@@ -355,21 +385,26 @@ class SchedulerService:
     ) -> str:
         """Handle execution failure, transitioning to retry backoff or terminal failed state."""
         current_time = failure.now or datetime.now(timezone.utc)
-        safe_message = _truncate_error_message(failure.error_message)
+        safe_message = _truncate_error_message(message=failure.error_message)
         is_retryable = self.error_classifier.is_retryable(
             status_code=failure.status_code
         )
-        can_retry = self.retry_policy.can_retry(retry_count=post.retry_count)
         error_code = self.error_classifier.classify_error(
             status_code=failure.status_code
         )
 
-        if is_retryable and can_retry:
-            post.retry_count += 1
-            post.last_retry_at = current_time
-            post.next_retry_at = self.retry_policy.calculate_next_retry(
+        next_retry_at = (
+            self.retry_policy.calculate_next_retry(
                 retry_count=post.retry_count, now=current_time
             )
+            if is_retryable
+            else None
+        )
+
+        if next_retry_at is not None:
+            post.retry_count += 1
+            post.last_retry_at = current_time
+            post.next_retry_at = next_retry_at
             post.status = "scheduled"
             post.error_code = error_code
             post.error_message = safe_message
@@ -380,6 +415,7 @@ class SchedulerService:
         post.status = "failed"
         post.error_code = error_code
         post.error_message = safe_message
+        post.next_retry_at = None
         session.add(post)
         session.commit()
         return "failed"
@@ -453,12 +489,12 @@ class SchedulerService:
             if isinstance(res, PublishFailure):
                 failure = FailureDetail(
                     status_code=res.status_code,
-                    error_message=_extract_error_message(res),
+                    error_message=_extract_error_message(res=res),
                     now=now,
                 )
                 return self._handle_failure(session=session, post=post, failure=failure)
 
-            ext_id = _extract_external_id(res)
+            ext_id = _extract_external_id(res=res)
             self._mark_published(session=session, post=post, ext_id=ext_id, now=now)
             return "published"
         except asyncio.CancelledError:
@@ -474,6 +510,31 @@ class SchedulerService:
                 now=now,
             )
             return self._handle_failure(session=session, post=post, failure=failure)
+
+    def _revert_unprocessed_posts(self, *, session: Session, posts: list[Post]) -> None:
+        """Revert claimed posts that could not be processed back to scheduled."""
+        for post in posts:
+            if post.status == "publishing":
+                post.status = "scheduled"
+                session.add(post)
+        session.commit()
+
+    async def _execute_post_step(
+        self,
+        *,
+        session: Session,
+        post: Post,
+        now: datetime,
+    ) -> str:
+        """Safely execute a single post with error rollback."""
+        try:
+            return await self._process_single_post(session=session, post=post, now=now)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            session.rollback()
+            logger.error("Failed processing post %s; rolled back: %s", post.id, exc)
+            return "failed"
 
     async def process_due_posts(
         self,
@@ -495,40 +556,36 @@ class SchedulerService:
         current_time = datetime.now(timezone.utc)
         lock = RedisDistributedLock(redis_client=redis_client)
 
-        with lock as acquired:
-            if not acquired:
-                logger.info("Scheduler execution skipped: lock held by another process")
-                summary["skipped"] = 1
-                return summary
+        if not lock.acquire():
+            logger.info("Scheduler execution skipped: lock held by another process")
+            summary["skipped"] = 1
+            return summary
 
-            recovered = self.recover_stale_posts(session=session, now=current_time)
-            summary["recovered"] = recovered
-
-            due_posts = self.get_due_posts(
+        try:
+            summary["recovered"] = self.recover_stale_posts(
+                session=session, now=current_time
+            )
+            due_posts = self.claim_due_posts(
                 session=session, now=current_time, owner_id=owner_id, limit=limit
             )
-            for post in due_posts:
+            for idx, post in enumerate(due_posts):
                 if not lock.is_held():
                     logger.warning("Distributed lock lost mid-batch; stopping cycle")
-                    summary["skipped"] += 1
+                    summary["skipped"] += len(due_posts) - idx
+                    self._revert_unprocessed_posts(
+                        session=session, posts=due_posts[idx:]
+                    )
                     break
 
                 lock.renew()
                 summary["processed"] += 1
-                try:
-                    result = await self._process_single_post(
-                        session=session, post=post, now=current_time
-                    )
-                    if result in summary:
-                        summary[result] += 1
-                except asyncio.CancelledError:
-                    raise
-                except Exception as exc:
-                    session.rollback()
-                    logger.error(
-                        "Failed processing post %s; rolled back: %s", post.id, exc
-                    )
-                    summary["failed"] += 1
+                result = await self._execute_post_step(
+                    session=session, post=post, now=current_time
+                )
+                if result in summary:
+                    summary[result] += 1
+        finally:
+            lock.release()
 
         return summary
 

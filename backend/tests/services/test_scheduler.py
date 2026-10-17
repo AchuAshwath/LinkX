@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import MagicMock
@@ -32,37 +33,27 @@ def _make_user(*, db: Session) -> User:
     )
 
 
-def test_error_classifier_identifies_retryable_errors() -> None:
-    """Verify HTTP 429, 5xx, and network timeouts are classified as retryable."""
+@pytest.mark.parametrize(
+    "status_code, expected_retryable, expected_code",
+    [
+        (429, True, "RATE_LIMITED"),
+        (500, True, "SERVER_ERROR"),
+        (502, True, "SERVER_ERROR"),
+        (503, True, "SERVER_ERROR"),
+        (504, True, "SERVER_ERROR"),
+        (400, False, "CLIENT_ERROR"),
+        (401, False, "AUTH_ERROR"),
+        (403, False, "FORBIDDEN"),
+        (404, False, "CLIENT_ERROR"),
+    ],
+)
+def test_error_classifier_classifications(
+    status_code: int, expected_retryable: bool, expected_code: str
+) -> None:
+    """Verify HTTP status codes map to correct retryability and error codes."""
     classifier = ErrorClassifier()
-
-    assert classifier.is_retryable(status_code=429) is True
-    assert classifier.classify_error(status_code=429) == "RATE_LIMITED"
-
-    assert classifier.is_retryable(status_code=500) is True
-    assert classifier.classify_error(status_code=500) == "SERVER_ERROR"
-
-    assert classifier.is_retryable(status_code=502) is True
-    assert classifier.classify_error(status_code=502) == "SERVER_ERROR"
-
-    assert classifier.is_retryable(status_code=503) is True
-    assert classifier.is_retryable(status_code=504) is True
-
-
-def test_error_classifier_identifies_fatal_errors() -> None:
-    """Verify HTTP 400, 401, 403, and 404 are classified as fatal (non-retryable)."""
-    classifier = ErrorClassifier()
-
-    assert classifier.is_retryable(status_code=400) is False
-    assert classifier.classify_error(status_code=400) == "CLIENT_ERROR"
-
-    assert classifier.is_retryable(status_code=401) is False
-    assert classifier.classify_error(status_code=401) == "AUTH_ERROR"
-
-    assert classifier.is_retryable(status_code=403) is False
-    assert classifier.classify_error(status_code=403) == "FORBIDDEN"
-
-    assert classifier.is_retryable(status_code=404) is False
+    assert classifier.is_retryable(status_code=status_code) is expected_retryable
+    assert classifier.classify_error(status_code=status_code) == expected_code
 
 
 def test_retry_policy_exponential_backoff() -> None:
@@ -166,17 +157,49 @@ async def test_process_due_posts_success_transitions_to_published(db: Session) -
     fake_publisher.assert_called_once()
 
 
+@dataclass
+class PublishFailureCase:
+    status_code: int
+    error_key: str
+    error_msg: str
+    summary_key: str
+    target_status: str
+    error_code: str
+
+
 @pytest.mark.anyio
-async def test_process_due_posts_retryable_error_increments_retry_count(
+@pytest.mark.parametrize(
+    "case",
+    [
+        PublishFailureCase(
+            status_code=429,
+            error_key="rate_limit",
+            error_msg="Rate limit exceeded on X API",
+            summary_key="retried",
+            target_status="scheduled",
+            error_code="RATE_LIMITED",
+        ),
+        PublishFailureCase(
+            status_code=401,
+            error_key="unauthorized",
+            error_msg="LinkedIn token expired",
+            summary_key="failed",
+            target_status="failed",
+            error_code="AUTH_ERROR",
+        ),
+    ],
+)
+async def test_process_due_posts_handles_publish_failure(
     db: Session,
+    case: PublishFailureCase,
 ) -> None:
-    """Verify HTTP 429 rate limit triggers exponential backoff and stays in scheduled state."""
+    """Verify process_due_posts properly routes retryable vs fatal publishing failures."""
     user = _make_user(db=db)
     due_time = datetime.now(timezone.utc) - timedelta(minutes=5)
     post = crud.create_post(
         session=db,
         post_in=PostCreate(
-            content="Viral post encountering platform rate limit",
+            content=f"Post encountering {case.error_key}",
             platform="x",
             status="scheduled",
             scheduled_at=due_time,
@@ -186,12 +209,12 @@ async def test_process_due_posts_retryable_error_increments_retry_count(
 
     def _failing_publish(**_kwargs: Any) -> PublishFailure:
         return PublishFailure(
-            status_code=429,
+            status_code=case.status_code,
             payload=PublishErrorResponse(
-                error="rate_limit",
-                message="Rate limit exceeded on X API",
-                retryable=True,
-                trace_id="tr-429",
+                error=case.error_key,
+                message=case.error_msg,
+                retryable=(case.status_code == 429),
+                trace_id="tr-err",
             ),
         )
 
@@ -201,58 +224,15 @@ async def test_process_due_posts_retryable_error_increments_retry_count(
     )
 
     assert summary["processed"] == 1
-    assert summary["published"] == 0
-    assert summary["retried"] == 1
+    assert summary[case.summary_key] == 1
 
     db.refresh(post)
-    assert post.status == "scheduled"
-    assert post.retry_count == 1
-    assert post.next_retry_at is not None
-    assert post.next_retry_at > datetime.now(timezone.utc)
-    assert post.error_code == "RATE_LIMITED"
-    assert "Rate limit exceeded" in str(post.error_message)
-
-
-@pytest.mark.anyio
-async def test_process_due_posts_fatal_error_transitions_to_failed(db: Session) -> None:
-    """Verify HTTP 401 unauthorized immediately marks post as failed with error code."""
-    user = _make_user(db=db)
-    due_time = datetime.now(timezone.utc) - timedelta(minutes=5)
-    post = crud.create_post(
-        session=db,
-        post_in=PostCreate(
-            content="Post with expired account token",
-            platform="linkedin",
-            status="scheduled",
-            scheduled_at=due_time,
-        ),
-        owner_id=user.id,
-    )
-
-    def _unauthorized_publish(**_kwargs: Any) -> PublishFailure:
-        return PublishFailure(
-            status_code=401,
-            payload=PublishErrorResponse(
-                error="unauthorized",
-                message="LinkedIn token expired",
-                retryable=False,
-                trace_id="tr-401",
-            ),
-        )
-
-    scheduler = SchedulerService(publish_fn=_unauthorized_publish)
-    summary = await scheduler.process_due_posts(
-        session=db, owner_id=user.id, redis_client=None
-    )
-
-    assert summary["processed"] == 1
-    assert summary["published"] == 0
-    assert summary["failed"] == 1
-
-    db.refresh(post)
-    assert post.status == "failed"
-    assert post.error_code == "AUTH_ERROR"
-    assert "LinkedIn token expired" in str(post.error_message)
+    assert post.status == case.target_status
+    assert post.error_code == case.error_code
+    assert case.error_msg in str(post.error_message)
+    if case.target_status == "scheduled":
+        assert post.retry_count == 1
+        assert post.next_retry_at is not None
 
 
 @pytest.mark.anyio
