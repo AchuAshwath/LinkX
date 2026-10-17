@@ -382,6 +382,9 @@ def test_system_prompts_exceed_minimum_prompt_cache_threshold() -> None:
         f"which is below MIN_PROMPT_CACHE_THRESHOLD ({MIN_PROMPT_CACHE_THRESHOLD})."
     )
 
+    assert "Do not use em dashes" in LINKX_SYSTEM_PROMPT
+    assert "Do not use em dashes" in BOT_AGENT_SYSTEM_PROMPT
+
 
 def test_audit_prompt_cache_metrics_scenarios() -> None:
     """Verify prompt cache audit metrics calculation across single, multi-turn, and edge cases."""

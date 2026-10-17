@@ -50,13 +50,14 @@ def _get_tool_by_name(tools: list[Any], name: str) -> Any:
 
 class TestAgentSupervisorDraftManagement:
     def test_bot_agent_system_prompt_rules(self) -> None:
-        """Verify prompt contains strict rules for in-place editing and no repetition."""
+        """Verify prompt contains strict rules for in-place editing, em dash exclusion, and no repetition."""
         assert "LinkX Bot" in BOT_AGENT_SYSTEM_PROMPT
         assert "IN-PLACE EDITING" in BOT_AGENT_SYSTEM_PROMPT
         assert "update_draft_post" in BOT_AGENT_SYSTEM_PROMPT
         assert "DO NOT call `save_draft_post` when revising" in BOT_AGENT_SYSTEM_PROMPT
         assert "no_content_repetition" in BOT_AGENT_SYSTEM_PROMPT
         assert "get_latest_draft_post" in BOT_AGENT_SYSTEM_PROMPT
+        assert "Do not use em dashes" in BOT_AGENT_SYSTEM_PROMPT
 
     def test_bot_agent_system_prompt_cache_threshold_and_prefix_invariance(
         self, db: Session
