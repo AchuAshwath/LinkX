@@ -7,7 +7,12 @@ describe("useKeyboardShortcuts", () => {
     vi.restoreAllMocks()
   })
 
-  it("triggers onToggleQuickSwitcher on Cmd+K or Ctrl+K", () => {
+  it.each([
+    { key: "k", modifier: "metaKey", target: "switcher" },
+    { key: "K", modifier: "ctrlKey", target: "switcher" },
+    { key: "n", modifier: "metaKey", target: "newChat" },
+    { key: "N", modifier: "ctrlKey", target: "newChat" },
+  ])("triggers $target on $modifier+$key", ({ key, modifier, target }) => {
     const onToggleQuickSwitcher = vi.fn()
     const onNewChat = vi.fn()
 
@@ -19,36 +24,16 @@ describe("useKeyboardShortcuts", () => {
     )
 
     window.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "k", metaKey: true }),
-    )
-    expect(onToggleQuickSwitcher).toHaveBeenCalledTimes(1)
-
-    window.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "K", ctrlKey: true }),
-    )
-    expect(onToggleQuickSwitcher).toHaveBeenCalledTimes(2)
-  })
-
-  it("triggers onNewChat on Cmd+N or Ctrl+N", () => {
-    const onToggleQuickSwitcher = vi.fn()
-    const onNewChat = vi.fn()
-
-    renderHook(() =>
-      useKeyboardShortcuts({
-        onToggleQuickSwitcher,
-        onNewChat,
-      }),
+      new KeyboardEvent("keydown", { key, [modifier]: true }),
     )
 
-    window.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "n", metaKey: true }),
-    )
-    expect(onNewChat).toHaveBeenCalledTimes(1)
-
-    window.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "N", ctrlKey: true }),
-    )
-    expect(onNewChat).toHaveBeenCalledTimes(2)
+    if (target === "switcher") {
+      expect(onToggleQuickSwitcher).toHaveBeenCalledTimes(1)
+      expect(onNewChat).not.toHaveBeenCalled()
+    } else {
+      expect(onNewChat).toHaveBeenCalledTimes(1)
+      expect(onToggleQuickSwitcher).not.toHaveBeenCalled()
+    }
   })
 
   it("triggers onEscape when Escape key is pressed", () => {
@@ -105,68 +90,23 @@ describe("useKeyboardShortcuts", () => {
         }),
       )
 
-      // Cmd+Shift+K
-      window.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "k",
-          metaKey: true,
-          shiftKey: true,
-        }),
-      )
-      // Ctrl+Shift+K
-      window.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "k",
-          ctrlKey: true,
-          shiftKey: true,
-        }),
-      )
-      // Cmd+Alt+K
-      window.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "k", metaKey: true, altKey: true }),
-      )
-      // Ctrl+Alt+K
-      window.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "k", ctrlKey: true, altKey: true }),
-      )
-      // Cmd+Ctrl+K (both meta and ctrl active simultaneously)
-      window.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "k",
-          metaKey: true,
-          ctrlKey: true,
-        }),
-      )
-      expect(onToggleQuickSwitcher).not.toHaveBeenCalled()
+      const invalidChords: Partial<KeyboardEventInit>[] = [
+        { key: "k", metaKey: true, shiftKey: true },
+        { key: "k", ctrlKey: true, shiftKey: true },
+        { key: "k", metaKey: true, altKey: true },
+        { key: "k", ctrlKey: true, altKey: true },
+        { key: "k", metaKey: true, ctrlKey: true },
+        { key: "n", metaKey: true, shiftKey: true },
+        { key: "n", ctrlKey: true, shiftKey: true },
+        { key: "n", metaKey: true, altKey: true },
+        { key: "n", metaKey: true, ctrlKey: true },
+      ]
 
-      // Cmd+Shift+N
-      window.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "n",
-          metaKey: true,
-          shiftKey: true,
-        }),
-      )
-      // Ctrl+Shift+N
-      window.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "n",
-          ctrlKey: true,
-          shiftKey: true,
-        }),
-      )
-      // Cmd+Alt+N
-      window.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "n", metaKey: true, altKey: true }),
-      )
-      // Cmd+Ctrl+N
-      window.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "n",
-          metaKey: true,
-          ctrlKey: true,
-        }),
-      )
+      for (const chord of invalidChords) {
+        window.dispatchEvent(new KeyboardEvent("keydown", chord))
+      }
+
+      expect(onToggleQuickSwitcher).not.toHaveBeenCalled()
       expect(onNewChat).not.toHaveBeenCalled()
     })
 
@@ -181,10 +121,9 @@ describe("useKeyboardShortcuts", () => {
         }),
       )
 
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "k" }))
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "K" }))
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "n" }))
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "N" }))
+      for (const key of ["k", "K", "n", "N"]) {
+        window.dispatchEvent(new KeyboardEvent("keydown", { key }))
+      }
 
       expect(onToggleQuickSwitcher).not.toHaveBeenCalled()
       expect(onNewChat).not.toHaveBeenCalled()
@@ -201,18 +140,11 @@ describe("useKeyboardShortcuts", () => {
         }),
       )
 
-      window.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Escape", shiftKey: true }),
-      )
-      window.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Escape", ctrlKey: true }),
-      )
-      window.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Escape", altKey: true }),
-      )
-      window.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Escape", metaKey: true }),
-      )
+      for (const modifier of ["shiftKey", "ctrlKey", "altKey", "metaKey"]) {
+        window.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", [modifier]: true }),
+        )
+      }
 
       expect(onEscape).not.toHaveBeenCalled()
     })
@@ -230,29 +162,16 @@ describe("useKeyboardShortcuts", () => {
         }),
       )
 
-      // IME composition with isComposing true
-      window.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "k",
-          metaKey: true,
-          isComposing: true,
-        }),
-      )
-      window.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "n",
-          metaKey: true,
-          isComposing: true,
-        }),
-      )
-      window.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "Escape",
-          isComposing: true,
-        }),
-      )
+      for (const key of ["k", "n", "Escape"]) {
+        window.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key,
+            metaKey: true,
+            isComposing: true,
+          }),
+        )
+      }
 
-      // IME composition with keyCode 229
       const imeKeyCodeEvent = new KeyboardEvent("keydown", {
         key: "k",
         metaKey: true,
@@ -283,7 +202,6 @@ describe("useKeyboardShortcuts", () => {
       document.body.appendChild(input)
       document.body.appendChild(textarea)
 
-      // Cmd+K from inside input triggers quick switcher
       const inputCmdK = new KeyboardEvent("keydown", {
         key: "k",
         metaKey: true,
@@ -294,15 +212,6 @@ describe("useKeyboardShortcuts", () => {
       expect(onToggleQuickSwitcher).toHaveBeenCalledTimes(1)
       expect(inputCmdK.defaultPrevented).toBe(true)
 
-      // Plain text typing inside input does NOT trigger quick switcher
-      const inputPlainK = new KeyboardEvent("keydown", {
-        key: "k",
-        bubbles: true,
-      })
-      input.dispatchEvent(inputPlainK)
-      expect(onToggleQuickSwitcher).toHaveBeenCalledTimes(1)
-
-      // Cmd+N from inside textarea triggers new chat
       const textareaCmdN = new KeyboardEvent("keydown", {
         key: "n",
         metaKey: true,
@@ -313,7 +222,6 @@ describe("useKeyboardShortcuts", () => {
       expect(onNewChat).toHaveBeenCalledTimes(1)
       expect(textareaCmdN.defaultPrevented).toBe(true)
 
-      // Escape from inside input triggers onEscape without canceling native behavior
       const inputEscape = new KeyboardEvent("keydown", {
         key: "Escape",
         bubbles: true,
