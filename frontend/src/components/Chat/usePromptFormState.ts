@@ -56,7 +56,10 @@ function isInputEmpty(text: string, imageCount: number): boolean {
 interface PromptSubmitPayload {
   input: string
   selectedImages: { file: File }[]
-  onSubmit: (text: string, images?: File[]) => void
+  onSubmit: (
+    text: string,
+    images?: File[],
+  ) => boolean | undefined | Promise<boolean | undefined>
   updateInput: (val: string) => void
   clearImages: () => void
   stopAndReset: () => void
@@ -75,16 +78,28 @@ function executePromptSubmit({
     return
   }
   const text = input.trim()
+  let submission: boolean | undefined | Promise<boolean | undefined>
   if (selectedImages.length > 0) {
-    onSubmit(
+    submission = onSubmit(
       text,
       selectedImages.map((i) => i.file),
     )
   } else {
-    onSubmit(text)
+    submission = onSubmit(text)
   }
-  updateInput("")
-  clearImages()
+  const clearAcceptedSubmission = (accepted: boolean | undefined) => {
+    if (accepted === false) return
+    updateInput("")
+    clearImages()
+  }
+  if (submission && typeof submission === "object") {
+    void Promise.resolve(submission).then(
+      clearAcceptedSubmission,
+      () => undefined,
+    )
+    return
+  }
+  clearAcceptedSubmission(submission)
 }
 
 function usePromptModelSelection({
@@ -155,7 +170,10 @@ function usePromptInputSync({
 interface PromptFormActionsOptions {
   input: string
   selectedImages: { file: File }[]
-  onSubmit: (text: string, images?: File[]) => void
+  onSubmit: (
+    text: string,
+    images?: File[],
+  ) => boolean | undefined | Promise<boolean | undefined>
   updateInput: (val: string) => void
   clearImages: () => void
   stopAndReset: () => void
@@ -229,7 +247,10 @@ export interface UsePromptFormStateProps {
   models?: (AIModelOption | string)[]
   onSelectModel?: (modelId: string) => void
   onValueChange?: (value: string) => void
-  onSubmit: (text: string, images?: File[]) => void
+  onSubmit: (
+    text: string,
+    images?: File[],
+  ) => boolean | undefined | Promise<boolean | undefined>
   onEditLastUserMessage?: () => void
   onRecallLastPrompt?: () => string | null | undefined
   autoFocus?: boolean

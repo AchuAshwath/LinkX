@@ -99,6 +99,17 @@ export const AIModelsPublicSchema = {
         default_model: {
             type: 'string',
             title: 'Default Model'
+        },
+        observation_model: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Observation Model'
         }
     },
     type: 'object',
@@ -222,6 +233,16 @@ export const ChatMessageRequestSchema = {
                 }
             ],
             title: 'Edit Message Id'
+        },
+        observation: {
+            anyOf: [
+                {
+                    '$ref': '#/components/schemas/ObservationPacket'
+                },
+                {
+                    type: 'null'
+                }
+            ]
         }
     },
     type: 'object',
@@ -800,6 +821,67 @@ export const NewPasswordSchema = {
     type: 'object',
     required: ['token', 'new_password'],
     title: 'NewPassword'
+} as const;
+
+export const ObservationPacketSchema = {
+    properties: {
+        session_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Session Id'
+        },
+        source_epoch: {
+            type: 'integer',
+            exclusiveMinimum: 0,
+            title: 'Source Epoch'
+        },
+        revision: {
+            type: 'integer',
+            exclusiveMinimum: 0,
+            title: 'Revision'
+        },
+        captured_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Captured At'
+        },
+        delivered_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Delivered At'
+        },
+        frame_presented_at_ms: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Frame Presented At Ms'
+        },
+        width: {
+            type: 'integer',
+            maximum: 2048,
+            exclusiveMinimum: 0,
+            title: 'Width'
+        },
+        height: {
+            type: 'integer',
+            maximum: 2048,
+            exclusiveMinimum: 0,
+            title: 'Height'
+        },
+        image_data_url: {
+            type: 'string',
+            title: 'Image Data Url'
+        }
+    },
+    additionalProperties: false,
+    type: 'object',
+    required: ['session_id', 'source_epoch', 'revision', 'captured_at', 'delivered_at', 'frame_presented_at_ms', 'width', 'height', 'image_data_url'],
+    title: 'ObservationPacket'
 } as const;
 
 export const PostAuthorSchema = {

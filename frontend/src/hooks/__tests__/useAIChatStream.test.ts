@@ -13,6 +13,20 @@ function createMockJwt(expSecondsFromNow: number): string {
   return `${header}.${payload}.signature`
 }
 
+function createControlledResponse(
+  controllers: ReadableStreamDefaultController<Uint8Array>[],
+) {
+  return {
+    ok: true,
+    status: 200,
+    body: new ReadableStream<Uint8Array>({
+      start(controller) {
+        controllers.push(controller)
+      },
+    }),
+  }
+}
+
 async function assertAuthFailureRedirection(options: {
   setup?: () => void
   expectedMessage?: string
@@ -240,5 +254,256 @@ describe("useAIChatStream auth handling (Issue #128)", () => {
     expect(onDone).toHaveBeenCalled()
     expect(onError).not.toHaveBeenCalled()
     expect(result.current.isStreaming).toBe(false)
+  })
+
+  it("surfaces observation usage metadata without retaining image data", async () => {
+    localStorage.setItem("access_token", createMockJwt(3600))
+    const usage = {
+      estimated_input_tokens: 1200,
+      input_limit: 4000,
+      output_reserve: 700,
+      model_id: "vision-model",
+      frame_count: 1,
+      history_frames: 0,
+      revision: 4,
+      source_epoch: 2,
+      width: 1280,
+      height: 720,
+      captured_at: "2026-10-19T09:00:00Z",
+      delivered_at: "2026-10-19T09:00:01Z",
+      frame_presented_at_ms: 120,
+    }
+    const encoder = new TextEncoder()
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            `event: observation_usage\ndata: ${JSON.stringify(usage)}\n\n`,
+          ),
+        )
+        controller.close()
+      },
+    })
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, status: 200, body }),
+    )
+
+    const onObservationUsage = vi.fn()
+    const { result } = renderHook(() => useAIChatStream())
+    await act(async () => {
+      await result.current.startStream("thread-123", "Hello", {
+        onObservationUsage,
+      })
+    })
+
+    expect(onObservationUsage).toHaveBeenCalledWith(usage)
+    expect(result.current.observationUsage).toEqual({
+      threadId: "thread-123",
+      data: usage,
+    })
+    act(() => result.current.clearObservationUsage())
+    expect(result.current.observationUsage).toBeNull()
+  })
+
+  it("keeps cleared usage details cleared while the answer stream continues", async () => {
+    localStorage.setItem("access_token", createMockJwt(3600))
+    const encoder = new TextEncoder()
+    let streamController: ReadableStreamDefaultController<Uint8Array> | null =
+      null
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        streamController = controller
+      },
+    })
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true, status: 200, body })
+    vi.stubGlobal("fetch", fetchSpy)
+    const onObservationUsage = vi.fn()
+    const onTextDelta = vi.fn()
+    const { result } = renderHook(() => useAIChatStream())
+    let completed: Promise<void> = Promise.resolve()
+
+    act(() => {
+      completed = result.current.startStream("thread-123", "Hello", {
+        onObservationUsage,
+        onTextDelta,
+      })
+    })
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledOnce())
+    act(() => result.current.clearObservationUsage())
+    expect(result.current.isStreaming).toBe(true)
+
+    const usage = {
+      estimated_input_tokens: 1200,
+      input_limit: 4000,
+      output_reserve: 700,
+      model_id: "vision-model",
+      frame_count: 1,
+      history_frames: 0,
+      revision: 4,
+      source_epoch: 2,
+      width: 1280,
+      height: 720,
+      captured_at: "2026-10-19T09:00:00Z",
+      delivered_at: "2026-10-19T09:00:01Z",
+      frame_presented_at_ms: 120,
+    }
+    act(() => {
+      streamController?.enqueue(
+        encoder.encode(
+          `event: observation_usage\ndata: ${JSON.stringify(usage)}\n\n` +
+            'event: text_delta\ndata: {"content":"The answer continues."}\n\n',
+        ),
+      )
+      streamController?.close()
+    })
+    await act(async () => completed)
+
+    expect(onObservationUsage).not.toHaveBeenCalled()
+    expect(result.current.observationUsage).toBeNull()
+    expect(onTextDelta).toHaveBeenCalledWith("The answer continues.")
+  })
+
+  it("ignores usage metadata that arrives from a replaced stream", async () => {
+    localStorage.setItem("access_token", createMockJwt(3600))
+    const encoder = new TextEncoder()
+    const controllers: ReadableStreamDefaultController<Uint8Array>[] = []
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(createControlledResponse(controllers))
+      .mockResolvedValueOnce(createControlledResponse(controllers))
+    vi.stubGlobal("fetch", fetchSpy)
+    const onFirstUsage = vi.fn()
+    const onSecondUsage = vi.fn()
+    const { result } = renderHook(() => useAIChatStream())
+    let firstStream: Promise<void> = Promise.resolve()
+    let secondStream: Promise<void> = Promise.resolve()
+
+    act(() => {
+      firstStream = result.current.startStream("thread-a", "First", {
+        onObservationUsage: onFirstUsage,
+      })
+    })
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1))
+    act(() => {
+      secondStream = result.current.startStream("thread-b", "Second", {
+        onObservationUsage: onSecondUsage,
+      })
+    })
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2))
+
+    const usage = {
+      estimated_input_tokens: 1200,
+      input_limit: 4000,
+      output_reserve: 700,
+      model_id: "vision-model",
+      frame_count: 1,
+      history_frames: 0,
+      revision: 4,
+      source_epoch: 2,
+      width: 1280,
+      height: 720,
+      captured_at: "2026-10-19T09:00:00Z",
+      delivered_at: "2026-10-19T09:00:01Z",
+      frame_presented_at_ms: 120,
+    }
+    act(() => {
+      controllers[0].enqueue(
+        encoder.encode(
+          `event: observation_usage\ndata: ${JSON.stringify(usage)}\n\n`,
+        ),
+      )
+      controllers[0].close()
+    })
+    await act(async () => firstStream)
+    expect(onFirstUsage).not.toHaveBeenCalled()
+    act(() => {
+      controllers[1].enqueue(
+        encoder.encode(
+          `event: observation_usage\ndata: ${JSON.stringify(usage)}\n\n`,
+        ),
+      )
+      controllers[1].close()
+    })
+    await vi.waitFor(() => expect(onSecondUsage).toHaveBeenCalledOnce())
+    await act(async () => secondStream)
+
+    expect(onFirstUsage).not.toHaveBeenCalled()
+    expect(result.current.observationUsage).toEqual({
+      threadId: "thread-b",
+      data: usage,
+    })
+  })
+
+  it("sends the request-scoped observation packet in the chat request body", async () => {
+    localStorage.setItem("access_token", createMockJwt(3600))
+    const encoder = new TextEncoder()
+    const responseBody = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"))
+        controller.close()
+      },
+    })
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: responseBody,
+    })
+    vi.stubGlobal("fetch", fetchSpy)
+    const observation = Object.freeze({
+      session_id: "session-8",
+      source_epoch: 2,
+      revision: 19,
+      captured_at: "2026-10-18T08:00:00.000Z",
+      delivered_at: "2026-10-18T08:00:00.020Z",
+      frame_presented_at_ms: 1234,
+      width: 640,
+      height: 480,
+      image_data_url: "data:image/jpeg;base64,QUJD",
+    })
+    const { result } = renderHook(() => useAIChatStream())
+
+    await act(async () => {
+      await result.current.startStream(
+        "thread-123",
+        "What is on this page?",
+        {},
+        undefined,
+        undefined,
+        undefined,
+        observation,
+      )
+    })
+
+    expect(JSON.parse(fetchSpy.mock.calls[0][1].body)).toMatchObject({
+      message: "What is on this page?",
+      observation,
+    })
+  })
+
+  it("omits observation from a legacy chat request", async () => {
+    localStorage.setItem("access_token", createMockJwt(3600))
+    const encoder = new TextEncoder()
+    const responseBody = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"))
+        controller.close()
+      },
+    })
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: responseBody,
+    })
+    vi.stubGlobal("fetch", fetchSpy)
+    const { result } = renderHook(() => useAIChatStream())
+
+    await act(async () => {
+      await result.current.startStream("thread-123", "Legacy question")
+    })
+
+    const requestBody = JSON.parse(fetchSpy.mock.calls[0][1].body)
+    expect(requestBody.message).toBe("Legacy question")
+    expect(requestBody).not.toHaveProperty("observation")
   })
 })

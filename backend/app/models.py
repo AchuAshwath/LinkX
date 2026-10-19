@@ -1,8 +1,20 @@
+import base64
+import binascii
+import io
+import math
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from pydantic import EmailStr
+from PIL import Image, UnidentifiedImageError
+from pydantic import (
+    ConfigDict,
+    EmailStr,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 from sqlalchemy import Column, DateTime, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Relationship, SQLModel
@@ -411,6 +423,85 @@ class AIModelInfo(SQLModel):
 class AIModelsPublic(SQLModel):
     data: list[AIModelInfo]
     default_model: str
+    observation_model: str | None = None
+
+
+class ObservationPacket(SQLModel):
+    model_config = ConfigDict(extra="forbid")  # type: ignore[assignment]
+
+    session_id: uuid.UUID
+    source_epoch: int = Field(gt=0)
+    revision: int = Field(gt=0)
+    captured_at: datetime
+    delivered_at: datetime
+    frame_presented_at_ms: float | None
+    width: int = Field(gt=0, le=2048)
+    height: int = Field(gt=0, le=2048)
+    image_data_url: str
+
+    @field_validator("frame_presented_at_ms")
+    @classmethod
+    def validate_frame_time(cls, value: float | None) -> float | None:
+        if value is not None and not math.isfinite(value):
+            raise ValueError("must be finite")
+        return value
+
+    @field_validator("source_epoch", "revision", "width", "height", mode="before")
+    @classmethod
+    def require_integer(cls, value: Any) -> Any:
+        if type(value) is not int:
+            raise ValueError("must be an integer")
+        return value
+
+    @field_validator("captured_at", "delivered_at", mode="before")
+    @classmethod
+    def require_rfc3339_timestamp(cls, value: Any) -> Any:
+        pattern = (
+            r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$"
+        )
+        if not isinstance(value, str) or re.fullmatch(pattern, value) is None:
+            raise ValueError("must be an RFC3339 timestamp")
+        return value
+
+    @field_validator("image_data_url")
+    @classmethod
+    def validate_jpeg_data_url(cls, value: str) -> str:
+        if len(value) > 2_000_000:
+            raise ValueError("image data URL exceeds size limit")
+        prefix = "data:image/jpeg;base64,"
+        if not value.startswith(prefix):
+            raise ValueError("observation image must be a JPEG data URL")
+        try:
+            image = base64.b64decode(value[len(prefix) :], validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError("invalid base64 image data") from exc
+        width, height = _validate_jpeg(data=image)
+        if width * height > 4_194_304:
+            raise ValueError("image pixel count exceeds limit")
+        return value
+
+    @model_validator(mode="after")
+    def validate_image_dimensions(self) -> "ObservationPacket":
+        prefix = "data:image/jpeg;base64,"
+        image = base64.b64decode(self.image_data_url[len(prefix) :], validate=True)
+        width, height = _validate_jpeg(data=image)
+        if (self.width, self.height) != (width, height):
+            raise ValueError("declared dimensions do not match JPEG")
+        return self
+
+
+def _validate_jpeg(*, data: bytes) -> tuple[int, int]:
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            if image.format != "JPEG":
+                raise ValueError("observation image is not a JPEG")
+            width, height = image.size
+            if width * height > 4_194_304:
+                raise ValueError("image pixel count exceeds limit")
+            image.load()
+            return width, height
+    except (Image.DecompressionBombError, UnidentifiedImageError, OSError) as exc:
+        raise ValueError("invalid JPEG image") from exc
 
 
 class ChatMessageRequest(SQLModel):
@@ -418,3 +509,13 @@ class ChatMessageRequest(SQLModel):
     model: str | None = Field(default=None, max_length=100)
     images: list[str] | None = Field(default=None, max_length=10)
     edit_message_id: str | None = Field(default=None, max_length=100)
+    observation: ObservationPacket | None = None
+
+    @field_validator("observation")
+    @classmethod
+    def reject_durable_images_with_observation(
+        cls, value: ObservationPacket | None, info: ValidationInfo
+    ) -> ObservationPacket | None:
+        if value is not None and info.data.get("images"):
+            raise ValueError("observation cannot be combined with durable images")
+        return value

@@ -30,6 +30,7 @@ export function Sidebar({ sidebarOpen, onClose }: SidebarProps) {
 
   return (
     <div
+      data-browser-preview-rail
       className={`border-border fixed left-0 top-14 z-40 flex h-[calc(100vh-3.5rem)] w-64 flex-col border-r bg-background transition-transform lg:top-0 lg:h-screen lg:sticky lg:translate-x-0 ${
         sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
       }`}
@@ -92,6 +93,7 @@ export function Sidebar({ sidebarOpen, onClose }: SidebarProps) {
         <Button
           className="mt-6 w-full text-base font-semibold h-11 rounded-full shadow-sm cursor-pointer"
           onClick={() => setCreatePostDialogOpen(true)}
+          data-browser-preview-start
         >
           Create Post
         </Button>

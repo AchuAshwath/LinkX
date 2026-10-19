@@ -1,0 +1,10 @@
+{
+  "results": [],
+  "quality_gates": "passed",
+  "metadata": {
+    "checked-file-count": 61,
+    "code-health-eligible-file-count": 61,
+    "status": "no-issues-found",
+    "total-modified-file-count": 118
+  }
+}

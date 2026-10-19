@@ -287,7 +287,9 @@ def test_list_ai_models(
     data = res.json()
     assert "data" in data
     expected_default = settings.AI_MODEL.removeprefix("openai/")
+    expected_observation_model = settings.VISION_AI_MODEL.removeprefix("openai/")
     assert data["default_model"] == expected_default
+    assert data["observation_model"] == expected_observation_model
     assert any(m["id"] == expected_default for m in data["data"])
     assert not any(m["id"] in EXCLUDED_MODELS for m in data["data"])
 

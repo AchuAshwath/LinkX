@@ -1,0 +1,44 @@
+{
+  "question": "Read the uppercase code printed in this image. Return only the code.",
+  "expected_code": "3ZB9U3J",
+  "image_sha256": "9b8b9b5c5120f853094e7133715536d328e1afeae32c07954676f9ff9f83a2f4",
+  "image_dimensions": [
+    960,
+    320
+  ],
+  "image_format": "JPEG",
+  "configured_observation_model": "gpt-5.6-luna",
+  "api_base": "http://127.0.0.1:8001/api/v1",
+  "request_count": {
+    "observation_chat_post": 1
+  },
+  "login_http_status": 200,
+  "thread_create_http_status": 200,
+  "temporary_thread_id": "23602e61-264f-4927-b9ab-6bb598c52d82",
+  "http_status": 200,
+  "content_type": "text/event-stream; charset=utf-8",
+  "elapsed_seconds": 3.834,
+  "response_bytes": 316,
+  "sse_event_names": [
+    "text_delta",
+    "text_delta",
+    "text_delta",
+    "text_delta",
+    "text_delta",
+    "text_delta",
+    "text_delta",
+    "done"
+  ],
+  "answer": "3ZB9U3J",
+  "answer_matches_expected": true,
+  "transcript_http_status": 200,
+  "transcript_contains_question": true,
+  "transcript_contains_answer": true,
+  "transcript_contains_data_url": false,
+  "transcript_contains_base64_payload": false,
+  "transcript_image_data_url_count": 0,
+  "automatic_title_model_call": "not invoked: observation turns return before title generation in _save_assistant_turn",
+  "automatic_title_call_instrumented": false,
+  "total_elapsed_seconds": 3.857,
+  "cleanup_http_status": 200
+}

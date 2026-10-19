@@ -113,7 +113,7 @@ async def _iterate_proxy_lines(
 
 async def stream_direct_openai_proxy(
     *,
-    messages: list[dict[str, str]],
+    messages: list[dict[str, Any]],
     model_name: str,
     temperature: float = 0.7,
     max_tokens: int = 2000,

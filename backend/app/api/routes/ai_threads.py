@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlmodel import Session
 
 from app import crud
+from app.api.ai_chat_content import validate_chat_content
 from app.api.deps import CurrentUser, SessionDep
 from app.core.config import settings
 from app.models import (
@@ -29,8 +30,8 @@ from app.services.ai_chat_runner import (
     default_chat_stream_runner,
     format_sse,
     generate_ai_thread_title,
+    observation_chat_stream_runner,
 )
-from app.services.ai_image_utils import sanitize_image_urls as _clean_image_urls
 from app.services.ai_model_catalog import get_available_ai_models
 from app.services.ai_turn_accumulator import (
     TranscriptEditPayload,
@@ -207,7 +208,9 @@ def _collect_stream_part(
 def list_ai_models() -> Any:
     """List available AI models from the proxy/backend with friendly labels."""
     configured_default = settings.AI_MODEL.removeprefix("openai/")
-    return get_available_ai_models(configured_default=configured_default)
+    models = get_available_ai_models(configured_default=configured_default)
+    models.observation_model = settings.VISION_AI_MODEL.removeprefix("openai/")
+    return models
 
 
 @router.post("/", response_model=ChatThreadDetail)
@@ -322,20 +325,23 @@ async def _save_assistant_turn(
         message=assistant_msg,
     )
 
-    if thread.message_count <= 2 and not thread.is_custom_title:
-        try:
-            ai_title = await generate_ai_thread_title(
-                user_prompt=payload.body.message.strip() or "Image analysis",
-                assistant_response=payload.accumulated_text,
-                model=payload.body.model,
-            )
-            crud.apply_ai_thread_title(
-                session=session,
-                db_thread=thread,
-                ai_title=ai_title,
-            )
-        except Exception:
-            pass
+    if payload.body.observation is not None:
+        return
+    if thread.message_count > 2 or thread.is_custom_title:
+        return
+    try:
+        ai_title = await generate_ai_thread_title(
+            user_prompt=payload.body.message.strip() or "Image analysis",
+            assistant_response=payload.accumulated_text,
+            model=payload.body.model,
+        )
+        crud.apply_ai_thread_title(
+            session=session,
+            db_thread=thread,
+            ai_title=ai_title,
+        )
+    except Exception:
+        pass
 
 
 def _build_user_message_dict(
@@ -383,6 +389,7 @@ class ChatStreamContext(NamedTuple):
     clean_images: list[str]
     user_id_str: str
     effective_prompt: str
+    observation: Any | None = None
 
 
 HEARTBEAT_INTERVAL_SECONDS = 12.0
@@ -448,6 +455,11 @@ async def _stream_events_with_heartbeat(
 def _build_chat_runner(
     *, ctx: ChatStreamContext
 ) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
+    if ctx.observation is not None:
+        return observation_chat_stream_runner(
+            message=ctx.effective_prompt,
+            observation=ctx.observation,
+        )
     active_path = resolve_active_branch(
         messages=ctx.thread.transcript.get("messages", []),
         active_leaf_id=ctx.thread.active_leaf_id,
@@ -589,14 +601,7 @@ async def chat_stream(
 ) -> StreamingResponse:
     """Server-Sent Events streaming endpoint for AI conversation."""
     thread = _get_owned_thread(session=session, current_user=current_user, thread_id=id)
-
-    message_text = body.message.strip()
-    clean_images = _clean_image_urls(images=body.images)
-    if not message_text and not clean_images:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Message content or at least one image is required",
-        )
+    message_text, clean_images = validate_chat_content(body=body)
 
     crud.sync_chat_thread_model(
         session=session,
@@ -619,6 +624,7 @@ async def chat_stream(
         clean_images=clean_images,
         user_id_str=str(current_user.id),
         effective_prompt=effective_prompt,
+        observation=body.observation,
     )
     events = _generate_chat_events(ctx=stream_ctx)
 

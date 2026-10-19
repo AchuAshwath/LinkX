@@ -1,5 +1,6 @@
-import { Plus, Square } from "lucide-react"
+import { ImagePlus, Plus, Square } from "lucide-react"
 import type * as React from "react"
+import { useRef } from "react"
 
 import { AttachmentPreviewStrip } from "@/components/Chat/AttachmentPreviewStrip"
 import {
@@ -10,17 +11,30 @@ import { PromptSubmitButton } from "@/components/Chat/PromptSubmitButton"
 import { usePromptFormState } from "@/components/Chat/usePromptFormState"
 import { VoiceInputButton } from "@/components/Chat/VoiceInputButton"
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
   InputGroupTextarea,
 } from "@/components/ui/input-group"
 import { cn } from "@/lib/utils"
+import {
+  ObservationComposerSlot,
+  type ObservationComposerSlotProps,
+} from "@/observation/ObservationComposerSlot"
 
 export type { AIModelOption }
 
 export interface PromptFormProps {
-  onSubmit: (text: string, images?: File[]) => void
+  onSubmit: (
+    text: string,
+    images?: File[],
+  ) => boolean | undefined | Promise<boolean | undefined>
   onStop?: () => void
   onEditLastUserMessage?: () => void
   onRecallLastPrompt?: () => string | null | undefined
@@ -30,8 +44,10 @@ export interface PromptFormProps {
   models?: (AIModelOption | string)[]
   onSelectModel?: (modelId: string) => void
   inputRef?: React.RefObject<HTMLTextAreaElement | null>
+  addContextButtonRef?: React.RefObject<HTMLButtonElement | null>
   autoFocus?: boolean
   actions?: React.ReactNode
+  observationSlot?: ObservationComposerSlotProps | null
   className?: string
   initialValue?: string
   onValueChange?: (value: string) => void
@@ -39,6 +55,8 @@ export interface PromptFormProps {
 
 interface PromptFormToolbarProps {
   actions?: React.ReactNode
+  observationSlot?: ObservationComposerSlotProps | null
+  addContextButtonRef: React.RefObject<HTMLButtonElement | null>
   fileInputRef: React.RefObject<HTMLInputElement | null>
   activeModelId: string
   normalizedModels: AIModelOption[]
@@ -49,26 +67,71 @@ interface PromptFormToolbarProps {
   handleToggleVoice: () => void
   isBusy: boolean
   hasContent: boolean
+  isSendBlocked: boolean
   onStop?: () => void
+}
+
+function BrowserTabMenuItem({
+  observationSlot,
+}: {
+  observationSlot: ObservationComposerSlotProps
+}) {
+  const isConnected = observationSlot.view.isConnected
+  return (
+    <DropdownMenuItem
+      onSelect={isConnected ? observationSlot.onStop : observationSlot.onStart}
+    >
+      {isConnected ? (
+        <Square className="size-4" />
+      ) : (
+        <Plus className="size-4" />
+      )}
+      {isConnected ? "Stop sharing browser tab" : "Browser tab"}
+    </DropdownMenuItem>
+  )
 }
 
 function PromptFormToolbar(props: PromptFormToolbarProps) {
   return (
     <InputGroupAddon align="block-end" className="px-2 pb-1.5 pt-1">
-      <div className="flex items-center gap-1.5">
-        {props.actions ?? (
-          <button
-            type="button"
-            aria-label="Attach image"
-            onClick={() => props.fileInputRef.current?.click()}
-            className="flex size-7 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors cursor-pointer"
-          >
-            <Plus className="size-4" />
-          </button>
-        )}
+      <div className="flex min-w-0 items-center gap-1.5">
+        {props.actions ??
+          (props.observationSlot ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Add attachment or browser tab"
+                  title="Add context"
+                  ref={props.addContextButtonRef}
+                  className="flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Plus className="size-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="top" className="w-48">
+                <DropdownMenuItem
+                  onSelect={() => props.fileInputRef.current?.click()}
+                >
+                  <ImagePlus className="size-4" />
+                  Images
+                </DropdownMenuItem>
+                <BrowserTabMenuItem observationSlot={props.observationSlot} />
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <button
+              type="button"
+              aria-label="Attach image"
+              onClick={() => props.fileInputRef.current?.click()}
+              className="flex size-7 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors cursor-pointer"
+            >
+              <Plus className="size-4" />
+            </button>
+          ))}
       </div>
 
-      <div className="flex items-center gap-1.5 ml-auto">
+      <div className="ml-auto flex shrink-0 items-center gap-1.5">
         <ModelSelectorPill
           selectedModelId={props.activeModelId}
           models={props.normalizedModels}
@@ -99,6 +162,7 @@ function PromptFormToolbar(props: PromptFormToolbarProps) {
         <PromptSubmitButton
           isBusy={props.isBusy}
           hasContent={props.hasContent}
+          isBlocked={props.isSendBlocked}
           onStop={props.onStop}
         />
       </div>
@@ -144,12 +208,17 @@ export function PromptForm({
   models,
   onSelectModel,
   inputRef,
+  addContextButtonRef: sharedAddContextButtonRef,
   autoFocus = false,
   actions,
+  observationSlot,
   className,
   initialValue = "",
   onValueChange,
 }: PromptFormProps) {
+  const localAddContextButtonRef = useRef<HTMLButtonElement>(null)
+  const addContextButtonRef =
+    sharedAddContextButtonRef ?? localAddContextButtonRef
   const formState = usePromptFormState({
     initialValue,
     selectedModelId,
@@ -162,6 +231,9 @@ export function PromptForm({
     autoFocus,
     inputRef,
   })
+  const isSendBlocked = Boolean(
+    observationSlot?.view.isConnected && !observationSlot.view.hasCurrentFrame,
+  )
 
   return (
     <form
@@ -193,6 +265,12 @@ export function PromptForm({
           onRemove={formState.handleRemoveImage}
         />
 
+        {observationSlot && (
+          <ObservationComposerSlot
+            {...observationSlot}
+            addContextButtonRef={addContextButtonRef}
+          />
+        )}
         <PromptComposerInput
           inputRef={formState.effectiveInputRef}
           placeholder={placeholder}
@@ -203,6 +281,8 @@ export function PromptForm({
 
         <PromptFormToolbar
           actions={actions}
+          observationSlot={observationSlot}
+          addContextButtonRef={addContextButtonRef}
           fileInputRef={formState.fileInputRef}
           activeModelId={formState.activeModelId}
           normalizedModels={formState.normalizedModels}
@@ -213,6 +293,7 @@ export function PromptForm({
           handleToggleVoice={formState.handleToggleVoice}
           isBusy={isBusy}
           hasContent={formState.hasContent}
+          isSendBlocked={isSendBlocked}
           onStop={onStop}
         />
       </InputGroup>

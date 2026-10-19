@@ -1,3 +1,5 @@
+import type { ObservationPacket } from "@/observation/packet"
+
 export interface TextMessagePart {
   type: "text"
   text: string
@@ -152,4 +154,5 @@ export interface QueuedTurn {
   selectedModelId: string
   assistantMsgId: string
   editMessageId?: string
+  observation?: Readonly<ObservationPacket>
 }
