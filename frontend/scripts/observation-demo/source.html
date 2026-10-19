@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>LinkX observation final demo</title>
+<style>body{margin:0;padding:28px;background:#10141c;color:#eee;font:18px system-ui}canvas{display:block;width:100%;max-width:1100px;height:auto}button{margin-top:20px;padding:12px 20px;font:inherit}button:focus-visible{outline:3px solid #43b5f4}</style></head>
+<body><h1>Synthetic image-only reading fixture</h1><canvas width="1100" height="600" role="img" aria-label="A fictional garden notice with a code and a short instruction."></canvas><button type="button" id="next">Next notice</button>
+<script>
+const notices=[{code:"B7Q2M",text:"Close the east shade at noon.",color:"#e9eddb"},{code:"R4X9K",text:"Water the moon basil after sunset.",color:"#e2edf4"}]
+const canvas=document.querySelector("canvas"),ctx=canvas.getContext("2d")
+let index=0
+function paint(){const notice=notices[index];ctx.fillStyle=notice.color;ctx.fillRect(0,0,1100,600);ctx.fillStyle="#152633";ctx.font="bold 38px system-ui";ctx.fillText("NIGHT GARDEN • FIELD NOTE",65,100);ctx.font="bold 82px monospace";ctx.fillText(notice.code,65,245);ctx.font="36px system-ui";ctx.fillText(notice.text,65,350);ctx.font="24px system-ui";ctx.fillText("Fictional material for a controlled local test",65,500)}
+document.querySelector("#next").addEventListener("click",()=>{index=(index+1)%notices.length;paint()});paint()
+</script></body></html>

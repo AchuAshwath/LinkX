@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Image text reading task</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: #17241d;
+        background: #f4f5f1;
+      }
+
+      body {
+        max-width: 68rem;
+        margin: 0 auto;
+        padding: 2rem 1.25rem 4rem;
+        line-height: 1.55;
+      }
+
+      h1, h2 { line-height: 1.2; }
+      h1 { font-size: clamp(1.75rem, 4vw, 2.5rem); }
+      h2 { margin-top: 2rem; font-size: 1.35rem; }
+      .notice-frame {
+        overflow: auto;
+        border: 1px solid #65746a;
+        border-radius: 0.5rem;
+        background: #fff;
+        padding: 0.75rem;
+      }
+      .notice-frame img {
+        display: block;
+        width: min(100%, 60rem);
+        height: auto;
+        margin: 0 auto;
+      }
+      .task { max-width: 48rem; }
+      label { display: block; margin: 1rem 0 0.35rem; font-weight: 650; }
+      textarea {
+        display: block;
+        width: 100%;
+        min-height: 6rem;
+        padding: 0.75rem;
+        border: 2px solid #65746a;
+        border-radius: 0.35rem;
+        font: inherit;
+      }
+      textarea:focus-visible, a:focus-visible {
+        outline: 3px solid #1c64d1;
+        outline-offset: 3px;
+      }
+      .note { color: #39473d; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Read the garden notice</h1>
+      <p class="note">This is a fictional image-text exercise. Use browser zoom to inspect the notice. The page contains no transcription of its printed words.</p>
+
+      <h2 id="notice-heading">Notice image</h2>
+      <div class="notice-frame">
+        <img src="/accessibility-v1-fixture.png" alt="A printed garden notice on cream paper, with a large heading and three instruction lines.">
+      </div>
+
+      <section class="task" aria-labelledby="baseline-heading">
+        <h2 id="baseline-heading">First pass: visual reading</h2>
+        <p>Using the keyboard and browser zoom at 100%, 200%, and 400%, answer: What should happen at noon? What should happen after sunset? Who is the lantern for?</p>
+        <label for="baseline-answer">Your first-pass answer</label>
+        <textarea id="baseline-answer" autocomplete="off"></textarea>
+      </section>
+
+      <section class="task" aria-labelledby="assisted-heading">
+        <h2 id="assisted-heading">Second pass: assisted reading</h2>
+        <p>Use a local image-reading method available on your device, such as your screen reader's image description or local OCR. Then answer the same questions and note which part the tool clarified. This page does not provide transcription or call an online service.</p>
+        <label for="assisted-method">Local method and version</label>
+        <textarea id="assisted-method" autocomplete="off"></textarea>
+        <label for="assisted-answer">Your assisted-reading answer</label>
+        <textarea id="assisted-answer" autocomplete="off"></textarea>
+      </section>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,1 @@
+Read the uppercase code printed in this image. Return only the code.

@@ -1,0 +1,447 @@
+{
+  "protocol": "Native macOS Vision exploratory rerun; criteria recorded before execution in docs/observation/experiment-decision-2026-10-19.md",
+  "fixtureVersion": "2026-10-18.2",
+  "environment": {
+    "os": "15.7.7",
+    "architecture": "arm64",
+    "cpu": "Apple M4",
+    "swift": "Apple Swift version 6.2.3 (swiftlang-6.2.3.3.21 clang-1700.6.3.2)\nTarget: arm64-apple-macosx15.0"
+  },
+  "configuration": {
+    "engine": "Apple Vision VNRecognizeTextRequest",
+    "recognitionLevel": "accurate",
+    "language": "en-US",
+    "languageCorrection": true,
+    "requestRevision": "OS default; not independently pinned"
+  },
+  "fixturePngSha256": {
+    "scroll-100.png": "76285f0da3b17ac7c4b4a08f6c4eaaf35718757cdea6321334dc15c41c82b2a5",
+    "zoom-200.png": "35ad16bcb908b5cac63f62523b9d9cbe0962ab9c732107b34480783126c2fbef",
+    "zoom-400.png": "52e7d44533e814db305506457032aa7bcc43bcce10998049369db02663a3130c",
+    "columns.png": "89e7a630a61b55491a7006e44a983d91fad1f35a6cdf187c05e985baf0a167b1",
+    "clipped.png": "36cc8816c43a6f81428f7a076b6c83ff1f1558727ef21fe191f5d440c3ecb7b0",
+    "image-text.png": "6d082999bfffac3e5768b4a9e7ae0fbbd18c4ef4b220ae83812b9c96e0a44edf"
+  },
+  "timingMethod": {
+    "cold": "Six fresh executable processes, one PNG per process; processWallMs measured by the Node runner, recognitionMs is VNImageRequestHandler.perform only.",
+    "reused": "One fresh executable process handles six PNGs sequentially; processWallMs is measured by the Node runner, recognitionMs is per-image VNImageRequestHandler.perform.",
+    "overheadEstimate": "processWallMs minus recognitionMs; includes process startup, image decode, request setup, and JSON serialization, so it is not isolated startup time. Compilation is excluded."
+  },
+  "coldFreshProcess": [
+    {
+      "image": "scroll-100.png",
+      "fixtureId": "scroll-pause-sidebar",
+      "fixtureBlockIds": [
+        "s1",
+        "s2"
+      ],
+      "fixtureGroundTruth": "A small park can cool a busy street when its trees shade the pavement. The north entrance stays open during the evening repair work.",
+      "recognitionMs": 337.572625,
+      "processWallMs": 871.55,
+      "processSetupOverheadEstimateMs": 533.98,
+      "recognizedLines": [
+        "A small park can cool a busy street when its trees shade the pavement.",
+        "The north entrance stays open during the evening repair work."
+      ],
+      "confidence": [
+        1,
+        1
+      ],
+      "wordErrors": 0,
+      "wordCount": 24,
+      "orderedWordErrorRate": 0
+    },
+    {
+      "image": "zoom-200.png",
+      "fixtureId": "small-text-zoom",
+      "fixtureBlockIds": [
+        "z1",
+        "z2",
+        "z3"
+      ],
+      "fixtureGroundTruth": "Mira Chen opened the community repair room in 2024. The weekly workshop now lends tools to twelve nearby blocks. A printed schedule is posted beside the blue entrance.",
+      "recognitionMs": 340.067417,
+      "processWallMs": 400.22,
+      "processSetupOverheadEstimateMs": 60.15,
+      "recognizedLines": [
+        "Mira Chen opened the community repair room in 2024.",
+        "The weekly workshop now lends tools to twelve nearby blocks.",
+        "A printed schedule is posted beside the blue entrance."
+      ],
+      "confidence": [
+        1,
+        1,
+        1
+      ],
+      "wordErrors": 0,
+      "wordCount": 28,
+      "orderedWordErrorRate": 0
+    },
+    {
+      "image": "zoom-400.png",
+      "fixtureId": "small-text-zoom",
+      "fixtureBlockIds": [
+        "z1"
+      ],
+      "fixtureGroundTruth": "Mira Chen opened the community repair room in 2024.",
+      "recognitionMs": 311.344291,
+      "processWallMs": 366.33,
+      "processSetupOverheadEstimateMs": 54.99,
+      "recognizedLines": [
+        "Mira Chen opened the",
+        "community repair room in",
+        "2024."
+      ],
+      "confidence": [
+        1,
+        1,
+        1
+      ],
+      "wordErrors": 0,
+      "wordCount": 9,
+      "orderedWordErrorRate": 0
+    },
+    {
+      "image": "columns.png",
+      "fixtureId": "two-columns",
+      "fixtureBlockIds": [
+        "c1",
+        "c2",
+        "c3",
+        "c4"
+      ],
+      "fixtureGroundTruth": "The museum opens its west gallery first. Visitors can reserve a quiet room online. A new audio guide is available in English. School groups enter through the courtyard.",
+      "recognitionMs": 327.786875,
+      "processWallMs": 383.12,
+      "processSetupOverheadEstimateMs": 55.33,
+      "recognizedLines": [
+        "A new audio guide is available in English.",
+        "The museum opens its west gallery first.",
+        "School groups enter through the courtyard.",
+        "Visitors can reserve a quiet room online."
+      ],
+      "confidence": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "wordErrors": 28,
+      "wordCount": 28,
+      "orderedWordErrorRate": 1
+    },
+    {
+      "image": "clipped.png",
+      "fixtureId": "clipped-card",
+      "fixtureBlockIds": [
+        "p1",
+        "p2"
+      ],
+      "fixtureGroundTruth": "The ferry will leave the west pier at six. A second sailing is planned if the wind remains light.",
+      "recognitionMs": 324.169166,
+      "processWallMs": 382.74,
+      "processSetupOverheadEstimateMs": 58.57,
+      "recognizedLines": [
+        "The ferry will leave the west pier at six.",
+        "A second sailing is planned if the wind remains light."
+      ],
+      "confidence": [
+        1,
+        1
+      ],
+      "wordErrors": 0,
+      "wordCount": 19,
+      "orderedWordErrorRate": 0
+    },
+    {
+      "image": "image-text.png",
+      "fixtureId": "image-text-card",
+      "fixtureBlockIds": [
+        "i1",
+        "i2",
+        "i3"
+      ],
+      "fixtureGroundTruth": "NORTH HARBOR REPAIR FAIR Saturday · 10 am to 2 pm Bring one small household item",
+      "recognitionMs": 317.220042,
+      "processWallMs": 377.31,
+      "processSetupOverheadEstimateMs": 60.09,
+      "recognizedLines": [
+        "NORTH HARBOR REPAIR FAIR",
+        "Saturday • 10 am to 2 pm",
+        "Bring one small household item"
+      ],
+      "confidence": [
+        1,
+        1,
+        1
+      ],
+      "wordErrors": 0,
+      "wordCount": 15,
+      "orderedWordErrorRate": 0
+    }
+  ],
+  "reusedSingleProcess": {
+    "processWallMs": 790.49,
+    "totalRecognitionMs": 728.42,
+    "processSetupOverheadEstimateMs": 62.07,
+    "images": [
+      {
+        "image": "scroll-100.png",
+        "fixtureId": "scroll-pause-sidebar",
+        "fixtureBlockIds": [
+          "s1",
+          "s2"
+        ],
+        "fixtureGroundTruth": "A small park can cool a busy street when its trees shade the pavement. The north entrance stays open during the evening repair work.",
+        "recognitionMs": 317.16775,
+        "recognizedLines": [
+          "A small park can cool a busy street when its trees shade the pavement.",
+          "The north entrance stays open during the evening repair work."
+        ],
+        "confidence": [
+          1,
+          1
+        ],
+        "wordErrors": 0,
+        "wordCount": 24,
+        "orderedWordErrorRate": 0
+      },
+      {
+        "image": "zoom-200.png",
+        "fixtureId": "small-text-zoom",
+        "fixtureBlockIds": [
+          "z1",
+          "z2",
+          "z3"
+        ],
+        "fixtureGroundTruth": "Mira Chen opened the community repair room in 2024. The weekly workshop now lends tools to twelve nearby blocks. A printed schedule is posted beside the blue entrance.",
+        "recognitionMs": 99.373458,
+        "recognizedLines": [
+          "Mira Chen opened the community repair room in 2024.",
+          "The weekly workshop now lends tools to twelve nearby blocks.",
+          "A printed schedule is posted beside the blue entrance."
+        ],
+        "confidence": [
+          1,
+          1,
+          1
+        ],
+        "wordErrors": 0,
+        "wordCount": 28,
+        "orderedWordErrorRate": 0
+      },
+      {
+        "image": "zoom-400.png",
+        "fixtureId": "small-text-zoom",
+        "fixtureBlockIds": [
+          "z1"
+        ],
+        "fixtureGroundTruth": "Mira Chen opened the community repair room in 2024.",
+        "recognitionMs": 68.843167,
+        "recognizedLines": [
+          "Mira Chen opened the",
+          "community repair room in",
+          "2024."
+        ],
+        "confidence": [
+          1,
+          1,
+          1
+        ],
+        "wordErrors": 0,
+        "wordCount": 9,
+        "orderedWordErrorRate": 0
+      },
+      {
+        "image": "columns.png",
+        "fixtureId": "two-columns",
+        "fixtureBlockIds": [
+          "c1",
+          "c2",
+          "c3",
+          "c4"
+        ],
+        "fixtureGroundTruth": "The museum opens its west gallery first. Visitors can reserve a quiet room online. A new audio guide is available in English. School groups enter through the courtyard.",
+        "recognitionMs": 86.8875,
+        "recognizedLines": [
+          "A new audio guide is available in English.",
+          "The museum opens its west gallery first.",
+          "School groups enter through the courtyard.",
+          "Visitors can reserve a quiet room online."
+        ],
+        "confidence": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "wordErrors": 28,
+        "wordCount": 28,
+        "orderedWordErrorRate": 1
+      },
+      {
+        "image": "clipped.png",
+        "fixtureId": "clipped-card",
+        "fixtureBlockIds": [
+          "p1",
+          "p2"
+        ],
+        "fixtureGroundTruth": "The ferry will leave the west pier at six. A second sailing is planned if the wind remains light.",
+        "recognitionMs": 81.732791,
+        "recognizedLines": [
+          "The ferry will leave the west pier at six.",
+          "A second sailing is planned if the wind remains light."
+        ],
+        "confidence": [
+          1,
+          1
+        ],
+        "wordErrors": 0,
+        "wordCount": 19,
+        "orderedWordErrorRate": 0
+      },
+      {
+        "image": "image-text.png",
+        "fixtureId": "image-text-card",
+        "fixtureBlockIds": [
+          "i1",
+          "i2",
+          "i3"
+        ],
+        "fixtureGroundTruth": "NORTH HARBOR REPAIR FAIR Saturday · 10 am to 2 pm Bring one small household item",
+        "recognitionMs": 74.420125,
+        "recognizedLines": [
+          "NORTH HARBOR REPAIR FAIR",
+          "Saturday • 10 am to 2 pm",
+          "Bring one small household item"
+        ],
+        "confidence": [
+          1,
+          1,
+          1
+        ],
+        "wordErrors": 0,
+        "wordCount": 15,
+        "orderedWordErrorRate": 0
+      }
+    ]
+  },
+  "scoring": {
+    "normalization": "lowercase [a-z0-9]+ tokens; punctuation discarded",
+    "order": "VNRecognizeTextRequest lines in the top-to-bottom order returned by the harness, compared to fixture reading order",
+    "pooled": {
+      "wordErrors": 28,
+      "wordCount": 123,
+      "orderedWordErrorRate": 0.2276,
+      "orderedTokenAccuracy": 0.7724
+    },
+    "byImage": [
+      {
+        "image": "scroll-100.png",
+        "fixtureGroundTruth": "A small park can cool a busy street when its trees shade the pavement. The north entrance stays open during the evening repair work.",
+        "recognizedLines": [
+          "A small park can cool a busy street when its trees shade the pavement.",
+          "The north entrance stays open during the evening repair work."
+        ],
+        "confidence": [
+          1,
+          1
+        ],
+        "wordErrors": 0,
+        "wordCount": 24,
+        "orderedWordErrorRate": 0,
+        "nonEmpty": true
+      },
+      {
+        "image": "zoom-200.png",
+        "fixtureGroundTruth": "Mira Chen opened the community repair room in 2024. The weekly workshop now lends tools to twelve nearby blocks. A printed schedule is posted beside the blue entrance.",
+        "recognizedLines": [
+          "Mira Chen opened the community repair room in 2024.",
+          "The weekly workshop now lends tools to twelve nearby blocks.",
+          "A printed schedule is posted beside the blue entrance."
+        ],
+        "confidence": [
+          1,
+          1,
+          1
+        ],
+        "wordErrors": 0,
+        "wordCount": 28,
+        "orderedWordErrorRate": 0,
+        "nonEmpty": true
+      },
+      {
+        "image": "zoom-400.png",
+        "fixtureGroundTruth": "Mira Chen opened the community repair room in 2024.",
+        "recognizedLines": [
+          "Mira Chen opened the",
+          "community repair room in",
+          "2024."
+        ],
+        "confidence": [
+          1,
+          1,
+          1
+        ],
+        "wordErrors": 0,
+        "wordCount": 9,
+        "orderedWordErrorRate": 0,
+        "nonEmpty": true
+      },
+      {
+        "image": "columns.png",
+        "fixtureGroundTruth": "The museum opens its west gallery first. Visitors can reserve a quiet room online. A new audio guide is available in English. School groups enter through the courtyard.",
+        "recognizedLines": [
+          "A new audio guide is available in English.",
+          "The museum opens its west gallery first.",
+          "School groups enter through the courtyard.",
+          "Visitors can reserve a quiet room online."
+        ],
+        "confidence": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "wordErrors": 28,
+        "wordCount": 28,
+        "orderedWordErrorRate": 1,
+        "nonEmpty": true
+      },
+      {
+        "image": "clipped.png",
+        "fixtureGroundTruth": "The ferry will leave the west pier at six. A second sailing is planned if the wind remains light.",
+        "recognizedLines": [
+          "The ferry will leave the west pier at six.",
+          "A second sailing is planned if the wind remains light."
+        ],
+        "confidence": [
+          1,
+          1
+        ],
+        "wordErrors": 0,
+        "wordCount": 19,
+        "orderedWordErrorRate": 0,
+        "nonEmpty": true
+      },
+      {
+        "image": "image-text.png",
+        "fixtureGroundTruth": "NORTH HARBOR REPAIR FAIR Saturday · 10 am to 2 pm Bring one small household item",
+        "recognizedLines": [
+          "NORTH HARBOR REPAIR FAIR",
+          "Saturday • 10 am to 2 pm",
+          "Bring one small household item"
+        ],
+        "confidence": [
+          1,
+          1,
+          1
+        ],
+        "wordErrors": 0,
+        "wordCount": 15,
+        "orderedWordErrorRate": 0,
+        "nonEmpty": true
+      }
+    ]
+  }
+}

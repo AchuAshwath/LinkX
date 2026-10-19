@@ -1,0 +1,4554 @@
+{
+  "prototype": "THROWAWAY actual getDisplayMedia tab-capture policy experiment",
+  "environment": {
+    "chrome": "155.0.8059.82",
+    "host": "macOS 15.7.7 Apple M4 arm64",
+    "source": "synthetic local tab; Chrome headed persistent isolated profile; no user tab/desktop capture",
+    "api": "getDisplayMedia({video:{displaySurface:\"browser\"},audio:false}); drawImage(video); requestVideoFrameCallback",
+    "settings": {
+      "aspectRatio": 1.8233618233618234,
+      "cursor": "never",
+      "deviceId": "web-contents-media-stream://8:5",
+      "displaySurface": "browser",
+      "frameRate": 30,
+      "height": 702,
+      "logicalSurface": true,
+      "resizeMode": "crop-and-scale",
+      "screenPixelRatio": 2,
+      "width": 1280
+    },
+    "captureSetupMs": 123.44000000000005
+  },
+  "configs": [
+    {
+      "name": "sample-200-settle-150",
+      "sampleMs": 200,
+      "settleMs": 150
+    },
+    {
+      "name": "sample-500-settle-300",
+      "sampleMs": 500,
+      "settleMs": 300
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "paused",
+      "expectedRevisions": [],
+      "samplingConfig": "sample-200-settle-150",
+      "elapsedMs": 1498.636666,
+      "sampleCount": 5,
+      "policies": [
+        {
+          "policy": "global-anchor",
+          "accepted": 0,
+          "acceptedRevisions": [],
+          "missedExpected": [],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 24,
+          "medianAcceptedScanMs": null,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": [],
+          "acceptedFrames": []
+        },
+        {
+          "policy": "global-last-accepted",
+          "accepted": 0,
+          "acceptedRevisions": [],
+          "missedExpected": [],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 21,
+          "medianAcceptedScanMs": null,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": [],
+          "acceptedFrames": []
+        },
+        {
+          "policy": "tiled-anchor",
+          "accepted": 0,
+          "acceptedRevisions": [],
+          "missedExpected": [],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 20.399999991059303,
+          "medianAcceptedScanMs": null,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": [],
+          "acceptedFrames": []
+        },
+        {
+          "policy": "tiled-last-accepted",
+          "accepted": 0,
+          "acceptedRevisions": [],
+          "missedExpected": [],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 20.5,
+          "medianAcceptedScanMs": null,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": [],
+          "acceptedFrames": []
+        }
+      ],
+      "samples": [
+        {
+          "sample": true,
+          "scenario": "paused",
+          "revision": 0,
+          "atMs": 557.75,
+          "frameAtMs": 524.8080830029803,
+          "videoTime": 0.563192,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 8.799999997019768,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 5.5,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 6.899999991059303,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 8.5,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "paused",
+          "revision": 0,
+          "atMs": 853.259041,
+          "frameAtMs": 742.2080829940396,
+          "videoTime": 0.858833,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 34,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 24.200000002980232,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 25.399999991059303,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 21.599999994039536,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "paused",
+          "revision": 0,
+          "atMs": 1026.6229580000002,
+          "frameAtMs": 936.7080829940396,
+          "videoTime": 1.032445,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 26,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 20.700000002980232,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 20.399999991059303,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 20.400000005960464,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "paused",
+          "revision": 0,
+          "atMs": 1207.340375,
+          "frameAtMs": 1119.5080829910596,
+          "videoTime": 1.213211,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 23.900000005960464,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 21,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 20.200000002980232,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 20.5,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "paused",
+          "revision": 0,
+          "atMs": 1410.055666,
+          "frameAtMs": 1321.1080830000003,
+          "videoTime": 1.415766,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 24,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 21,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 20.799999997019768,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 20.700000002980232,
+              "already": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "animation",
+      "expectedRevisions": [],
+      "samplingConfig": "sample-200-settle-150",
+      "elapsedMs": 1485.4191250000003,
+      "sampleCount": 5,
+      "policies": [
+        {
+          "policy": "global-anchor",
+          "accepted": 0,
+          "acceptedRevisions": [],
+          "missedExpected": [],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 5.399999991059303,
+          "medianAcceptedScanMs": null,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": [],
+          "acceptedFrames": []
+        },
+        {
+          "policy": "global-last-accepted",
+          "accepted": 0,
+          "acceptedRevisions": [],
+          "missedExpected": [],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 5.100000008940697,
+          "medianAcceptedScanMs": null,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": [],
+          "acceptedFrames": []
+        },
+        {
+          "policy": "tiled-anchor",
+          "accepted": 0,
+          "acceptedRevisions": [],
+          "missedExpected": [],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 5.0999999940395355,
+          "medianAcceptedScanMs": null,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": [],
+          "acceptedFrames": []
+        },
+        {
+          "policy": "tiled-last-accepted",
+          "accepted": 0,
+          "acceptedRevisions": [],
+          "missedExpected": [],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 4.9000000059604645,
+          "medianAcceptedScanMs": null,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": [],
+          "acceptedFrames": []
+        }
+      ],
+      "samples": [
+        {
+          "sample": true,
+          "scenario": "animation",
+          "revision": 0,
+          "atMs": 546.8762080000001,
+          "frameAtMs": 506.1393750029806,
+          "videoTime": 2.050753,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.0005631232193732194,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 14.799999997019768,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.0005631232193732194,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 7.100000008940697,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.0005631232193732194,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 10.599999994039536,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0005631232193732194,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 4.699999988079071,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "animation",
+          "revision": 0,
+          "atMs": 712.0393330000002,
+          "frameAtMs": 689.1393750029806,
+          "videoTime": 2.216293,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.0005631232193732194,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 5.399999991059303,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.0005631232193732194,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 5.100000008940697,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.0005631232193732194,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 5.0999999940395355,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0005631232193732194,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 5,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "animation",
+          "revision": 0,
+          "atMs": 911.1349170000003,
+          "frameAtMs": 888.4393750000004,
+          "videoTime": 2.415524,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.0005642361111111111,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 5.200000002980232,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.0005642361111111111,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 5.100000008940697,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.0005642361111111111,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 5,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0005642361111111111,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 4.9000000059604645,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "animation",
+          "revision": 0,
+          "atMs": 1124.7907920000002,
+          "frameAtMs": 1102.2393749970201,
+          "videoTime": 2.629169,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.0005620103276353277,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 5,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.0005620103276353277,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 4.9000000059604645,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.0005620103276353277,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 5.0999999940395355,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0005620103276353277,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 4.9000000059604645,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "animation",
+          "revision": 0,
+          "atMs": 1334.324083,
+          "frameAtMs": 1306.53937499404,
+          "videoTime": 2.838161,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.0005586716524216525,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 6.799999997019768,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.0005586716524216525,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 6.5,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.0005586716524216525,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 5.799999997019768,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0005586716524216525,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 5.699999988079071,
+              "already": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "one-digit",
+      "expectedRevisions": [1],
+      "samplingConfig": "sample-200-settle-150",
+      "elapsedMs": 2505.824667,
+      "sampleCount": 10,
+      "policies": [
+        {
+          "policy": "global-anchor",
+          "accepted": 0,
+          "acceptedRevisions": [],
+          "missedExpected": [1],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 24,
+          "medianAcceptedScanMs": null,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": [],
+          "acceptedFrames": []
+        },
+        {
+          "policy": "global-last-accepted",
+          "accepted": 0,
+          "acceptedRevisions": [],
+          "missedExpected": [1],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 20.700000002980232,
+          "medianAcceptedScanMs": null,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": [],
+          "acceptedFrames": []
+        },
+        {
+          "policy": "tiled-anchor",
+          "accepted": 1,
+          "acceptedRevisions": [1],
+          "missedExpected": [],
+          "duplicateCandidates": 5,
+          "medianPixelScanMs": 38.6000000089407,
+          "medianAcceptedScanMs": 20.200000002980232,
+          "medianJpegEncodeMs": 4.299999997019768,
+          "jpegBytes": [23194],
+          "acceptedFrames": [
+            {
+              "scenario": "one-digit",
+              "revision": 1,
+              "sampleNo": 4,
+              "atMs": 4470,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "atScenarioMs": 1336.9935420000002
+            }
+          ]
+        },
+        {
+          "policy": "tiled-last-accepted",
+          "accepted": 1,
+          "acceptedRevisions": [1],
+          "missedExpected": [],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 38.70000000298023,
+          "medianAcceptedScanMs": 24.700000002980232,
+          "medianJpegEncodeMs": 2.699999988079071,
+          "jpegBytes": [23194],
+          "acceptedFrames": [
+            {
+              "scenario": "one-digit",
+              "revision": 1,
+              "sampleNo": 4,
+              "atMs": 4470,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "atScenarioMs": 1336.9935420000002
+            }
+          ]
+        }
+      ],
+      "samples": [
+        {
+          "sample": true,
+          "scenario": "one-digit",
+          "revision": 0,
+          "atMs": 535.0767089999999,
+          "frameAtMs": 522.0935419940397,
+          "videoTime": 3.524837,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 2.9000000059604645,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 2.6000000089406967,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 2.4000000059604645,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 2.4000000059604645,
+              "already": false
+            }
+          }
+        },
+        {
+          "event": "revision",
+          "revision": 1,
+          "atMs": 699.110334,
+          "requestedAtMs": 500
+        },
+        {
+          "sample": true,
+          "scenario": "one-digit",
+          "revision": 1,
+          "atMs": 828.7619590000004,
+          "frameAtMs": 725.8935419910595,
+          "videoTime": 3.818567,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 33.6000000089407,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 24.799999997019768,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 21.400000005960464,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 20.400000005960464,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "one-digit",
+          "revision": 1,
+          "atMs": 961.3599590000003,
+          "frameAtMs": 922.0935419940397,
+          "videoTime": 3.950737,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 9.900000005960464,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 9.100000008940697,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 8.700000002980232,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 8.199999988079071,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "one-digit",
+          "revision": 1,
+          "atMs": 1240.564625,
+          "frameAtMs": 1139.8935419910595,
+          "videoTime": 4.230225,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 29.600000008940697,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 23.700000002980232,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 20.900000005960464,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 23.799999997019768,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "one-digit",
+          "revision": 1,
+          "atMs": 1435.2924999999996,
+          "frameAtMs": 1336.9935420000002,
+          "videoTime": 4.425376,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 23.399999991059303,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 20.599999994039536,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 20.200000002980232,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 24.700000002980232,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "one-digit",
+          "revision": 1,
+          "atMs": 1671.6645419999995,
+          "frameAtMs": 1537.1935420029804,
+          "videoTime": 4.661523,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 28.899999991059303,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 20.80000001192093,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.3999999910593,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 42.79999999701977,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "one-digit",
+          "revision": 1,
+          "atMs": 1860.356667,
+          "frameAtMs": 1737.0935419940397,
+          "videoTime": 4.850216,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 22.799999997019768,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 20.600000008940697,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 38.6000000089407,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.099999994039536,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "one-digit",
+          "revision": 1,
+          "atMs": 2045.9087090000003,
+          "frameAtMs": 1919.6935420029804,
+          "videoTime": 5.035859,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 24.799999997019768,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 21,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.20000000298023,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.20000000298023,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "one-digit",
+          "revision": 1,
+          "atMs": 2260.417584,
+          "frameAtMs": 2136.1935420029804,
+          "videoTime": 5.250522,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 24,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 20.700000002980232,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 38.900000005960464,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 38.70000000298023,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "one-digit",
+          "revision": 1,
+          "atMs": 2440.3711249999997,
+          "frameAtMs": 2318.29354199702,
+          "videoTime": 5.430432,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 20.900000005960464,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 20.600000008940697,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.29999999701977,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39,
+              "already": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "cumulative",
+      "expectedRevisions": [1, 2, 3, 4],
+      "samplingConfig": "sample-200-settle-150",
+      "elapsedMs": 8121.360458000001,
+      "sampleCount": 38,
+      "policies": [
+        {
+          "policy": "global-anchor",
+          "accepted": 4,
+          "acceptedRevisions": [1, 2, 3, 4],
+          "missedExpected": [],
+          "duplicateCandidates": 24,
+          "medianPixelScanMs": 39.29999999701977,
+          "medianAcceptedScanMs": 32,
+          "medianJpegEncodeMs": 3,
+          "jpegBytes": [26355, 28987, 32071, 34750],
+          "acceptedFrames": [
+            {
+              "scenario": "cumulative",
+              "revision": 1,
+              "sampleNo": 4,
+              "atMs": 6935.70000000298,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "atScenarioMs": 1296.8622500029805
+            },
+            {
+              "scenario": "cumulative",
+              "revision": 2,
+              "sampleNo": 14,
+              "atMs": 8953.59999999404,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "atScenarioMs": 3314.762249994039
+            },
+            {
+              "scenario": "cumulative",
+              "revision": 3,
+              "sampleNo": 23,
+              "atMs": 10753,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "atScenarioMs": 5114.162249999999
+            },
+            {
+              "scenario": "cumulative",
+              "revision": 4,
+              "sampleNo": 33,
+              "atMs": 12768,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.014256143162393162,
+              "changedTiles": 51,
+              "atScenarioMs": 7129.162249999999
+            }
+          ]
+        },
+        {
+          "policy": "global-last-accepted",
+          "accepted": 3,
+          "acceptedRevisions": [1, 3, 4],
+          "missedExpected": [2],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 33.29999999701977,
+          "medianAcceptedScanMs": 32.6000000089407,
+          "medianJpegEncodeMs": 2.7999999970197678,
+          "jpegBytes": [26355, 32071, 34750],
+          "acceptedFrames": [
+            {
+              "scenario": "cumulative",
+              "revision": 1,
+              "sampleNo": 4,
+              "atMs": 6935.70000000298,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "atScenarioMs": 1296.8622500029805
+            },
+            {
+              "scenario": "cumulative",
+              "revision": 3,
+              "sampleNo": 23,
+              "atMs": 10753,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.006509303774928775,
+              "changedTiles": 28,
+              "atScenarioMs": 5114.162249999999
+            },
+            {
+              "scenario": "cumulative",
+              "revision": 4,
+              "sampleNo": 33,
+              "atMs": 12768,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.003749332264957265,
+              "changedTiles": 11,
+              "atScenarioMs": 7129.162249999999
+            }
+          ]
+        },
+        {
+          "policy": "tiled-anchor",
+          "accepted": 4,
+          "acceptedRevisions": [1, 2, 3, 4],
+          "missedExpected": [],
+          "duplicateCandidates": 24,
+          "medianPixelScanMs": 39,
+          "medianAcceptedScanMs": 31.299999997019768,
+          "medianJpegEncodeMs": 2.9000000059604645,
+          "jpegBytes": [26355, 28987, 32071, 34750],
+          "acceptedFrames": [
+            {
+              "scenario": "cumulative",
+              "revision": 1,
+              "sampleNo": 4,
+              "atMs": 6935.70000000298,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "atScenarioMs": 1296.8622500029805
+            },
+            {
+              "scenario": "cumulative",
+              "revision": 2,
+              "sampleNo": 14,
+              "atMs": 8953.59999999404,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "atScenarioMs": 3314.762249994039
+            },
+            {
+              "scenario": "cumulative",
+              "revision": 3,
+              "sampleNo": 23,
+              "atMs": 10753,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "atScenarioMs": 5114.162249999999
+            },
+            {
+              "scenario": "cumulative",
+              "revision": 4,
+              "sampleNo": 33,
+              "atMs": 12768,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.014256143162393162,
+              "changedTiles": 51,
+              "atScenarioMs": 7129.162249999999
+            }
+          ]
+        },
+        {
+          "policy": "tiled-last-accepted",
+          "accepted": 4,
+          "acceptedRevisions": [1, 2, 3, 4],
+          "missedExpected": [],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 38.900000005960464,
+          "medianAcceptedScanMs": 32.70000000298023,
+          "medianJpegEncodeMs": 3.5,
+          "jpegBytes": [26355, 28987, 32071, 34750],
+          "acceptedFrames": [
+            {
+              "scenario": "cumulative",
+              "revision": 1,
+              "sampleNo": 4,
+              "atMs": 6935.70000000298,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "atScenarioMs": 1296.8622500029805
+            },
+            {
+              "scenario": "cumulative",
+              "revision": 2,
+              "sampleNo": 14,
+              "atMs": 8953.59999999404,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.0028935185185185184,
+              "changedTiles": 17,
+              "atScenarioMs": 3314.762249994039
+            },
+            {
+              "scenario": "cumulative",
+              "revision": 3,
+              "sampleNo": 23,
+              "atMs": 10753,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.0036157852564102566,
+              "changedTiles": 11,
+              "atScenarioMs": 5114.162249999999
+            },
+            {
+              "scenario": "cumulative",
+              "revision": 4,
+              "sampleNo": 33,
+              "atMs": 12768,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.003749332264957265,
+              "changedTiles": 11,
+              "atScenarioMs": 7129.162249999999
+            }
+          ]
+        }
+      ],
+      "samples": [
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 0,
+          "atMs": 512.9778329999999,
+          "frameAtMs": 499.6622500000003,
+          "videoTime": 6.008708,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 2.9000000059604645,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 2.5999999940395355,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 2.2000000029802322,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 2.4000000059604645,
+              "already": false
+            }
+          }
+        },
+        {
+          "event": "revision",
+          "revision": 1,
+          "atMs": 681.1052500000005,
+          "requestedAtMs": 500
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 1,
+          "atMs": 806.7126250000001,
+          "frameAtMs": 704.0622499910596,
+          "videoTime": 6.302268,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 33.30000001192093,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 24.899999991059303,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 21.399999991059303,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 20.600000008940697,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 1,
+          "atMs": 945.6940830000003,
+          "frameAtMs": 899.5622499910596,
+          "videoTime": 6.441247,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 12,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 11,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 10.5,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 10.100000008940697,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 1,
+          "atMs": 1195.8549170000006,
+          "frameAtMs": 1100.3622500029805,
+          "videoTime": 6.691538,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 28.899999991059303,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 23.30000001192093,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 20.599999994039536,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 20.30000001192093,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 1,
+          "atMs": 1405.5502080000006,
+          "frameAtMs": 1296.8622500029805,
+          "videoTime": 6.90155,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 24.19999998807907,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 24.400000005960464,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 20.700000002980232,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 25.700000002980232,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 1,
+          "atMs": 1660.6150830000006,
+          "frameAtMs": 1497.46224999702,
+          "videoTime": 7.156401,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 42.79999999701977,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.5,
+              "already": true
+            },
+            "tiled-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.69999998807907,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 38.8999999910593,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 1,
+          "atMs": 1875.8769580000007,
+          "frameAtMs": 1713.4622499970192,
+          "videoTime": 7.371706,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 43.29999999701977,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39,
+              "already": true
+            },
+            "tiled-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.099999994039536,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 38.8999999910593,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 1,
+          "atMs": 2074.1235419999994,
+          "frameAtMs": 1914.1622499999994,
+          "videoTime": 7.569977,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.79999999701977,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.29999999701977,
+              "already": true
+            },
+            "tiled-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.5,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.30000001192093,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 1,
+          "atMs": 2273.097417000001,
+          "frameAtMs": 2114.0622499910587,
+          "videoTime": 7.768831,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.30000001192093,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.20000000298023,
+              "already": true
+            },
+            "tiled-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.1000000089407,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 1,
+          "atMs": 2478.498917000001,
+          "frameAtMs": 2314.1622499999994,
+          "videoTime": 7.974206,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 40.3999999910593,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 40.900000005960464,
+              "already": true
+            },
+            "tiled-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 40.29999999701977,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 40.599999994039536,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 1,
+          "atMs": 2655.3335420000003,
+          "frameAtMs": 2497.262249994039,
+          "videoTime": 8.151215,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.20000000298023,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 38.400000005960464,
+              "already": true
+            },
+            "tiled-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.099999994039536,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.29999999701977,
+              "already": true
+            }
+          }
+        },
+        {
+          "event": "revision",
+          "revision": 2,
+          "atMs": 2691.209667000001,
+          "requestedAtMs": 2500
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 2,
+          "atMs": 2871.4069999999992,
+          "frameAtMs": 2713.1622499999994,
+          "videoTime": 8.367348,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.79999999701977,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 38.79999999701977,
+              "already": true
+            },
+            "tiled-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 38.70000000298023,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 38.70000000298023,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 2,
+          "atMs": 2996.5246669999997,
+          "frameAtMs": 2914.1622499999994,
+          "videoTime": 8.492466,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 20.299999997019768,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.0028935185185185184,
+              "changedTiles": 17,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 19.700000002980232,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 20.299999997019768,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0028935185185185184,
+              "changedTiles": 17,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 19.900000005960464,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 2,
+          "atMs": 3242.1889169999995,
+          "frameAtMs": 3115.962249997019,
+          "videoTime": 8.73805,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 35.5,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.0028935185185185184,
+              "changedTiles": 17,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 29.700000002980232,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 29.5,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0028935185185185184,
+              "changedTiles": 17,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 29.299999997019768,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 2,
+          "atMs": 3450.290833000001,
+          "frameAtMs": 3314.762249994039,
+          "videoTime": 8.946357,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 32,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.0028935185185185184,
+              "changedTiles": 17,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 33.1000000089407,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 30,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0028935185185185184,
+              "changedTiles": 17,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 30.80000001192093,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 2,
+          "atMs": 3661.8752920000006,
+          "frameAtMs": 3511.962249997019,
+          "videoTime": 9.157774,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 40,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0.0028935185185185184,
+              "changedTiles": 17,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 29.599999994039536,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 38.80000001192093,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.6000000089407,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 2,
+          "atMs": 3863.3879579999993,
+          "frameAtMs": 3713.6622499999994,
+          "videoTime": 9.359151,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 40.29999999701977,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0.0028935185185185184,
+              "changedTiles": 17,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 29.400000005960464,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.099999994039536,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 2,
+          "atMs": 4064.774625,
+          "frameAtMs": 3914.1622499999994,
+          "videoTime": 9.560619,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 40,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0.0028935185185185184,
+              "changedTiles": 17,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 29.799999997019768,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.29999999701977,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.400000005960464,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 2,
+          "atMs": 4264.465458000001,
+          "frameAtMs": 4114.262249994039,
+          "videoTime": 9.760399,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.29999999701977,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0.0028935185185185184,
+              "changedTiles": 17,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 29.799999997019768,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.5,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.70000000298023,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 2,
+          "atMs": 4462.456458000001,
+          "frameAtMs": 4311.662249999999,
+          "videoTime": 9.958166,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.8999999910593,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0.0028935185185185184,
+              "changedTiles": 17,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 29.5,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.5,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.5,
+              "already": true
+            }
+          }
+        },
+        {
+          "event": "revision",
+          "revision": 3,
+          "atMs": 4503.0975419999995,
+          "requestedAtMs": 4500
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 3,
+          "atMs": 4664.946542,
+          "frameAtMs": 4514.562249991059,
+          "videoTime": 10.160835,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.80000001192093,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0.0028935185185185184,
+              "changedTiles": 17,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 29.600000008940697,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.30000001192093,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.5,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 3,
+          "atMs": 4805.011458000001,
+          "frameAtMs": 4714.262249994039,
+          "videoTime": 10.300858,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 22.900000005960464,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.006509303774928775,
+              "changedTiles": 28,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 21,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 22.5,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0036157852564102566,
+              "changedTiles": 11,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 22.299999997019768,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 3,
+          "atMs": 5062.868791999999,
+          "frameAtMs": 4932.562249991059,
+          "videoTime": 10.558853,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 37,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.006509303774928775,
+              "changedTiles": 28,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 29.899999991059303,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 30.700000002980232,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0036157852564102566,
+              "changedTiles": 11,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 30.700000002980232,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 3,
+          "atMs": 5256.459457999999,
+          "frameAtMs": 5114.162249999999,
+          "videoTime": 10.752488,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 31.5,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.006509303774928775,
+              "changedTiles": 28,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 33.29999999701977,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 31.299999997019768,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0036157852564102566,
+              "changedTiles": 11,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 33.099999994039536,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 3,
+          "atMs": 5470.573042,
+          "frameAtMs": 5311.962249997019,
+          "videoTime": 10.966451,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.400000005960464,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39,
+              "already": true
+            },
+            "tiled-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.30000001192093,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 3,
+          "atMs": 5689.025125,
+          "frameAtMs": 5531.062249991059,
+          "videoTime": 11.184951,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.6000000089407,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 38.70000000298023,
+              "already": true
+            },
+            "tiled-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 38.70000000298023,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 3,
+          "atMs": 5888.727042,
+          "frameAtMs": 5730.86225000298,
+          "videoTime": 11.384649,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 38.70000000298023,
+              "already": true
+            },
+            "tiled-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.400000005960464,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 38.900000005960464,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 3,
+          "atMs": 6089.426583,
+          "frameAtMs": 5930.86225000298,
+          "videoTime": 11.585301,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.20000000298023,
+              "already": true
+            },
+            "tiled-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.20000000298023,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 3,
+          "atMs": 6287.657583,
+          "frameAtMs": 6129.662249999999,
+          "videoTime": 11.78364,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.5,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 38.69999998807907,
+              "already": true
+            },
+            "tiled-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 3,
+          "atMs": 6488.101124999999,
+          "frameAtMs": 6330.962249997019,
+          "videoTime": 11.984057,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 38.70000000298023,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 38.599999994039536,
+              "already": true
+            },
+            "tiled-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 38.69999998807907,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39,
+              "already": true
+            }
+          }
+        },
+        {
+          "event": "revision",
+          "revision": 4,
+          "atMs": 6515.553125,
+          "requestedAtMs": 6500
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 4,
+          "atMs": 6689.347917000001,
+          "frameAtMs": 6530.762249994039,
+          "videoTime": 12.185342,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.5,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39,
+              "already": true
+            },
+            "tiled-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.1000000089407,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 4,
+          "atMs": 6831.576208,
+          "frameAtMs": 6730.86225000298,
+          "videoTime": 12.32753,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.014256143162393162,
+              "changedTiles": 51,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 24.599999994039536,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.003749332264957265,
+              "changedTiles": 11,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 24.700000002980232,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.014256143162393162,
+              "changedTiles": 51,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 24.5,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.003749332264957265,
+              "changedTiles": 11,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 24.900000005960464,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 4,
+          "atMs": 7065.823708,
+          "frameAtMs": 6931.962249997019,
+          "videoTime": 12.561459,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.014256143162393162,
+              "changedTiles": 51,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 36.5,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.003749332264957265,
+              "changedTiles": 11,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 31.5,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.014256143162393162,
+              "changedTiles": 51,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 31.900000005960464,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.003749332264957265,
+              "changedTiles": 11,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 31.700000002980232,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 4,
+          "atMs": 7273.257041999999,
+          "frameAtMs": 7129.162249999999,
+          "videoTime": 12.769316,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.014256143162393162,
+              "changedTiles": 51,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 33.599999994039536,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.003749332264957265,
+              "changedTiles": 11,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 32.6000000089407,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.014256143162393162,
+              "changedTiles": 51,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 32.3999999910593,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.003749332264957265,
+              "changedTiles": 11,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 32.70000000298023,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 4,
+          "atMs": 7492.9649580000005,
+          "frameAtMs": 7331.262249994039,
+          "videoTime": 12.988982,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.014256143162393162,
+              "changedTiles": 51,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 41.79999999701977,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.5,
+              "already": true
+            },
+            "tiled-anchor": {
+              "fraction": 0.014256143162393162,
+              "changedTiles": 51,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 38.79999999701977,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.6000000089407,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 4,
+          "atMs": 7689.9908749999995,
+          "frameAtMs": 7528.562249991059,
+          "videoTime": 13.185912,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.014256143162393162,
+              "changedTiles": 51,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.80000001192093,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 40.1000000089407,
+              "already": true
+            },
+            "tiled-anchor": {
+              "fraction": 0.014256143162393162,
+              "changedTiles": 51,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.79999999701977,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.5,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 4,
+          "atMs": 7892.352833000001,
+          "frameAtMs": 7730.36225000298,
+          "videoTime": 13.387672,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.014256143162393162,
+              "changedTiles": 51,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.69999998807907,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.69999998807907,
+              "already": true
+            },
+            "tiled-anchor": {
+              "fraction": 0.014256143162393162,
+              "changedTiles": 51,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 40,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.79999999701977,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 4,
+          "atMs": 8087.754083,
+          "frameAtMs": 7929.36225000298,
+          "videoTime": 13.583485,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.014256143162393162,
+              "changedTiles": 51,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.19999998807907,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39,
+              "already": true
+            },
+            "tiled-anchor": {
+              "fraction": 0.014256143162393162,
+              "changedTiles": 51,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.1000000089407,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 38.80000001192093,
+              "already": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "paused",
+      "expectedRevisions": [],
+      "samplingConfig": "sample-500-settle-300",
+      "elapsedMs": 1495.8809579999997,
+      "sampleCount": 2,
+      "policies": [
+        {
+          "policy": "global-anchor",
+          "accepted": 0,
+          "acceptedRevisions": [],
+          "missedExpected": [],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 21.399999991059303,
+          "medianAcceptedScanMs": null,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": [],
+          "acceptedFrames": []
+        },
+        {
+          "policy": "global-last-accepted",
+          "accepted": 0,
+          "acceptedRevisions": [],
+          "missedExpected": [],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 21,
+          "medianAcceptedScanMs": null,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": [],
+          "acceptedFrames": []
+        },
+        {
+          "policy": "tiled-anchor",
+          "accepted": 0,
+          "acceptedRevisions": [],
+          "missedExpected": [],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 21.299999997019768,
+          "medianAcceptedScanMs": null,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": [],
+          "acceptedFrames": []
+        },
+        {
+          "policy": "tiled-last-accepted",
+          "accepted": 0,
+          "acceptedRevisions": [],
+          "missedExpected": [],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 21.299999997019768,
+          "medianAcceptedScanMs": null,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": [],
+          "acceptedFrames": []
+        }
+      ],
+      "samples": [
+        {
+          "sample": true,
+          "scenario": "paused",
+          "revision": 0,
+          "atMs": 549.5088749999995,
+          "frameAtMs": 531.6960829910586,
+          "videoTime": 14.16644,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 4.5999999940395355,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 2.7000000029802322,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 2.7999999970197678,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 3.0999999940395355,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "paused",
+          "revision": 0,
+          "atMs": 1114.5147080000006,
+          "frameAtMs": 1026.7960829999993,
+          "videoTime": 14.731365,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 21.399999991059303,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 21,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 21.299999997019768,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 21.299999997019768,
+              "already": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "animation",
+      "expectedRevisions": [],
+      "samplingConfig": "sample-500-settle-300",
+      "elapsedMs": 1480.3545409999988,
+      "sampleCount": 2,
+      "policies": [
+        {
+          "policy": "global-anchor",
+          "accepted": 0,
+          "acceptedRevisions": [],
+          "missedExpected": [],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 6.299999997019768,
+          "medianAcceptedScanMs": null,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": [],
+          "acceptedFrames": []
+        },
+        {
+          "policy": "global-last-accepted",
+          "accepted": 0,
+          "acceptedRevisions": [],
+          "missedExpected": [],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 5.700000002980232,
+          "medianAcceptedScanMs": null,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": [],
+          "acceptedFrames": []
+        },
+        {
+          "policy": "tiled-anchor",
+          "accepted": 0,
+          "acceptedRevisions": [],
+          "missedExpected": [],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 5.5999999940395355,
+          "medianAcceptedScanMs": null,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": [],
+          "acceptedFrames": []
+        },
+        {
+          "policy": "tiled-last-accepted",
+          "accepted": 0,
+          "acceptedRevisions": [],
+          "missedExpected": [],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 5.299999997019768,
+          "medianAcceptedScanMs": null,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": [],
+          "acceptedFrames": []
+        }
+      ],
+      "samples": [
+        {
+          "sample": true,
+          "scenario": "animation",
+          "revision": 0,
+          "atMs": 516.077083000002,
+          "frameAtMs": 499.70845799701965,
+          "videoTime": 15.628302,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.0004807692307692308,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 3.7999999970197678,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.0004807692307692308,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 3.2000000029802322,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.0004807692307692308,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 3,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0004807692307692308,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 2.5999999940395355,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "animation",
+          "revision": 0,
+          "atMs": 1038.3105830000004,
+          "frameAtMs": 1012.5084579940394,
+          "videoTime": 16.151157,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.0005686876780626781,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 6.299999997019768,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.0005686876780626781,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 5.700000002980232,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.0005686876780626781,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 5.5999999940395355,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0005686876780626781,
+              "changedTiles": 2,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 5.299999997019768,
+              "already": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "one-digit",
+      "expectedRevisions": [1],
+      "samplingConfig": "sample-500-settle-300",
+      "elapsedMs": 3006.2474169999987,
+      "sampleCount": 5,
+      "policies": [
+        {
+          "policy": "global-anchor",
+          "accepted": 0,
+          "acceptedRevisions": [],
+          "missedExpected": [1],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 29.399999991059303,
+          "medianAcceptedScanMs": null,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": [],
+          "acceptedFrames": []
+        },
+        {
+          "policy": "global-last-accepted",
+          "accepted": 0,
+          "acceptedRevisions": [],
+          "missedExpected": [1],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 23.700000002980232,
+          "medianAcceptedScanMs": null,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": [],
+          "acceptedFrames": []
+        },
+        {
+          "policy": "tiled-anchor",
+          "accepted": 1,
+          "acceptedRevisions": [1],
+          "missedExpected": [],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 21.100000008940697,
+          "medianAcceptedScanMs": 21.700000002980232,
+          "medianJpegEncodeMs": 5.200000002980232,
+          "jpegBytes": [23194],
+          "acceptedFrames": [
+            {
+              "scenario": "one-digit",
+              "revision": 1,
+              "sampleNo": 4,
+              "atMs": 19259.79999999702,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "atScenarioMs": 2523.352124997018
+            }
+          ]
+        },
+        {
+          "policy": "tiled-last-accepted",
+          "accepted": 1,
+          "acceptedRevisions": [1],
+          "missedExpected": [],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 20.899999991059303,
+          "medianAcceptedScanMs": 25.299999997019768,
+          "medianJpegEncodeMs": 2.9000000059604645,
+          "jpegBytes": [23194],
+          "acceptedFrames": [
+            {
+              "scenario": "one-digit",
+              "revision": 1,
+              "sampleNo": 4,
+              "atMs": 19259.79999999702,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "atScenarioMs": 2523.352124997018
+            }
+          ]
+        }
+      ],
+      "samples": [
+        {
+          "sample": true,
+          "scenario": "one-digit",
+          "revision": 0,
+          "atMs": 536.5481670000008,
+          "frameAtMs": 520.4521249910576,
+          "videoTime": 17.12932,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 3.5,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 2.6000000089406967,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 2.7000000029802322,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 3.5,
+              "already": false
+            }
+          }
+        },
+        {
+          "event": "revision",
+          "revision": 1,
+          "atMs": 996.4492919999975,
+          "requestedAtMs": 500
+        },
+        {
+          "sample": true,
+          "scenario": "one-digit",
+          "revision": 1,
+          "atMs": 1118.5873329999995,
+          "frameAtMs": 1019.2521250029786,
+          "videoTime": 17.711476,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 29.399999991059303,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 23.700000002980232,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 21.700000002980232,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 21.599999994039536,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "one-digit",
+          "revision": 1,
+          "atMs": 1572.1377919999977,
+          "frameAtMs": 1520.352124997018,
+          "videoTime": 18.165523,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 16.400000005960464,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 11.700000002980232,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 10.899999991059303,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 10,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "one-digit",
+          "revision": 1,
+          "atMs": 2117.9365,
+          "frameAtMs": 2019.6521249940379,
+          "videoTime": 18.711181,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 30,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 23.900000005960464,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 21.100000008940697,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 20.899999991059303,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "one-digit",
+          "revision": 1,
+          "atMs": 2640.081624999999,
+          "frameAtMs": 2523.352124997018,
+          "videoTime": 19.233625,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 34.400000005960464,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 25.399999991059303,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 21.700000002980232,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.00020032051282051281,
+              "changedTiles": 1,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 25.299999997019768,
+              "already": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "cumulative",
+      "expectedRevisions": [1, 2, 3, 4],
+      "samplingConfig": "sample-500-settle-300",
+      "elapsedMs": 8007.300082999998,
+      "sampleCount": 15,
+      "policies": [
+        {
+          "policy": "global-anchor",
+          "accepted": 3,
+          "acceptedRevisions": [1, 2, 3],
+          "missedExpected": [4],
+          "duplicateCandidates": 3,
+          "medianPixelScanMs": 38.70000000298023,
+          "medianAcceptedScanMs": 40.70000000298023,
+          "medianJpegEncodeMs": 3.7000000029802322,
+          "jpegBytes": [26355, 28987, 32071],
+          "acceptedFrames": [
+            {
+              "scenario": "cumulative",
+              "revision": 1,
+              "sampleNo": 4,
+              "atMs": 22255.20000000298,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "atScenarioMs": 2512.4918330029795
+            },
+            {
+              "scenario": "cumulative",
+              "revision": 2,
+              "sampleNo": 8,
+              "atMs": 24254,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "atScenarioMs": 4511.291832999999
+            },
+            {
+              "scenario": "cumulative",
+              "revision": 3,
+              "sampleNo": 12,
+              "atMs": 26259.70000000298,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "atScenarioMs": 6516.99183300298
+            }
+          ]
+        },
+        {
+          "policy": "global-last-accepted",
+          "accepted": 2,
+          "acceptedRevisions": [1, 3],
+          "missedExpected": [2, 4],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 28.5,
+          "medianAcceptedScanMs": 32.79999999701977,
+          "medianJpegEncodeMs": 5.299999997019768,
+          "jpegBytes": [26355, 32071],
+          "acceptedFrames": [
+            {
+              "scenario": "cumulative",
+              "revision": 1,
+              "sampleNo": 4,
+              "atMs": 22255.20000000298,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "atScenarioMs": 2512.4918330029795
+            },
+            {
+              "scenario": "cumulative",
+              "revision": 3,
+              "sampleNo": 12,
+              "atMs": 26259.70000000298,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.006509303774928775,
+              "changedTiles": 28,
+              "atScenarioMs": 6516.99183300298
+            }
+          ]
+        },
+        {
+          "policy": "tiled-anchor",
+          "accepted": 3,
+          "acceptedRevisions": [1, 2, 3],
+          "missedExpected": [4],
+          "duplicateCandidates": 3,
+          "medianPixelScanMs": 24.900000005960464,
+          "medianAcceptedScanMs": 29.899999991059303,
+          "medianJpegEncodeMs": 3.1000000089406967,
+          "jpegBytes": [26355, 28987, 32071],
+          "acceptedFrames": [
+            {
+              "scenario": "cumulative",
+              "revision": 1,
+              "sampleNo": 4,
+              "atMs": 22255.20000000298,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "atScenarioMs": 2512.4918330029795
+            },
+            {
+              "scenario": "cumulative",
+              "revision": 2,
+              "sampleNo": 8,
+              "atMs": 24254,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "atScenarioMs": 4511.291832999999
+            },
+            {
+              "scenario": "cumulative",
+              "revision": 3,
+              "sampleNo": 12,
+              "atMs": 26259.70000000298,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "atScenarioMs": 6516.99183300298
+            }
+          ]
+        },
+        {
+          "policy": "tiled-last-accepted",
+          "accepted": 3,
+          "acceptedRevisions": [1, 2, 3],
+          "missedExpected": [4],
+          "duplicateCandidates": 0,
+          "medianPixelScanMs": 25.599999994039536,
+          "medianAcceptedScanMs": 30.599999994039536,
+          "medianJpegEncodeMs": 3.0999999940395355,
+          "jpegBytes": [26355, 28987, 32071],
+          "acceptedFrames": [
+            {
+              "scenario": "cumulative",
+              "revision": 1,
+              "sampleNo": 4,
+              "atMs": 22255.20000000298,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "atScenarioMs": 2512.4918330029795
+            },
+            {
+              "scenario": "cumulative",
+              "revision": 2,
+              "sampleNo": 8,
+              "atMs": 24254,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.0028935185185185184,
+              "changedTiles": 17,
+              "atScenarioMs": 4511.291832999999
+            },
+            {
+              "scenario": "cumulative",
+              "revision": 3,
+              "sampleNo": 12,
+              "atMs": 26259.70000000298,
+              "width": 1280,
+              "height": 702,
+              "globalFraction": 0.0036157852564102566,
+              "changedTiles": 11,
+              "atScenarioMs": 6516.99183300298
+            }
+          ]
+        }
+      ],
+      "samples": [
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 0,
+          "atMs": 533.3612079999984,
+          "frameAtMs": 510.89183299403885,
+          "videoTime": 20.132912,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 5.299999997019768,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 5.299999997019768,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 4.800000011920929,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 4.5999999940395355,
+              "already": false
+            }
+          }
+        },
+        {
+          "event": "revision",
+          "revision": 1,
+          "atMs": 981.2342910000007,
+          "requestedAtMs": 500
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 1,
+          "atMs": 1088.9573329999985,
+          "frameAtMs": 993.2918329999993,
+          "videoTime": 20.688616,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 27.700000002980232,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 22.19999998807907,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 21.5,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 21.599999994039536,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 1,
+          "atMs": 1561.1304579999996,
+          "frameAtMs": 1499.7918329999993,
+          "videoTime": 21.160647,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 19.700000002980232,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 14.900000005960464,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 12.799999997019768,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 11.400000005960464,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 1,
+          "atMs": 2117.3499999999985,
+          "frameAtMs": 2016.8918329940389,
+          "videoTime": 21.717037,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 32.20000000298023,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 24.69999998807907,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 21.200000002980232,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 19.80000001192093,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 1,
+          "atMs": 2623.9168329999993,
+          "frameAtMs": 2512.4918330029795,
+          "videoTime": 22.223462,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 26.399999991059303,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 22.5,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 21.5,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 25.599999994039536,
+              "already": false
+            }
+          }
+        },
+        {
+          "event": "revision",
+          "revision": 2,
+          "atMs": 2988.8569160000006,
+          "requestedAtMs": 2500
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 2,
+          "atMs": 3195.3360409999987,
+          "frameAtMs": 3012.7918329999993,
+          "videoTime": 22.794917,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 61.79999999701977,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 40.29999999701977,
+              "already": true
+            },
+            "tiled-anchor": {
+              "fraction": 0.0039975071225071225,
+              "changedTiles": 12,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 38.8999999910593,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.29999999701977,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 2,
+          "atMs": 3602.1932500000003,
+          "frameAtMs": 3513.091832997019,
+          "videoTime": 23.20188,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 25.600000008940697,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.0028935185185185184,
+              "changedTiles": 17,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 21.299999997019768,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 19.80000001192093,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0028935185185185184,
+              "changedTiles": 17,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 19.900000005960464,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 2,
+          "atMs": 4149.687624999999,
+          "frameAtMs": 4025.891832994039,
+          "videoTime": 23.749291,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 29.799999997019768,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.0028935185185185184,
+              "changedTiles": 17,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 30.200000002980232,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 30.299999997019768,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0028935185185185184,
+              "changedTiles": 17,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 31.200000002980232,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 2,
+          "atMs": 4656.043915999999,
+          "frameAtMs": 4511.291832999999,
+          "videoTime": 24.255957,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 40.70000000298023,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.0028935185185185184,
+              "changedTiles": 17,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 31,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 29.899999991059303,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0028935185185185184,
+              "changedTiles": 17,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 30.599999994039536,
+              "already": false
+            }
+          }
+        },
+        {
+          "event": "revision",
+          "revision": 3,
+          "atMs": 4994.214040999999,
+          "requestedAtMs": 4500
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 3,
+          "atMs": 5169.313875,
+          "frameAtMs": 5007.291832999999,
+          "videoTime": 24.769186,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 50.20000000298023,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0.0028935185185185184,
+              "changedTiles": 17,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 30.299999997019768,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.006891025641025641,
+              "changedTiles": 29,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.6000000089407,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.69999998807907,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 3,
+          "atMs": 5646.69225,
+          "frameAtMs": 5534.791832999999,
+          "videoTime": 25.246366,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 38.70000000298023,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.006509303774928775,
+              "changedTiles": 28,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 25.399999991059303,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 22.899999991059303,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0036157852564102566,
+              "changedTiles": 11,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 22.399999991059303,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 3,
+          "atMs": 6162.635875,
+          "frameAtMs": 6017.691832991059,
+          "videoTime": 25.762063,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 47.20000000298023,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.006509303774928775,
+              "changedTiles": 28,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 32.5,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 31.100000008940697,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0036157852564102566,
+              "changedTiles": 11,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 31.399999991059303,
+              "already": false
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 3,
+          "atMs": 6676.734874999998,
+          "frameAtMs": 6516.99183300298,
+          "videoTime": 26.276643,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 47.8999999910593,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.006509303774928775,
+              "changedTiles": 28,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 32.79999999701977,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 31.600000008940697,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.0036157852564102566,
+              "changedTiles": 11,
+              "accepted": true,
+              "stable": true,
+              "scanMs": 31.700000002980232,
+              "already": false
+            }
+          }
+        },
+        {
+          "event": "revision",
+          "revision": 4,
+          "atMs": 7001.958208,
+          "requestedAtMs": 6500
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 4,
+          "atMs": 7230.28975,
+          "frameAtMs": 7050.091832997019,
+          "videoTime": 26.829919,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 59,
+              "already": true
+            },
+            "global-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.79999999701977,
+              "already": true
+            },
+            "tiled-anchor": {
+              "fraction": 0.010506810897435898,
+              "changedTiles": 40,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.79999999701977,
+              "already": true
+            },
+            "tiled-last-accepted": {
+              "fraction": 0,
+              "changedTiles": 0,
+              "accepted": false,
+              "stable": true,
+              "scanMs": 39.20000000298023,
+              "already": true
+            }
+          }
+        },
+        {
+          "sample": true,
+          "scenario": "cumulative",
+          "revision": 4,
+          "atMs": 7636.801875000001,
+          "frameAtMs": 7516.49183300298,
+          "videoTime": 27.236612,
+          "width": 1280,
+          "height": 702,
+          "results": {
+            "global-anchor": {
+              "fraction": 0.014256143162393162,
+              "changedTiles": 51,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 39.8999999910593,
+              "already": false
+            },
+            "global-last-accepted": {
+              "fraction": 0.003749332264957265,
+              "changedTiles": 11,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 28.5,
+              "already": false
+            },
+            "tiled-anchor": {
+              "fraction": 0.014256143162393162,
+              "changedTiles": 51,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 24.900000005960464,
+              "already": false
+            },
+            "tiled-last-accepted": {
+              "fraction": 0.003749332264957265,
+              "changedTiles": 11,
+              "accepted": false,
+              "stable": false,
+              "scanMs": 24.599999994039536,
+              "already": false
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "finalFrameStats": {
+    "settings": {
+      "aspectRatio": 1.8233618233618234,
+      "cursor": "never",
+      "deviceId": "web-contents-media-stream://8:5",
+      "displaySurface": "browser",
+      "frameRate": 30,
+      "height": 702,
+      "logicalSurface": true,
+      "resizeMode": "crop-and-scale",
+      "screenPixelRatio": 2,
+      "width": 1280
+    },
+    "frameStats": {
+      "count": 764,
+      "medianDeltaMs": 32.79999999999927,
+      "minDeltaMs": 14.599999999998545,
+      "maxDeltaMs": 217.90000000000146
+    },
+    "jpegMeta": {
+      "scenario": "one-digit",
+      "policy": "tiled-anchor",
+      "sampleNo": 4,
+      "width": 1280,
+      "height": 702,
+      "bytes": 23194
+    }
+  },
+  "acceptedSample": {
+    "scenario": "one-digit",
+    "policy": "tiled-anchor",
+    "sampleNo": 4,
+    "width": 1280,
+    "height": 702,
+    "bytes": 23194
+  }
+}

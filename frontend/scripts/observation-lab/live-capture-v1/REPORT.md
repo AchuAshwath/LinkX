@@ -1,0 +1,22 @@
+# Actual browser-tab capture policy check (v1)
+
+## Result
+
+The previous canvas-only detector was exercised on frames from a real Chrome `getDisplayMedia` browser track. In the final run, Chrome confirmed `displaySurface: "browser"`; `drawImage(video)` supplied the pixels used for change detection and JPEG encoding. The most useful demo candidate on these synthetic sequences was 32×32 tiles, accepting a tile at 8% changed pixels, compared with the last accepted frame, sampled at a measured ~200 ms interval, and requiring 150 ms of exact pixel stability. It ignored the paused and moving-indicator sequences, detected the one-digit update and all four cumulative text additions, and had no duplicate accepts. Those updates were accepted roughly 0.61–0.64 s after the scripted page update. This is evidence for a controlled demo setting, not a general default.
+
+With ~500 ms sampling and 300 ms settling, no-change/animation still produced no accepts and the one-digit update was detected, but its observed delay was about 1.53 s. The four cumulative updates were not all accepted before the test ended: revision 4 was applied near the end of its 8 s scenario, leaving a right-censored observation window. Do not treat that last miss as a calibrated policy failure; the run does show why this slower setting is a poor responsive-demo choice. Global 0.3% change missed the one-digit update at both cadences. Global and tiled policies with a last-accepted baseline suppressed repeat candidates; anchor policies repeatedly saw the same changed state as a candidate, though they did not re-accept an identical frame.
+
+## Capture and measurement
+
+- macOS 15.7.7, Apple M4 arm64; headed Google Chrome 155.0.8059.82. An isolated temporary Chrome profile captured a local, fictional canvas page. The source tab captured itself; no user tab, desktop, model, network service, or OCR engine was involved.
+- Requested `getDisplayMedia({video:{displaySurface:"browser"}, audio:false})`. The lab used `--use-fake-ui-for-media-stream` and `--auto-select-desktop-capture-source=...` to select its own synthetic tab automatically. The track reported browser surface, 1280×702, 30 fps. `requestVideoFrameCallback` ran 764 times with median 32.8 ms between callbacks (observed range 14.6–217.9 ms). The source canvas was 1280×720, so capture clipped 18 vertical pixels.
+- Automated capture setup took 123 ms with the fake picker; this excludes human picker and permission time. Detector sample intervals measured about 192–204 ms for the 200 ms setting, and 513–565 ms for the 500 ms setting. The run sampled exact video-derived RGBA pixels; RGB channel delta had to reach 24. JPEGs were encoded from the captured video at quality 0.82.
+- A legibility check of the accepted 1280×702 JPEG found the synthetic 20 px body text readable. A single-digit JPEG was 23,194 bytes; cumulative text JPEGs ranged 26,355–34,750 bytes. Pixel scan medians varied by scene and warm-up, roughly 20–39 ms; accepted JPEG encoding was roughly 2.7–5.3 ms. These small-run timings are local measurements, not performance guarantees.
+
+## Exclusions and reproduction
+
+Two earlier attempts are preserved but excluded from the findings. Attempt 01 accidentally captured the active controller tab (its recursive UI is visible in the saved JPEG), despite the browser-surface setting. Attempt 02 captured the synthetic page but left its controller/video visible, contaminating the pixels. The final page uses one synthetic tab, hides controls after capture starts, and keeps the video element transparent; the accepted JPEG was inspected to confirm the source content without recursion.
+
+The final raw run is `results-v3.json`; `metrics-v3.json` contains derived intervals, delays and policy summaries; `accepted-sample-v3.jpg` is the visually checked capture. The runnable scratch harness is `self-capture.html`, `server.mjs`, and `run-live-self.mjs`. To repeat, start `node server.mjs`, use a fresh isolated `chrome-profile-*` directory in the runner, and give the new run a distinct output filename. The runner currently writes the v3 filenames, so preserve them or update the output suffix before rerunning.
+
+This test exercises the capture track, but auto-selection bypasses normal picker interaction and measures a single local Chrome/device. Browser background-tab scheduling, real page content and animation, privacy UI, accessibility structure, OCR quality, cross-platform behavior, and end-user consent latency remain untested.

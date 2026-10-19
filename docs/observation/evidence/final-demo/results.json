@@ -1,0 +1,96 @@
+{
+  "mode": "live-provider-current-view-integration",
+  "environment": {
+    "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
+    "track": {
+      "displaySurface": "browser",
+      "frameRate": 30,
+      "width": 1440,
+      "height": 912
+    },
+    "width": 1440,
+    "height": 912,
+    "audioTracks": 0
+  },
+  "turns": [
+    {
+      "firstTextDeltaMs": 3842.2999999998137,
+      "completeMs": 4247.0999999996275,
+      "usage": {
+        "estimated_input_tokens": 146,
+        "input_limit": 12000,
+        "output_reserve": 1200,
+        "model_id": "gpt-5.6-luna",
+        "frame_count": 1,
+        "history_frames": 0,
+        "revision": 1,
+        "source_epoch": 1,
+        "width": 1440,
+        "height": 912,
+        "captured_at": "2026-10-19T07:06:01.623000+00:00",
+        "delivered_at": "2026-10-19T07:06:01.633000+00:00",
+        "frame_presented_at_ms": 589.4
+      },
+      "answer": "Code: **B7Q2M**  \nInstruction: **Close the east shade at noon.**",
+      "responseHeadersMs": 218.32066699999996,
+      "totalMs": 4330.068667
+    },
+    {
+      "firstTextDeltaMs": 2739.899999999441,
+      "completeMs": 3271.7999999998137,
+      "usage": {
+        "estimated_input_tokens": 155,
+        "input_limit": 12000,
+        "output_reserve": 1200,
+        "model_id": "gpt-5.6-luna",
+        "frame_count": 1,
+        "history_frames": 0,
+        "revision": 2,
+        "source_epoch": 1,
+        "width": 1440,
+        "height": 912,
+        "captured_at": "2026-10-19T07:06:06.464000+00:00",
+        "delivered_at": "2026-10-19T07:06:06.476000+00:00",
+        "frame_presented_at_ms": 5463.9
+      },
+      "answer": "Code: **R4X9K**  \nInstruction: **Water the moon basil after sunset.**",
+      "responseHeadersMs": 228.62795800000004,
+      "totalMs": 3343.2956249999997
+    }
+  ],
+  "captureSetupMs": 230.77816699999994,
+  "sourceHasBrightNotice": true,
+  "transcriptContainsImages": false,
+  "requests": [
+    {
+      "message": "Read the code and instruction in the shared notice.",
+      "revision": 1,
+      "sourceEpoch": 1,
+      "width": 1440,
+      "height": 912,
+      "encodedCharacters": 68411,
+      "prepareMs": 10
+    },
+    {
+      "message": "Read the code and instruction currently visible. If the view changed, use only the current notice.",
+      "revision": 2,
+      "sourceEpoch": 1,
+      "width": 1440,
+      "height": 912,
+      "encodedCharacters": 67267,
+      "prepareMs": 12
+    }
+  ],
+  "blockedBrowserExternalRequests": [],
+  "uploadMs": null,
+  "providerOnlyMs": null,
+  "notes": [
+    "First text-delta latency is measured at the browser streaming fetch boundary; response headers are measured separately.",
+    "Source changes were scripted on a fictional fixture, not a manually operated platform.",
+    "Cold = first turn in a fresh browser context; warm = second turn. Provider cache state is unknown.",
+    "Browser external requests are blocked; backend provider transport is not observed by browser egress inspection."
+  ],
+  "keyboardDetailsResetAndReload": true,
+  "passed": true,
+  "cleanupFailures": []
+}

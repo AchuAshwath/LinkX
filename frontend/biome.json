@@ -9,6 +9,8 @@
       "!**/src/routeTree.gen.ts",
       "!**/src/client/**/*",
       "!**/src/components/ui/**/*",
+      "!**/scripts/observation-lab/live-capture-v1/**/*",
+      "!**/scripts/observation-lab/live-capture-v2/**/*",
       "!**/playwright-report",
       "!**/playwright.config.ts"
     ]

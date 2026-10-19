@@ -27,6 +27,7 @@ dependencies = [
     "humantyping[playwright]>=1.0.3",
     "langchain-core>=1.4.8",
     "langchain-openai>=1.1.9",
+    "pillow>=10.0.0",
 ]
 
 [dependency-groups]

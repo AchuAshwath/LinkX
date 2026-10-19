@@ -10,6 +10,7 @@ import type {
   TrendingArtifact,
 } from "@/components/Chat/types"
 import { ensureMessageParentIds } from "@/hooks/useTranscriptTree"
+import type { ObservationPacket } from "@/observation/packet"
 
 export function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -483,6 +484,7 @@ export interface ResolveTargetThreadOptions {
     typeof useMutation<ChatThreadPublic, Error, string | undefined>
   >
   setActiveThreadId: (id: string) => void
+  onThreadCreated?: (id: string) => void
 }
 
 export async function resolveTargetThreadId({
@@ -490,10 +492,12 @@ export async function resolveTargetThreadId({
   promptText,
   createThreadMutation,
   setActiveThreadId,
+  onThreadCreated,
 }: ResolveTargetThreadOptions): Promise<string | null> {
   if (activeThreadId) return activeThreadId
   try {
     const newThread = await createThreadMutation.mutateAsync(promptText)
+    onThreadCreated?.(newThread.id)
     setActiveThreadId(newThread.id)
     return newThread.id
   } catch {
@@ -543,6 +547,8 @@ export interface UseChatTurnSenderProps {
   processQueue: () => void
 }
 
+export type ThreadCreatedCallback = (threadId: string) => void
+
 export interface ApplyOptimisticTurnOptions {
   messages: ChatUIMessage[]
   userMsg: ChatUIMessage
@@ -589,6 +595,7 @@ interface DispatchTurnOptions {
   assistantMsg: ChatUIMessage
   userMsg: ChatUIMessage
   editMessageId?: string
+  observation?: Readonly<ObservationPacket>
   setActiveLeafIdByThread?: React.Dispatch<
     React.SetStateAction<Record<string, string | null>>
   >
@@ -608,6 +615,7 @@ function dispatchQueuedTurn({
   assistantMsg,
   userMsg,
   editMessageId,
+  observation,
   setActiveLeafIdByThread,
   setMessagesByThread,
   setPendingQuestion,
@@ -637,6 +645,7 @@ function dispatchQueuedTurn({
     selectedModelId,
     assistantMsgId: assistantMsg.id,
     editMessageId,
+    ...(observation ? { observation } : {}),
   }
 
   enqueueTurn(queuedTurn)
@@ -648,6 +657,8 @@ interface ExecuteSendOptions extends UseChatTurnSenderProps {
   attachedImages?: File[]
   editMessageId?: string
   targetThreadIdOverride?: string
+  onThreadCreated?: ThreadCreatedCallback
+  observation?: Readonly<ObservationPacket>
   isResolvingThreadRef: React.MutableRefObject<boolean>
 }
 
@@ -671,6 +682,7 @@ async function executeChatTurnSend(options: ExecuteSendOptions) {
       promptText,
       createThreadMutation: options.createThreadMutation,
       setActiveThreadId: options.setActiveThreadId,
+      onThreadCreated: options.onThreadCreated,
     })
     if (!targetThreadId) return
 
@@ -695,6 +707,7 @@ async function executeChatTurnSend(options: ExecuteSendOptions) {
       assistantMsg,
       userMsg,
       editMessageId: options.editMessageId,
+      observation: options.observation,
       setActiveLeafIdByThread: options.setActiveLeafIdByThread,
       setMessagesByThread: options.setMessagesByThread,
       setPendingQuestion: options.setPendingQuestion,
@@ -715,6 +728,8 @@ export function useChatTurnSender(props: UseChatTurnSenderProps) {
       attachedImages?: File[],
       editMessageId?: string,
       targetThreadIdOverride?: string,
+      onThreadCreated?: ThreadCreatedCallback,
+      observation?: Readonly<ObservationPacket>,
     ) =>
       executeChatTurnSend({
         ...props,
@@ -722,6 +737,8 @@ export function useChatTurnSender(props: UseChatTurnSenderProps) {
         attachedImages,
         editMessageId,
         targetThreadIdOverride,
+        onThreadCreated,
+        observation,
         isResolvingThreadRef,
       }),
     [props],

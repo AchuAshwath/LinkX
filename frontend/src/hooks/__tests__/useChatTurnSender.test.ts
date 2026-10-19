@@ -1,6 +1,125 @@
-import { describe, expect, it } from "vitest"
-import type { ChatUIMessage } from "@/components/Chat/types"
-import { applyOptimisticTurn } from "../useChatTurnSender"
+import { act, renderHook } from "@testing-library/react"
+import { describe, expect, it, vi } from "vitest"
+import type { ChatUIMessage, QueuedTurn } from "@/components/Chat/types"
+import type { ObservationPacket } from "@/observation/packet"
+import {
+  applyOptimisticTurn,
+  resolveTargetThreadId,
+  useChatTurnSender,
+} from "../useChatTurnSender"
+
+describe("resolveTargetThreadId", () => {
+  it("keeps an exact active target without creating or reporting a new thread", async () => {
+    const onThreadCreated = vi.fn()
+    const setActiveThreadId = vi.fn()
+    const createThreadMutation = { mutateAsync: vi.fn() }
+
+    await expect(
+      resolveTargetThreadId({
+        activeThreadId: "selected-thread",
+        promptText: "question",
+        createThreadMutation: createThreadMutation as never,
+        setActiveThreadId,
+        onThreadCreated,
+      }),
+    ).resolves.toBe("selected-thread")
+
+    expect(createThreadMutation.mutateAsync).not.toHaveBeenCalled()
+    expect(onThreadCreated).not.toHaveBeenCalled()
+    expect(setActiveThreadId).not.toHaveBeenCalled()
+  })
+
+  it("reports a created target before selecting it", async () => {
+    const onThreadCreated = vi.fn()
+    const setActiveThreadId = vi.fn()
+    const createThreadMutation = {
+      mutateAsync: vi.fn().mockResolvedValue({ id: "created-thread" }),
+    }
+
+    await expect(
+      resolveTargetThreadId({
+        activeThreadId: null,
+        promptText: "question",
+        createThreadMutation: createThreadMutation as never,
+        setActiveThreadId,
+        onThreadCreated,
+      }),
+    ).resolves.toBe("created-thread")
+
+    expect(onThreadCreated).toHaveBeenCalledWith("created-thread")
+    expect(onThreadCreated.mock.invocationCallOrder[0]).toBeLessThan(
+      setActiveThreadId.mock.invocationCallOrder[0],
+    )
+  })
+
+  it("does not report a target when thread creation fails", async () => {
+    const onThreadCreated = vi.fn()
+    const setActiveThreadId = vi.fn()
+    const createThreadMutation = {
+      mutateAsync: vi.fn().mockRejectedValue(new Error("create failed")),
+    }
+
+    await expect(
+      resolveTargetThreadId({
+        activeThreadId: null,
+        promptText: "question",
+        createThreadMutation: createThreadMutation as never,
+        setActiveThreadId,
+        onThreadCreated,
+      }),
+    ).resolves.toBeNull()
+
+    expect(onThreadCreated).not.toHaveBeenCalled()
+    expect(setActiveThreadId).not.toHaveBeenCalled()
+  })
+})
+
+describe("useChatTurnSender observation payload", () => {
+  it("preserves the captured packet unchanged in the queued turn", async () => {
+    const observation: Readonly<ObservationPacket> = Object.freeze({
+      session_id: "session-8",
+      source_epoch: 2,
+      revision: 19,
+      captured_at: "2026-10-18T08:00:00.000Z",
+      delivered_at: "2026-10-18T08:00:00.020Z",
+      frame_presented_at_ms: 1234,
+      width: 640,
+      height: 480,
+      image_data_url: "data:image/jpeg;base64,QUJD",
+    })
+    const queuedTurns: QueuedTurn[] = []
+    const { result } = renderHook(() =>
+      useChatTurnSender({
+        activeThreadId: "thread-1",
+        selectedModelId: "vision-model",
+        isStreaming: false,
+        streamingThreadId: null,
+        setActiveThreadId: vi.fn(),
+        setMessagesByThread: vi.fn(),
+        setPendingQuestion: vi.fn(),
+        clearThreadDraft: vi.fn(),
+        createThreadMutation: { mutateAsync: vi.fn() } as never,
+        enqueueTurn: (turn) => queuedTurns.push(turn),
+        processQueue: vi.fn(),
+      }),
+    )
+
+    await act(async () => {
+      await result.current(
+        "What is on this page?",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        observation,
+      )
+    })
+
+    expect(queuedTurns).toHaveLength(1)
+    expect(queuedTurns[0].observation).toBe(observation)
+    expect(Object.isFrozen(queuedTurns[0].observation)).toBe(true)
+  })
+})
 
 describe("applyOptimisticTurn", () => {
   const userMsg: ChatUIMessage = {

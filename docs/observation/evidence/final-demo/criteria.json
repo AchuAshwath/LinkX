@@ -1,0 +1,14 @@
+{
+  "declared_before_final_run": true,
+  "scope": "Two controlled synthetic current-view questions; desktop Chrome; configured vision model; no historical-view feature",
+  "success_criteria": {
+    "answers": "Both answers identify the exact image-only code and instruction; question contains neither answer",
+    "requests": "Exactly one chat POST per user question; no background image upload",
+    "isolation": "Usage event reports one current frame and zero history frames; transcript API contains no image data URLs or observation packets",
+    "budgets": "Each estimate is at or below the advertised input cap, with positive output reserve",
+    "lifecycle": "Keyboard-accessible start/details/reset/stop; thread change and reload expire source evidence",
+    "measurement": "Report capture setup, encode preparation, request-to-first-token, and total time separately; unknown upload/provider split stays unavailable",
+    "latency_hypothesis": "Warm encoding below 250ms is a candidate target, not a measured guarantee. Two samples cannot establish p95 or general accuracy."
+  },
+  "exclusions": ["participant research", "screen-reader speech validation", "legal classification", "general accuracy", "provider retention", "on-device inference"]
+}

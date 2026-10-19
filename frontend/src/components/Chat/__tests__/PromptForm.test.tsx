@@ -1,5 +1,7 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { createRef } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { ObservationComposerPreview } from "@/observation/ObservationComposerSlot"
 import { PromptForm } from "../PromptForm"
 
 describe("PromptForm component", () => {
@@ -37,6 +39,16 @@ describe("PromptForm component", () => {
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false })
     expect(handleSubmit).toHaveBeenCalledWith("Draft a post about AI")
     expect(textarea).toHaveValue("")
+  })
+
+  it("keeps the prompt when submit explicitly rejects the turn", async () => {
+    const handleSubmit = vi.fn().mockResolvedValue(false)
+    render(<PromptForm onSubmit={handleSubmit} placeholder="Ask anything…" />)
+    const input = screen.getByPlaceholderText("Ask anything…")
+    fireEvent.change(input, { target: { value: "What is on this page?" } })
+    fireEvent.submit(input.closest("form")!)
+
+    await waitFor(() => expect(input).toHaveValue("What is on this page?"))
   })
 
   it("does not submit on Shift+Enter", () => {
@@ -108,6 +120,129 @@ describe("PromptForm component", () => {
       />,
     )
     expect(screen.getByText("Upload Image")).toBeInTheDocument()
+  })
+
+  it("adds images and browser tabs from the composer plus menu", async () => {
+    const onStart = vi.fn()
+    render(
+      <PromptForm
+        onSubmit={vi.fn()}
+        observationSlot={{
+          view: {
+            isConnected: false,
+            hasCurrentFrame: false,
+            status: "Browser tab context is off.",
+          },
+          videoRef: vi.fn(),
+          onStart,
+          onStop: vi.fn(),
+          onReset: vi.fn(),
+        }}
+      />,
+    )
+
+    const trigger = screen.getByRole("button", {
+      name: "Add attachment or browser tab",
+    })
+    fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" })
+    fireEvent.click(trigger)
+    expect(
+      await screen.findByRole("menuitem", { name: "Images" }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole("menuitem", { name: "Browser tab" }),
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("menuitem", { name: "Browser tab" }))
+    expect(onStart).toHaveBeenCalledOnce()
+  })
+
+  it("offers a stop action in the plus menu while browser sharing is active", async () => {
+    const onStop = vi.fn()
+    render(
+      <PromptForm
+        onSubmit={vi.fn()}
+        observationSlot={{
+          view: {
+            isConnected: true,
+            hasCurrentFrame: true,
+            status: "Browser tab is ready.",
+          },
+          videoRef: vi.fn(),
+          onStart: vi.fn(),
+          onStop,
+          onReset: vi.fn(),
+        }}
+      />,
+    )
+
+    const trigger = screen.getByRole("button", {
+      name: "Add attachment or browser tab",
+    })
+    fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" })
+    fireEvent.click(trigger)
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Stop sharing browser tab" }),
+    )
+    expect(onStop).toHaveBeenCalledOnce()
+  })
+
+  it("shares the persistent plus trigger with the floating preview stop button", () => {
+    const addContextButtonRef = createRef<HTMLButtonElement>()
+    const onStop = vi.fn()
+    const view = {
+      isConnected: true,
+      hasCurrentFrame: true,
+      status: "Browser tab is ready.",
+    }
+    const slotProps = {
+      view,
+      videoRef: vi.fn(),
+      onStart: vi.fn(),
+      onStop,
+      onReset: vi.fn(),
+      addContextButtonRef,
+    }
+    render(
+      <>
+        <PromptForm
+          onSubmit={vi.fn()}
+          observationSlot={slotProps}
+          addContextButtonRef={addContextButtonRef}
+        />
+        <ObservationComposerPreview {...slotProps} />
+      </>,
+    )
+
+    const stopButton = screen.getByRole("button", {
+      name: "Stop sharing browser tab",
+    })
+    stopButton.focus()
+    fireEvent.click(stopButton)
+    expect(onStop).toHaveBeenCalledOnce()
+    expect(addContextButtonRef.current).toHaveFocus()
+  })
+
+  it("disables Send until the attached browser tab has a current frame", () => {
+    render(
+      <PromptForm
+        onSubmit={vi.fn()}
+        initialValue="Read this page"
+        observationSlot={{
+          view: {
+            isConnected: true,
+            hasCurrentFrame: false,
+            isPaused: true,
+            status: "Browser tab sharing is paused.",
+          },
+          videoRef: vi.fn(),
+          onStart: vi.fn(),
+          onStop: vi.fn(),
+          onReset: vi.fn(),
+        }}
+      />,
+    )
+
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled()
   })
 
   it("submits attached images alongside prompt text", () => {

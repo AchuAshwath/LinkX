@@ -4,7 +4,9 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
 
 import sentry_sdk
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from starlette.middleware.cors import CORSMiddleware
 from starlette.staticfiles import StaticFiles
@@ -61,6 +63,23 @@ app = FastAPI(
     generate_unique_id_function=custom_generate_unique_id,
     lifespan=lifespan,
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def sanitize_observation_validation_error(
+    _request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Do not echo transient frame data in observation validation responses."""
+    details = []
+    for error in exc.errors():
+        sanitized = dict(error)
+        location = error.get("loc", ())
+        if "observation" in location or location == ("body",):
+            sanitized.pop("input", None)
+            sanitized.pop("ctx", None)
+        details.append(sanitized)
+    return JSONResponse(status_code=422, content={"detail": details})
+
 
 # Mount static files for media uploads
 settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)

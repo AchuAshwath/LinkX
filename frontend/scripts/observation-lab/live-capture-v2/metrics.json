@@ -1,0 +1,172 @@
+{
+  "capture": {
+    "chrome": "155.0.8059.82",
+    "host": "macOS 15.7.7 Apple M4 arm64",
+    "api": "getDisplayMedia({video:{displaySurface:\"browser\"},audio:false}) on the synthetic source tab; drawImage(video); requestVideoFrameCallback",
+    "settings": {
+      "aspectRatio": 1.8233618233618234,
+      "cursor": "never",
+      "deviceId": "web-contents-media-stream://8:5",
+      "displaySurface": "browser",
+      "frameRate": 30,
+      "height": 702,
+      "logicalSurface": true,
+      "resizeMode": "crop-and-scale",
+      "screenPixelRatio": 2,
+      "width": 1280
+    },
+    "captureSetupMs": 126.27691699999991,
+    "animationIntervalMs": 80,
+    "sampleIntervalTargetMs": 200,
+    "settleMs": 150,
+    "tilePixels": 32,
+    "tileChangedRatio": 0.08
+  },
+  "trackStats": {
+    "settings": {
+      "aspectRatio": 1.8233618233618234,
+      "cursor": "never",
+      "deviceId": "web-contents-media-stream://8:5",
+      "displaySurface": "browser",
+      "frameRate": 30,
+      "height": 702,
+      "logicalSurface": true,
+      "resizeMode": "crop-and-scale",
+      "screenPixelRatio": 2,
+      "width": 1280
+    },
+    "frameCount": 224,
+    "medianFrameDeltaMs": 33.30000000000018,
+    "minFrameDeltaMs": 14.800000000000182,
+    "maxFrameDeltaMs": 64.90000000000009
+  },
+  "inputEvents": {
+    "digitAtMs": 3832.682667,
+    "textAtMs": 6201.9745
+  },
+  "stages": [
+    {
+      "stage": "indicator-only",
+      "durationMs": 2238.5,
+      "expectedAccepted": 0,
+      "actualSampleCount": 9,
+      "sampleIntervalMs": {
+        "median": 247.3,
+        "max": 267.1
+      },
+      "policies": [
+        {
+          "policy": "whole-frame",
+          "acceptedInStage": 0,
+          "frames": [],
+          "medianPixelScanMs": 9.900000005960464,
+          "combinedScanAndJpegMs": null,
+          "jpegBytesAllStages": []
+        },
+        {
+          "policy": "changed-tile",
+          "acceptedInStage": 0,
+          "frames": [],
+          "medianPixelScanMs": 6.5,
+          "combinedScanAndJpegMs": null,
+          "jpegBytesAllStages": []
+        }
+      ]
+    },
+    {
+      "stage": "indicator-plus-one-digit",
+      "durationMs": 2368.4,
+      "expectedAccepted": 1,
+      "actualSampleCount": 10,
+      "sampleIntervalMs": {
+        "median": 234.0,
+        "max": 262.2
+      },
+      "policies": [
+        {
+          "policy": "whole-frame",
+          "acceptedInStage": 0,
+          "frames": [],
+          "medianPixelScanMs": 5.0999999940395355,
+          "combinedScanAndJpegMs": null,
+          "jpegBytesAllStages": []
+        },
+        {
+          "policy": "changed-tile",
+          "acceptedInStage": 2,
+          "frames": [
+            {
+              "revision": 1,
+              "sampleNo": 12,
+              "delayAfterUpdateMs": 713.1813750029805,
+              "candidateTiles": 3,
+              "settledTileIds": [289],
+              "jpegBytes": 23436
+            },
+            {
+              "revision": 1,
+              "sampleNo": 17,
+              "delayAfterUpdateMs": 1913.1813750029805,
+              "candidateTiles": 2,
+              "settledTileIds": [236],
+              "jpegBytes": 23444
+            }
+          ],
+          "medianPixelScanMs": 5.5999999940395355,
+          "combinedScanAndJpegMs": 11.800000011920929,
+          "jpegBytesAllStages": [23436, 23444]
+        }
+      ]
+    },
+    {
+      "stage": "indicator-plus-text-addition",
+      "durationMs": 2331.0,
+      "expectedAccepted": 1,
+      "actualSampleCount": 10,
+      "sampleIntervalMs": {
+        "median": 234.2,
+        "max": 240.2
+      },
+      "policies": [
+        {
+          "policy": "whole-frame",
+          "acceptedInStage": 0,
+          "frames": [],
+          "medianPixelScanMs": 5.200000002980232,
+          "combinedScanAndJpegMs": null,
+          "jpegBytesAllStages": []
+        },
+        {
+          "policy": "changed-tile",
+          "acceptedInStage": 1,
+          "frames": [
+            {
+              "revision": 1,
+              "sampleNo": 22,
+              "delayAfterUpdateMs": 710.489542011921,
+              "candidateTiles": 14,
+              "settledTileIds": [
+                289, 362, 363, 364, 365, 366, 367, 368, 369, 370
+              ],
+              "jpegBytes": 26636
+            }
+          ],
+          "medianPixelScanMs": 6,
+          "combinedScanAndJpegMs": 10.299999997019768,
+          "jpegBytesAllStages": [23436, 23444, 26636]
+        }
+      ]
+    }
+  ],
+  "detectorSettings": {
+    "tilePx": 32,
+    "tileThreshold": 0.08,
+    "pixelDeltaPerRgbChannel": 24,
+    "sampleTargetMs": 200,
+    "settleMs": 150,
+    "candidateBaseline": "last accepted full video frame",
+    "fullFramePolicy": "requires exact equality of consecutive full video frames before accepting",
+    "changedTileCandidate": "a changed tile must differ >=8% from baseline and remain exactly equal tile pixels across consecutive samples for >=150ms; accepts full current-frame image if any candidate tile settles; reset its per-tile timers and advance baseline to current full frame at acceptance"
+  },
+  "notableObservedFinding": "the changed-tile policy accepted an expected digit update at ~713ms but accepted a second frame at ~1913ms with no new text update; settled tile 236 was the moving indicator region. Thus tile-local settling avoids initial starvation but does not avoid duplicate/animation-driven acceptance."
+}

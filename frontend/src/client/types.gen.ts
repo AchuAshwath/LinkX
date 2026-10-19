@@ -21,6 +21,7 @@ export type AIModelInfo = {
 export type AIModelsPublic = {
     data: Array<AIModelInfo>;
     default_model: string;
+    observation_model?: (string | null);
 };
 
 export type Body_login_login_access_token = {
@@ -41,6 +42,7 @@ export type ChatMessageRequest = {
     model?: (string | null);
     images?: (Array<(string)> | null);
     edit_message_id?: (string | null);
+    observation?: (ObservationPacket | null);
 };
 
 export type ChatThreadCreate = {
@@ -140,6 +142,18 @@ export type Message = {
 export type NewPassword = {
     token: string;
     new_password: string;
+};
+
+export type ObservationPacket = {
+    session_id: string;
+    source_epoch: number;
+    revision: number;
+    captured_at: string;
+    delivered_at: string;
+    frame_presented_at_ms: (number | null);
+    width: number;
+    height: number;
+    image_data_url: string;
 };
 
 export type PostAuthor = {

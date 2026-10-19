@@ -31,7 +31,7 @@ export function SidebarProfile({
   }
 
   return (
-    <div className="p-4">
+    <div className="p-4" data-browser-preview-end>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button

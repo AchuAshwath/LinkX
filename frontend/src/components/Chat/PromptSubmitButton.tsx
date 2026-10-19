@@ -6,10 +6,12 @@ import { cn } from "@/lib/utils"
 export function PromptSubmitButton({
   isBusy,
   hasContent,
+  isBlocked = false,
   onStop,
 }: {
   isBusy: boolean
   hasContent: boolean
+  isBlocked?: boolean
   onStop?: () => void
 }) {
   if (isBusy && !hasContent) {
@@ -35,11 +37,11 @@ export function PromptSubmitButton({
       aria-label="Send message"
       className={cn(
         "size-8 rounded-full transition-all cursor-pointer",
-        hasContent
+        hasContent && !isBlocked
           ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-2xs"
           : "bg-muted/40 text-muted-foreground/50 opacity-40 cursor-not-allowed",
       )}
-      disabled={!hasContent}
+      disabled={!hasContent || isBlocked}
     >
       <ArrowUp className="size-4 stroke-[2.5]" />
     </InputGroupButton>

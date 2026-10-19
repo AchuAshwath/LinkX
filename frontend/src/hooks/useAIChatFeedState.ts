@@ -18,6 +18,7 @@ import {
   findSiblingByDirection,
   resolveActiveBranch,
 } from "@/hooks/useTranscriptTree"
+import type { ObservationPacket } from "@/observation/packet"
 import { isScrapePrompt } from "@/utils/scrapeThread"
 
 function shouldSkipTranscriptSync({
@@ -390,7 +391,6 @@ function useInitialActiveThread({
 
 function useCreateThreadMutation(
   queryClient: ReturnType<typeof useQueryClient>,
-  setActiveThreadId: (id: string) => void,
   selectedModelId?: string,
 ) {
   return useMutation({
@@ -405,9 +405,8 @@ function useCreateThreadMutation(
         },
       })
     },
-    onSuccess: (newThread) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ai-threads"] })
-      setActiveThreadId(newThread.id)
     },
   })
 }
@@ -590,6 +589,7 @@ function useQueueProcessor({
         nextTurn.selectedModelId,
         imagesPayload,
         nextTurn.editMessageId,
+        nextTurn.observation,
       )
     } finally {
       isProcessingQueueRef.current = false
@@ -775,6 +775,8 @@ interface ThreadActionsProps {
     attachedImages?: File[],
     editMessageId?: string,
     targetThreadIdOverride?: string,
+    onThreadCreated?: (threadId: string) => void,
+    observation?: Readonly<ObservationPacket>,
   ) => Promise<void>
 }
 
@@ -890,7 +892,6 @@ function useChatEngine({
 
   const createThreadMutation = useCreateThreadMutation(
     core.queryClient,
-    core.setActiveThreadId,
     selectedModelId,
   )
 
@@ -919,6 +920,8 @@ interface UseMessageEditingProps {
     attachedImages?: File[],
     editMessageId?: string,
     targetThreadIdOverride?: string,
+    onThreadCreated?: (threadId: string) => void,
+    observation?: Readonly<ObservationPacket>,
   ) => Promise<void>
   stopStream: () => void
   isStreaming: boolean
@@ -957,6 +960,8 @@ interface ExecuteRegenerateTurnOptions {
     attachedImages?: File[],
     editMessageId?: string,
     targetThreadIdOverride?: string,
+    onThreadCreated?: (threadId: string) => void,
+    observation?: Readonly<ObservationPacket>,
   ) => Promise<void>
 }
 
@@ -1090,6 +1095,8 @@ function assembleFeedState({
     attachedImages?: File[],
     editMessageId?: string,
     targetThreadIdOverride?: string,
+    onThreadCreated?: (threadId: string) => void,
+    observation?: Readonly<ObservationPacket>,
   ) => Promise<void>
   editingState: ReturnType<typeof useMessageEditing>
 }) {
@@ -1109,6 +1116,8 @@ function assembleFeedState({
     clearThreadDraft: core.draftState.clearThreadDraft,
     isStreaming: core.streamState.isStreaming,
     streamingThreadId: core.streamState.streamingThreadId,
+    observationUsage: core.streamState.observationUsage,
+    clearObservationUsage: core.streamState.clearObservationUsage,
     queuedThreadIds: queueState.queuedThreadIds,
     isThreadStreaming: streamingStatus.isThreadStreaming,
     isThreadQueued: streamingStatus.isThreadQueued,
@@ -1176,6 +1185,13 @@ export function useAIChatFeedState(options: UseAIChatFeedStateProps) {
     stopStream: threadActions.handleStop,
     isStreaming: core.streamState.isStreaming,
   })
+
+  const previousThreadId = React.useRef(core.activeThreadId)
+  React.useEffect(() => {
+    if (previousThreadId.current === core.activeThreadId) return
+    previousThreadId.current = core.activeThreadId
+    core.streamState.clearObservationUsage()
+  }, [core.activeThreadId, core.streamState.clearObservationUsage])
 
   return assembleFeedState({
     core,

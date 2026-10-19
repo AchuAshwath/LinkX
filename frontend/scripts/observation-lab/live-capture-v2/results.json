@@ -1,0 +1,916 @@
+{
+  "prototype": "getDisplayMedia continuous-animation settle stress",
+  "environment": {
+    "chrome": "155.0.8059.82",
+    "host": "macOS 15.7.7 Apple M4 arm64",
+    "api": "getDisplayMedia({video:{displaySurface:\"browser\"},audio:false}) on the synthetic source tab; drawImage(video); requestVideoFrameCallback",
+    "settings": {
+      "aspectRatio": 1.8233618233618234,
+      "cursor": "never",
+      "deviceId": "web-contents-media-stream://8:5",
+      "displaySurface": "browser",
+      "frameRate": 30,
+      "height": 702,
+      "logicalSurface": true,
+      "resizeMode": "crop-and-scale",
+      "screenPixelRatio": 2,
+      "width": 1280
+    },
+    "captureSetupMs": 126.27691699999991,
+    "animationIntervalMs": 80,
+    "sampleIntervalTargetMs": 200,
+    "settleMs": 150,
+    "tilePixels": 32,
+    "tileChangedRatio": 0.08
+  },
+  "stages": [
+    {
+      "name": "indicator-only",
+      "revision": 0,
+      "eventAtMs": null,
+      "elapsedMs": 2238.466958,
+      "processedSamples": 9,
+      "policies": [
+        {
+          "policy": "whole-frame",
+          "accepted": 0,
+          "frames": [],
+          "medianPixelScanMs": 9.900000005960464,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": []
+        },
+        {
+          "policy": "changed-tile",
+          "accepted": 0,
+          "frames": [],
+          "medianPixelScanMs": 6.5,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": []
+        }
+      ],
+      "samples": [
+        {
+          "sampleNo": 0,
+          "atScenarioMs": 59.68724999999995,
+          "frameAtScenarioMs": 19.58841700298035,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 0.606555,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 1,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 16
+            },
+            "changed-tile": {
+              "candidateTiles": 1,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 9.5
+            }
+          }
+        },
+        {
+          "sampleNo": 1,
+          "atScenarioMs": 326.83620799999994,
+          "frameAtScenarioMs": 269.18841701192105,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 0.873577,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 1,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 25.5
+            },
+            "changed-tile": {
+              "candidateTiles": 1,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 14.5
+            }
+          }
+        },
+        {
+          "sampleNo": 2,
+          "atScenarioMs": 575.3639169999999,
+          "frameAtScenarioMs": 535.8884170000003,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 1.122465,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 2,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 16.799999997019768
+            },
+            "changed-tile": {
+              "candidateTiles": 2,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 6.5
+            }
+          }
+        },
+        {
+          "sampleNo": 3,
+          "atScenarioMs": 821.252667,
+          "frameAtScenarioMs": 786.2884170059608,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 1.367667,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 1,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 9.900000005960464
+            },
+            "changed-tile": {
+              "candidateTiles": 1,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 7.5
+            }
+          }
+        },
+        {
+          "sampleNo": 4,
+          "atScenarioMs": 1067.418417,
+          "frameAtScenarioMs": 1034.3884170000003,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 1.614276,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 2,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 13.299999997019768
+            },
+            "changed-tile": {
+              "candidateTiles": 2,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 7.5
+            }
+          }
+        },
+        {
+          "sampleNo": 5,
+          "atScenarioMs": 1304.2721250000002,
+          "frameAtScenarioMs": 1285.8884170000003,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 1.851308,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 1,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 4.4000000059604645
+            },
+            "changed-tile": {
+              "candidateTiles": 1,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 4.4000000059604645
+            }
+          }
+        },
+        {
+          "sampleNo": 6,
+          "atScenarioMs": 1553.400875,
+          "frameAtScenarioMs": 1535.8884170000003,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 2.100844,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 2,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 4.299999997019768
+            },
+            "changed-tile": {
+              "candidateTiles": 2,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 4.299999997019768
+            }
+          }
+        },
+        {
+          "sampleNo": 7,
+          "atScenarioMs": 1788.12175,
+          "frameAtScenarioMs": 1769.1884170119213,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 2.335493,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 2,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 4.800000011920929
+            },
+            "changed-tile": {
+              "candidateTiles": 2,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 4.800000011920929
+            }
+          }
+        },
+        {
+          "sampleNo": 8,
+          "atScenarioMs": 2038.056167,
+          "frameAtScenarioMs": 2019.1884170119213,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 2.58549,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 1,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 4.700000002980232
+            },
+            "changed-tile": {
+              "candidateTiles": 1,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 4.600000008940697
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "indicator-plus-one-digit",
+      "revision": 1,
+      "eventAtMs": 3832.682667,
+      "elapsedMs": 2368.397583,
+      "processedSamples": 10,
+      "policies": [
+        {
+          "policy": "whole-frame",
+          "accepted": 0,
+          "frames": [],
+          "medianPixelScanMs": 5.0999999940395355,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": []
+        },
+        {
+          "policy": "changed-tile",
+          "accepted": 2,
+          "frames": [
+            {
+              "scenario": "indicator-plus-one-digit",
+              "revision": 1,
+              "sampleNo": 12,
+              "atMs": 3656.7999999970198,
+              "width": 1280,
+              "height": 702,
+              "candidateTiles": 3,
+              "settledTileIds": [289],
+              "jpegBytes": 23436,
+              "atScenarioMs": 713.1723750029805,
+              "delayAfterUpdateMs": 713.1813750029805
+            },
+            {
+              "scenario": "indicator-plus-one-digit",
+              "revision": 1,
+              "sampleNo": 17,
+              "atMs": 4856.79999999702,
+              "width": 1280,
+              "height": 702,
+              "candidateTiles": 2,
+              "settledTileIds": [236],
+              "jpegBytes": 23444,
+              "atScenarioMs": 1913.1723750029805,
+              "delayAfterUpdateMs": 1913.1813750029805
+            }
+          ],
+          "medianPixelScanMs": 5.5999999940395355,
+          "medianJpegEncodeMs": 11.800000011920929,
+          "jpegBytes": [23436, 23444]
+        }
+      ],
+      "samples": [
+        {
+          "sampleNo": 9,
+          "atScenarioMs": 31.711541000000125,
+          "frameAtScenarioMs": 13.172375002980516,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 2.818312,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 1,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 4.5999999940395355
+            },
+            "changed-tile": {
+              "candidateTiles": 1,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 4.5999999940395355
+            }
+          }
+        },
+        {
+          "sampleNo": 10,
+          "atScenarioMs": 265.7530829999996,
+          "frameAtScenarioMs": 246.37237500596075,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 3.052292,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 3,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 5.0999999940395355
+            },
+            "changed-tile": {
+              "candidateTiles": 3,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 4.5999999940395355
+            }
+          }
+        },
+        {
+          "sampleNo": 11,
+          "atScenarioMs": 501.3061660000003,
+          "frameAtScenarioMs": 479.7723750119212,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 3.285872,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 2,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 4.9000000059604645
+            },
+            "changed-tile": {
+              "candidateTiles": 2,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 4.799999997019768
+            }
+          }
+        },
+        {
+          "sampleNo": 12,
+          "atScenarioMs": 745.7917079999997,
+          "frameAtScenarioMs": 713.1723750029805,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 3.532312,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 3,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 9.700000002980232
+            },
+            "changed-tile": {
+              "candidateTiles": 3,
+              "stableTiles": 1,
+              "wholeFrameStable": false,
+              "accepted": true,
+              "scanMs": 13.100000008940697
+            }
+          }
+        },
+        {
+          "sampleNo": 13,
+          "atScenarioMs": 1008.0187079999996,
+          "frameAtScenarioMs": 979.7723750119212,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 3.794483,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 3,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 11
+            },
+            "changed-tile": {
+              "candidateTiles": 2,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 7.0999999940395355
+            }
+          }
+        },
+        {
+          "sampleNo": 14,
+          "atScenarioMs": 1240.8178749999997,
+          "frameAtScenarioMs": 1213.072375008941,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 4.026804,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 2,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 11
+            },
+            "changed-tile": {
+              "candidateTiles": 2,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 6.399999991059303
+            }
+          }
+        },
+        {
+          "sampleNo": 15,
+          "atScenarioMs": 1466.529208,
+          "frameAtScenarioMs": 1446.4723750000003,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 4.253238,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 3,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 4.9000000059604645
+            },
+            "changed-tile": {
+              "candidateTiles": 3,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 5.5999999940395355
+            }
+          }
+        },
+        {
+          "sampleNo": 16,
+          "atScenarioMs": 1696.7557079999997,
+          "frameAtScenarioMs": 1677.8723750059607,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 4.483403,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 2,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 4.9000000059604645
+            },
+            "changed-tile": {
+              "candidateTiles": 2,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 5.4000000059604645
+            }
+          }
+        },
+        {
+          "sampleNo": 17,
+          "atScenarioMs": 1935.2829579999998,
+          "frameAtScenarioMs": 1913.1723750029805,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 4.721968,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 2,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 4.700000002980232
+            },
+            "changed-tile": {
+              "candidateTiles": 2,
+              "stableTiles": 1,
+              "wholeFrameStable": false,
+              "accepted": true,
+              "scanMs": 8.799999997019768
+            }
+          }
+        },
+        {
+          "sampleNo": 18,
+          "atScenarioMs": 2165.604083,
+          "frameAtScenarioMs": 2145.572375008941,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 4.952259,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 3,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 5.399999991059303
+            },
+            "changed-tile": {
+              "candidateTiles": 2,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 5.100000008940697
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "indicator-plus-text-addition",
+      "revision": 1,
+      "eventAtMs": 6201.9745,
+      "elapsedMs": 2330.9957909999994,
+      "processedSamples": 10,
+      "policies": [
+        {
+          "policy": "whole-frame",
+          "accepted": 0,
+          "frames": [],
+          "medianPixelScanMs": 5.200000002980232,
+          "medianJpegEncodeMs": null,
+          "jpegBytes": []
+        },
+        {
+          "policy": "changed-tile",
+          "accepted": 3,
+          "frames": [
+            {
+              "scenario": "indicator-plus-one-digit",
+              "revision": 1,
+              "sampleNo": 12,
+              "atMs": 3656.7999999970198,
+              "width": 1280,
+              "height": 702,
+              "candidateTiles": 3,
+              "settledTileIds": [289],
+              "jpegBytes": 23436,
+              "atScenarioMs": -1656.1138749970196,
+              "delayAfterUpdateMs": -1656.1104579970197
+            },
+            {
+              "scenario": "indicator-plus-one-digit",
+              "revision": 1,
+              "sampleNo": 17,
+              "atMs": 4856.79999999702,
+              "width": 1280,
+              "height": 702,
+              "candidateTiles": 2,
+              "settledTileIds": [236],
+              "jpegBytes": 23444,
+              "atScenarioMs": -456.1138749970196,
+              "delayAfterUpdateMs": -456.1104579970197
+            },
+            {
+              "scenario": "indicator-plus-text-addition",
+              "revision": 1,
+              "sampleNo": 22,
+              "atMs": 6023.4000000059605,
+              "width": 1280,
+              "height": 702,
+              "candidateTiles": 14,
+              "settledTileIds": [
+                289, 362, 363, 364, 365, 366, 367, 368, 369, 370
+              ],
+              "jpegBytes": 26636,
+              "atScenarioMs": 710.4861250119211,
+              "delayAfterUpdateMs": 710.489542011921
+            }
+          ],
+          "medianPixelScanMs": 6,
+          "medianJpegEncodeMs": 10.299999997019768,
+          "jpegBytes": [23436, 23444, 26636]
+        }
+      ],
+      "samples": [
+        {
+          "sampleNo": 19,
+          "atScenarioMs": 40.670624999999745,
+          "frameAtScenarioMs": 10.486125011921104,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 5.19609,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 3,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 11.799999997019768
+            },
+            "changed-tile": {
+              "candidateTiles": 1,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 8.300000011920929
+            }
+          }
+        },
+        {
+          "sampleNo": 20,
+          "atScenarioMs": 264.8760000000002,
+          "frameAtScenarioMs": 243.8861250029804,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 5.42086,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 13,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 4.600000008940697
+            },
+            "changed-tile": {
+              "candidateTiles": 14,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 4.5
+            }
+          }
+        },
+        {
+          "sampleNo": 21,
+          "atScenarioMs": 499.0403749999996,
+          "frameAtScenarioMs": 477.3861250029804,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 5.654598,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 14,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 5.399999991059303
+            },
+            "changed-tile": {
+              "candidateTiles": 15,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 6.4000000059604645
+            }
+          }
+        },
+        {
+          "sampleNo": 22,
+          "atScenarioMs": 736.1661249999997,
+          "frameAtScenarioMs": 710.4861250119211,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 5.892063,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 12,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 5.4000000059604645
+            },
+            "changed-tile": {
+              "candidateTiles": 14,
+              "stableTiles": 13,
+              "wholeFrameStable": false,
+              "accepted": true,
+              "scanMs": 10.799999997019768
+            }
+          }
+        },
+        {
+          "sampleNo": 23,
+          "atScenarioMs": 976.335583,
+          "frameAtScenarioMs": 944.0861250059606,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 6.12986,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 14,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 10.799999997019768
+            },
+            "changed-tile": {
+              "candidateTiles": 2,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 9.400000005960464
+            }
+          }
+        },
+        {
+          "sampleNo": 24,
+          "atScenarioMs": 1198.362,
+          "frameAtScenarioMs": 1177.0861250059606,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 6.354102,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 14,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 5.5
+            },
+            "changed-tile": {
+              "candidateTiles": 2,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 6.4000000059604645
+            }
+          }
+        },
+        {
+          "sampleNo": 25,
+          "atScenarioMs": 1429.0287909999997,
+          "frameAtScenarioMs": 1410.486125011921,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 6.584837,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 13,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 4.4000000059604645
+            },
+            "changed-tile": {
+              "candidateTiles": 1,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 5
+            }
+          }
+        },
+        {
+          "sampleNo": 26,
+          "atScenarioMs": 1663.5482499999998,
+          "frameAtScenarioMs": 1642.986125011921,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 6.819698,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 14,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 5.200000002980232
+            },
+            "changed-tile": {
+              "candidateTiles": 2,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 6
+            }
+          }
+        },
+        {
+          "sampleNo": 27,
+          "atScenarioMs": 1898.2781249999998,
+          "frameAtScenarioMs": 1877.1861250000002,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 7.050923,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 14,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 4.700000002980232
+            },
+            "changed-tile": {
+              "candidateTiles": 2,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 4.799999997019768
+            }
+          }
+        },
+        {
+          "sampleNo": 28,
+          "atScenarioMs": 2128.391291,
+          "frameAtScenarioMs": 2108.486125011921,
+          "width": 1280,
+          "height": 702,
+          "videoTime": 7.284356,
+          "results": {
+            "whole-frame": {
+              "candidateTiles": 13,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 5
+            },
+            "changed-tile": {
+              "candidateTiles": 1,
+              "stableTiles": 0,
+              "wholeFrameStable": false,
+              "accepted": false,
+              "scanMs": 5.4000000059604645
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "trackStats": {
+    "settings": {
+      "aspectRatio": 1.8233618233618234,
+      "cursor": "never",
+      "deviceId": "web-contents-media-stream://8:5",
+      "displaySurface": "browser",
+      "frameRate": 30,
+      "height": 702,
+      "logicalSurface": true,
+      "resizeMode": "crop-and-scale",
+      "screenPixelRatio": 2,
+      "width": 1280
+    },
+    "frameCount": 224,
+    "medianFrameDeltaMs": 33.30000000000018,
+    "minFrameDeltaMs": 14.800000000000182,
+    "maxFrameDeltaMs": 64.90000000000009
+  },
+  "inputEvents": {
+    "digitAtMs": 3832.682667,
+    "textAtMs": 6201.9745
+  },
+  "acceptedImages": [
+    {
+      "scenario": "indicator-plus-one-digit",
+      "revision": 1,
+      "sampleNo": 12,
+      "bytes": 23436
+    },
+    {
+      "scenario": "indicator-plus-one-digit",
+      "revision": 1,
+      "sampleNo": 17,
+      "bytes": 23444
+    },
+    {
+      "scenario": "indicator-plus-text-addition",
+      "revision": 1,
+      "sampleNo": 22,
+      "bytes": 26636
+    }
+  ]
+}

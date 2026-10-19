@@ -1,12 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import {
+  act,
   fireEvent,
   render,
   screen,
   waitFor,
   within,
 } from "@testing-library/react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AiThreadsService } from "@/client"
 import { AIChatProvider } from "@/context/AIChatContext"
 import { Route } from "@/routes/_layout/ai"
@@ -26,8 +27,10 @@ vi.mock("@/client", async () => {
         data: [
           { id: "gpt-5.4", name: "GPT-5.4" },
           { id: "gpt-5.6-sol", name: "GPT-5.6 Sol" },
+          { id: "gpt-5.6-luna", name: "GPT-5.6 Luna" },
         ],
         default_model: "gpt-5.4",
+        observation_model: "gpt-5.6-luna",
       }),
     },
   }
@@ -44,6 +47,124 @@ function renderWithClient(ui: React.ReactElement) {
   return render(
     <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
   )
+}
+
+function mockFirstNewThread() {
+  vi.mocked(AiThreadsService.listChatThreads).mockResolvedValue({
+    data: [],
+    count: 0,
+  })
+  vi.mocked(AiThreadsService.createChatThread).mockResolvedValue({
+    id: "thread-new",
+    title: "New conversation",
+    origin: "composer",
+    message_count: 0,
+    is_archived: false,
+    transcript: { messages: [] },
+    owner_id: "user-1",
+  })
+  vi.mocked(AiThreadsService.getChatThread).mockResolvedValue({
+    id: "thread-new",
+    title: "New conversation",
+    origin: "composer",
+    message_count: 0,
+    is_archived: false,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    owner_id: "user-1",
+    transcript: { messages: [] },
+  })
+}
+
+function setupBrowserCapture() {
+  const stopTrack = vi.fn()
+  const trackListeners = new Map<string, EventListener>()
+  const track = {
+    kind: "video",
+    readyState: "live",
+    muted: false,
+    getSettings: () => ({ displaySurface: "browser" }),
+    stop: stopTrack,
+    addEventListener: vi.fn((type: string, listener: EventListener) => {
+      trackListeners.set(type, listener)
+    }),
+    removeEventListener: vi.fn(),
+  }
+  const stream = {
+    getVideoTracks: () => [track],
+    getTracks: () => [track],
+  } as unknown as MediaStream
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: { getDisplayMedia: vi.fn().mockResolvedValue(stream) },
+  })
+  let previewStream: MediaStream | null = null
+  Object.defineProperty(HTMLMediaElement.prototype, "srcObject", {
+    configurable: true,
+    get: () => previewStream,
+    set: (value: MediaStream | null) => {
+      previewStream = value
+    },
+  })
+  return {
+    stopTrack,
+    trackListeners,
+    track,
+    stream,
+    getPreviewStream: () => previewStream,
+  }
+}
+
+function installBrowserPreviewRail() {
+  const rail = document.createElement("div")
+  rail.dataset.browserPreviewRail = ""
+  rail.getBoundingClientRect = () => new DOMRect(0, 0, 272, 768)
+  const start = document.createElement("button")
+  start.dataset.browserPreviewStart = ""
+  start.getBoundingClientRect = () => new DOMRect(16, 320, 240, 44)
+  const profile = document.createElement("div")
+  profile.dataset.browserPreviewEnd = ""
+  profile.getBoundingClientRect = () => new DOMRect(16, 700, 240, 60)
+  document.body.append(rail, start, profile)
+}
+
+afterEach(() => {
+  document
+    .querySelectorAll(
+      "[data-browser-preview-rail], [data-browser-preview-start], [data-browser-preview-end]",
+    )
+    .forEach((element) => {
+      element.remove()
+    })
+})
+
+async function selectBrowserTab() {
+  const trigger = await screen.findByRole("button", {
+    name: "Add attachment or browser tab",
+  })
+  fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" })
+  fireEvent.click(trigger)
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Browser tab" }))
+  await screen.findByRole("button", { name: "Stop sharing browser tab" })
+  return screen.getByLabelText("Preview of shared browser tab")
+}
+
+function presentPreviewFrame(preview: HTMLElement) {
+  Object.defineProperties(preview, {
+    readyState: {
+      configurable: true,
+      value: HTMLMediaElement.HAVE_CURRENT_DATA,
+    },
+    videoWidth: { configurable: true, value: 640 },
+    videoHeight: { configurable: true, value: 480 },
+  })
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    drawImage: vi.fn(),
+  } as unknown as CanvasRenderingContext2D)
+  vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue(
+    "data:image/jpeg;base64,QUJD",
+  )
+  fireEvent.loadedData(preview)
 }
 
 describe("AIPage component with PostgreSQL backend persistence", () => {
@@ -95,6 +216,10 @@ describe("AIPage component with PostgreSQL backend persistence", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    document.getElementById("browser-tab-preview-slot")?.remove()
+    const previewSlot = document.createElement("div")
+    previewSlot.id = "browser-tab-preview-slot"
+    document.body.append(previewSlot)
     localStorage.setItem("access_token", "test-token")
     try {
       window.history.replaceState({}, "", "/")
@@ -859,4 +984,91 @@ describe("AIPage component with PostgreSQL backend persistence", () => {
       ).not.toBeInTheDocument()
     })
   })
+})
+
+it("makes browser tab observation available in the chat composer", async () => {
+  const Component = Route.options.component as React.ComponentType
+  renderWithClient(<Component />)
+
+  expect(
+    await screen.findByRole("button", {
+      name: "Add attachment or browser tab",
+    }),
+  ).toBeInTheDocument()
+})
+
+it("keeps browser tab preview when a new chat creates its first thread", async () => {
+  installBrowserPreviewRail()
+  localStorage.setItem("access_token", "test-token")
+  window.history.replaceState({}, "", "/ai")
+  mockFirstNewThread()
+  const { stopTrack, trackListeners, track, stream, getPreviewStream } =
+    setupBrowserCapture()
+  const Component = Route.options.component as React.ComponentType
+  renderWithClient(<Component />)
+  await screen.findByText("What would you like to create?")
+  const preview = await selectBrowserTab()
+  presentPreviewFrame(preview)
+  const previewWindow = await screen.findByRole("region", {
+    name: "Shared browser tab preview",
+  })
+  const initialPreviewLeft = Number.parseFloat(previewWindow.style.left)
+  previewWindow.focus()
+  expect(previewWindow).toHaveFocus()
+  fireEvent.keyDown(previewWindow, { key: "ArrowRight" })
+  expect(previewWindow.style.left).toBe(`${initialPreviewLeft + 10}px`)
+
+  const prompt = screen.getByPlaceholderText("Ask anything")
+  const form = prompt.closest("form")!
+  fireEvent.change(prompt, {
+    target: { value: "What is on this page?" },
+  })
+  vi.mocked(AiThreadsService.createChatThread).mockClear()
+  vi.mocked(AiThreadsService.getChatThread).mockClear()
+  track.muted = true
+  act(() => trackListeners.get("mute")?.(new Event("mute")))
+  fireEvent.submit(form)
+  expect(AiThreadsService.createChatThread).not.toHaveBeenCalled()
+  expect(AiThreadsService.getChatThread).not.toHaveBeenCalled()
+  expect(prompt).toHaveValue("What is on this page?")
+
+  track.muted = false
+  act(() => trackListeners.get("unmute")?.(new Event("unmute")))
+  fireEvent.submit(form)
+  expect(AiThreadsService.createChatThread).not.toHaveBeenCalled()
+  expect(prompt).toHaveValue("What is on this page?")
+
+  fireEvent.loadedData(preview)
+  fireEvent.submit(form)
+
+  await waitFor(() => {
+    expect(AiThreadsService.createChatThread).toHaveBeenCalled()
+    expect(AiThreadsService.getChatThread).toHaveBeenCalledWith({
+      id: "thread-new",
+    })
+  })
+  expect(
+    screen.getByLabelText("Preview of shared browser tab"),
+  ).toBeInTheDocument()
+  const floatingPreview = screen.getByRole("region", {
+    name: "Shared browser tab preview",
+  })
+  expect(floatingPreview.parentElement).toBe(document.body)
+  expect(floatingPreview).toHaveStyle({ position: "fixed" })
+  expect(screen.queryByText("Browser tab")).not.toBeInTheDocument()
+  expect(stopTrack).not.toHaveBeenCalled()
+  expect(getPreviewStream()).toBe(stream)
+
+  const activePrompt = screen.getByPlaceholderText("Ask anything")
+  activePrompt.focus()
+  expect(activePrompt).toHaveFocus()
+  act(() => {
+    stopTrack()
+    trackListeners.get("ended")?.(new Event("ended"))
+    screen
+      .getByRole("button", { name: "Add attachment or browser tab" })
+      .focus()
+  })
+  await screen.findByRole("button", { name: "Add attachment or browser tab" })
+  expect(activePrompt).toHaveFocus()
 })
