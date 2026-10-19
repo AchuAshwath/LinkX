@@ -9,7 +9,7 @@ This delivers both tracks: the product implementation and the controlled lab/res
 ## Standards findings resolved
 
 - Preview measurement, geometry and dragging are cohesive modules. The former 4.36 mean-complexity failure is removed without changing radius, placement, movement, or close behavior.
-- JPEG validation uses keyword-only arguments.
+- JPEG validation uses keyword-only arguments and lives in the focused `ai_observation_image.py` module, keeping request models thin.
 - Observation route tests live separately from ordinary chat route tests. Provider failure/cancellation tests share a parameterized behavioral test.
 - Stream handling and race-test setup were extracted to respect function-length gates. No quality threshold was weakened.
 - The complete CodeScene run includes new files via a disposable Git index; the ordinary working index is not used to manufacture coverage.
@@ -43,12 +43,16 @@ This delivers both tracks: the product implementation and the controlled lab/res
 
 The following checks passed against the final implementation and its organized regression suite. Source and artifact checks are scoped: browser/component regressions do not prove all browsers work; a mocked provider establishes structural isolation/boundedness rather than general answer quality.
 
-- Full backend suite: **828 passed in 193.40 seconds**, including repeated observation requests and ordinary chat regression coverage; focused observation set after test organization: **30 passed**.
+- Full backend suite: **828 passed in 243.01 seconds after the hosted-check extraction**, including repeated observation requests and ordinary chat regression coverage; focused observation set after test organization: **30 passed**.
 - Full frontend unit suite: **266 passed**; lint, typecheck, production build and regenerated client: **passed**.
 - Lab browser suite: **5 Playwright tests passed**, including correction/skip and export exclusion.
 - Floating preview browser harness: **passed** for equal corners/aspect fit, hidden-at-rest X, keyboard focus, drag, insufficient-space hide/restore, stop/restart and focus return.
 - Real configured-provider integration: **two final questions passed** with one current frame and zero prior frames; no screenshot/packet in transcript readback; keyboard details/reset/reload passed. [Result and timings](evidence/final-demo/REPORT.md).
 - Backend Ruff/format and mypy: **passed**.
-- CodeScene full working-tree delta: **passed**, 61 eligible files checked across 118 modified paths, zero degradations/findings.
+- CodeScene full working-tree delta: **passed**, 62 eligible files checked across 119 modified paths, zero degradations/findings.
 
 Existing tool output includes Vite size/deprecation notices, Node localStorage notices, and a LiteLLM logging-to-closed-stream message after pytest success. These do not fail the checks; no claim of warning-free tooling is made. [Research decisions](experiment-decision-2026-10-19.md) and [integrated evidence](evidence/final-demo/REPORT.md) document limits rather than treating technical success as a legal conclusion.
+
+## Hosted quality-gate follow-up
+
+The initial PR commit passed the local analyzer, but GitHub's hosted CodeScene review found two additional issues: image validation increased complexity in the `models.py` hotspot, and the restricted-runner test was too long. JPEG decoding/dimension validation now lives in a focused module with thin model validators; the test keeps its assertions in focused helpers. Local reviews score all three touched files 10.0 and the complete baseline delta passes across 62 eligible files. The hosted check is authoritative for merge readiness; see the current [PR checks](https://github.com/AchuAshwath/LinkX/pull/164/checks) rather than inferring hosted success from the local result. No quality rules were suppressed or relaxed.

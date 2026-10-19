@@ -1,13 +1,9 @@
-import base64
-import binascii
-import io
 import math
 import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from PIL import Image, UnidentifiedImageError
 from pydantic import (
     ConfigDict,
     EmailStr,
@@ -18,6 +14,12 @@ from pydantic import (
 from sqlalchemy import Column, DateTime, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Relationship, SQLModel
+
+from app.services.ai_observation_image import (
+    decode_jpeg_data_url,
+    jpeg_dimensions,
+    validate_jpeg_data_url,
+)
 
 
 def get_datetime_utc() -> datetime:
@@ -466,42 +468,16 @@ class ObservationPacket(SQLModel):
     @field_validator("image_data_url")
     @classmethod
     def validate_jpeg_data_url(cls, value: str) -> str:
-        if len(value) > 2_000_000:
-            raise ValueError("image data URL exceeds size limit")
-        prefix = "data:image/jpeg;base64,"
-        if not value.startswith(prefix):
-            raise ValueError("observation image must be a JPEG data URL")
-        try:
-            image = base64.b64decode(value[len(prefix) :], validate=True)
-        except (binascii.Error, ValueError) as exc:
-            raise ValueError("invalid base64 image data") from exc
-        width, height = _validate_jpeg(data=image)
-        if width * height > 4_194_304:
-            raise ValueError("image pixel count exceeds limit")
+        validate_jpeg_data_url(data_url=value)
         return value
 
     @model_validator(mode="after")
     def validate_image_dimensions(self) -> "ObservationPacket":
-        prefix = "data:image/jpeg;base64,"
-        image = base64.b64decode(self.image_data_url[len(prefix) :], validate=True)
-        width, height = _validate_jpeg(data=image)
+        image = decode_jpeg_data_url(data_url=self.image_data_url)
+        width, height = jpeg_dimensions(data=image)
         if (self.width, self.height) != (width, height):
             raise ValueError("declared dimensions do not match JPEG")
         return self
-
-
-def _validate_jpeg(*, data: bytes) -> tuple[int, int]:
-    try:
-        with Image.open(io.BytesIO(data)) as image:
-            if image.format != "JPEG":
-                raise ValueError("observation image is not a JPEG")
-            width, height = image.size
-            if width * height > 4_194_304:
-                raise ValueError("image pixel count exceeds limit")
-            image.load()
-            return width, height
-    except (Image.DecompressionBombError, UnidentifiedImageError, OSError) as exc:
-        raise ValueError("invalid JPEG image") from exc
 
 
 class ChatMessageRequest(SQLModel):
