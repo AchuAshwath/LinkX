@@ -1,0 +1,618 @@
+{
+  "status": "failed",
+  "modelCalls": 0,
+  "sourceTelemetryPassedToPipeline": false,
+  "samples": [
+    {
+      "seq": 1,
+      "status": "baseline",
+      "elapsedMs": 8.699999995529652,
+      "phase": "initial",
+      "y": 0,
+      "height": 900
+    },
+    {
+      "seq": 2,
+      "status": "observing",
+      "elapsedMs": 13.599999994039536,
+      "phase": "initial",
+      "y": 0,
+      "height": 900
+    },
+    {
+      "seq": 3,
+      "status": "observing",
+      "elapsedMs": 11.5,
+      "phase": "initial",
+      "y": 0,
+      "height": 900
+    },
+    {
+      "seq": 4,
+      "status": "accepted-initial",
+      "elapsedMs": 21.5,
+      "phase": "initial",
+      "y": 0,
+      "height": 900
+    },
+    {
+      "seq": 5,
+      "status": "duplicate",
+      "elapsedMs": 6.299999997019768,
+      "phase": "initial",
+      "y": 0,
+      "height": 900
+    },
+    {
+      "seq": 6,
+      "status": "duplicate",
+      "elapsedMs": 6.399999998509884,
+      "phase": "initial",
+      "y": 0,
+      "height": 900
+    },
+    {
+      "seq": 7,
+      "status": "duplicate",
+      "elapsedMs": 6.299999997019768,
+      "phase": "initial",
+      "y": 0,
+      "height": 900
+    },
+    {
+      "seq": 8,
+      "status": "duplicate",
+      "elapsedMs": 6.5,
+      "phase": "initial",
+      "y": 0,
+      "height": 900
+    },
+    {
+      "seq": 9,
+      "status": "observing",
+      "elapsedMs": 13,
+      "phase": "continuous",
+      "y": 45,
+      "height": 900
+    },
+    {
+      "seq": 10,
+      "status": "observing",
+      "elapsedMs": 11.699999995529652,
+      "phase": "continuous",
+      "y": 90,
+      "height": 900
+    },
+    {
+      "seq": 11,
+      "status": "observing",
+      "elapsedMs": 11.599999994039536,
+      "phase": "continuous",
+      "y": 135,
+      "height": 900
+    },
+    {
+      "seq": 12,
+      "status": "observing",
+      "elapsedMs": 11.100000001490116,
+      "phase": "continuous",
+      "y": 180,
+      "height": 900
+    },
+    {
+      "seq": 13,
+      "status": "observing",
+      "elapsedMs": 11,
+      "phase": "continuous",
+      "y": 225,
+      "height": 900
+    },
+    {
+      "seq": 14,
+      "status": "observing",
+      "elapsedMs": 11.399999998509884,
+      "phase": "continuous",
+      "y": 270,
+      "height": 900
+    },
+    {
+      "seq": 15,
+      "status": "observing",
+      "elapsedMs": 10.900000005960464,
+      "phase": "continuous",
+      "y": 315,
+      "height": 900
+    },
+    {
+      "seq": 16,
+      "status": "observing",
+      "elapsedMs": 11.399999998509884,
+      "phase": "continuous",
+      "y": 360,
+      "height": 900
+    },
+    {
+      "seq": 17,
+      "status": "observing",
+      "elapsedMs": 10.900000005960464,
+      "phase": "continuous",
+      "y": 405,
+      "height": 900
+    },
+    {
+      "seq": 18,
+      "status": "observing",
+      "elapsedMs": 10.700000002980232,
+      "phase": "continuous",
+      "y": 450,
+      "height": 900
+    },
+    {
+      "seq": 19,
+      "status": "observing",
+      "elapsedMs": 10.799999997019768,
+      "phase": "continuous",
+      "y": 495,
+      "height": 900
+    },
+    {
+      "seq": 20,
+      "status": "observing",
+      "elapsedMs": 11,
+      "phase": "continuous",
+      "y": 540,
+      "height": 900
+    },
+    {
+      "seq": 21,
+      "status": "observing",
+      "elapsedMs": 10.799999997019768,
+      "phase": "continuous",
+      "y": 585,
+      "height": 900
+    },
+    {
+      "seq": 22,
+      "status": "observing",
+      "elapsedMs": 11.300000004470348,
+      "phase": "continuous",
+      "y": 630,
+      "height": 900
+    },
+    {
+      "seq": 23,
+      "status": "observing",
+      "elapsedMs": 11,
+      "phase": "continuous",
+      "y": 675,
+      "height": 900
+    },
+    {
+      "seq": 24,
+      "status": "observing",
+      "elapsedMs": 11.100000001490116,
+      "phase": "continuous",
+      "y": 720,
+      "height": 900
+    },
+    {
+      "seq": 25,
+      "status": "observing",
+      "elapsedMs": 11,
+      "phase": "continuous",
+      "y": 765,
+      "height": 900
+    },
+    {
+      "seq": 26,
+      "status": "observing",
+      "elapsedMs": 10.899999998509884,
+      "phase": "continuous",
+      "y": 810,
+      "height": 900
+    },
+    {
+      "seq": 27,
+      "status": "observing",
+      "elapsedMs": 10.799999997019768,
+      "phase": "continuous",
+      "y": 855,
+      "height": 900
+    },
+    {
+      "seq": 28,
+      "status": "observing",
+      "elapsedMs": 11,
+      "phase": "continuous",
+      "y": 900,
+      "height": 900
+    },
+    {
+      "seq": 29,
+      "status": "observing",
+      "elapsedMs": 11.600000001490116,
+      "phase": "continuous",
+      "y": 945,
+      "height": 900
+    },
+    {
+      "seq": 30,
+      "status": "observing",
+      "elapsedMs": 11.5,
+      "phase": "continuous",
+      "y": 990,
+      "height": 900
+    },
+    {
+      "seq": 31,
+      "status": "observing",
+      "elapsedMs": 11,
+      "phase": "continuous",
+      "y": 1035,
+      "height": 900
+    },
+    {
+      "seq": 32,
+      "status": "observing",
+      "elapsedMs": 10.899999998509884,
+      "phase": "continuous",
+      "y": 1080,
+      "height": 900
+    },
+    {
+      "seq": 33,
+      "status": "observing",
+      "elapsedMs": 13.300000004470348,
+      "phase": "continuous",
+      "y": 1125,
+      "height": 900
+    },
+    {
+      "seq": 34,
+      "status": "observing",
+      "elapsedMs": 11,
+      "phase": "continuous",
+      "y": 1170,
+      "height": 900
+    },
+    {
+      "seq": 35,
+      "status": "observing",
+      "elapsedMs": 11.5,
+      "phase": "continuous",
+      "y": 1215,
+      "height": 900
+    },
+    {
+      "seq": 36,
+      "status": "observing",
+      "elapsedMs": 11.100000001490116,
+      "phase": "continuous",
+      "y": 1260,
+      "height": 900
+    },
+    {
+      "seq": 37,
+      "status": "observing",
+      "elapsedMs": 10.899999998509884,
+      "phase": "continuous",
+      "y": 1305,
+      "height": 900
+    },
+    {
+      "seq": 38,
+      "status": "observing",
+      "elapsedMs": 11.399999998509884,
+      "phase": "continuous",
+      "y": 1350,
+      "height": 900
+    },
+    {
+      "seq": 39,
+      "status": "observing",
+      "elapsedMs": 11.400000005960464,
+      "phase": "continuous",
+      "y": 1395,
+      "height": 900
+    },
+    {
+      "seq": 40,
+      "status": "observing",
+      "elapsedMs": 10.899999998509884,
+      "phase": "continuous",
+      "y": 1440,
+      "height": 900
+    },
+    {
+      "seq": 41,
+      "status": "observing",
+      "elapsedMs": 11.100000001490116,
+      "phase": "continuous",
+      "y": 1485,
+      "height": 900
+    },
+    {
+      "seq": 42,
+      "status": "observing",
+      "elapsedMs": 11.299999997019768,
+      "phase": "continuous",
+      "y": 1530,
+      "height": 900
+    },
+    {
+      "seq": 43,
+      "status": "observing",
+      "elapsedMs": 10.899999998509884,
+      "phase": "continuous",
+      "y": 1575,
+      "height": 900
+    },
+    {
+      "seq": 44,
+      "status": "observing",
+      "elapsedMs": 11,
+      "phase": "continuous",
+      "y": 1620,
+      "height": 900
+    },
+    {
+      "seq": 45,
+      "status": "observing",
+      "elapsedMs": 11,
+      "phase": "continuous",
+      "y": 1665,
+      "height": 900
+    },
+    {
+      "seq": 46,
+      "status": "observing",
+      "elapsedMs": 11.799999997019768,
+      "phase": "continuous",
+      "y": 1710,
+      "height": 900
+    },
+    {
+      "seq": 47,
+      "status": "observing",
+      "elapsedMs": 11.699999995529652,
+      "phase": "continuous",
+      "y": 1755,
+      "height": 900
+    },
+    {
+      "seq": 48,
+      "status": "observing",
+      "elapsedMs": 11.200000002980232,
+      "phase": "continuous",
+      "y": 1800,
+      "height": 900
+    },
+    {
+      "seq": 49,
+      "status": "observing",
+      "elapsedMs": 13,
+      "phase": "continuous",
+      "y": 1845,
+      "height": 900
+    },
+    {
+      "seq": 50,
+      "status": "observing",
+      "elapsedMs": 10.799999997019768,
+      "phase": "continuous",
+      "y": 1890,
+      "height": 900
+    },
+    {
+      "seq": 51,
+      "status": "observing",
+      "elapsedMs": 14.400000005960464,
+      "phase": "continuous",
+      "y": 1935,
+      "height": 900
+    },
+    {
+      "seq": 52,
+      "status": "observing",
+      "elapsedMs": 10.600000001490116,
+      "phase": "continuous",
+      "y": 1980,
+      "height": 900
+    },
+    {
+      "seq": 53,
+      "status": "observing",
+      "elapsedMs": 10.800000004470348,
+      "phase": "continuous",
+      "y": 2025,
+      "height": 900
+    },
+    {
+      "seq": 54,
+      "status": "observing",
+      "elapsedMs": 10.899999998509884,
+      "phase": "continuous",
+      "y": 2070,
+      "height": 900
+    },
+    {
+      "seq": 55,
+      "status": "observing",
+      "elapsedMs": 11.799999997019768,
+      "phase": "continuous",
+      "y": 2115,
+      "height": 900
+    },
+    {
+      "seq": 56,
+      "status": "observing",
+      "elapsedMs": 11.099999994039536,
+      "phase": "continuous",
+      "y": 2160,
+      "height": 900
+    },
+    {
+      "seq": 57,
+      "status": "observing",
+      "elapsedMs": 10.899999998509884,
+      "phase": "continuous",
+      "y": 2205,
+      "height": 900
+    },
+    {
+      "seq": 58,
+      "status": "observing",
+      "elapsedMs": 11.100000001490116,
+      "phase": "continuous",
+      "y": 2250,
+      "height": 900
+    },
+    {
+      "seq": 59,
+      "status": "observing",
+      "elapsedMs": 12.399999998509884,
+      "phase": "continuous",
+      "y": 2295,
+      "height": 900
+    },
+    {
+      "seq": 60,
+      "status": "observing",
+      "elapsedMs": 11.100000001490116,
+      "phase": "continuous",
+      "y": 2340,
+      "height": 900
+    },
+    {
+      "seq": 61,
+      "status": "accepted",
+      "elapsedMs": 61.899999998509884,
+      "phase": "final-pause",
+      "y": 2340,
+      "height": 900
+    },
+    {
+      "seq": 62,
+      "status": "duplicate",
+      "elapsedMs": 6.600000001490116,
+      "phase": "final-pause",
+      "y": 2340,
+      "height": 900
+    },
+    {
+      "seq": 63,
+      "status": "duplicate",
+      "elapsedMs": 6.5,
+      "phase": "final-pause",
+      "y": 2340,
+      "height": 900
+    },
+    {
+      "seq": 64,
+      "status": "duplicate",
+      "elapsedMs": 6.700000002980232,
+      "phase": "final-pause",
+      "y": 2340,
+      "height": 900
+    },
+    {
+      "seq": 65,
+      "status": "duplicate",
+      "elapsedMs": 6.4000000059604645,
+      "phase": "final-pause",
+      "y": 2340,
+      "height": 900
+    }
+  ],
+  "errors": [],
+  "capture": {
+    "at": 16250,
+    "seq": 65,
+    "captures": [
+      {
+        "seq": 4,
+        "generation": 1,
+        "ownerChat": "continuous-browser",
+        "capturedAt": 1000,
+        "width": 1280,
+        "height": 900,
+        "observation": {
+          "kind": "initial",
+          "shiftY": null,
+          "confidence": 1,
+          "newRegions": [],
+          "reason": "first-frame",
+          "segment": 1
+        }
+      },
+      {
+        "seq": 61,
+        "generation": 1,
+        "ownerChat": "continuous-browser",
+        "capturedAt": 15250,
+        "width": 1280,
+        "height": 900,
+        "observation": {
+          "kind": "unaligned",
+          "shiftY": null,
+          "confidence": 0,
+          "newRegions": [],
+          "reason": "no-confident-overlap",
+          "segment": 2
+        }
+      }
+    ],
+    "gaps": [],
+    "stats": {
+      "offers": 65,
+      "accepted": 2,
+      "duplicates": 8,
+      "gaps": 0,
+      "stale": 0,
+      "malformed": 0,
+      "oversize": 0,
+      "maxPendingObserved": 1,
+      "pending": 0,
+      "retainedPixelBytes": 9216000,
+      "tracker": {
+        "observations": 2,
+        "comparisons": 273,
+        "anchorCount": 1,
+        "anchorBytes": 4723200,
+        "elapsedMs": 47.5,
+        "maxElapsedMs": 42.100000001490116,
+        "segment": 2
+      }
+    },
+    "cleared": {
+      "offers": 65,
+      "accepted": 2,
+      "duplicates": 8,
+      "gaps": 0,
+      "stale": 0,
+      "malformed": 0,
+      "oversize": 0,
+      "maxPendingObserved": 1,
+      "pending": 0,
+      "retainedPixelBytes": 0,
+      "tracker": {
+        "observations": 2,
+        "comparisons": 273,
+        "anchorCount": 0,
+        "anchorBytes": 0,
+        "elapsedMs": 47.5,
+        "maxElapsedMs": 42.100000001490116,
+        "segment": 0
+      }
+    }
+  },
+  "metrics": {
+    "continuousCandidates": 0,
+    "coherentCandidates": 0,
+    "visibleIntervalCoverage": 0.5555555555555556,
+    "scrollDistance": 2340,
+    "viewportHeightsTraversed": 2.6,
+    "errors": []
+  },
+  "error": "AssertionError [ERR_ASSERTION]: Readable intermediate views were lost during continuous scrolling\n    at finish (file:///Users/ashwath/.codex/worktrees/browser-prototypes-integration/LinkX/frontend/scripts/observation-lab/automatic-capture-v3/validation-continuous-browser.mjs:153:10)\n    at async file:///Users/ashwath/.codex/worktrees/browser-prototypes-integration/LinkX/frontend/scripts/observation-lab/automatic-capture-v3/validation-continuous-browser.mjs:40:3"
+}

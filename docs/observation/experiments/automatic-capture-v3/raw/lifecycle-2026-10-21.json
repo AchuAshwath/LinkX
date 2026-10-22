@@ -1,0 +1,15 @@
+{
+  "cases": [
+    "cancelled picker recovers",
+    "unsupported surface is released",
+    "late picker result cannot restart a stopped generation",
+    "captured image inspection releases closed image and diagnostics exclude pixels",
+    "muted source stops and clears",
+    "ended source stops and clears",
+    "manual stop clears all session pixels",
+    "source ending before video play resolves cannot leave a dead session"
+  ],
+  "failures": [],
+  "modelRequests": [],
+  "status": "passed"
+}

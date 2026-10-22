@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LinkX capture v3 controlled long page</title>
+    <style>
+      :root { color-scheme: light; font: 16px/1.55 Georgia, serif; background: #f4f1e8; color: #202a32; }
+      * { box-sizing: border-box; }
+      body { margin: 0; }
+      header { position: sticky; top: 0; z-index: 5; height: 56px; padding: 14px 24px; background: #233746; color: white; font: 600 16px/28px system-ui, sans-serif; box-shadow: 0 2px 6px #0003; }
+      .layout { display: grid; grid-template-columns: 190px minmax(0, 760px); gap: 28px; max-width: 1080px; margin: 24px auto; padding: 0 20px; align-items: start; }
+      aside { position: sticky; top: 76px; padding: 16px; background: #dce6e9; border-radius: 8px; font: 13px/1.5 system-ui, sans-serif; }
+      main { min-width: 0; }
+      h1 { font-size: 32px; line-height: 1.2; margin: 0 0 14px; }
+      h2 { margin: 0 0 8px; font-size: 22px; }
+      p { margin: 8px 0; }
+      .intro, article { padding: 18px 22px; margin: 0 0 18px; background: #fffdf8; border: 1px solid #d7d4cc; border-radius: 8px; box-shadow: 0 2px 4px #0000000d; }
+      article { min-height: 250px; }
+      article:nth-of-type(3n) { min-height: 380px; }
+      .marker { color: #174c73; font: 600 12px/1.4 system-ui, sans-serif; letter-spacing: .04em; }
+      .repeat { padding: 8px 12px; border-left: 3px solid #bb713f; background: #fbf3e7; }
+      .furniture-animation { position: fixed; z-index: 8; right: 18px; bottom: 18px; width: 54px; height: 54px; border-radius: 50%; background: #d66c45; animation: pulse 1.2s infinite alternate; animation-play-state: paused; }
+      @keyframes pulse { from { opacity: .35; transform: scale(.82); } to { opacity: 1; transform: scale(1); } }
+      .lazy-image { display: block; width: 100%; height: 90px; object-fit: cover; margin: 12px 0; background: #b8cbd2; }
+      #reflow-banner { display: none; padding: 14px; margin-bottom: 14px; background: #f4d58d; font: 700 16px system-ui, sans-serif; }
+      .controls-note { color: #57636b; font: 12px/1.5 system-ui, sans-serif; }
+      @media (max-width: 700px) { .layout { grid-template-columns: 1fr; } aside { display: none; } }
+    </style>
+  </head>
+  <body>
+    <header>Field Notes · Persistent page header · Edition 2026</header>
+    <div class="layout">
+      <aside><strong>Reading guide</strong><p>Fixed side panel repeated in every viewport.</p><p>Sections: 01–48</p><p>Scroll position is test telemetry only.</p></aside>
+      <main>
+        <section class="intro" id="intro" data-region="intro">
+          <h1>How small systems reveal large patterns</h1>
+          <p class="marker">CONTROLLED LONG PAGE · readable prose with stable source markers</p>
+          <p>This page exists to measure what a screenshot stream can preserve while a reader moves through a document. The numbered markers identify source regions for the test harness; they are never supplied to the capture pipeline.</p>
+          <p id="digit-line">A controlled value reads <strong id="digit-value">44</strong>; the sentence reads “may improve.”</p>
+          <p id="letter-line">The isolated glyph is <strong id="letter-value">m</strong>.</p>
+          <div id="reflow-banner">A delayed editorial note has appeared and shifted every section below it.</div>
+          <p class="controls-note">The orange marker animates independently of the reading text. Repeated passages recur by design.</p>
+        </section>
+        <div id="articles"></div>
+      </main>
+    </div>
+    <div class="furniture-animation" aria-hidden="true"></div>
+    <script>
+      const repeated = "The same paragraph appears in several places so that visual similarity cannot establish that two views show the same passage. A careful reader should keep its surrounding heading and sequence.";
+      const articles = document.querySelector("#articles");
+      for (let index = 1; index <= 48; index += 1) {
+        const article = document.createElement("article");
+        article.id = `region-${String(index).padStart(2, "0")}`;
+        article.dataset.region = article.id;
+        const passage = index % 4 === 0 ? repeated : `Section ${String(index).padStart(2, "0")} follows a distinct path through the material. Its details describe how local choices accumulate, how evidence changes with context, and why a reader should preserve the order in which observations arrived.`;
+        article.innerHTML = `<h2>Section ${String(index).padStart(2, "0")}: ${index % 2 ? "Signals in context" : "A change over time"}</h2><p class="marker">SOURCE REGION ${String(index).padStart(2, "0")}</p><p>${passage}</p><p>${passage}</p>${index % 5 === 0 ? `<img class="lazy-image" loading="lazy" alt="Illustration for section ${index}" src="data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='720' height='90'><rect width='720' height='90' fill='${index % 2 ? "%23b8cbd2" : "%23dfc9a9"}'/><text x='20' y='55' font-size='22' fill='%23233746'>Late image ${index}: loaded below the fold</text></svg>`)}">` : ""}<p class="repeat">${repeated}</p></article>`;
+        articles.append(article);
+      }
+      window.__validationGroundTruth = () => {
+        const viewport = { width: innerWidth, height: innerHeight, scrollY, dpr: devicePixelRatio, documentHeight: document.documentElement.scrollHeight };
+        const regions = [...document.querySelectorAll("[data-region]")].map((node) => {
+          const rect = node.getBoundingClientRect();
+          const visibleTop = Math.max(rect.top, 56);
+          const visibleBottom = Math.min(rect.bottom, innerHeight);
+          const visibleFraction = Math.max(0, visibleBottom - visibleTop) / Math.max(1, rect.height);
+          return { id: node.dataset.region, top: Math.round(rect.top + scrollY), bottom: Math.round(rect.bottom + scrollY), visible: visibleFraction > 0, visibleFraction, text: node.innerText.slice(0, 100) };
+        });
+        return { viewport, regions, digit: document.querySelector("#digit-value").textContent, letter: document.querySelector("#letter-value").textContent, negation: document.querySelector("#digit-line").innerText.includes("may not improve"), reflow: getComputedStyle(document.querySelector("#reflow-banner")).display !== "none" };
+      };
+      window.__validationControl = {
+        startAnimation() { document.querySelector(".furniture-animation").style.animationPlayState = "running"; },
+        startProfile(distance, interval, steps) {
+          let completed = 0;
+          const timer = setInterval(() => {
+            scrollBy(0, distance);
+            completed += 1;
+            if (completed >= steps) clearInterval(timer);
+          }, interval);
+          return timer;
+        },
+        stopProfile(timer) { clearInterval(timer); },
+        setDigit(value) { document.querySelector("#digit-value").textContent = value; },
+        setLetter(value) { document.querySelector("#letter-value").textContent = value; },
+        setNegation(enabled) { document.querySelector("#digit-line").lastChild.textContent = enabled ? " The sentence reads ‘may not improve.’" : " The sentence reads ‘may improve.’"; },
+        showReflow() { document.querySelector("#reflow-banner").style.display = "block"; },
+      };
+    </script>
+  </body>
+</html>
