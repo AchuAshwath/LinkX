@@ -1,0 +1,14 @@
+{
+  "baseCommit": "1a5570b",
+  "branch": "codex/browser-context-prototypes",
+  "state": "local uncommitted candidate",
+  "sha256": {
+    "frontend/scripts/observation-lab/automatic-capture-v3/pipeline.mjs": "6daf923cb60f2443e7d2783593d2008c30eaefb36c8891cb26d67eb64aa269ab",
+    "frontend/scripts/observation-lab/automatic-capture-v3/registration.mjs": "085fc16f66ce220464c4cc2d06716cd2e8475ab144f74348d12a07b234fcc8bf",
+    "frontend/scripts/observation-lab/automatic-capture-v3/motion-admission.mjs": "f50c7d1129a82f00b9e7718a4b36bc8dee8b083320eba2d3dc1f0fc141a90b50",
+    "frontend/scripts/observation-lab/automatic-capture-v3/stream.mjs": "c4eeedfb28fc83dca737a704a72215817e91a16f5ac72c3e0deb9a635139fb8e",
+    "frontend/scripts/observation-lab/automatic-capture-v3/controller.mjs": "d01dc271e9f5fec1e0dff361a3fe3bcf5b4269054ec578e2e7819f085ea0839c",
+    "frontend/scripts/observation-lab/automatic-capture-v3/admission-pixels.mjs": "56264fcb320fcd4155baf1297a68ec10035ba1e68c03e4d8ec2b9c3b192d3b04",
+    "frontend/scripts/observation-lab/automatic-capture-v3/admission-stability.mjs": "22d6f31d837ae5cbe10d2a68de312d5bf073a7c74519ff9ed35c331f9e9ea8f7"
+  }
+}

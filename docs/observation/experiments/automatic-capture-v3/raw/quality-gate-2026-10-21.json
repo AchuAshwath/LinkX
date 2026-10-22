@@ -1,0 +1,9 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "\n⚠️  VERSION UPDATE AVAILABLE: MCP-1.5.1 → MCP-1.5.11\n\nUpdate instructions:\n- NPX: npx @codescene/codehealth-mcp\n- NPM: npm update @codescene/codehealth-mcp\n- Homebrew: brew update && brew upgrade cs-mcp\n- Windows: irm https://raw.githubusercontent.com/codescene-oss/codescene-mcp-server/main/install.ps1 | iex\n- Docker: docker pull codescene/codescene-mcp:latest\n- Manual: https://github.com/codescene-oss/codescene-mcp-server/releases/latest\n{\"results\":[],\"quality_gates\":\"passed\",\"metadata\":{\"checked-file-count\":58,\"code-health-eligible-file-count\":58,\"status\":\"no-issues-found\",\"total-modified-file-count\":196}}"
+    }
+  ],
+  "isError": false
+}
