@@ -32,23 +32,50 @@ function bitmap(onClose: () => void = () => {}, width = 8, height = 8) {
   } as ImageBitmap
 }
 
-function fakeStream(): CaptureStream {
+function fakeStream() {
+  let readyState: MediaStreamTrackState = "live"
+  const listeners = new Set<EventListener>()
   const track = {
-    stop() {},
-    addEventListener() {},
+    get readyState() {
+      return readyState
+    },
+    stop() {
+      readyState = "ended"
+    },
+    addEventListener(
+      _type: string,
+      listener: EventListenerOrEventListenerObject,
+    ) {
+      listeners.add(listener as EventListener)
+    },
+    removeEventListener(
+      _type: string,
+      listener: EventListenerOrEventListenerObject,
+    ) {
+      listeners.delete(listener as EventListener)
+    },
   } as unknown as MediaStreamTrack
-  return {
+  const stream = {
     getTracks: () => [track],
     getVideoTracks: () => [track],
   } as unknown as MediaStream
+  return {
+    stream,
+    end() {
+      readyState = "ended"
+      listeners.forEach((listener) => {
+        listener(new Event("ended"))
+      })
+    },
+  }
 }
 
-function fakeVideo() {
+function fakeVideo(play: () => Promise<void> = async () => {}) {
   return {
     muted: false,
     playsInline: false,
     srcObject: null,
-    play: async () => {},
+    play,
     pause() {},
     remove() {},
   } as unknown as HTMLVideoElement
@@ -80,6 +107,8 @@ function createHarness(
   options: {
     contextAvailable?: boolean
     decode?: (blob: Blob, index: number) => Promise<ImageBitmap>
+    play?: () => Promise<void>
+    start?: () => Promise<CaptureStream>
   } = {},
 ) {
   let offerFrame: ((frame: unknown) => void) | undefined
@@ -88,17 +117,24 @@ function createHarness(
   let clearCount = 0
   let decodeCount = 0
   let gapCount = 0
+  let samplerStartCount = 0
+  let samplerStopCount = 0
   const candidates: BrowserFrame[] = []
   const pipelines: Pipeline[] = []
   const samplers: Sampler[] = []
-  const stream = fakeStream()
+  let fakeCapture = fakeStream()
   const session = {
-    start: async () => stream,
+    start:
+      options.start ??
+      (async () => {
+        fakeCapture = fakeStream()
+        return fakeCapture.stream
+      }),
     stop() {},
   }
   const environment = {
     createSession: () => session,
-    createVideo: fakeVideo,
+    createVideo: () => fakeVideo(options.play),
     createCanvas: () => fakeCanvas(options.contextAvailable),
     fetchDataUrl: async () => new Blob(["image"]),
     createImageBitmap: async (blob: Blob) => {
@@ -141,9 +177,11 @@ function createHarness(
     ) => {
       const sampler: Sampler = {
         start() {
+          samplerStartCount += 1
           offerFrame = config.onFrame
         },
         stop() {
+          samplerStopCount += 1
           offerFrame = undefined
         },
       }
@@ -174,8 +212,17 @@ function createHarness(
     get samplers() {
       return samplers
     },
+    get samplerStartCount() {
+      return samplerStartCount
+    },
+    get samplerStopCount() {
+      return samplerStopCount
+    },
     get pipelines() {
       return pipelines
+    },
+    endCapture() {
+      fakeCapture.end()
     },
     onGap() {
       gapCount += 1
@@ -199,6 +246,127 @@ async function flush(): Promise<void> {
 }
 
 describe("BrowserReadingCapture", () => {
+  it("notifies once when the display track has ended before playback starts", async () => {
+    const stream = fakeStream()
+    stream.end()
+    const harness = createHarness({ start: async () => stream.stream })
+    let endedCount = 0
+    harness.capture.start(() => true, {
+      generation: 1,
+      ownerChat: "browser-reading",
+      onEnded: () => {
+        endedCount += 1
+      },
+    })
+    await flush()
+    expect(harness.samplers).toHaveLength(0)
+    expect(endedCount).toBe(1)
+  })
+
+  it("notifies once when the display track ends while playback is starting", async () => {
+    const playback = deferred<void>()
+    const harness = createHarness({ play: () => playback.promise })
+    let endedCount = 0
+    harness.capture.start(() => true, {
+      generation: 1,
+      ownerChat: "browser-reading",
+      onEnded: () => {
+        endedCount += 1
+      },
+    })
+    await flush()
+    harness.endCapture()
+    playback.resolve()
+    await flush()
+    expect(harness.samplers).toHaveLength(0)
+    expect(endedCount).toBe(1)
+  })
+
+  it("notifies once when the display track ends after playback starts", async () => {
+    const harness = createHarness()
+    let endedCount = 0
+    harness.capture.start(() => true, {
+      generation: 1,
+      ownerChat: "browser-reading",
+      onEnded: () => {
+        endedCount += 1
+      },
+    })
+    await flush()
+    expect(harness.samplers).toHaveLength(1)
+    harness.endCapture()
+    harness.endCapture()
+    await flush()
+    expect(endedCount).toBe(1)
+    expect(harness.samplerStopCount).toBe(1)
+    harness.capture.stop()
+    expect(endedCount).toBe(1)
+  })
+
+  it("does not stop a replacement capture started by the end callback", async () => {
+    const harness = createHarness()
+    let endedCount = 0
+    let restartOnEnd = true
+    const onEnded = () => {
+      endedCount += 1
+      if (!restartOnEnd) return
+      restartOnEnd = false
+      harness.capture.stop()
+      harness.capture.start(() => true, {
+        generation: 2,
+        ownerChat: "browser-reading",
+        onEnded,
+      })
+    }
+    harness.capture.start(() => true, {
+      generation: 1,
+      ownerChat: "browser-reading",
+      onEnded,
+    })
+    await flush()
+    harness.endCapture()
+    await flush()
+    expect(endedCount).toBe(1)
+    expect(harness.samplerStartCount).toBe(2)
+    expect(harness.samplerStopCount).toBe(1)
+    harness.capture.stop()
+  })
+
+  it("ignores an old playback completion after capture restarts", async () => {
+    const oldPlayback = deferred<void>()
+    let playCount = 0
+    const harness = createHarness({
+      start: async () => fakeStream().stream,
+      play: () => {
+        playCount += 1
+        return playCount === 1 ? oldPlayback.promise : Promise.resolve()
+      },
+    })
+    let endedCount = 0
+    const onEnded = () => {
+      endedCount += 1
+    }
+    harness.capture.start(() => true, {
+      generation: 1,
+      ownerChat: "browser-reading",
+      onEnded,
+    })
+    await flush()
+    harness.capture.stop()
+    harness.capture.start(() => true, {
+      generation: 2,
+      ownerChat: "browser-reading",
+      onEnded,
+    })
+    await flush()
+    expect(harness.samplers).toHaveLength(1)
+    oldPlayback.resolve()
+    await flush()
+    expect(harness.samplers).toHaveLength(1)
+    expect(endedCount).toBe(0)
+    harness.capture.stop()
+  })
+
   it("retains the selected waiting encode when later samples arrive after a checkpoint", async () => {
     const decoding = deferred<ImageBitmap>()
     const harness = createHarness({

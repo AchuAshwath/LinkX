@@ -26,6 +26,13 @@ export function extractTextParts(parts: ChatUIMessage["parts"]): string {
     .trim()
 }
 
+function hasVisibleBrowserActivity(message: ChatUIMessage): boolean {
+  const activity = message.browserActivity
+  if (!activity) return false
+  if (activity.tools?.length) return true
+  return Boolean(activity.warning)
+}
+
 export function isValidImageUrl(url: string): boolean {
   if (!url) return false
   const trimmed = url.trim().toLowerCase()
@@ -336,6 +343,7 @@ export function prepareAssistantRenderState(
       message.status === "error" ||
       hasThoughtOrTools ||
       otherParts.length > 0 ||
+      hasVisibleBrowserActivity(message) ||
       assistantText.trim(),
   )
 

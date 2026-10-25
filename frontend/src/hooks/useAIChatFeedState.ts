@@ -6,10 +6,10 @@ import type {
   AskUserAnswer,
   AskUserToolPart,
   ChatUIMessage,
-  QueuedTurn,
 } from "@/components/Chat/types"
 import { useAIChatStream } from "@/hooks/useAIChatStream"
 import { useQueueProcessor } from "@/hooks/useChatQueueProcessor"
+import { useChatTurnQueue } from "@/hooks/useChatTurnQueue"
 import type {
   ChatTurnSender,
   ThreadDraftRecoveryToken,
@@ -323,6 +323,7 @@ function useThreadTranscript({
 interface ThreadDraftStateActions {
   setThreadDraft: (id: string | null, text: string) => void
   clearThreadDraft: (id: string | null) => void
+  getDraftRevision: (id: string | null) => number
   clearMatchingDraft: (
     id: string | null,
     text: string,
@@ -344,7 +345,7 @@ function writeThreadDraft(
 ) {
   const { key, text, draftValuesRef, draftRevisionsRef, setThreadDrafts } =
     options
-  if (draftValuesRef.current[key] === text) return
+  if ((draftValuesRef.current[key] ?? "") === text) return
   draftValuesRef.current = { ...draftValuesRef.current, [key]: text }
   draftRevisionsRef.current[key] = (draftRevisionsRef.current[key] ?? 0) + 1
   setThreadDrafts((prev) => ({ ...prev, [key]: text }))
@@ -400,6 +401,8 @@ function createThreadDraftActions(
       writeThreadDraft({ ...options, key: id ?? "new-chat", text }),
     clearThreadDraft: (id) =>
       removeThreadDraft({ ...options, key: id ?? "new-chat" }),
+    getDraftRevision: (id) =>
+      options.draftRevisionsRef.current[id ?? "new-chat"] ?? 0,
     clearMatchingDraft: (id, text) =>
       clearMatchingThreadDraft({ ...options, id, text }),
     restoreDraftIfEmpty: (id, recovery) =>
@@ -495,98 +498,6 @@ function useCreateThreadMutation(
       queryClient.invalidateQueries({ queryKey: ["ai-threads"] })
     },
   })
-}
-
-function filterOutCancelledTurnMessages(
-  msgs: ChatUIMessage[],
-  cancelled: QueuedTurn[],
-): ChatUIMessage[] {
-  const cancelledAssistantIds = new Set(cancelled.map((c) => c.assistantMsgId))
-  const cancelledPrompts = new Set(cancelled.map((c) => c.promptText))
-  return msgs.filter((m) => {
-    if (cancelledAssistantIds.has(m.id)) return false
-    if (m.role === "user") {
-      const matchesPrompt = m.parts.some(
-        (p) => p.type === "text" && cancelledPrompts.has(p.text),
-      )
-      if (matchesPrompt) return false
-    }
-    return true
-  })
-}
-
-function useTurnQueue({
-  setThreadDraft,
-  setMessagesByThread,
-  browserReading,
-}: {
-  setThreadDraft: (threadId: string | null, text: string) => void
-  setMessagesByThread: React.Dispatch<
-    React.SetStateAction<Record<string, ChatUIMessage[]>>
-  >
-  browserReading?: BrowserReadingSession
-}) {
-  const turnQueueRef = React.useRef<QueuedTurn[]>([])
-  const [turnQueue, setTurnQueue] = React.useState<QueuedTurn[]>([])
-
-  const queuedThreadIds = React.useMemo(
-    () => turnQueue.map((t) => t.threadId),
-    [turnQueue],
-  )
-
-  const enqueueTurn = React.useCallback((turn: QueuedTurn) => {
-    turnQueueRef.current = [...turnQueueRef.current, turn]
-    setTurnQueue(turnQueueRef.current)
-  }, [])
-
-  const dequeueTurn = React.useCallback((): QueuedTurn | undefined => {
-    const [next, ...rest] = turnQueueRef.current
-    turnQueueRef.current = rest
-    setTurnQueue(rest)
-    return next
-  }, [])
-
-  const cancelQueuedTurn = React.useCallback(
-    (threadId: string) => {
-      const cancelled = turnQueueRef.current.filter(
-        (t) => t.threadId === threadId,
-      )
-      turnQueueRef.current = turnQueueRef.current.filter(
-        (t) => t.threadId !== threadId,
-      )
-      setTurnQueue(turnQueueRef.current)
-
-      if (cancelled.length > 0 && cancelled[0].promptText) {
-        setThreadDraft(threadId, cancelled[0].promptText)
-      }
-      cancelled.forEach((turn) => {
-        turn.onAcknowledged?.(false)
-        if (turn.browserQuestion) {
-          browserReading?.cancelPreparedQuestion(
-            turn.browserQuestion.operation_id,
-          )
-        }
-      })
-
-      setMessagesByThread((prev) => {
-        const msgs = prev[threadId] ?? []
-        return {
-          ...prev,
-          [threadId]: filterOutCancelledTurnMessages(msgs, cancelled),
-        }
-      })
-    },
-    [setThreadDraft, setMessagesByThread, browserReading],
-  )
-
-  return {
-    turnQueue,
-    turnQueueRef,
-    queuedThreadIds,
-    enqueueTurn,
-    dequeueTurn,
-    cancelQueuedTurn,
-  }
 }
 
 function executeStopAction({
@@ -757,7 +668,7 @@ function useChatFeedCore(initialThreadId?: string) {
 }
 
 type ChatFeedCore = ReturnType<typeof useChatFeedCore>
-type TurnQueueState = ReturnType<typeof useTurnQueue>
+type TurnQueueState = ReturnType<typeof useChatTurnQueue>
 
 function formatAnswersText(answers: AskUserAnswer[]): string {
   return answers
@@ -1172,8 +1083,9 @@ export interface UseAIChatFeedStateProps {
 
 export function useAIChatFeedState(options: UseAIChatFeedStateProps) {
   const core = useChatFeedCore(options.initialThreadId)
-  const queueState = useTurnQueue({
+  const queueState = useChatTurnQueue({
     setThreadDraft: core.draftState.setThreadDraft,
+    getDraftRevision: core.draftState.getDraftRevision,
     setMessagesByThread: core.setMessagesByThread,
     browserReading: options.browserReading,
   })
