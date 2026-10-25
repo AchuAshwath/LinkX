@@ -9,16 +9,19 @@ import type {
   QueuedTurn,
 } from "@/components/Chat/types"
 import { useAIChatStream } from "@/hooks/useAIChatStream"
-import {
-  buildStreamHandlers,
-  useChatTurnSender,
+import { useQueueProcessor } from "@/hooks/useChatQueueProcessor"
+import type {
+  ChatTurnSender,
+  ThreadDraftRecoveryToken,
 } from "@/hooks/useChatTurnSender"
+import { useChatTurnSender } from "@/hooks/useChatTurnSender"
 import {
   findDeepestLeaf,
   findSiblingByDirection,
   resolveActiveBranch,
 } from "@/hooks/useTranscriptTree"
-import type { ObservationPacket } from "@/observation/packet"
+import { retainBrowserActivities } from "@/observation/reading/activity"
+import type { BrowserReadingSession } from "@/observation/reading/session"
 import { isScrapePrompt } from "@/utils/scrapeThread"
 
 function shouldSkipTranscriptSync({
@@ -187,9 +190,12 @@ function syncTranscriptToState({
 }) {
   setMessagesByThread((prev) => {
     const current = prev[threadId] ?? []
-    const merged = resolveMergedTranscriptMessages({
+    const merged = retainBrowserActivities({
       current,
-      transcriptMessages,
+      messages: resolveMergedTranscriptMessages({
+        current,
+        transcriptMessages,
+      }),
     })
     if (
       current.length === merged.length &&
@@ -314,30 +320,110 @@ function useThreadTranscript({
   ])
 }
 
+interface ThreadDraftStateActions {
+  setThreadDraft: (id: string | null, text: string) => void
+  clearThreadDraft: (id: string | null) => void
+  clearMatchingDraft: (
+    id: string | null,
+    text: string,
+  ) => ThreadDraftRecoveryToken | null
+  restoreDraftIfEmpty: (
+    id: string | null,
+    recovery: ThreadDraftRecoveryToken | null,
+  ) => void
+}
+
+interface ThreadDraftStateOptions {
+  draftValuesRef: React.MutableRefObject<Record<string, string>>
+  draftRevisionsRef: React.MutableRefObject<Record<string, number>>
+  setThreadDrafts: React.Dispatch<React.SetStateAction<Record<string, string>>>
+}
+
+function writeThreadDraft(
+  options: ThreadDraftStateOptions & { key: string; text: string },
+) {
+  const { key, text, draftValuesRef, draftRevisionsRef, setThreadDrafts } =
+    options
+  if (draftValuesRef.current[key] === text) return
+  draftValuesRef.current = { ...draftValuesRef.current, [key]: text }
+  draftRevisionsRef.current[key] = (draftRevisionsRef.current[key] ?? 0) + 1
+  setThreadDrafts((prev) => ({ ...prev, [key]: text }))
+}
+
+function removeThreadDraft(options: ThreadDraftStateOptions & { key: string }) {
+  const { key, draftValuesRef, draftRevisionsRef, setThreadDrafts } = options
+  if (!(key in draftValuesRef.current)) return
+  const nextValues = { ...draftValuesRef.current }
+  delete nextValues[key]
+  draftValuesRef.current = nextValues
+  draftRevisionsRef.current[key] = (draftRevisionsRef.current[key] ?? 0) + 1
+  setThreadDrafts((prev) => {
+    if (!(key in prev)) return prev
+    const copy = { ...prev }
+    delete copy[key]
+    return copy
+  })
+}
+
+function clearMatchingThreadDraft(
+  options: ThreadDraftStateOptions & { id: string | null; text: string },
+): ThreadDraftRecoveryToken | null {
+  const { id, text, draftValuesRef, draftRevisionsRef } = options
+  const key = id ?? "new-chat"
+  const existingText = draftValuesRef.current[key]
+  if (existingText?.trim() !== text.trim()) return null
+  writeThreadDraft({ ...options, key, text: "" })
+  return { revision: draftRevisionsRef.current[key] ?? 0, text: existingText }
+}
+
+function restoreThreadDraftIfEmpty(
+  options: ThreadDraftStateOptions & {
+    id: string | null
+    recovery: ThreadDraftRecoveryToken | null
+  },
+) {
+  const { id, recovery, draftValuesRef, draftRevisionsRef } = options
+  const key = id ?? "new-chat"
+  if (!recovery) return
+  setTimeout(() => {
+    if (draftRevisionsRef.current[key] !== recovery.revision) return
+    if (draftValuesRef.current[key]?.trim()) return
+    writeThreadDraft({ ...options, key, text: recovery.text })
+  }, 0)
+}
+
+function createThreadDraftActions(
+  options: ThreadDraftStateOptions,
+): ThreadDraftStateActions {
+  return {
+    setThreadDraft: (id, text) =>
+      writeThreadDraft({ ...options, key: id ?? "new-chat", text }),
+    clearThreadDraft: (id) =>
+      removeThreadDraft({ ...options, key: id ?? "new-chat" }),
+    clearMatchingDraft: (id, text) =>
+      clearMatchingThreadDraft({ ...options, id, text }),
+    restoreDraftIfEmpty: (id, recovery) =>
+      restoreThreadDraftIfEmpty({ ...options, id, recovery }),
+  }
+}
+
 function useThreadDrafts() {
   const [threadDrafts, setThreadDrafts] = React.useState<
     Record<string, string>
   >({})
-
-  const setThreadDraft = React.useCallback(
-    (threadId: string | null, text: string) => {
-      const key = threadId ?? "new-chat"
-      setThreadDrafts((prev) => ({ ...prev, [key]: text }))
-    },
+  const draftValuesRef = React.useRef<Record<string, string>>({})
+  const draftRevisionsRef = React.useRef<Record<string, number>>({})
+  const actions = React.useMemo(
+    () =>
+      createThreadDraftActions({
+        draftValuesRef,
+        draftRevisionsRef,
+        setThreadDrafts,
+      }),
     [],
   )
 
-  const clearThreadDraft = React.useCallback((threadId: string | null) => {
-    const key = threadId ?? "new-chat"
-    setThreadDrafts((prev) => {
-      if (!(key in prev)) return prev
-      const copy = { ...prev }
-      delete copy[key]
-      return copy
-    })
-  }, [])
-
-  return { threadDrafts, setThreadDraft, clearThreadDraft }
+  return { threadDrafts, ...actions }
 }
 
 interface InitialActiveThreadOptions {
@@ -432,11 +518,13 @@ function filterOutCancelledTurnMessages(
 function useTurnQueue({
   setThreadDraft,
   setMessagesByThread,
+  browserReading,
 }: {
   setThreadDraft: (threadId: string | null, text: string) => void
   setMessagesByThread: React.Dispatch<
     React.SetStateAction<Record<string, ChatUIMessage[]>>
   >
+  browserReading?: BrowserReadingSession
 }) {
   const turnQueueRef = React.useRef<QueuedTurn[]>([])
   const [turnQueue, setTurnQueue] = React.useState<QueuedTurn[]>([])
@@ -471,6 +559,14 @@ function useTurnQueue({
       if (cancelled.length > 0 && cancelled[0].promptText) {
         setThreadDraft(threadId, cancelled[0].promptText)
       }
+      cancelled.forEach((turn) => {
+        turn.onAcknowledged?.(false)
+        if (turn.browserQuestion) {
+          browserReading?.cancelPreparedQuestion(
+            turn.browserQuestion.operation_id,
+          )
+        }
+      })
 
       setMessagesByThread((prev) => {
         const msgs = prev[threadId] ?? []
@@ -480,7 +576,7 @@ function useTurnQueue({
         }
       })
     },
-    [setThreadDraft, setMessagesByThread],
+    [setThreadDraft, setMessagesByThread, browserReading],
   )
 
   return {
@@ -529,79 +625,6 @@ function removeThreadMessages(
   const copy = { ...prev }
   delete copy[deletedId]
   return copy
-}
-
-function useQueueProcessor({
-  turnQueueRef,
-  dequeueTurn,
-  setMessagesByThread,
-  queryClient,
-  startStream,
-}: {
-  turnQueueRef: React.MutableRefObject<QueuedTurn[]>
-  dequeueTurn: () => QueuedTurn | undefined
-  setMessagesByThread: React.Dispatch<
-    React.SetStateAction<Record<string, ChatUIMessage[]>>
-  >
-  queryClient: ReturnType<typeof useQueryClient>
-  startStream: ReturnType<typeof useAIChatStream>["startStream"]
-}) {
-  const isProcessingQueueRef = React.useRef(false)
-
-  const processQueue = React.useCallback(async () => {
-    if (isProcessingQueueRef.current) return
-    if (turnQueueRef.current.length === 0) return
-
-    isProcessingQueueRef.current = true
-    const nextTurn = dequeueTurn()
-    if (!nextTurn) {
-      isProcessingQueueRef.current = false
-      return
-    }
-
-    setMessagesByThread((prev) => {
-      const msgs = prev[nextTurn.threadId] ?? []
-      return {
-        ...prev,
-        [nextTurn.threadId]: msgs.map((m) =>
-          m.id === nextTurn.assistantMsgId ? { ...m, status: "streaming" } : m,
-        ),
-      }
-    })
-
-    const handlers = buildStreamHandlers({
-      assistantMsgId: nextTurn.assistantMsgId,
-      targetThreadId: nextTurn.threadId,
-      setMessagesByThread,
-      queryClient,
-    })
-
-    const imagesPayload =
-      nextTurn.base64Images && nextTurn.base64Images.length > 0
-        ? nextTurn.base64Images
-        : undefined
-
-    try {
-      await startStream(
-        nextTurn.threadId,
-        nextTurn.promptText,
-        handlers,
-        nextTurn.selectedModelId,
-        imagesPayload,
-        nextTurn.editMessageId,
-        nextTurn.observation,
-      )
-    } finally {
-      isProcessingQueueRef.current = false
-      if (turnQueueRef.current.length > 0) {
-        setTimeout(() => {
-          processQueue()
-        }, 0)
-      }
-    }
-  }, [dequeueTurn, queryClient, startStream, turnQueueRef, setMessagesByThread])
-
-  return processQueue
 }
 
 function useActiveThreadMessages({
@@ -767,20 +790,27 @@ function executeThreadDeletion({
   setMessagesByThread((prev) => removeThreadMessages(prev, deletedId))
 }
 
+function stopDeletedBrowserSession(
+  session: BrowserReadingSession | undefined,
+  id: string,
+) {
+  const owner = session?.getSnapshot()
+  if (owner?.ownerChatId === id) {
+    session?.stop()
+    return
+  }
+  if (owner?.threadId === id) session?.stop()
+}
+
 interface ThreadActionsProps {
+  browserReading?: BrowserReadingSession
   core: ChatFeedCore
   queueState: TurnQueueState
-  handleSendMessage: (
-    text: string,
-    attachedImages?: File[],
-    editMessageId?: string,
-    targetThreadIdOverride?: string,
-    onThreadCreated?: (threadId: string) => void,
-    observation?: Readonly<ObservationPacket>,
-  ) => Promise<void>
+  handleSendMessage: ChatTurnSender
 }
 
 function useThreadActions({
+  browserReading,
   core,
   queueState,
   handleSendMessage,
@@ -796,6 +826,7 @@ function useThreadActions({
 
   const handleThreadDeleted = React.useCallback(
     (deletedId: string) => {
+      stopDeletedBrowserSession(browserReading, deletedId)
       executeThreadDeletion({
         deletedId,
         streamingThreadId,
@@ -804,7 +835,13 @@ function useThreadActions({
         setMessagesByThread,
       })
     },
-    [streamingThreadId, stopStream, cancelQueuedTurn, setMessagesByThread],
+    [
+      streamingThreadId,
+      stopStream,
+      cancelQueuedTurn,
+      setMessagesByThread,
+      browserReading,
+    ],
   )
 
   const handleQuestionAnswer = React.useCallback(
@@ -855,6 +892,7 @@ function useChatEngine({
   setSelectedModelId,
   core,
   queueState,
+  browserReading,
 }: {
   threads: ChatThreadPublic[]
   initialThreadId?: string
@@ -863,6 +901,7 @@ function useChatEngine({
   setSelectedModelId?: (modelId?: string | null) => void
   core: ChatFeedCore
   queueState: TurnQueueState
+  browserReading?: BrowserReadingSession
 }) {
   const processQueue = useQueueProcessor({
     turnQueueRef: queueState.turnQueueRef,
@@ -870,6 +909,7 @@ function useChatEngine({
     setMessagesByThread: core.setMessagesByThread,
     queryClient: core.queryClient,
     startStream: core.streamState.startStream,
+    browserReading,
   })
 
   useInitialActiveThread({
@@ -905,6 +945,9 @@ function useChatEngine({
     setMessagesByThread: core.setMessagesByThread,
     setPendingQuestion: core.setPendingQuestion,
     clearThreadDraft: core.draftState.clearThreadDraft,
+    setThreadDraft: core.draftState.setThreadDraft,
+    clearMatchingDraft: core.draftState.clearMatchingDraft,
+    restoreDraftIfEmpty: core.draftState.restoreDraftIfEmpty,
     createThreadMutation,
     enqueueTurn: queueState.enqueueTurn,
     processQueue,
@@ -915,14 +958,7 @@ function useChatEngine({
 
 interface UseMessageEditingProps {
   localMessages: ChatUIMessage[]
-  handleSendMessage: (
-    text: string,
-    attachedImages?: File[],
-    editMessageId?: string,
-    targetThreadIdOverride?: string,
-    onThreadCreated?: (threadId: string) => void,
-    observation?: Readonly<ObservationPacket>,
-  ) => Promise<void>
+  handleSendMessage: ChatTurnSender
   stopStream: () => void
   isStreaming: boolean
 }
@@ -955,14 +991,7 @@ interface ExecuteRegenerateTurnOptions {
   assistantMsgId: string
   isStreaming: boolean
   stopStream: () => void
-  handleSendMessage: (
-    text: string,
-    attachedImages?: File[],
-    editMessageId?: string,
-    targetThreadIdOverride?: string,
-    onThreadCreated?: (threadId: string) => void,
-    observation?: Readonly<ObservationPacket>,
-  ) => Promise<void>
+  handleSendMessage: ChatTurnSender
 }
 
 async function executeRegenerateTurn({
@@ -1090,14 +1119,7 @@ function assembleFeedState({
   streamingStatus: ReturnType<typeof useThreadStreamingStatus>
   threadActions: ReturnType<typeof useThreadActions>
   activeMessages: ReturnType<typeof useActiveThreadMessages>
-  handleSendMessage: (
-    text: string,
-    attachedImages?: File[],
-    editMessageId?: string,
-    targetThreadIdOverride?: string,
-    onThreadCreated?: (threadId: string) => void,
-    observation?: Readonly<ObservationPacket>,
-  ) => Promise<void>
+  handleSendMessage: ChatTurnSender
   editingState: ReturnType<typeof useMessageEditing>
 }) {
   return {
@@ -1145,6 +1167,7 @@ export interface UseAIChatFeedStateProps {
   setSelectedModelId?: (modelId?: string | null) => void
   initialThreadId?: string
   isAutoRun?: boolean
+  browserReading?: BrowserReadingSession
 }
 
 export function useAIChatFeedState(options: UseAIChatFeedStateProps) {
@@ -1152,6 +1175,7 @@ export function useAIChatFeedState(options: UseAIChatFeedStateProps) {
   const queueState = useTurnQueue({
     setThreadDraft: core.draftState.setThreadDraft,
     setMessagesByThread: core.setMessagesByThread,
+    browserReading: options.browserReading,
   })
   const streamingStatus = useThreadStreamingStatus({
     streamingThreadId: core.streamState.streamingThreadId,
@@ -1165,9 +1189,11 @@ export function useAIChatFeedState(options: UseAIChatFeedStateProps) {
     setSelectedModelId: options.setSelectedModelId,
     core,
     queueState,
+    browserReading: options.browserReading,
   })
 
   const threadActions = useThreadActions({
+    browserReading: options.browserReading,
     core,
     queueState,
     handleSendMessage,

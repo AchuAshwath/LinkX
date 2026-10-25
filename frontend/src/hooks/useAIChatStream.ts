@@ -1,6 +1,19 @@
 import * as React from "react"
 import type { ChatMessageRequest, ObservationPacket } from "@/client"
 import type { DraftArtifact, TrendingArtifact } from "@/components/Chat/types"
+import { parseBrowserActivityEvent } from "@/observation/reading/activity"
+import {
+  type BrowserBudget,
+  parseBrowserBudget,
+  publishBrowserBudget,
+} from "@/observation/reading/debug"
+import { isRejectedBeforeProcessingStatus } from "@/observation/reading/operationError"
+import type {
+  BrowserActivityEvent,
+  BrowserNote,
+  BrowserReceipt,
+  PreparedBrowserQuestion,
+} from "@/observation/reading/types"
 import {
   clearAuthAndRedirect,
   getStoredToken,
@@ -15,6 +28,13 @@ export interface StreamEventHandlers {
   onDraftArtifact?: (artifact: DraftArtifact) => void
   onTrendingArtifact?: (artifact: TrendingArtifact) => void
   onObservationUsage?: (usage: ObservationUsagePayload) => void
+  onBrowserNote?: (note: BrowserNote) => void
+  onBrowserReceipt?: (receipt: BrowserReceipt) => void
+  onBrowserStatus?: (status: { state: string; operation_id: string }) => void
+  onBrowserBudget?: (budget: BrowserBudget) => void
+  onBrowserActivity?: (activity: BrowserActivityEvent) => void
+  onBrowserDispatch?: (operationId: string) => void
+  onBrowserRejected?: (operationId: string) => void
   onDone?: () => void
   onError?: (error: string) => void
   onAbort?: () => void
@@ -63,6 +83,26 @@ interface ParsedEventData {
   captured_at?: string
   delivered_at?: string
   frame_presented_at_ms?: number | null
+  operation_id?: string
+  state?: string
+  id?: string
+  sequence?: number
+  text?: string
+  model?: string
+  uncertainty?: string
+  completed_ids?: string[]
+  failed_ids?: string[]
+  unused_ids?: string[]
+  tool_id?: string
+  tool_state?: string
+  view_index?: number
+  view_count?: number
+  note_chars?: number
+  note_preview?: string
+  preview_truncated?: boolean
+  duration_ms?: number
+  failure_code?: string
+  failure_message?: string
 }
 
 type EventAction = (
@@ -79,6 +119,41 @@ const EVENT_ACTIONS: Record<string, EventAction> = {
   trending_artifact: (d, h) =>
     h.onTrendingArtifact?.(d as unknown as TrendingArtifact),
   observation_usage: (d, h) => h.onObservationUsage?.(readObservationUsage(d)),
+  browser_status: (d, h) =>
+    h.onBrowserStatus?.({
+      state: d.state ?? "unknown",
+      operation_id: d.operation_id ?? "",
+    }),
+  browser_budget: (d, h) => {
+    const budget = parseBrowserBudget(d)
+    if (budget) h.onBrowserBudget?.(budget)
+  },
+  browser_activity: (d, h) => {
+    const event = parseBrowserActivityEvent(d)
+    if (event) h.onBrowserActivity?.(event)
+  },
+  browser_note: (d, h) => {
+    if (!d.id) return
+    if (typeof d.sequence !== "number") return
+    if (!Number.isSafeInteger(d.sequence)) return
+    if (typeof d.text !== "string") return
+    h.onBrowserNote?.({
+      id: d.id,
+      sequence: d.sequence,
+      text: d.text,
+      model: d.model ?? "",
+      uncertainty: d.uncertainty ?? "",
+    })
+  },
+  browser_receipt: (d, h) => {
+    if (!d.operation_id) return
+    h.onBrowserReceipt?.({
+      operation_id: d.operation_id,
+      completed_ids: d.completed_ids ?? [],
+      failed_ids: d.failed_ids ?? [],
+      unused_ids: d.unused_ids ?? [],
+    })
+  },
   done: (_, h) => h.onDone?.(),
   error: (d, h) => h.onError?.(d.message || "Unknown stream error"),
 }
@@ -152,7 +227,11 @@ async function readStreamChunks(
 
   while (true) {
     const { done, value } = await reader.read()
-    if (done) break
+    if (done) {
+      buffer += decoder.decode()
+      if (buffer) parseSSELines([buffer], currentEvent, handlers)
+      break
+    }
 
     buffer += decoder.decode(value, { stream: true })
     const lines = buffer.split("\n")
@@ -165,16 +244,70 @@ async function streamResponse(
   response: Response,
   handlers: StreamEventHandlers,
 ) {
-  if (!response.ok) {
-    const err = await response.text()
-    throw new Error(err || `HTTP ${response.status}`)
+  const body = await validatedResponseBody(response)
+  const completion = onceCompletion(handlers)
+  try {
+    await readStreamChunks(body.getReader(), completion.handlers)
+  } catch (err: unknown) {
+    reportStreamFailure(err, completion.handlers)
   }
-  if (!response.body) {
-    throw new Error("Missing stream response body")
-  }
+  if (!completion.terminal())
+    completion.handlers.onError?.("Stream ended before completion.")
+}
 
-  await readStreamChunks(response.body.getReader(), handlers)
-  handlers.onDone?.()
+async function validatedResponseBody(response: Response) {
+  if (!response.ok) {
+    const message = chatErrorMessage(await response.text())
+    throw new Error(message || `HTTP ${response.status}`)
+  }
+  if (!response.body) throw new Error("Missing stream response body")
+  return response.body
+}
+
+function reportStreamFailure(err: unknown, handlers: StreamEventHandlers) {
+  if (isAbortError(err)) throw err
+  handleStreamError(err, handlers)
+}
+
+function isAbortError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "name" in err &&
+    err.name === "AbortError"
+  )
+}
+
+function chatErrorMessage(raw: string): string {
+  try {
+    const { detail } = JSON.parse(raw)
+    if (typeof detail === "string") return detail
+    if (typeof detail?.message === "string") return detail.message
+  } catch {
+    return raw
+  }
+  return raw
+}
+
+function onceCompletion(handlers: StreamEventHandlers) {
+  let completed = false
+  let failed = false
+  return {
+    terminal: () => completed || failed,
+    handlers: {
+      ...handlers,
+      onDone: () => {
+        if (completed || failed) return
+        completed = true
+        handlers.onDone?.()
+      },
+      onError: (error: string) => {
+        if (completed || failed) return
+        failed = true
+        handlers.onError?.(error)
+      },
+    },
+  }
 }
 
 function handleAuthExpired(handlers: StreamEventHandlers, message: string) {
@@ -190,6 +323,7 @@ async function executeChatStreamRequest({
   images,
   editMessageId,
   observation,
+  browserQuestion,
   signal,
 }: {
   threadId: string
@@ -199,6 +333,7 @@ async function executeChatStreamRequest({
   images?: string[]
   editMessageId?: string
   observation?: Readonly<ObservationPacket>
+  browserQuestion?: PreparedBrowserQuestion
   signal: AbortSignal
 }) {
   const token = getStoredToken()
@@ -210,14 +345,20 @@ async function executeChatStreamRequest({
     return
   }
 
-  const requestBody: ChatMessageRequest = {
+  const readyQuestion = await refreshBrowserQuestion(browserQuestion, signal)
+  const { requestBody, endpoint } = chatRequestPayload({
+    threadId,
     message,
     model,
     images,
-    edit_message_id: editMessageId,
-    ...(observation ? { observation } : {}),
+    editMessageId,
+    observation,
+    browserQuestion: readyQuestion,
+  })
+  if (browserQuestion) {
+    handlers.onBrowserDispatch?.(browserQuestion.operation_id)
   }
-  const response = await fetch(`/api/v1/ai/threads/${threadId}/chat`, {
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -226,6 +367,8 @@ async function executeChatStreamRequest({
     body: JSON.stringify(requestBody),
     signal,
   })
+
+  notifyBrowserRejection({ response, browserQuestion, handlers })
 
   if (response.status === 401) {
     handleAuthExpired(
@@ -238,6 +381,55 @@ async function executeChatStreamRequest({
   await streamResponse(response, handlers)
 }
 
+function notifyBrowserRejection({
+  response,
+  browserQuestion,
+  handlers,
+}: {
+  response: Response
+  browserQuestion?: PreparedBrowserQuestion
+  handlers: StreamEventHandlers
+}): void {
+  if (!browserQuestion) return
+  if (!isRejectedBeforeProcessingStatus(response.status)) return
+  handlers.onBrowserRejected?.(browserQuestion.operation_id)
+}
+
+async function refreshBrowserQuestion(
+  question: PreparedBrowserQuestion | undefined,
+  signal: AbortSignal,
+): Promise<PreparedBrowserQuestion | undefined> {
+  if (!question?.ready) return question
+  const context = await question.ready(signal)
+  if (signal.aborted) throw new DOMException("Question cancelled", "AbortError")
+  return { ...question, context }
+}
+
+function chatRequestPayload(options: Omit<StartStreamRequest, "handlers">) {
+  const browser = options.browserQuestion
+  if (browser)
+    return {
+      endpoint: `/api/v1/ai/threads/${options.threadId}/browser-chat`,
+      requestBody: {
+        message: options.message,
+        model: browser.model,
+        request_id: browser.operation_id,
+        browser_context: browser.context,
+      },
+    }
+  const requestBody: ChatMessageRequest = {
+    message: options.message,
+    model: options.model,
+    images: options.images,
+    edit_message_id: options.editMessageId,
+    ...(options.observation ? { observation: options.observation } : {}),
+  }
+  return {
+    endpoint: `/api/v1/ai/threads/${options.threadId}/chat`,
+    requestBody,
+  }
+}
+
 function abortActiveController(
   ref: React.MutableRefObject<AbortController | null>,
 ) {
@@ -248,7 +440,7 @@ function abortActiveController(
 }
 
 function handleStreamError(err: unknown, handlers: StreamEventHandlers) {
-  if (err instanceof Error && err.name === "AbortError") {
+  if (isAbortError(err)) {
     handlers.onAbort?.()
     return
   }
@@ -285,6 +477,7 @@ interface StartStreamRequest {
   images?: string[]
   editMessageId?: string
   observation?: Readonly<ObservationPacket>
+  browserQuestion?: PreparedBrowserQuestion
 }
 
 interface StreamRuntime {
@@ -312,20 +505,22 @@ async function runChatStream(
   runtime.streamingThreadIdRef.current = request.threadId
   runtime.setObservationUsage(null)
 
+  const terminalHandlers = createRequestTerminalHandlers(request.handlers)
+  const streamRequest = { ...request, handlers: terminalHandlers }
   const streamHandlers = createStreamHandlers({
-    request,
+    request: streamRequest,
     runtime,
     generation,
     controller,
   })
   try {
     await executeChatStreamRequest({
-      ...request,
+      ...streamRequest,
       handlers: streamHandlers,
       signal: controller.signal,
     })
   } catch (err: unknown) {
-    handleStreamError(err, request.handlers)
+    handleStreamError(err, terminalHandlers)
   } finally {
     if (runtime.abortControllerRef.current === controller) {
       runtime.setIsStreaming(false)
@@ -333,6 +528,23 @@ async function runChatStream(
       runtime.streamingThreadIdRef.current = null
       runtime.abortControllerRef.current = null
     }
+  }
+}
+
+function createRequestTerminalHandlers(
+  handlers: StreamEventHandlers,
+): StreamEventHandlers {
+  let terminal = false
+  const invokeTerminal = (callback: (() => void) | undefined) => {
+    if (terminal) return
+    terminal = true
+    callback?.()
+  }
+  return {
+    ...handlers,
+    onDone: () => invokeTerminal(handlers.onDone),
+    onError: (message) => invokeTerminal(() => handlers.onError?.(message)),
+    onAbort: () => invokeTerminal(handlers.onAbort),
   }
 }
 
@@ -358,6 +570,13 @@ function createStreamHandlers({
   }
   return {
     ...request.handlers,
+    onBrowserBudget: (budget) => {
+      if (runtime.abortControllerRef.current !== controller) return
+      if (controller.signal.aborted) return
+      if (import.meta.env.DEV)
+        publishBrowserBudget({ threadId: request.threadId, budget })
+      request.handlers.onBrowserBudget?.(budget)
+    },
     onObservationUsage: (data) =>
       deliverCurrentObservationUsage(usageDelivery, data),
   }
@@ -387,13 +606,9 @@ export function useAIChatStream() {
 
   const startStream = React.useCallback(
     (
-      threadId: string,
-      message: string,
-      handlers: StreamEventHandlers = {},
-      model?: string,
-      images?: string[],
-      editMessageId?: string,
-      observation?: Readonly<ObservationPacket>,
+      request: Omit<StartStreamRequest, "handlers"> & {
+        handlers?: StreamEventHandlers
+      },
     ) =>
       runChatStream(
         {
@@ -405,15 +620,7 @@ export function useAIChatStream() {
           usageGenerationRef,
           setObservationUsage,
         },
-        {
-          threadId,
-          message,
-          handlers,
-          model,
-          images,
-          editMessageId,
-          observation,
-        },
+        { ...request, handlers: request.handlers ?? {} },
       ),
     [stop],
   )

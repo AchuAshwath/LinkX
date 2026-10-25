@@ -11,6 +11,14 @@ import type {
 } from "@/components/Chat/types"
 import { ensureMessageParentIds } from "@/hooks/useTranscriptTree"
 import type { ObservationPacket } from "@/observation/packet"
+import {
+  attachBrowserActivity,
+  updateBrowserActivity,
+} from "@/observation/reading/activity"
+import type {
+  BrowserActivityEvent,
+  PreparedBrowserQuestion,
+} from "@/observation/reading/types"
 
 export function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -392,6 +400,28 @@ function createErrorHandler({
     })
 }
 
+function createBrowserActivityHandler({
+  assistantMsgId,
+  targetThreadId,
+  setMessagesByThread,
+}: HandlerFactoryOptions) {
+  return (event: BrowserActivityEvent) =>
+    setMessagesByThread((prev) => ({
+      ...prev,
+      [targetThreadId]: (prev[targetThreadId] ?? []).map((message) =>
+        message.id === assistantMsgId
+          ? {
+              ...message,
+              browserActivity: updateBrowserActivity({
+                activity: message.browserActivity,
+                event,
+              }),
+            }
+          : message,
+      ),
+    }))
+}
+
 function createContentHandlers({
   assistantMsgId,
   targetThreadId,
@@ -471,6 +501,7 @@ export function buildStreamHandlers(
 
   return {
     ...contentHandlers,
+    onBrowserActivity: createBrowserActivityHandler(options),
     onError,
     onAbort,
     onDone,
@@ -484,7 +515,7 @@ export interface ResolveTargetThreadOptions {
     typeof useMutation<ChatThreadPublic, Error, string | undefined>
   >
   setActiveThreadId: (id: string) => void
-  onThreadCreated?: (id: string) => void
+  onThreadCreated?: (id: string) => unknown
 }
 
 export async function resolveTargetThreadId({
@@ -497,7 +528,8 @@ export async function resolveTargetThreadId({
   if (activeThreadId) return activeThreadId
   try {
     const newThread = await createThreadMutation.mutateAsync(promptText)
-    onThreadCreated?.(newThread.id)
+    const accepted = onThreadCreated?.(newThread.id)
+    if (accepted === false) return null
     setActiveThreadId(newThread.id)
     return newThread.id
   } catch {
@@ -540,6 +572,15 @@ export interface UseChatTurnSenderProps {
   >
   setPendingQuestion: (q: AskUserToolPart | null) => void
   clearThreadDraft: (id: string | null) => void
+  setThreadDraft?: (id: string | null, text: string) => void
+  clearMatchingDraft?: (
+    id: string | null,
+    text: string,
+  ) => ThreadDraftRecoveryToken | null
+  restoreDraftIfEmpty?: (
+    id: string | null,
+    recovery: ThreadDraftRecoveryToken | null,
+  ) => void
   createThreadMutation: ReturnType<
     typeof useMutation<ChatThreadPublic, Error, string | undefined>
   >
@@ -547,7 +588,12 @@ export interface UseChatTurnSenderProps {
   processQueue: () => void
 }
 
-export type ThreadCreatedCallback = (threadId: string) => void
+export type ThreadCreatedCallback = (threadId: string) => unknown
+
+export interface ThreadDraftRecoveryToken {
+  revision: number
+  text: string
+}
 
 export interface ApplyOptimisticTurnOptions {
   messages: ChatUIMessage[]
@@ -588,6 +634,8 @@ export function applyOptimisticTurn({
 }
 
 interface DispatchTurnOptions {
+  onQueued?: () => void
+  onAcknowledged?: (accepted: boolean) => void
   targetThreadId: string
   promptText: string
   base64Images: string[]
@@ -596,6 +644,7 @@ interface DispatchTurnOptions {
   userMsg: ChatUIMessage
   editMessageId?: string
   observation?: Readonly<ObservationPacket>
+  browserQuestion?: PreparedBrowserQuestion
   setActiveLeafIdByThread?: React.Dispatch<
     React.SetStateAction<Record<string, string | null>>
   >
@@ -608,6 +657,8 @@ interface DispatchTurnOptions {
 }
 
 function dispatchQueuedTurn({
+  onQueued,
+  onAcknowledged,
   targetThreadId,
   promptText,
   base64Images,
@@ -616,6 +667,7 @@ function dispatchQueuedTurn({
   userMsg,
   editMessageId,
   observation,
+  browserQuestion,
   setActiveLeafIdByThread,
   setMessagesByThread,
   setPendingQuestion,
@@ -646,9 +698,13 @@ function dispatchQueuedTurn({
     assistantMsgId: assistantMsg.id,
     editMessageId,
     ...(observation ? { observation } : {}),
+    ...(browserQuestion ? { browserQuestion } : {}),
+    ...(browserQuestion ? { requestId: browserQuestion.operation_id } : {}),
+    onAcknowledged,
   }
 
   enqueueTurn(queuedTurn)
+  onQueued?.()
   processQueue()
 }
 
@@ -659,65 +715,164 @@ interface ExecuteSendOptions extends UseChatTurnSenderProps {
   targetThreadIdOverride?: string
   onThreadCreated?: ThreadCreatedCallback
   observation?: Readonly<ObservationPacket>
+  browserQuestion?: PreparedBrowserQuestion
   isResolvingThreadRef: React.MutableRefObject<boolean>
 }
 
-async function executeChatTurnSend(options: ExecuteSendOptions) {
-  const trimmedText = options.text.trim()
-  const hasImages = Boolean(
-    options.attachedImages && options.attachedImages.length > 0,
-  )
-  if (shouldSkipMessageSend({ trimmedText, hasImages })) return
+interface ResolvedSend {
+  targetThreadId: string
+  sourceThreadId: string | null
+  promptText: string
+  base64Images: string[]
+}
 
-  if (options.isResolvingThreadRef.current) return
+async function resolveSend(
+  options: ExecuteSendOptions,
+): Promise<ResolvedSend | null> {
+  const base64Images = await convertFilesToDataUrls(options.attachedImages)
+  const hasImages = Boolean(options.attachedImages?.length)
+  const promptText = resolvePromptText({
+    trimmedText: options.text.trim(),
+    hasImages,
+  })
+  const sourceThreadId =
+    options.targetThreadIdOverride ?? options.activeThreadId
+  const targetThreadId = await resolveTargetThreadId({
+    activeThreadId: sourceThreadId,
+    promptText,
+    createThreadMutation: options.createThreadMutation,
+    setActiveThreadId: options.setActiveThreadId,
+    onThreadCreated: options.onThreadCreated,
+  })
+  if (!targetThreadId) return null
+  return {
+    targetThreadId,
+    sourceThreadId,
+    promptText,
+    base64Images,
+  }
+}
+
+function prepareSendDraft(options: ExecuteSendOptions, send: ResolvedSend) {
+  if (!options.browserQuestion) {
+    if (!options.editMessageId) options.clearThreadDraft(send.sourceThreadId)
+    return
+  }
+  if (send.targetThreadId !== send.sourceThreadId)
+    options.setThreadDraft?.(send.targetThreadId, send.promptText)
+}
+
+interface BrowserDraftLifecycleOptions {
+  browserQuestion?: PreparedBrowserQuestion
+  sourceThreadId: string | null
+  targetThreadId: string
+  promptText: string
+  clearMatchingDraft?: UseChatTurnSenderProps["clearMatchingDraft"]
+  restoreDraftIfEmpty?: UseChatTurnSenderProps["restoreDraftIfEmpty"]
+}
+
+interface BrowserDraftLifecycle {
+  onQueued?: () => void
+  onAcknowledged?: (accepted: boolean) => void
+}
+
+function createBrowserDraftLifecycle(
+  options: BrowserDraftLifecycleOptions,
+): BrowserDraftLifecycle {
+  if (!options.browserQuestion) return {}
+  let settled = false
+  let recovery: ThreadDraftRecoveryToken | null = null
+  return {
+    onQueued: () => {
+      recovery =
+        options.clearMatchingDraft?.(
+          options.targetThreadId,
+          options.promptText,
+        ) ?? null
+      if (options.sourceThreadId !== options.targetThreadId)
+        options.clearMatchingDraft?.(options.sourceThreadId, options.promptText)
+    },
+    onAcknowledged: (accepted) => {
+      if (settled) return
+      settled = true
+      if (accepted) return
+      options.restoreDraftIfEmpty?.(options.targetThreadId, recovery)
+    },
+  }
+}
+
+function dispatchResolvedSend(options: ExecuteSendOptions, send: ResolvedSend) {
+  const isBusy = options.isStreaming || options.streamingThreadId !== null
+  const turn = createMessageTurn({
+    text: send.promptText,
+    imageUrls: send.base64Images,
+    assistantStatus: isBusy ? "queued" : "streaming",
+  })
+  const { userMsg, assistantMsg } = attachBrowserActivity({
+    turn,
+    question: options.browserQuestion,
+  })
+  const draftLifecycle = createBrowserDraftLifecycle({
+    browserQuestion: options.browserQuestion,
+    sourceThreadId: send.sourceThreadId,
+    targetThreadId: send.targetThreadId,
+    promptText: send.promptText,
+    clearMatchingDraft: options.clearMatchingDraft,
+    restoreDraftIfEmpty: options.restoreDraftIfEmpty,
+  })
+  dispatchQueuedTurn({
+    onQueued: draftLifecycle.onQueued,
+    targetThreadId: send.targetThreadId,
+    promptText: send.promptText,
+    base64Images: send.base64Images,
+    selectedModelId: options.browserQuestion?.model ?? options.selectedModelId,
+    assistantMsg,
+    userMsg,
+    editMessageId: options.editMessageId,
+    observation: options.observation,
+    browserQuestion: options.browserQuestion,
+    onAcknowledged: draftLifecycle.onAcknowledged,
+    setActiveLeafIdByThread: options.setActiveLeafIdByThread,
+    setMessagesByThread: options.setMessagesByThread,
+    setPendingQuestion: options.setPendingQuestion,
+    enqueueTurn: options.enqueueTurn,
+    processQueue: options.processQueue,
+  })
+}
+
+async function executeChatTurnSend(
+  options: ExecuteSendOptions,
+): Promise<boolean> {
+  const hasImages = Boolean(options.attachedImages?.length)
+  if (shouldSkipMessageSend({ trimmedText: options.text.trim(), hasImages }))
+    return false
+  if (options.isResolvingThreadRef.current) return false
   options.isResolvingThreadRef.current = true
-
   try {
-    const base64Images = await convertFilesToDataUrls(options.attachedImages)
-    const promptText = resolvePromptText({ trimmedText, hasImages })
-    const activeOrOverride =
-      options.targetThreadIdOverride ?? options.activeThreadId
-    const targetThreadId = await resolveTargetThreadId({
-      activeThreadId: activeOrOverride,
-      promptText,
-      createThreadMutation: options.createThreadMutation,
-      setActiveThreadId: options.setActiveThreadId,
-      onThreadCreated: options.onThreadCreated,
-    })
-    if (!targetThreadId) return
-
-    if (!options.editMessageId) {
-      options.clearThreadDraft(activeOrOverride)
-    }
-
-    const isBusy = options.isStreaming || options.streamingThreadId !== null
-    const assistantStatus = isBusy ? "queued" : "streaming"
-
-    const { userMsg, assistantMsg } = createMessageTurn({
-      text: promptText,
-      imageUrls: base64Images,
-      assistantStatus,
-    })
-
-    dispatchQueuedTurn({
-      targetThreadId,
-      promptText,
-      base64Images,
-      selectedModelId: options.selectedModelId,
-      assistantMsg,
-      userMsg,
-      editMessageId: options.editMessageId,
-      observation: options.observation,
-      setActiveLeafIdByThread: options.setActiveLeafIdByThread,
-      setMessagesByThread: options.setMessagesByThread,
-      setPendingQuestion: options.setPendingQuestion,
-      enqueueTurn: options.enqueueTurn,
-      processQueue: options.processQueue,
-    })
+    const send = await resolveSend(options)
+    if (!send) return false
+    prepareSendDraft(options, send)
+    dispatchResolvedSend(options, send)
+    options.isResolvingThreadRef.current = false
+    return true
   } finally {
     options.isResolvingThreadRef.current = false
   }
 }
+
+export interface ChatTurnOptions {
+  targetThreadIdOverride?: string
+  onThreadCreated?: ThreadCreatedCallback
+  observation?: Readonly<ObservationPacket>
+  browserQuestion?: PreparedBrowserQuestion
+}
+
+export type ChatTurnSender = (
+  text: string,
+  attachedImages?: File[],
+  editMessageId?: string,
+  options?: ChatTurnOptions,
+) => Promise<boolean>
 
 export function useChatTurnSender(props: UseChatTurnSenderProps) {
   const isResolvingThreadRef = React.useRef(false)
@@ -727,18 +882,14 @@ export function useChatTurnSender(props: UseChatTurnSenderProps) {
       text: string,
       attachedImages?: File[],
       editMessageId?: string,
-      targetThreadIdOverride?: string,
-      onThreadCreated?: ThreadCreatedCallback,
-      observation?: Readonly<ObservationPacket>,
+      options?: ChatTurnOptions,
     ) =>
       executeChatTurnSend({
         ...props,
         text,
         attachedImages,
         editMessageId,
-        targetThreadIdOverride,
-        onThreadCreated,
-        observation,
+        ...options,
         isResolvingThreadRef,
       }),
     [props],

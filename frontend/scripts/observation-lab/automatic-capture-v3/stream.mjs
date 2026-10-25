@@ -1,4 +1,6 @@
 // Shared video is the only source. No source DOM, scroll events, or page API.
+const MAX_UNCHANGED_DELIVERY_SKIPS = 3
+
 export function createStreamSampler({
   video,
   onFrame,
@@ -18,6 +20,7 @@ export function createStreamSampler({
   let timer
   let identity
   let lastDelivery
+  let unchangedDeliverySkips = 0
   let sequence = 0
   let callbacks = 0
   let callbackId
@@ -35,7 +38,11 @@ export function createStreamSampler({
     const signature = JSON.stringify(delivery)
     if (lastDelivery === signature) {
       counters.unchangedDelivery += 1
-      return
+      unchangedDeliverySkips += 1
+      if (unchangedDeliverySkips <= MAX_UNCHANGED_DELIVERY_SKIPS) return
+      unchangedDeliverySkips = 0
+    } else {
+      unchangedDeliverySkips = 0
     }
     lastDelivery = signature
     if (
@@ -95,6 +102,7 @@ export function createStreamSampler({
     video.cancelVideoFrameCallback?.(callbackId)
     callbackId = undefined
     lastDelivery = undefined
+    unchangedDeliverySkips = 0
     canvas.width = 0
     canvas.height = 0
   }

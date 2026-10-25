@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, useRouter } from "@tanstack/react-router"
 import * as React from "react"
-import { createPortal } from "react-dom"
+import { toast } from "sonner"
 import { AiThreadsService, type ChatThreadPublic } from "@/client"
 import { AIChatFeed } from "@/components/Chat/AIChatFeed"
 import {
@@ -18,56 +18,15 @@ import {
   useAIChatUrlParams,
 } from "@/context/AIChatContext"
 import { useAIChatFeedState } from "@/hooks/useAIChatFeedState"
-import type { ObservationUsagePayload } from "@/hooks/useAIChatStream"
 import { useAIModelSelection } from "@/hooks/useAIModelSelection"
+import type { ChatTurnSender } from "@/hooks/useChatTurnSender"
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
 import type { ObservationComposerSlotProps } from "@/observation/ObservationComposerSlot"
-import { ObservationComposerPreview } from "@/observation/ObservationComposerSlot"
-import {
-  ObservationControls,
-  type PrepareObservationTurnRef,
-} from "@/observation/ObservationControls"
-import { ObservationUsageDetails } from "@/observation/ObservationUsageDetails"
-import type { ObservationPacket } from "@/observation/packet"
-import { useFloatingPreviewPosition } from "@/observation/useFloatingPreviewPosition"
+import { BrowserReadingControls } from "@/observation/reading/BrowserReadingControls"
+import { ownerIdForChat } from "@/observation/reading/ownership"
+import type { PreparedBrowserQuestion } from "@/observation/reading/types"
 
 type AISearchParams = AIChatUrlParams
-
-function FloatingBrowserPreview({
-  observationComposerView,
-  addContextButtonRef,
-}: {
-  observationComposerView: ObservationComposerSlotProps | null
-  addContextButtonRef: React.RefObject<HTMLButtonElement | null>
-}) {
-  const previewRef = React.useRef<HTMLElement | null>(null)
-  const isConnected = Boolean(observationComposerView?.view.isConnected)
-  const { position, dragHandlers } = useFloatingPreviewPosition({
-    active: isConnected,
-    previewRef,
-  })
-
-  if (!observationComposerView?.view.isConnected) return null
-  return createPortal(
-    <ObservationComposerPreview
-      {...observationComposerView}
-      addContextButtonRef={addContextButtonRef}
-      dragHandlers={dragHandlers}
-      previewRef={previewRef}
-      style={{
-        position: "fixed",
-        left: position?.left ?? 0,
-        top: position?.top ?? 0,
-        width: position?.width ?? 0,
-        height: position?.height ?? 0,
-        visibility: position ? "visible" : "hidden",
-        zIndex: 50,
-      }}
-      className="pointer-events-auto"
-    />,
-    document.body,
-  )
-}
 
 export const Route = createFileRoute("/_layout/ai")({
   validateSearch: (search: Record<string, unknown>): AISearchParams => ({
@@ -224,12 +183,7 @@ interface AutoRunPromptOptions {
   activeThreadId: string | null
   setActiveThreadId: (id: string | null) => void
   handleNewChat: () => void
-  handleSendMessage: (
-    text: string,
-    images?: File[],
-    editMessageId?: string,
-    targetThreadIdOverride?: string,
-  ) => Promise<void>
+  handleSendMessage: ChatTurnSender
 }
 
 function useAutoRunPrompt({
@@ -255,7 +209,9 @@ function useAutoRunPrompt({
         return
       }
       executedPromptRef.current = prompt
-      handleSendMessage(prompt, undefined, undefined, targetThreadId)
+      handleSendMessage(prompt, undefined, undefined, {
+        targetThreadIdOverride: targetThreadId,
+      })
       return
     }
 
@@ -420,17 +376,9 @@ interface AIChatCenterColumnProps {
   selectedModelId: string
   modelsData?: {
     data?: { id: string; name?: string }[]
-    observation_model?: string | null
   }
   setSelectedModelId: (id: string) => void
-  handleSendMessage: (
-    text: string,
-    images?: File[],
-    editMessageId?: string,
-    targetThreadIdOverride?: string,
-    onThreadCreated?: (threadId: string) => void,
-    observation?: Readonly<ObservationPacket>,
-  ) => Promise<void>
+  handleSendMessage: ChatTurnSender
   handleQuestionAnswer: (id: string, answers: any[]) => void
   stopStream: () => void
   editingMessageId: string | null
@@ -442,8 +390,6 @@ interface AIChatCenterColumnProps {
   onSwitchBranch?: (messageId: string, direction: "prev" | "next") => void
   onEditLastUserMessage: () => void
   onRecallLastPrompt?: () => string | null | undefined
-  observationUsage: { threadId: string; data: ObservationUsagePayload } | null
-  clearObservationUsage: () => void
 }
 
 interface SubmitCenterColumnMessageInput {
@@ -451,89 +397,108 @@ interface SubmitCenterColumnMessageInput {
   images?: File[]
   editMessageId?: string
   activeThreadId: string | null
-  prepareTurn: PrepareObservationTurnRef["current"]
-  setHandoffTargetThreadId: (threadId: string | null) => void
+  browserReading: NonNullable<
+    ReturnType<typeof useAIChatContext>
+  >["browserReading"]
   handleSendMessage: AIChatCenterColumnProps["handleSendMessage"]
 }
 
-async function submitCenterColumnMessage({
-  text,
-  images,
-  editMessageId,
-  activeThreadId,
-  prepareTurn,
-  setHandoffTargetThreadId,
-  handleSendMessage,
-}: SubmitCenterColumnMessageInput): Promise<boolean> {
-  let observation: Readonly<ObservationPacket> | undefined
-  try {
-    observation = prepareTurn?.(Boolean(images?.length)) ?? undefined
-  } catch {
-    return false
+async function submitCenterColumnMessage(
+  input: SubmitCenterColumnMessageInput,
+): Promise<boolean> {
+  const owner = input.browserReading.getSnapshot()
+  const ownerId = ownerIdForChat(owner, input.activeThreadId)
+  if (!shouldUseBrowser(input, ownerId)) {
+    return input.handleSendMessage(
+      input.text,
+      input.images,
+      input.editMessageId,
+    )
   }
-  if (activeThreadId === null) setHandoffTargetThreadId(null)
-  await handleSendMessage(
-    text,
-    images,
-    editMessageId,
-    undefined,
-    setHandoffTargetThreadId,
-    observation,
-  )
-  return true
+  return sendBrowserQuestion(input, ownerId ?? "")
 }
 
-function getObservationModelName(
-  modelsData: AIChatCenterColumnProps["modelsData"],
-): string | undefined {
-  return modelsData?.observation_model ?? undefined
+function shouldUseBrowser(
+  input: SubmitCenterColumnMessageInput,
+  ownerId: string | null,
+): boolean {
+  if (!ownerId) return false
+  if (input.images?.length) return false
+  return !input.editMessageId
+}
+
+async function sendBrowserQuestion(
+  input: SubmitCenterColumnMessageInput,
+  ownerId: string,
+): Promise<boolean> {
+  const session = input.browserReading
+  const draftNonce = session.getSnapshot().draftNonce
+  let prepared: PreparedBrowserQuestion | null = null
+  try {
+    prepared = session.queueQuestion(ownerId)
+    if (!prepared) {
+      toast.info("Browser processing is still settling. Try again shortly.")
+      return false
+    }
+    const bindCreated = input.activeThreadId
+      ? undefined
+      : (threadId: string) => {
+          if (
+            !session.bindToThread({ draftNonce: draftNonce ?? "", threadId })
+          ) {
+            throw new Error("Browser sharing changed while creating the chat")
+          }
+        }
+    const sent = await input.handleSendMessage(
+      input.text,
+      input.images,
+      input.editMessageId,
+      { onThreadCreated: bindCreated, browserQuestion: prepared },
+    )
+    if (!sent) session.cancelPreparedQuestion(prepared.operation_id)
+    return sent
+  } catch {
+    if (prepared) session.cancelPreparedQuestion(prepared.operation_id)
+    return false
+  }
 }
 
 function AIChatCenterColumn(props: AIChatCenterColumnProps) {
-  const observationPrepareRef =
-    React.useRef<PrepareObservationTurnRef["current"]>(null)
-  const addContextButtonRef = React.useRef<HTMLButtonElement>(null)
-  const [
-    observationHandoffTargetThreadId,
-    setObservationHandoffTargetThreadId,
-  ] = React.useState<string | null>(null)
-  const [observationComposerView, setObservationComposerView] =
+  const chatContext = useAIChatContext()
+  const browserReading = chatContext?.browserReading
+  const [observationSlot, setObservationSlot] =
     React.useState<ObservationComposerSlotProps | null>(null)
+  const addContextButtonRef = React.useRef<HTMLButtonElement>(null)
   const currentKey = props.activeThreadId ?? "new-chat"
   const draftValue = props.threadDrafts[currentKey] ?? ""
-  const placeholderText = props.isCurrentThreadQueued
-    ? "Waiting in queue..."
-    : "Ask anything"
-  const observationModelName = getObservationModelName(props.modelsData)
-  const handleComposerViewChange = React.useCallback(
-    (view: ObservationComposerSlotProps) => {
-      setObservationComposerView({
-        ...view,
-        onReset: () => {
-          view.onReset()
-          props.clearObservationUsage()
-        },
-      })
+  const placeholderText = "Ask anything"
+  const handleModelChange = React.useCallback(
+    (id: string) => {
+      props.setSelectedModelId(id)
+      if (!browserReading) return
+      const currentIsOwner = Boolean(
+        ownerIdForChat(browserReading.getSnapshot(), props.activeThreadId),
+      )
+      if (currentIsOwner) browserReading.setOwnerModel(id)
     },
-    [props.clearObservationUsage],
+    [browserReading, props.activeThreadId, props.setSelectedModelId],
   )
   const handleComposerSend = React.useCallback(
     async (text: string, images?: File[], editMessageId?: string) => {
+      if (!browserReading) {
+        return props.handleSendMessage(text, images, editMessageId)
+      }
       return submitCenterColumnMessage({
         text,
         images,
         editMessageId,
         activeThreadId: props.activeThreadId,
-        prepareTurn: observationPrepareRef.current,
-        setHandoffTargetThreadId: setObservationHandoffTargetThreadId,
+        browserReading,
         handleSendMessage: props.handleSendMessage,
       })
     },
-    [props.activeThreadId, props.handleSendMessage],
+    [browserReading, props.activeThreadId, props.handleSendMessage],
   )
-  const handleObservationHandoffConsumed = React.useCallback(() => {
-    setObservationHandoffTargetThreadId(null)
-  }, [])
 
   return (
     <div className="relative mx-auto flex min-h-0 w-full flex-1 max-w-2xl border-r-0 md:border-r border-border flex-col h-[calc(100vh-3.5rem)] lg:h-screen">
@@ -553,26 +518,16 @@ function AIChatCenterColumn(props: AIChatCenterColumnProps) {
         onSwitchBranch={props.onSwitchBranch}
       />
 
-      {props.observationUsage?.threadId === props.activeThreadId &&
-        observationComposerView && (
-          <div className="mx-auto w-full max-w-2xl px-4 pb-2">
-            <ObservationUsageDetails
-              usage={props.observationUsage.data}
-              onReset={observationComposerView.onReset}
-            />
-          </div>
-        )}
-
       <div className="relative mx-auto flex w-full max-w-2xl flex-col gap-2 px-4 pb-4 shrink-0">
-        <ObservationControls
-          activeThreadId={props.activeThreadId}
-          handoffTargetThreadId={observationHandoffTargetThreadId}
-          onHandoffConsumed={handleObservationHandoffConsumed}
-          prepareTurnRef={observationPrepareRef}
-          observationModelName={observationModelName}
-          renderInComposer
-          onComposerViewChange={handleComposerViewChange}
-        />
+        {browserReading && (
+          <BrowserReadingControls
+            session={browserReading}
+            activeThreadId={props.activeThreadId}
+            model={props.selectedModelId}
+            onComposerViewChange={setObservationSlot}
+            addContextButtonRef={addContextButtonRef}
+          />
+        )}
         <PromptForm
           key={currentKey}
           addContextButtonRef={addContextButtonRef}
@@ -588,19 +543,15 @@ function AIChatCenterColumn(props: AIChatCenterColumnProps) {
             id: m.id,
             name: m.name || m.id,
           }))}
-          onSelectModel={props.setSelectedModelId}
+          onSelectModel={handleModelChange}
           onSubmit={handleComposerSend}
-          observationSlot={observationComposerView}
+          observationSlot={observationSlot}
           onStop={props.stopStream}
           onEditLastUserMessage={props.onEditLastUserMessage}
           onRecallLastPrompt={props.onRecallLastPrompt}
           autoFocus
         />
       </div>
-      <FloatingBrowserPreview
-        observationComposerView={observationComposerView}
-        addContextButtonRef={addContextButtonRef}
-      />
     </div>
   )
 }
@@ -956,8 +907,6 @@ interface AIPageCenterSectionProps {
   modelsData?: { data?: { id: string; name?: string }[] }
   isStreaming: boolean
   isQueued: boolean
-  observationUsage: { threadId: string; data: ObservationUsagePayload } | null
-  clearObservationUsage: () => void
 }
 
 function AIPageCenterSection({
@@ -968,14 +917,10 @@ function AIPageCenterSection({
   modelsData,
   isStreaming,
   isQueued,
-  observationUsage,
-  clearObservationUsage,
 }: AIPageCenterSectionProps) {
   return (
     <AIChatCenterColumn
       activeThreadId={feedState.activeThreadId}
-      observationUsage={observationUsage}
-      clearObservationUsage={clearObservationUsage}
       localMessages={feedState.localMessages}
       allMessages={feedState.allMessages}
       isCurrentThreadStreaming={isStreaming}
@@ -1080,8 +1025,6 @@ function AIPageView({
         modelsData={modelsData}
         isStreaming={isCurrentThreadStreaming}
         isQueued={isCurrentThreadQueued}
-        observationUsage={feedState.observationUsage}
-        clearObservationUsage={feedState.clearObservationUsage}
       />
 
       <AIPageSidebar

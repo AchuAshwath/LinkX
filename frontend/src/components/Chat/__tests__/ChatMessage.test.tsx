@@ -18,6 +18,36 @@ function renderWithClient(ui: React.ReactElement) {
 }
 
 describe("ChatMessage component", () => {
+  it("shows browser read tools and preserves a real model thought", () => {
+    const message: ChatUIMessage = {
+      id: "browser-answer",
+      role: "assistant",
+      parts: [{ type: "thought", content: "I found the label on the page." }],
+      browserActivity: {
+        steps: [],
+        tools: [
+          {
+            id: "frame-1",
+            name: "read_shared_view",
+            state: "running",
+            input: { view_index: 1, view_count: 1 },
+          },
+        ],
+        warning: null,
+      },
+    }
+    render(<ChatMessage message={message} isStreaming />)
+    expect(
+      screen.getByRole("status", { name: "Image transcription" }),
+    ).toBeInTheDocument()
+    fireEvent.click(
+      screen.getByRole("button", { name: "Toggle thinking details" }),
+    )
+    expect(
+      screen.getByText("I found the label on the page."),
+    ).toBeInTheDocument()
+    expect(screen.queryByText("Thinking…")).not.toBeInTheDocument()
+  })
   it("renders user message in an end-aligned bubble", () => {
     const message: ChatUIMessage = {
       id: "msg-1",

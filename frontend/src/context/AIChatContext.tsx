@@ -6,6 +6,11 @@ import {
   type ModelsDataResponse,
   useAIModelSelection,
 } from "@/hooks/useAIModelSelection"
+import { createBrowserReadingCapture } from "@/observation/reading/capture"
+import { installBrowserReadingDebug } from "@/observation/reading/debug"
+import { createBrowserMemory } from "@/observation/reading/memory"
+import { createBrowserReadingSession } from "@/observation/reading/session"
+import { createBrowserReadingTransport } from "@/observation/reading/transport"
 
 export type AIChatFeedState = ReturnType<typeof useAIChatFeedState>
 
@@ -16,6 +21,7 @@ export interface AIChatContextValue {
   selectedModelId: string
   setSelectedModelId: (id: string) => void
   modelsData?: ModelsDataResponse
+  browserReading: ReturnType<typeof createBrowserReadingSession>
 }
 
 const AIChatContext = React.createContext<AIChatContextValue | null>(null)
@@ -78,6 +84,23 @@ export function useAIChatUrlParams(): AIChatUrlParams {
 export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const { selectedModelId, setSelectedModelId, modelsData } =
     useAIModelSelection()
+  const [readingRuntime] = React.useState(() => {
+    const memory = createBrowserMemory({ maxBytes: 32768, keepRecent: 3 })
+    const browserReading = createBrowserReadingSession({
+      capture: createBrowserReadingCapture(),
+      transport: createBrowserReadingTransport(),
+      memory,
+    })
+    return { browserReading, memory }
+  })
+  const { browserReading, memory } = readingRuntime
+
+  React.useEffect(() => {
+    if (!import.meta.env.DEV) return
+    return installBrowserReadingDebug({ session: browserReading, memory })
+  }, [browserReading, memory])
+
+  React.useEffect(() => () => browserReading.stop(), [browserReading])
 
   const { data: threadsData, isLoading: isThreadsLoading } = useQuery({
     queryKey: ["ai-threads"],
@@ -95,6 +118,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     setSelectedModelId,
     initialThreadId,
     isAutoRun: Boolean(urlParams.autoRun || urlParams.prompt),
+    browserReading,
   })
 
   const value = React.useMemo<AIChatContextValue>(
@@ -105,6 +129,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       selectedModelId,
       setSelectedModelId,
       modelsData,
+      browserReading,
     }),
     [
       feedState,
@@ -113,6 +138,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       selectedModelId,
       setSelectedModelId,
       modelsData,
+      browserReading,
     ],
   )
 

@@ -105,18 +105,14 @@ describe("useChatTurnSender observation payload", () => {
     )
 
     await act(async () => {
-      await result.current(
-        "What is on this page?",
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        observation,
-      )
+      await result.current("What is on this page?", undefined, undefined, {
+        observation: observation,
+      })
     })
 
     expect(queuedTurns).toHaveLength(1)
     expect(queuedTurns[0].observation).toBe(observation)
+    expect(queuedTurns[0].onAcknowledged).toBeUndefined()
     expect(Object.isFrozen(queuedTurns[0].observation)).toBe(true)
   })
 })
@@ -319,5 +315,119 @@ describe("appendAssistantArtifact", () => {
     expect((updated[0].parts[0] as any).artifact.content).toBe(
       "Version 2 (refined)",
     )
+  })
+})
+
+describe("browser question acknowledgement", () => {
+  it.each([
+    true,
+    false,
+  ])("clears the accepted draft before admission resolves %s", async (accepted) => {
+    const queued: QueuedTurn[] = []
+    const clearDraft = vi.fn()
+    const clearMatchingDraft = vi.fn().mockReturnValue({
+      revision: 1,
+      text: "Question",
+    })
+    const restoreDraftIfEmpty = vi.fn()
+    const { result } = renderHook(() =>
+      useChatTurnSender({
+        activeThreadId: "owner",
+        selectedModelId: "model",
+        isStreaming: false,
+        streamingThreadId: null,
+        setActiveThreadId: vi.fn(),
+        setMessagesByThread: vi.fn(),
+        setPendingQuestion: vi.fn(),
+        clearThreadDraft: clearDraft,
+        clearMatchingDraft,
+        restoreDraftIfEmpty,
+        createThreadMutation: { mutateAsync: vi.fn() } as never,
+        enqueueTurn: (turn) => queued.push(turn),
+        processQueue: vi.fn(),
+      }),
+    )
+    const prepared = {
+      operation_id: "op",
+      model: "pinned-model",
+      context: {
+        session_id: "session",
+        generation: 1,
+        cutoff: 0,
+        summary: "",
+        notes: [],
+        pending_frames: [],
+        current_view: null,
+        gap_count: 0,
+      },
+    }
+    let outcome: Promise<boolean> | undefined
+    await act(async () => {
+      outcome = result.current("Question", undefined, undefined, {
+        browserQuestion: prepared,
+      })
+      await Promise.resolve()
+    })
+    expect(queued).toHaveLength(1)
+    expect(clearDraft).not.toHaveBeenCalled()
+    expect(clearMatchingDraft).toHaveBeenCalledWith("owner", "Question")
+    await act(async () => {
+      expect(await outcome).toBe(true)
+    })
+    await act(async () => {
+      queued[0].onAcknowledged?.(accepted)
+      queued[0].onAcknowledged?.(false)
+      queued[0].onAcknowledged?.(false)
+    })
+    expect(clearMatchingDraft).toHaveBeenCalledTimes(1)
+    expect(restoreDraftIfEmpty).toHaveBeenCalledTimes(accepted ? 0 : 1)
+  })
+
+  it("clears before handling a synchronous admission failure", async () => {
+    const queued: QueuedTurn[] = []
+    const events: string[] = []
+    const { result } = renderHook(() =>
+      useChatTurnSender({
+        activeThreadId: "owner",
+        selectedModelId: "model",
+        isStreaming: false,
+        streamingThreadId: null,
+        setActiveThreadId: vi.fn(),
+        setMessagesByThread: vi.fn(),
+        setPendingQuestion: vi.fn(),
+        clearThreadDraft: vi.fn(),
+        clearMatchingDraft: () => {
+          events.push("clear")
+          return { revision: events.length, text: "Question" }
+        },
+        restoreDraftIfEmpty: () => events.push("restore"),
+        createThreadMutation: { mutateAsync: vi.fn() } as never,
+        enqueueTurn: (turn) => queued.push(turn),
+        processQueue: () => queued[0].onAcknowledged?.(false),
+      }),
+    )
+
+    await act(async () => {
+      await expect(
+        result.current("Question", undefined, undefined, {
+          browserQuestion: {
+            operation_id: "op",
+            model: "pinned-model",
+            context: {
+              session_id: "session",
+              generation: 1,
+              cutoff: 0,
+              summary: "",
+              notes: [],
+              pending_frames: [],
+              current_view: null,
+              gap_count: 0,
+            },
+          },
+        }),
+      ).resolves.toBe(true)
+    })
+
+    expect(events).toEqual(["clear", "restore"])
   })
 })
