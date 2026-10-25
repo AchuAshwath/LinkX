@@ -1,4 +1,5 @@
 import type { ObservationPacket } from "@/observation/packet"
+import type { PreparedBrowserQuestion } from "@/observation/reading/types"
 
 export interface TextMessagePart {
   type: "text"
@@ -135,6 +136,13 @@ export interface BranchVersionInfo {
   totalVersions: number
 }
 
+export interface BrowserActivity {
+  requestId?: string
+  steps: Array<{ state: "waiting" | "checking" | "reading"; message: string }>
+  tools?: ToolCallItem[]
+  warning: string | null
+}
+
 export interface ChatUIMessage {
   id: string
   parentId?: string | null
@@ -144,6 +152,8 @@ export interface ChatUIMessage {
   createdAt?: string
   status?: "queued" | "streaming" | "done" | "error"
   interrupted?: boolean
+  /** Local display metadata; never included in saved message parts or answer text. */
+  browserActivity?: BrowserActivity
 }
 
 export interface QueuedTurn {
@@ -155,4 +165,7 @@ export interface QueuedTurn {
   assistantMsgId: string
   editMessageId?: string
   observation?: Readonly<ObservationPacket>
+  browserQuestion?: PreparedBrowserQuestion
+  requestId?: string
+  onAcknowledged?: (accepted: boolean) => void
 }
