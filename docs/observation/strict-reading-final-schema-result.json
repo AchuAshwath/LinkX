@@ -1,0 +1,31 @@
+{
+  "model": "openai/gpt-6-luna",
+  "call_limit": 2,
+  "source": "Synthetic JPEG feed, documentation and blank-page fixtures only.",
+  "checks": [
+    {
+      "name": "feed preserves author and main post content",
+      "passed": true
+    },
+    {
+      "name": "final nonblank compaction schema preserves author and facts",
+      "passed": true
+    }
+  ],
+  "requests": [
+    {
+      "call": 1,
+      "schema": "browser_read",
+      "duration_s": 4.0,
+      "returned": true
+    },
+    {
+      "call": 2,
+      "schema": "browser_compaction",
+      "duration_s": 2.46,
+      "returned": true
+    }
+  ],
+  "passed": true,
+  "calls": 2
+}

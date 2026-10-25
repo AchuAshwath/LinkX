@@ -1,0 +1,115 @@
+{
+  "as_of": "2026-10-25",
+  "status": {
+    "manual_current_feature_review": {
+      "result": "user accepted current feature",
+      "date": "2026-10-25"
+    },
+    "formal_review_gate": {
+      "issue": 172,
+      "status": "outstanding",
+      "notes": [
+        "Formal review and merge disposition remain outstanding.",
+        "No terms-of-service proof is recorded."
+      ]
+    },
+    "not_established": [
+      "comprehensive accuracy across pages and models",
+      "cross-browser certification",
+      "legal or terms-of-service compliance",
+      "multi-worker distributed coordination",
+      "crash-safe job resumption"
+    ]
+  },
+  "validation_tiers": [
+    {
+      "name": "backend_full_suite",
+      "passed": 934,
+      "warnings": 24,
+      "process_exit": 0,
+      "scope": "Final complete recorded backend suite."
+    },
+    {
+      "name": "frontend_unit_and_component",
+      "passed": 363,
+      "files": 42,
+      "scope": "Final recorded frontend suite."
+    },
+    {
+      "name": "desktop_chrome_scroll_regression",
+      "passed": 1,
+      "total": 1,
+      "browser": "installed desktop Chrome via Playwright",
+      "scope": "Transcript following, reading-position preservation, re-follow and thread switch.",
+      "limitation": "Sub-8-pixel upward movement is simulated deterministically; this is not cross-engine or physical-trackpad certification."
+    },
+    {
+      "name": "controlled_full_system_smoke",
+      "passed": 20,
+      "scope": "Integrated capture/session/HTTP/persistence/UI checks with a scripted external provider.",
+      "limitation": "Does not measure live-provider accuracy."
+    }
+  ],
+  "counting_note": "Validation tiers are separate checkpoints, not additive and not all from one same-revision test run.",
+  "issue_scope": {
+    "150": "parent browser-reading deliverable",
+    "159": "capture and session ownership",
+    "168": "image interpretation",
+    "171": "bounded browser memory",
+    "161": "question coordination and durable chat integration",
+    "172": "integrated formal review and merge gate",
+    "173": "product acceptance and scope decisions",
+    "175": "structured model-output schema",
+    "176": "browser submission and thread titles",
+    "177": "terminal stream-error handling",
+    "178": "voice-input settlement",
+    "179": "transcript scrolling and sharing menu",
+    "180": "browser-sharing capability context"
+  },
+  "proposed_review_branches": [
+    "codex/reading-api-review",
+    "codex/question-api-review",
+    "codex/browser-memory-review",
+    "codex/browser-chat-review",
+    "codex/chat-draft-review",
+    "codex/chat-scroll-review",
+    "codex/browser-audit-review"
+  ],
+  "publication_note": "Branch names and issue mappings describe intended review organization only; they do not assert that commits, pull requests, merges, or issue changes exist.",
+  "publication_checkpoints": {
+    "reading_api": {
+      "branch": "codex/reading-api-review",
+      "backend_tests_passed": 868,
+      "frontend_tests_passed": 266
+    },
+    "question_api": {
+      "branch": "codex/question-api-review",
+      "backend_tests_passed": 934
+    },
+    "memory": {
+      "branch": "codex/browser-memory-review",
+      "frontend_tests_passed": 286,
+      "focused_cases": 20
+    },
+    "activation": {
+      "branch": "codex/browser-chat-review",
+      "frontend_tests_passed": 360,
+      "v3_stream_cases": 7
+    },
+    "final_frontend": {
+      "branch": "codex/chat-scroll-review",
+      "frontend_tests_passed": 363,
+      "chrome_cases_passed": 1
+    },
+    "final_combined": {
+      "branch": "codex/browser-audit-review",
+      "controlled_system_checks_passed": 20,
+      "chrome_cases_passed": 1,
+      "external_provider_scripted_in_system_test": true
+    },
+    "generator": {
+      "consecutive_host_generations_identical": true,
+      "normal_commit_hooks_enabled": true
+    }
+  }
+}

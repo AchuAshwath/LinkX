@@ -1,0 +1,26 @@
+{
+  "passed": true,
+  "model": "scripted external provider",
+  "checks": [
+    "floating preview, symmetric radius, hover-only close",
+    "actual video sampler and v3 pipeline produced a background note",
+    "console debugger exposes detached browser notes and memory usage without image payloads",
+    "sharing survives SPA chat navigation",
+    "console budget uses the selected model window with reserved output space",
+    "question uses temporary notes through real browser-chat runner",
+    "first browser answer is visible before title generation updates the sidebar",
+    "answers from retained context finish without a fake tool trace or incomplete heading",
+    "stationary initial view was captured and later changed view read after its only paint",
+    "prompt appears immediately while the background read is still active",
+    "submitted draft clears before the active image read completes",
+    "one rotating active status shows image progress without a pending image icon or thinking wrapper",
+    "completed first-image preview remains while the single active status advances to image two",
+    "later typing survives delayed browser question acknowledgement",
+    "frozen pending batch uses sequential wait/read/reevaluate with transient note receipts",
+    "completed image tools show extracted content instead of counts after transcript refresh",
+    "Postgres stores only ordinary user/final assistant turns",
+    "sharing stays active while a general-knowledge answer uses no browser evidence",
+    "invalid model evaluation displays one classified error and persists no fabricated answer",
+    "Stop and reload clear browser context without UI errors"
+  ]
+}
