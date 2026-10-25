@@ -145,7 +145,7 @@ class QuestionRunner:
         pending = list(context.pending_frames)
         broad = bool(
             re.search(
-                r"\b(all|every|everything|entire|whole|summari[sz]e|compare|comparison)\b",
+                r"\b(all|every|everything|entire|whole|(?:full|complete)\s+list|summari[sz]e|compare|comparison)\b",
                 request.message,
                 re.IGNORECASE,
             )
