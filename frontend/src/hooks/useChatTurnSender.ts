@@ -318,11 +318,19 @@ export interface HandlerFactoryOptions {
 }
 
 function hasMessageContent(m: ChatUIMessage): boolean {
-  if (m.parts.length === 0) return false
+  if (hasBrowserActivityContent(m)) return true
   return m.parts.some((p) => {
     if (p.type === "text") return Boolean(p.text?.trim())
     return true
   })
+}
+
+function hasBrowserActivityContent(m: ChatUIMessage): boolean {
+  const activity = m.browserActivity
+  if (!activity) return false
+  return Boolean(
+    activity.steps.length || activity.tools?.length || activity.warning,
+  )
 }
 
 function createAbortHandler({
