@@ -261,6 +261,55 @@ async def test_broad_question_settles_pending_even_if_model_scope_flag_is_false(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    "request_text",
+    [
+        "Give me the full list of visible items",
+        "Give me the complete list of visible items",
+    ],
+    ids=["full-list", "complete-list"],
+)
+async def test_full_list_question_settles_pending_even_if_model_scope_flag_is_false(
+    request_text,
+):
+    model = ScriptedModel(
+        [
+            EvaluationResult(
+                decision="answer", answer="premature", evidence_ids=["known"]
+            ),
+            EvaluationResult(
+                decision="answer", answer="complete", evidence_ids=["known", "f1"]
+            ),
+        ]
+    )
+    context = BrowserContext(
+        session_id=uuid4(),
+        generation=1,
+        cutoff=2,
+        notes=[BrowserNote(id="known", sequence=2, text="first item", model="vision")],
+        pending_frames=[frame(1)],
+    )
+
+    async def emit(event, data):
+        pass
+
+    result = await QuestionRunner(model=model).run(
+        request=QuestionInput(
+            message=request_text,
+            model="vision",
+            context=context,
+            history=[],
+        ),
+        emit=emit,
+        cancelled=lambda: False,
+    )
+
+    assert result.answer == "complete"
+    assert result.completed_ids == ["f1"]
+    assert result.unused_ids == []
+
+
+@pytest.mark.anyio
 async def test_broad_insufficient_still_settles_the_frozen_batch():
     model = ScriptedModel(
         [
