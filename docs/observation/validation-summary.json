@@ -111,5 +111,19 @@
       "consecutive_host_generations_identical": true,
       "normal_commit_hooks_enabled": true
     }
+  },
+  "hosted_gate_follow_up": {
+    "reason": "New-file health threshold10.0; initial mixed model-test file had low cohesion/large method.",
+    "change": "Split tests into budget, evaluation, compaction and provider modules.",
+    "preserved_test_functions": 15,
+    "preserved_assertion_asts": 80,
+    "new_module_scores": [
+      10.0,
+      10.0,
+      10.0,
+      10.0
+    ],
+    "standalone_backend_tests_passed": 868,
+    "runtime_code_changed": false
   }
 }

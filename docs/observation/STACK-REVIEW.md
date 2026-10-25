@@ -46,3 +46,7 @@ The Chrome fine-scroll case translates a real wheel event into deterministic sub
 Implementation for the accepted scope is ready for review across #159/#168/#171/#161 and fixes #175–#181. #172 remains the formal review/merge gate; #173 records the narrowed accepted contract. Historical prototype tickets #166/#169/#170 are updated to distinguish accepted decisions from unmeasured aspirations. Raw planning/probe archives remain local, rather than publishing broken links, machine-specific paths or raw page/model output.
 
 The generator fix in PR182 makes host and Docker-fallback SDK output stable across normal commit hooks. This final layer also synchronizes type-only route metadata with the versions already pinned in the lockfile; no runtime route is added or removed. No provider retention/location, legal/ToS determination, participant accessibility outcome, multi-worker coordination or exhaustive-page accuracy is established by these checks.
+
+## Hosted gate follow-up
+
+Hosted CodeScene required a10.0 score for new files and flagged the initial mixed model-test module, although local delta checks passed. Its tests were split into cohesive budget, evaluation, compaction and provider modules. All15 original test-function names and80 assertion ASTs were preserved; all four new modules score10.0, and the standalone reading-API suite still passes868 tests. This changes test organization only. The adjustment is carried forward through the review branches without rewriting published history. Hosted status should be checked at each PR's current head.
