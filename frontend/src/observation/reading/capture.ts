@@ -73,6 +73,23 @@ function createEncodingJob(
   return { candidate, generation, settled, finish, pinned: false }
 }
 
+function monitorTrackEnd(
+  track: MediaStreamTrack | undefined,
+  onEnd: () => void,
+): () => boolean {
+  let ended = false
+  const handleEnd = () => {
+    if (ended) return
+    ended = true
+    onEnd()
+  }
+  track?.addEventListener("ended", handleEnd, { once: true })
+  return () => {
+    if (track?.readyState === "ended") handleEnd()
+    return ended
+  }
+}
+
 interface CaptureIdentity {
   generation: number
   ownerChat: string
@@ -309,17 +326,20 @@ export function createBrowserReadingCapture(
     capture: MediaStream,
     token: number,
     captureIdentity: CaptureIdentity,
-  ): void {
+  ): () => boolean {
     const videoTrack = capture.getVideoTracks()[0]
-    videoTrack?.addEventListener(
-      "ended",
-      () => {
-        if (generation !== token) return
-        captureIdentity.onEnded?.()
-        stop()
-      },
-      { once: true },
+    return monitorTrackEnd(videoTrack, () =>
+      finishCaptureEnd(token, captureIdentity),
     )
+  }
+
+  function finishCaptureEnd(
+    token: number,
+    captureIdentity: CaptureIdentity,
+  ): void {
+    if (generation !== token) return
+    captureIdentity.onEnded?.()
+    if (generation === token) stop()
   }
 
   function startSampler(
@@ -345,9 +365,10 @@ export function createBrowserReadingCapture(
   ): Promise<void> {
     if (generation !== token) return
     const currentVideo = prepareVideo(capture)
+    const hasEnded = monitorCaptureEnd(capture, token, captureIdentity)
+    if (hasEnded()) return
     await currentVideo.play()
-    if (generation !== token || !video) return
-    monitorCaptureEnd(capture, token, captureIdentity)
+    if (hasEnded() || generation !== token || video !== currentVideo) return
     startSampler(currentVideo, token, captureIdentity)
   }
 

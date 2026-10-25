@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-10-25",
+  "as_of": "2026-10-26",
   "status": {
     "manual_current_feature_review": {
       "result": "user accepted current feature",
@@ -7,9 +7,10 @@
     },
     "formal_review_gate": {
       "issue": 172,
-      "status": "outstanding",
+      "status": "awaiting_user_merge_review",
       "notes": [
-        "Formal review and merge disposition remain outstanding.",
+        "Independent review and the post-review regression fixes are complete for the accepted demo scope; merge and issue disposition await user review.",
+        "Verify hosted checks at the current published PR heads before merging.",
         "No terms-of-service proof is recorded."
       ]
     },
@@ -24,16 +25,16 @@
   "validation_tiers": [
     {
       "name": "backend_full_suite",
-      "passed": 934,
+      "passed": 936,
       "warnings": 24,
       "process_exit": 0,
-      "scope": "Final complete recorded backend suite."
+      "scope": "Post-review complete backend suite; repeated on the question API layer before publishing the completeness fix."
     },
     {
       "name": "frontend_unit_and_component",
-      "passed": 363,
-      "files": 42,
-      "scope": "Final recorded frontend suite."
+      "passed": 377,
+      "files": 43,
+      "scope": "Post-review combined frontend suite, including capture termination, stopped activity rendering and queue cancellation regressions."
     },
     {
       "name": "desktop_chrome_scroll_regression",
@@ -41,7 +42,9 @@
       "total": 1,
       "browser": "installed desktop Chrome via Playwright",
       "scope": "Transcript following, reading-position preservation, re-follow and thread switch.",
-      "limitation": "Sub-8-pixel upward movement is simulated deterministically; this is not cross-engine or physical-trackpad certification."
+      "limitation": "Sub-8-pixel upward movement is simulated deterministically; this is not cross-engine or physical-trackpad certification. An initial concurrent run failed its fine-scroll assertion; isolated and three sequential repeated runs passed.",
+      "repeated_runs_passed": 3,
+      "repeated_runs_total": 3
     },
     {
       "name": "controlled_full_system_smoke",
@@ -50,7 +53,7 @@
       "limitation": "Does not measure live-provider accuracy."
     }
   ],
-  "counting_note": "Validation tiers are separate checkpoints, not additive and not all from one same-revision test run.",
+  "counting_note": "Validation tiers and historical per-layer checkpoints are separate, non-additive runs. Backend evidence is shared only when app/test file fingerprints match the fully tested layer.",
   "issue_scope": {
     "150": "parent browser-reading deliverable",
     "159": "capture and session ownership",
@@ -62,7 +65,7 @@
     "175": "structured model-output schema",
     "176": "browser submission and thread titles",
     "177": "terminal stream-error handling",
-    "178": "voice-input settlement",
+    "178": "voice-input settlement and revision-fenced queued draft recovery",
     "179": "transcript scrolling and sharing menu",
     "180": "browser-sharing capability context"
   },
@@ -75,7 +78,7 @@
     "codex/chat-scroll-review",
     "codex/browser-audit-review"
   ],
-  "publication_note": "Branch names and issue mappings describe intended review organization only; they do not assert that commits, pull requests, merges, or issue changes exist.",
+  "publication_note": "PRs #182\u2013#188 form the published review stack. Parent branches retain normal merge history; no PR has been merged into master. Verify checks at each resulting head after propagation.",
   "publication_checkpoints": {
     "reading_api": {
       "branch": "codex/reading-api-review",
@@ -84,7 +87,8 @@
     },
     "question_api": {
       "branch": "codex/question-api-review",
-      "backend_tests_passed": 934
+      "backend_tests_passed": 934,
+      "post_review_backend_tests_passed": 936
     },
     "memory": {
       "branch": "codex/browser-memory-review",
@@ -94,18 +98,24 @@
     "activation": {
       "branch": "codex/browser-chat-review",
       "frontend_tests_passed": 360,
-      "v3_stream_cases": 7
+      "v3_stream_cases": 7,
+      "post_review_frontend_tests_passed": 366
     },
     "final_frontend": {
       "branch": "codex/chat-scroll-review",
       "frontend_tests_passed": 363,
-      "chrome_cases_passed": 1
+      "chrome_cases_passed": 1,
+      "post_review_frontend_tests_passed": 377
     },
     "final_combined": {
       "branch": "codex/browser-audit-review",
       "controlled_system_checks_passed": 20,
       "chrome_cases_passed": 1,
-      "external_provider_scripted_in_system_test": true
+      "external_provider_scripted_in_system_test": true,
+      "backend_tests_passed": 936,
+      "frontend_tests_passed": 377,
+      "v3_capture_tests_passed": 55,
+      "chrome_repeated_cases_passed": 3
     },
     "generator": {
       "consecutive_host_generations_identical": true,
@@ -125,5 +135,35 @@
     ],
     "standalone_backend_tests_passed": 868,
     "runtime_code_changed": false
+  },
+  "review_pull_requests": [
+    "https://github.com/AchuAshwath/LinkX/pull/182",
+    "https://github.com/AchuAshwath/LinkX/pull/183",
+    "https://github.com/AchuAshwath/LinkX/pull/184",
+    "https://github.com/AchuAshwath/LinkX/pull/185",
+    "https://github.com/AchuAshwath/LinkX/pull/186",
+    "https://github.com/AchuAshwath/LinkX/pull/187",
+    "https://github.com/AchuAshwath/LinkX/pull/188"
+  ],
+  "post_review_fixes": {
+    "date": "2026-10-26",
+    "question_completeness": {
+      "pull_request": 183,
+      "behavior": "Full list and complete list requests settle their accepted pending batch despite a false narrow evaluator flag; narrow and general answers may still finish early."
+    },
+    "capture_termination": {
+      "pull_request": 185,
+      "behavior": "Observe source termination before playback, reject ended/stale startup, and preserve replacement capture during reentrant owner callbacks."
+    },
+    "stopped_activity": {
+      "pull_request": 185,
+      "behavior": "Keep meaningful image activity through abort and render activity-only stopped messages without a running spinner; empty ordinary assistants remain hidden."
+    },
+    "draft_cancellation": {
+      "pull_request": 186,
+      "behavior": "Preserve newer and deliberately cleared drafts; recover untouched browser/ordinary prompts and the first cancelled ordinary prompt for a multi-turn queue."
+    },
+    "api_schema_changed": false,
+    "fresh_live_model_accuracy_study": false
   }
 }

@@ -18,6 +18,42 @@ function renderWithClient(ui: React.ReactElement) {
 }
 
 describe("ChatMessage component", () => {
+  it("renders a stopped browser read without showing an empty assistant row", () => {
+    const interrupted: ChatUIMessage = {
+      id: "browser-interrupted",
+      role: "assistant",
+      parts: [],
+      status: "done",
+      interrupted: true,
+      browserActivity: {
+        steps: [],
+        tools: [{ id: "frame-1", name: "read_shared_view", state: "running" }],
+        warning: null,
+      },
+    }
+    const empty: ChatUIMessage = {
+      id: "ordinary-empty",
+      role: "assistant",
+      parts: [],
+      status: "done",
+      interrupted: true,
+    }
+
+    render(
+      <>
+        <ChatMessage message={interrupted} />
+        <ChatMessage message={empty} />
+      </>,
+    )
+
+    expect(
+      screen.getByRole("button", { name: "Stopped reading image 1" }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole("status", { name: "Image transcription" }),
+    ).not.toBeInTheDocument()
+  })
+
   it("shows browser read tools and preserves a real model thought", () => {
     const message: ChatUIMessage = {
       id: "browser-answer",

@@ -5,10 +5,10 @@ The current demo was accepted in a manual smoke review on 25 October 2026. This 
 | Layer | Review | Scope and issues |
 | --- | --- | --- |
 | 1 | [PR182](https://github.com/AchuAshwath/LinkX/pull/182) | Bounded reading API, strict model output, budgets; #168, #175, #181 |
-| 2 | [PR183](https://github.com/AchuAshwath/LinkX/pull/183) | Incremental question API, ordinary-turn persistence, awareness and naming; #161, #176, #180 |
+| 2 | [PR183](https://github.com/AchuAshwath/LinkX/pull/183) | Incremental question API, complete list requests, ordinary-turn persistence, awareness and naming; #161, #176, #180 |
 | 3 | [PR184](https://github.com/AchuAshwath/LinkX/pull/184) | Pure temporary memory and activity types; #171 |
-| 4 | [PR185](https://github.com/AchuAshwath/LinkX/pull/185) | Chat-owned capture/session, queued questions, image activity and terminal errors; #159, #161, #176, #177 |
-| 5 | [PR186](https://github.com/AchuAshwath/LinkX/pull/186) | Late voice results and newer-draft preservation; #178 |
+| 4 | [PR185](https://github.com/AchuAshwath/LinkX/pull/185) | Chat-owned capture/session, startup termination, stopped image activity and terminal errors; #159, #161, #176, #177 |
+| 5 | [PR186](https://github.com/AchuAshwath/LinkX/pull/186) | Late voice results, revision-fenced queue cancellation and newer-draft preservation; #178 |
 | 6 | [PR187](https://github.com/AchuAshwath/LinkX/pull/187) | Transcript following, reading position and sharing menu; #179 |
 | 7 | This branch: `codex/browser-audit-review` | Contract, developer debugging, validation and generated route metadata; #172, #173 |
 
@@ -50,3 +50,11 @@ The generator fix in PR182 makes host and Docker-fallback SDK output stable acro
 ## Hosted gate follow-up
 
 Hosted CodeScene required a10.0 score for new files and flagged the initial mixed model-test module, although local delta checks passed. Its tests were split into cohesive budget, evaluation, compaction and provider modules. All15 original test-function names and80 assertion ASTs were preserved; all four new modules score10.0, and the standalone reading-API suite still passes868 tests. This changes test organization only. The adjustment is carried forward through the review branches without rewriting published history. Hosted status should be checked at each PR's current head.
+
+## Post-review fixes and publication
+
+The final review found four regressions, now addressed in their owning layers. PR183 settles accepted pending views for “full list” and “complete list” requests even if the evaluator marks the question narrow. PR185 installs source-end monitoring before playback and generation-fences startup and reentrant callbacks; it also preserves and renders stopped image activity before answer text arrives. PR186 uses revision-fenced queue recovery, including intentionally cleared drafts, delayed no-op form clears and multiple ordinary queued prompts. Queue handling is extracted into a focused hook to retain the repository's CodeScene limits.
+
+Each regression was reproduced before its repair. Permanent tests exercise the public question runner, capture adapter, real feed/form/queue boundary and actual message renderer. The refreshed validation summary records 936 backend tests, 377 frontend tests across 43 files, 55 v3 capture tests, 20 controlled system checks and three repeated Chrome scroll cases. These counts are separate checkpoints. The system smoke scripts the external model while retaining real capture/session, HTTP, authentication and Postgres behavior; it does not establish live-provider accuracy.
+
+The fixes are carried forward with normal merge commits through the review stack. Standalone validation is repeated for changed frontend layers; backend app/test fingerprints must match the fully tested question API layer before sharing its 936-test result. The final source files are compared with the reviewed candidate, and normal commit hooks remain enabled. Hosted checks must pass at the resulting PR heads before merge. Master and issue states remain unchanged; merge/issue disposition is still for the user's review.
