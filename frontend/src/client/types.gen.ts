@@ -37,6 +37,27 @@ export type Body_posts_upload_media = {
     file: (Blob | File);
 };
 
+export type BrowserChatRequest = {
+    message: string;
+    model: string;
+    request_id: string;
+    browser_context: BrowserContext;
+};
+
+export type BrowserContext = {
+    summary?: string;
+    notes?: Array<BrowserNote>;
+    session_id: string;
+    generation: number;
+    cutoff: number;
+    pending_frames?: Array<BrowserFrame>;
+    /**
+     * Reserved for the paired-image prototype; browser-chat rejects non-null current views until that trial is enabled.
+     */
+    current_view?: (BrowserFrame | null);
+    gap_count?: number;
+};
+
 export type BrowserFrame = {
     id: string;
     sequence: number;
@@ -363,6 +384,13 @@ export type XVerifyResponse = {
 export type AdminReadSchedulerStatusResponse = (unknown);
 
 export type AdminTriggerSchedulerRunResponse = (unknown);
+
+export type AiBrowserChatBrowserChatData = {
+    id: string;
+    requestBody: BrowserChatRequest;
+};
+
+export type AiBrowserChatBrowserChatResponse = (unknown);
 
 export type AiObservationReadBrowserData = {
     requestBody: ReadRequest;

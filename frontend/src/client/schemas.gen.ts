@@ -187,6 +187,99 @@ export const Body_posts_upload_mediaSchema = {
     title: 'Body_posts-upload_media'
 } as const;
 
+export const BrowserChatRequestSchema = {
+    properties: {
+        message: {
+            type: 'string',
+            maxLength: 25000,
+            minLength: 1,
+            title: 'Message'
+        },
+        model: {
+            type: 'string',
+            maxLength: 100,
+            minLength: 1,
+            title: 'Model'
+        },
+        request_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Request Id'
+        },
+        browser_context: {
+            '$ref': '#/components/schemas/BrowserContext'
+        }
+    },
+    additionalProperties: false,
+    type: 'object',
+    required: ['message', 'model', 'request_id', 'browser_context'],
+    title: 'BrowserChatRequest'
+} as const;
+
+export const BrowserContextSchema = {
+    properties: {
+        summary: {
+            type: 'string',
+            maxLength: 8192,
+            title: 'Summary',
+            default: ''
+        },
+        notes: {
+            items: {
+                '$ref': '#/components/schemas/BrowserNote'
+            },
+            type: 'array',
+            maxItems: 200,
+            title: 'Notes'
+        },
+        session_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Session Id'
+        },
+        generation: {
+            type: 'integer',
+            exclusiveMinimum: 0,
+            title: 'Generation'
+        },
+        cutoff: {
+            type: 'integer',
+            minimum: 0,
+            title: 'Cutoff'
+        },
+        pending_frames: {
+            items: {
+                '$ref': '#/components/schemas/BrowserFrame'
+            },
+            type: 'array',
+            maxItems: 2,
+            title: 'Pending Frames'
+        },
+        current_view: {
+            anyOf: [
+                {
+                    '$ref': '#/components/schemas/BrowserFrame'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            description: 'Reserved for the paired-image prototype; browser-chat rejects non-null current views until that trial is enabled.'
+        },
+        gap_count: {
+            type: 'integer',
+            maximum: 200,
+            minimum: 0,
+            title: 'Gap Count',
+            default: 0
+        }
+    },
+    additionalProperties: false,
+    type: 'object',
+    required: ['session_id', 'generation', 'cutoff'],
+    title: 'BrowserContext'
+} as const;
+
 export const BrowserFrameSchema = {
     properties: {
         id: {

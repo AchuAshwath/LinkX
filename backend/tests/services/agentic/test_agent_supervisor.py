@@ -49,6 +49,45 @@ def _get_tool_by_name(tools: list[Any], name: str) -> Any:
 
 
 class TestAgentSupervisorDraftManagement:
+    def test_build_bot_agent_system_prompt_explains_browser_tab_sharing(
+        self, db: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        user = _make_user(db=db)
+        ctx = BotContext(user_id=str(user.id), session=db, thread_id="browser-chat")
+        captured: dict[str, Any] = {}
+
+        def fake_create_react_agent(**kwargs: Any) -> object:
+            captured.update(kwargs)
+            return object()
+
+        monkeypatch.setattr(
+            "app.services.agentic.agent_supervisor.create_react_agent",
+            fake_create_react_agent,
+        )
+        monkeypatch.setattr(
+            "app.services.agentic.agent_supervisor.get_chat_model",
+            lambda **_: object(),
+        )
+        build_bot_agent(ctx=ctx)
+
+        prompt = str(captured["prompt"].content).lower()
+        assert "browser tab" in prompt
+        assert "menu" in prompt
+        assert "temporary chat" in prompt
+        assert "claim current sharing only from supplied session evidence" in prompt
+        assert "describe content only from supplied notes or images" in prompt
+        assert (
+            "pending-frame metadata is processing state, not readable page content"
+            in prompt
+        )
+        assert "or demand pasted content or screenshots as the only way" in prompt
+        assert (
+            "reading or summarizing shared posts is not a request to create, edit, save or publish a draft"
+            in prompt
+        )
+        assert "no permission to control the tab" in prompt
+        assert "processing is pending only when supplied state confirms it" in prompt
+
     def test_bot_agent_system_prompt_rules(self) -> None:
         """Verify prompt contains strict rules for in-place editing, em dash exclusion, and no repetition."""
         assert "LinkX Bot" in BOT_AGENT_SYSTEM_PROMPT
@@ -221,6 +260,48 @@ class TestAgentSupervisorDraftManagement:
         ctx = BotContext(user_id=str(user.id), session=db, thread_id=str(thread.id))
         agent = build_bot_agent(ctx=ctx)
         assert agent is not None
+
+    def test_active_draft_prompt_does_not_turn_shared_post_reading_into_edits(
+        self, db: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        user = _make_user(db=db)
+        thread = _make_thread(db=db, user=user)
+        tools = build_bot_tools(
+            user_id=str(user.id), session=db, thread_id=str(thread.id)
+        )
+        save_tool = _get_tool_by_name(tools, "save_draft_post")
+        saved = save_tool.invoke(
+            {"content": "A draft unrelated to the shared tab", "platform": "x"}
+        )
+        assert "post_id" in saved
+
+        captured: dict[str, Any] = {}
+
+        def fake_create_react_agent(**kwargs: Any) -> object:
+            captured.update(kwargs)
+            return object()
+
+        monkeypatch.setattr(
+            "app.services.agentic.agent_supervisor.create_react_agent",
+            fake_create_react_agent,
+        )
+        monkeypatch.setattr(
+            "app.services.agentic.agent_supervisor.get_chat_model",
+            lambda **_: object(),
+        )
+        build_bot_agent(
+            ctx=BotContext(user_id=str(user.id), session=db, thread_id=str(thread.id))
+        )
+
+        prompt = str(captured["prompt"].content).lower()
+        assert "anything about a post" not in prompt
+        assert "when user refers to draft/post, call update_draft_post" not in prompt
+        assert "explicitly asks to edit" in prompt
+        assert (
+            "shared-tab post reading request does not authorize editing this draft"
+            in prompt
+        )
+        assert "is not a request to create, edit, save or publish a draft" in prompt
 
     def test_bot_tools_isolated_across_threads(self, db: Session) -> None:
         """Verify that drafts created in Thread A do NOT bleed into Thread B."""
