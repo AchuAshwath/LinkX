@@ -1,0 +1,18 @@
+{
+  "test": "frontend/tests/ai-chat-scroll.spec.ts",
+  "command": "cd frontend && bunx playwright test --config=playwright.chat-scroll.config.ts",
+  "browser": "Google Chrome via Playwright",
+  "result": "passed",
+  "checks": [
+    "The latest streamed answer starts at the end of the transcript.",
+    "Growing the answer and expanding browser read activity keeps the end visible while pinned.",
+    "A positive wheel gesture at the end retains follow mode through another content increase.",
+    "A -4 wheel event retains its transient 4px upward scroll through later content growth; the fixture simulates only Chrome's sub-8px default scroll movement in a capture listener because Playwright mouse wheel input is rounded at the bottom edge.",
+    "An upward wheel gesture releases follow mode and keeps the visible message anchored during answer and activity growth.",
+    "Scroll to end and End key restore follow mode for later growth; Shift+Space releases follow and preserves the reading anchor.",
+    "Switching threads resets the scroller and positions the new transcript at its end.",
+    "The transcript viewport ends above the real PromptForm composer.",
+    "The Stop sharing menu item is one line and invokes its callback."
+  ],
+  "menuScreenshot": "docs/observation/chat-scroll-menu.png"
+}

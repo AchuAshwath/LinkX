@@ -503,6 +503,7 @@ function AIChatCenterColumn(props: AIChatCenterColumnProps) {
   return (
     <div className="relative mx-auto flex min-h-0 w-full flex-1 max-w-2xl border-r-0 md:border-r border-border flex-col h-[calc(100vh-3.5rem)] lg:h-screen">
       <AIChatFeed
+        activeThreadId={props.activeThreadId}
         localMessages={props.localMessages}
         allMessages={props.allMessages}
         isStreaming={props.isCurrentThreadStreaming}
