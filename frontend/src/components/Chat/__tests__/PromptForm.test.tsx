@@ -935,3 +935,23 @@ describe("PromptForm component", () => {
     })
   })
 })
+
+it("keeps newer draft text when an earlier submission is acknowledged", async () => {
+  let acknowledge: (accepted: boolean) => void = () => {}
+  const acknowledgement = new Promise<boolean>((resolve) => {
+    acknowledge = resolve
+  })
+  render(
+    <PromptForm
+      onSubmit={() => acknowledgement}
+      placeholder="Acknowledgement test"
+    />,
+  )
+  const input = screen.getByPlaceholderText("Acknowledgement test")
+  fireEvent.change(input, { target: { value: "First question" } })
+  fireEvent.submit(input.closest("form")!)
+  expect(input).toHaveValue("First question")
+  fireEvent.change(input, { target: { value: "Next question" } })
+  acknowledge(true)
+  await waitFor(() => expect(input).toHaveValue("Next question"))
+})

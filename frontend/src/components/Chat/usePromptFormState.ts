@@ -54,6 +54,7 @@ function isInputEmpty(text: string, imageCount: number): boolean {
 }
 
 interface PromptSubmitPayload {
+  getCurrentInput: () => string
   input: string
   selectedImages: { file: File }[]
   onSubmit: (
@@ -66,6 +67,7 @@ interface PromptSubmitPayload {
 }
 
 function executePromptSubmit({
+  getCurrentInput,
   input,
   selectedImages,
   onSubmit,
@@ -89,6 +91,7 @@ function executePromptSubmit({
   }
   const clearAcceptedSubmission = (accepted: boolean | undefined) => {
     if (accepted === false) return
+    if (getCurrentInput() !== input) return
     updateInput("")
     clearImages()
   }
@@ -191,10 +194,13 @@ function usePromptFormActions({
   onEditLastUserMessage,
   onRecallLastPrompt,
 }: PromptFormActionsOptions) {
+  const latestInput = React.useRef(input)
+  latestInput.current = input
   const handleSubmit = React.useCallback(
     (event?: React.FormEvent) => {
       event?.preventDefault()
       executePromptSubmit({
+        getCurrentInput: () => latestInput.current,
         input,
         selectedImages,
         onSubmit,
