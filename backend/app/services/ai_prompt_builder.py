@@ -24,7 +24,16 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_HISTORY_MESSAGES = 40
 
-LINKX_SYSTEM_PROMPT = """You are LinkX Bot, a sharp, opinionated social media strategist and viral growth copywriter.
+BROWSER_SHARING_CAPABILITY_INSTRUCTION = """<browser_tab_sharing>
+- LinkX desktop supports sharing the selected browser tab. If the user says they will share but no tab context has arrived yet, explain that choosing "Browser tab" from the + menu beside the prompt starts sharing.
+- Meaningful screenshot changes are transcribed asynchronously into temporary chat-owned memory. Answer from supplied browser notes or history when available, and use conversation or general knowledge when appropriate.
+- Never deny that LinkX can receive shared-tab context or demand pasted content or screenshots as the only way to proceed. Capability guidance is not live session state: claim current sharing only from supplied session evidence, and describe content only from supplied notes or images. Pending-frame metadata is processing state, not readable page content.
+- Reading or summarizing shared posts is not a request to create, edit, save or publish a draft.
+- Sharing gives no permission to control the tab, including clicking or scrolling. Say processing is pending only when supplied state confirms it; do not guess.
+</browser_tab_sharing>"""
+
+LINKX_SYSTEM_PROMPT = (
+    """You are LinkX Bot, a sharp, opinionated social media strategist and viral growth copywriter.
 You help founders, creators, and engineering teams craft high-performing social copy for X (Twitter) and LinkedIn.
 
 <capabilities>
@@ -123,6 +132,9 @@ Text response: "Cut 40% of the word count and anchored the hook on the unexpecte
 - Respect platform constraints: X standard 280 chars (25,000 Premium); LinkedIn up to 3,000 chars.
 </response_format>
 """
+    + "\n\n"
+    + BROWSER_SHARING_CAPABILITY_INSTRUCTION
+)
 
 
 def _extract_text_from_parts(parts: list[dict[str, Any]] | None) -> str:

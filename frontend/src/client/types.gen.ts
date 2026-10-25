@@ -37,6 +37,23 @@ export type Body_posts_upload_media = {
     file: (Blob | File);
 };
 
+export type BrowserFrame = {
+    id: string;
+    sequence: number;
+    captured_at: string;
+    width: number;
+    height: number;
+    image_data_url: string;
+};
+
+export type BrowserNote = {
+    id: string;
+    sequence: number;
+    text: string;
+    model: string;
+    uncertainty?: string;
+};
+
 export type ChatMessageRequest = {
     message?: string;
     model?: (string | null);
@@ -101,6 +118,18 @@ export type ChatThreadUpdate = {
     active_leaf_id?: (string | null);
 };
 
+export type CompactRequest = {
+    summary?: string;
+    notes?: Array<BrowserNote>;
+    operation_id: string;
+    model: string;
+};
+
+export type CompactResponse = {
+    operation_id: string;
+    summary: string;
+};
+
 export type HTTPValidationError = {
     detail?: Array<ValidationError>;
 };
@@ -155,6 +184,14 @@ export type ObservationPacket = {
     height: number;
     image_data_url: string;
 };
+
+export type OperationStatus = {
+    operation_id: string;
+    state: 'active' | 'settled' | 'unknown';
+    cancelled?: boolean;
+};
+
+export type state = 'active' | 'settled' | 'unknown';
 
 export type PostAuthor = {
     name: string;
@@ -215,6 +252,17 @@ export type PrivateUserCreate = {
     password: string;
     full_name: string;
     is_verified?: boolean;
+};
+
+export type ReadRequest = {
+    operation_id: string;
+    model: string;
+    frame: BrowserFrame;
+};
+
+export type ReadResponse = {
+    operation_id: string;
+    note: BrowserNote;
 };
 
 export type Token = {
@@ -315,6 +363,30 @@ export type XVerifyResponse = {
 export type AdminReadSchedulerStatusResponse = (unknown);
 
 export type AdminTriggerSchedulerRunResponse = (unknown);
+
+export type AiObservationReadBrowserData = {
+    requestBody: ReadRequest;
+};
+
+export type AiObservationReadBrowserResponse = (ReadResponse);
+
+export type AiObservationCompactBrowserData = {
+    requestBody: CompactRequest;
+};
+
+export type AiObservationCompactBrowserResponse = (CompactResponse);
+
+export type AiObservationOperationStatusData = {
+    id: string;
+};
+
+export type AiObservationOperationStatusResponse = (OperationStatus);
+
+export type AiObservationCancelOperationData = {
+    id: string;
+};
+
+export type AiObservationCancelOperationResponse = (OperationStatus);
 
 export type AiThreadsListAiModelsResponse = (AIModelsPublic);
 

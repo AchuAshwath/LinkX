@@ -10,6 +10,17 @@ MAX_OBSERVATION_INPUT_TOKENS = 12_000
 class ObservationInputBudgetError(ValueError):
     """Raised when model-specific observation input accounting is unavailable or over budget."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason: str = "budget_unavailable",
+        budget: "ObservationInputBudget | None" = None,
+    ) -> None:
+        super().__init__(message)
+        self.reason = reason
+        self.budget = budget
+
 
 @dataclass(frozen=True)
 class ObservationInputBudget:
@@ -44,7 +55,7 @@ def _has_supported_capacities(*, metadata: Mapping[str, Any], reserve: int) -> b
 
 
 def _resolve_model_input_limit(
-    *, model: str, output_reserve: int
+    *, model: str, output_reserve: int, input_cap: int | None
 ) -> tuple[str, int, int]:
     from litellm import get_model_info
 
@@ -62,10 +73,9 @@ def _resolve_model_input_limit(
     return (
         model_id,
         capacity,
-        min(
-            MAX_OBSERVATION_INPUT_TOKENS,
-            capacity - output_reserve,
-        ),
+        min(input_cap, capacity - output_reserve)
+        if input_cap is not None
+        else capacity - output_reserve,
     )
 
 
@@ -84,23 +94,40 @@ def _estimate_input_tokens(*, model_id: str, messages: list[dict[str, Any]]) -> 
 
 
 def budget_observation_messages(
-    *, model: str, messages: list[dict[str, Any]], output_reserve: int
+    *,
+    model: str,
+    messages: list[dict[str, Any]],
+    output_reserve: int,
+    input_cap: int | None = MAX_OBSERVATION_INPUT_TOKENS,
 ) -> ObservationInputBudget:
     """Count text and image input with LiteLLM metadata, failing closed when unavailable."""
     model_id, capacity, input_limit = _resolve_model_input_limit(
         model=model,
         output_reserve=output_reserve,
+        input_cap=input_cap,
     )
     estimated_tokens = _estimate_input_tokens(model_id=model_id, messages=messages)
-    if estimated_tokens > input_limit:
-        raise ObservationInputBudgetError(
-            "Observation input exceeds the model input budget"
-        )
-
-    return ObservationInputBudget(
+    budget = ObservationInputBudget(
         model_id=model_id,
         model_input_capacity=capacity,
         output_reserve=output_reserve,
         input_limit=input_limit,
         estimated_input_tokens=estimated_tokens,
+    )
+    if estimated_tokens > input_limit:
+        raise ObservationInputBudgetError(
+            "Observation input exceeds the model input budget",
+            reason="input_too_large",
+            budget=budget,
+        )
+
+    return budget
+
+
+def budget_browser_messages(
+    *, model: str, messages: list[dict[str, Any]], output_reserve: int
+) -> ObservationInputBudget:
+    """Use the selected model's window for ephemeral reading, retaining legacy caps elsewhere."""
+    return budget_observation_messages(
+        model=model, messages=messages, output_reserve=output_reserve, input_cap=None
     )
