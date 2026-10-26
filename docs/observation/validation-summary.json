@@ -41,10 +41,10 @@
       "passed": 1,
       "total": 1,
       "browser": "installed desktop Chrome via Playwright",
-      "scope": "Transcript following, reading-position preservation, re-follow and thread switch.",
-      "limitation": "Sub-8-pixel upward movement is simulated deterministically; this is not cross-engine or physical-trackpad certification. An initial concurrent run failed its fine-scroll assertion; isolated and three sequential repeated runs passed.",
-      "repeated_runs_passed": 3,
-      "repeated_runs_total": 3
+      "scope": "Transcript following, reading-position preservation, re-follow, thread switch, and stable anchor sampling after native wheel/keyboard scrolling settles.",
+      "limitation": "Sub-8-pixel upward movement is simulated deterministically; this is not cross-engine or physical-trackpad certification. Anchor capture waits for ten quiet animation frames after native scrolling; the original assertions and tolerances are unchanged.",
+      "repeated_runs_passed": 10,
+      "repeated_runs_total": 10
     },
     {
       "name": "controlled_full_system_smoke",
@@ -115,7 +115,7 @@
       "backend_tests_passed": 936,
       "frontend_tests_passed": 377,
       "v3_capture_tests_passed": 55,
-      "chrome_repeated_cases_passed": 3
+      "chrome_repeated_cases_passed": 10
     },
     "generator": {
       "consecutive_host_generations_identical": true,
@@ -165,5 +165,16 @@
     },
     "api_schema_changed": false,
     "fresh_live_model_accuracy_study": false
+  },
+  "scroll_regression_sampling": {
+    "pull_request": 187,
+    "test_only": true,
+    "product_scroll_code_changed": false,
+    "change": "Wait for ten consecutive animation frames with stable scrollTop before capturing anchors after native scrolling.",
+    "diagnosis": "The Shift+Space browser test sampled while native keyboard scrolling was still moving; settled diagnostic runs had zero anchor drift. Existing product assertions and tolerances are unchanged.",
+    "repeat_result": {
+      "passed": 10,
+      "total": 10
+    }
   }
 }
