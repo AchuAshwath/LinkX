@@ -11,6 +11,27 @@ async function expectAtEnd(viewport: Locator) {
   await expect.poll(() => distanceFromEnd(viewport)).toBeLessThan(8)
 }
 
+async function waitForScrollToSettle(viewport: Locator) {
+  await viewport.evaluate(
+    (node) =>
+      new Promise<void>((resolve, reject) => {
+        let previousTop = node.scrollTop
+        let quietFrames = 0
+        const deadline = performance.now() + 3000
+        function sample() {
+          const currentTop = node.scrollTop
+          quietFrames = currentTop === previousTop ? quietFrames + 1 : 0
+          previousTop = currentTop
+          if (quietFrames >= 10) return resolve()
+          if (performance.now() >= deadline)
+            return reject(new Error("Viewport scrolling did not settle"))
+          requestAnimationFrame(sample)
+        }
+        requestAnimationFrame(sample)
+      }),
+  )
+}
+
 async function captureVisibleMessage(viewport: Locator) {
   return viewport.evaluate((node) => {
     const viewportTop = node.getBoundingClientRect().top
@@ -94,6 +115,7 @@ async function exercisePinnedFollow(page: Page, viewport: Locator) {
       }, endPosition),
     )
     .toBe(true)
+  await waitForScrollToSettle(viewport)
   await expect
     .poll(() => viewport.evaluate((node) => node.scrollTop))
     .toBeLessThan(endPosition)
@@ -111,6 +133,7 @@ async function exerciseReadingAndJump(page: Page, viewport: Locator) {
   await expect
     .poll(() => viewport.evaluate((node) => node.scrollTop))
     .toBeLessThan(pinnedPosition - 100)
+  await waitForScrollToSettle(viewport)
   const readingAnchor = await captureVisibleMessage(viewport)
   expect(readingAnchor).not.toBeNull()
 
@@ -138,6 +161,7 @@ async function exerciseThreadSwitch(page: Page, viewport: Locator) {
   await expect
     .poll(() => viewport.evaluate((node) => node.scrollTop))
     .toBeLessThan(pinnedPosition - 100)
+  await waitForScrollToSettle(viewport)
   const readingAnchor = await captureVisibleMessage(viewport)
   expect(readingAnchor).not.toBeNull()
   await page.getByRole("button", { name: "Append activity" }).click()
