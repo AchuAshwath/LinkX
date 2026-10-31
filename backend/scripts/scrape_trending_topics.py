@@ -150,7 +150,8 @@ async def _extract_nested_link_href(link: Any) -> str | None:
     try:
         nested_a = link.locator("a[href*='/search?q='], a[href*='/i/trending/']").first
         if await nested_a.count() > 0:
-            return await nested_a.get_attribute("href")
+            href: str | None = await nested_a.get_attribute("href")
+            return href
     except Exception:
         pass
     return None
@@ -217,9 +218,9 @@ async def _extract_sidebar_links(
 async def _scrape_topic_tweets(
     ctx: TopicProcessContext,
     tweet_selector: str,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Scrape top tweets with human reading simulation."""
-    conversations: list[dict] = []
+    conversations: list[dict[str, Any]] = []
     author_counts: dict[str, int] = {}
     remaining_scrolls = ctx.config.get("scrolls_per_topic", 2)
 
@@ -329,7 +330,7 @@ async def _extract_candidate_summary(
         try:
             summary_locator = page.locator(sel).first
             if await summary_locator.count() > 0:
-                candidate = await summary_locator.inner_text()
+                candidate: str = await summary_locator.inner_text()
                 if candidate and len(candidate.strip()) > 30:
                     return candidate.strip()
         except Exception:

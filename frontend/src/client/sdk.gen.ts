@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { AdminReadSchedulerStatusResponse, AdminTriggerSchedulerRunResponse, AiThreadsListAiModelsResponse, AiThreadsCreateChatThreadData, AiThreadsCreateChatThreadResponse, AiThreadsListChatThreadsData, AiThreadsListChatThreadsResponse, AiThreadsGetChatThreadData, AiThreadsGetChatThreadResponse, AiThreadsUpdateChatThreadData, AiThreadsUpdateChatThreadResponse, AiThreadsDeleteChatThreadData, AiThreadsDeleteChatThreadResponse, AiThreadsChatStreamData, AiThreadsChatStreamResponse, AuthLinkedinConfigCheckResponse, AuthLinkedinAuthorizeResponse, AuthLinkedinCallbackData, AuthLinkedinCallbackResponse, AuthXStatusResponse, AuthXVerifyResponse, AuthXConnectData, AuthXConnectResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, LinkedinLinkedinStatusResponse, LinkedinLinkedinDisconnectResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PostsUploadMediaData, PostsUploadMediaResponse, PostsGenerateAiDraftData, PostsGenerateAiDraftResponse, PostsReadPostsData, PostsReadPostsResponse, PostsCreateNewPostData, PostsCreateNewPostResponse, PostsReadPostData, PostsReadPostResponse, PostsUpdateExistingPostData, PostsUpdateExistingPostResponse, PostsDeleteExistingPostData, PostsDeleteExistingPostResponse, PostsPublishExistingPostData, PostsPublishExistingPostResponse, PostsRetryFailedPostData, PostsRetryFailedPostResponse, PrivateCreateUserData, PrivateCreateUserResponse, TrendingGetTrendingResponse, TrendingExtractTrendingTopicsData, TrendingExtractTrendingTopicsResponse, TrendingDraftFromTrendingTopicData, TrendingDraftFromTrendingTopicResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
+import type { AdminReadSchedulerStatusResponse, AdminTriggerSchedulerRunResponse, AiObservationReadBrowserData, AiObservationReadBrowserResponse, AiObservationCompactBrowserData, AiObservationCompactBrowserResponse, AiObservationOperationStatusData, AiObservationOperationStatusResponse, AiObservationCancelOperationData, AiObservationCancelOperationResponse, AiThreadsListAiModelsResponse, AiThreadsCreateChatThreadData, AiThreadsCreateChatThreadResponse, AiThreadsListChatThreadsData, AiThreadsListChatThreadsResponse, AiThreadsGetChatThreadData, AiThreadsGetChatThreadResponse, AiThreadsUpdateChatThreadData, AiThreadsUpdateChatThreadResponse, AiThreadsDeleteChatThreadData, AiThreadsDeleteChatThreadResponse, AiThreadsChatStreamData, AiThreadsChatStreamResponse, AuthLinkedinConfigCheckResponse, AuthLinkedinAuthorizeResponse, AuthLinkedinCallbackData, AuthLinkedinCallbackResponse, AuthXStatusResponse, AuthXVerifyResponse, AuthXConnectData, AuthXConnectResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, LinkedinLinkedinStatusResponse, LinkedinLinkedinDisconnectResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PostsUploadMediaData, PostsUploadMediaResponse, PostsGenerateAiDraftData, PostsGenerateAiDraftResponse, PostsReadPostsData, PostsReadPostsResponse, PostsCreateNewPostData, PostsCreateNewPostResponse, PostsReadPostData, PostsReadPostResponse, PostsUpdateExistingPostData, PostsUpdateExistingPostResponse, PostsDeleteExistingPostData, PostsDeleteExistingPostResponse, PostsPublishExistingPostData, PostsPublishExistingPostResponse, PostsRetryFailedPostData, PostsRetryFailedPostResponse, PrivateCreateUserData, PrivateCreateUserResponse, TrendingGetTrendingResponse, TrendingExtractTrendingTopicsData, TrendingExtractTrendingTopicsResponse, TrendingDraftFromTrendingTopicData, TrendingDraftFromTrendingTopicResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
 
 export class AdminService {
     /**
@@ -17,7 +17,7 @@ export class AdminService {
             url: '/api/v1/admin/scheduler/status'
         });
     }
-    
+
     /**
      * Trigger Scheduler Run
      * Manually trigger immediate execution of due scheduled posts.
@@ -28,6 +28,86 @@ export class AdminService {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/api/v1/admin/scheduler/run-now'
+        });
+    }
+}
+
+export class AiObservationService {
+    /**
+     * Read Browser
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns ReadResponse Successful Response
+     * @throws ApiError
+     */
+    public static readBrowser(data: AiObservationReadBrowserData): CancelablePromise<AiObservationReadBrowserResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/ai/observation/read',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Compact Browser
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns CompactResponse Successful Response
+     * @throws ApiError
+     */
+    public static compactBrowser(data: AiObservationCompactBrowserData): CancelablePromise<AiObservationCompactBrowserResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/ai/observation/compact',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Operation Status
+     * @param data The data for the request.
+     * @param data.id
+     * @returns OperationStatus Successful Response
+     * @throws ApiError
+     */
+    public static operationStatus(data: AiObservationOperationStatusData): CancelablePromise<AiObservationOperationStatusResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/ai/observation/operations/{id}',
+            path: {
+                id: data.id
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Cancel Operation
+     * @param data The data for the request.
+     * @param data.id
+     * @returns OperationStatus Successful Response
+     * @throws ApiError
+     */
+    public static cancelOperation(data: AiObservationCancelOperationData): CancelablePromise<AiObservationCancelOperationResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/ai/observation/operations/{id}',
+            path: {
+                id: data.id
+            },
+            errors: {
+                422: 'Validation Error'
+            }
         });
     }
 }
@@ -45,7 +125,7 @@ export class AiThreadsService {
             url: '/api/v1/ai/threads/models'
         });
     }
-    
+
     /**
      * Create Chat Thread
      * Create a new AI chat conversation thread.
@@ -65,7 +145,7 @@ export class AiThreadsService {
             }
         });
     }
-    
+
     /**
      * List Chat Threads
      * List chat threads for the current user with optional archive filter.
@@ -90,7 +170,7 @@ export class AiThreadsService {
             }
         });
     }
-    
+
     /**
      * Get Chat Thread
      * Get a chat thread by ID including full JSON transcript.
@@ -111,7 +191,7 @@ export class AiThreadsService {
             }
         });
     }
-    
+
     /**
      * Update Chat Thread
      * Update chat thread metadata (title, archive status).
@@ -135,7 +215,7 @@ export class AiThreadsService {
             }
         });
     }
-    
+
     /**
      * Delete Chat Thread
      * Delete a chat thread.
@@ -156,7 +236,7 @@ export class AiThreadsService {
             }
         });
     }
-    
+
     /**
      * Chat Stream
      * Server-Sent Events streaming endpoint for AI conversation.
@@ -195,7 +275,7 @@ export class AuthService {
             url: '/api/v1/auth/linkedin/config-check'
         });
     }
-    
+
     /**
      * Linkedin Authorize
      * Start LinkedIn OAuth for current user.
@@ -208,7 +288,7 @@ export class AuthService {
             url: '/api/v1/auth/linkedin/authorize'
         });
     }
-    
+
     /**
      * Linkedin Callback
      * OAuth callback endpoint configured in LinkedIn Developer Portal.
@@ -235,7 +315,7 @@ export class AuthService {
             }
         });
     }
-    
+
     /**
      * X Status
      * Check if the X account cookie session is present on disk for the current user.
@@ -248,7 +328,7 @@ export class AuthService {
             url: '/api/v1/auth/x/status'
         });
     }
-    
+
     /**
      * X Verify
      * Run live headless verification against X.com to confirm cookies are valid and feed loads.
@@ -261,7 +341,7 @@ export class AuthService {
             url: '/api/v1/auth/x/verify'
         });
     }
-    
+
     /**
      * X Connect
      * Launch the headed Chrome browser on the host machine for manual X.com login.
@@ -307,7 +387,7 @@ export class ItemsService {
             }
         });
     }
-    
+
     /**
      * Create Item
      * Create new item.
@@ -327,7 +407,7 @@ export class ItemsService {
             }
         });
     }
-    
+
     /**
      * Read Item
      * Get item by ID.
@@ -348,7 +428,7 @@ export class ItemsService {
             }
         });
     }
-    
+
     /**
      * Update Item
      * Update an item.
@@ -372,7 +452,7 @@ export class ItemsService {
             }
         });
     }
-    
+
     /**
      * Delete Item
      * Delete an item.
@@ -412,7 +492,7 @@ export class LinkedinService {
             url: '/api/v1/linkedin/status'
         });
     }
-    
+
     /**
      * Linkedin Disconnect
      * Disconnect LinkedIn for the current user.
@@ -449,7 +529,7 @@ export class LoginService {
             }
         });
     }
-    
+
     /**
      * Test Token
      * Test access token
@@ -462,7 +542,7 @@ export class LoginService {
             url: '/api/v1/login/test-token'
         });
     }
-    
+
     /**
      * Recover Password
      * Password Recovery
@@ -483,7 +563,7 @@ export class LoginService {
             }
         });
     }
-    
+
     /**
      * Reset Password
      * Reset password
@@ -503,7 +583,7 @@ export class LoginService {
             }
         });
     }
-    
+
     /**
      * Recover Password Html Content
      * HTML Content for Password Recovery
@@ -546,7 +626,7 @@ export class PostsService {
             }
         });
     }
-    
+
     /**
      * Generate Ai Draft
      * Curate, refine, and persist a post draft using CurationGraph directly into the database.
@@ -566,7 +646,7 @@ export class PostsService {
             }
         });
     }
-    
+
     /**
      * Read Posts
      * Read all posts owned by current user.
@@ -591,7 +671,7 @@ export class PostsService {
             }
         });
     }
-    
+
     /**
      * Create New Post
      * Create a new post for current user.
@@ -611,7 +691,7 @@ export class PostsService {
             }
         });
     }
-    
+
     /**
      * Read Post
      * Read a specific post owned by current user.
@@ -632,7 +712,7 @@ export class PostsService {
             }
         });
     }
-    
+
     /**
      * Update Existing Post
      * Update a post owned by current user.
@@ -656,7 +736,7 @@ export class PostsService {
             }
         });
     }
-    
+
     /**
      * Delete Existing Post
      * Delete a post owned by current user.
@@ -677,7 +757,7 @@ export class PostsService {
             }
         });
     }
-    
+
     /**
      * Publish Existing Post
      * Publish a post immediately.
@@ -698,7 +778,7 @@ export class PostsService {
             }
         });
     }
-    
+
     /**
      * Retry Failed Post
      * Retry a failed post.
@@ -756,7 +836,7 @@ export class TrendingService {
             url: '/api/v1/trending/'
         });
     }
-    
+
     /**
      * Extract Trending Topics
      * Trigger live extraction/scraping of trending topics from X.com for the current user.
@@ -777,7 +857,7 @@ export class TrendingService {
             }
         });
     }
-    
+
     /**
      * Draft From Trending Topic
      * Curate and refine a social post draft from a database trending topic using CurationGraph.
@@ -827,7 +907,7 @@ export class UsersService {
             }
         });
     }
-    
+
     /**
      * Create User
      * Create new user.
@@ -847,7 +927,7 @@ export class UsersService {
             }
         });
     }
-    
+
     /**
      * Read User Me
      * Get current user.
@@ -860,7 +940,7 @@ export class UsersService {
             url: '/api/v1/users/me'
         });
     }
-    
+
     /**
      * Delete User Me
      * Delete own user.
@@ -873,7 +953,7 @@ export class UsersService {
             url: '/api/v1/users/me'
         });
     }
-    
+
     /**
      * Update User Me
      * Update own user.
@@ -893,7 +973,7 @@ export class UsersService {
             }
         });
     }
-    
+
     /**
      * Update Password Me
      * Update own password.
@@ -913,7 +993,7 @@ export class UsersService {
             }
         });
     }
-    
+
     /**
      * Register User
      * Create new user without the need to be logged in.
@@ -933,7 +1013,7 @@ export class UsersService {
             }
         });
     }
-    
+
     /**
      * Read User By Id
      * Get a specific user by id.
@@ -954,7 +1034,7 @@ export class UsersService {
             }
         });
     }
-    
+
     /**
      * Update User
      * Update a user.
@@ -978,7 +1058,7 @@ export class UsersService {
             }
         });
     }
-    
+
     /**
      * Delete User
      * Delete a user.
@@ -1022,7 +1102,7 @@ export class UtilsService {
             }
         });
     }
-    
+
     /**
      * Health Check
      * @returns boolean Successful Response

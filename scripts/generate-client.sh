@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
 
-# Dump OpenAPI from the backend running in Docker, then regenerate the frontend client.
-# Requires: Docker backend service up (`docker compose watch backend` or equivalent), repo-root `bun`.
+# Dump OpenAPI from the local backend or Docker backend, then regenerate the frontend client.
+# Prefers host `uv` and `bun`; Docker is the fallback when a local backend environment is unavailable.
 
 set -e
 set -x
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+
+generate_and_normalize_client() {
+  bun run --filter frontend generate-client
+  bun -e 'import { readdirSync, readFileSync, writeFileSync } from "node:fs"; import { join } from "node:path"; const dir = "frontend/src/client"; for (const file of readdirSync(dir)) { if (!file.endsWith(".ts")) continue; const path = join(dir, file); const source = readFileSync(path, "utf8"); const normalized = source.replace(/[\t ]+$/gm, ""); if (normalized !== source) writeFileSync(path, normalized); }'
+}
 
 # Optional escape hatch for rare offline commits.
 if [ "${SKIP_GENERATE_CLIENT:-0}" = "1" ]; then
@@ -19,7 +24,7 @@ fi
 if [ -d "$ROOT/.venv" ] && command -v uv &> /dev/null; then
   echo "Generating OpenAPI client locally on host..."
   if (cd backend && uv run python -c "import app.main; import json; print(json.dumps(app.main.app.openapi()))") > frontend/openapi.json 2> local_err.log; then
-    bun run --filter frontend generate-client
+    generate_and_normalize_client
     bun run lint
     rm -f local_err.log
     exit 0
@@ -66,5 +71,5 @@ fi
 docker compose exec -T backend bash -lc \
   'cd /app/backend && uv run python -c "import app.main; import json; print(json.dumps(app.main.app.openapi()))"' \
   > frontend/openapi.json
-bun run --filter frontend generate-client
+generate_and_normalize_client
 bun run lint

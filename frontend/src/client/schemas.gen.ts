@@ -187,6 +187,85 @@ export const Body_posts_upload_mediaSchema = {
     title: 'Body_posts-upload_media'
 } as const;
 
+export const BrowserFrameSchema = {
+    properties: {
+        id: {
+            type: 'string',
+            maxLength: 100,
+            minLength: 1,
+            title: 'Id'
+        },
+        sequence: {
+            type: 'integer',
+            exclusiveMinimum: 0,
+            title: 'Sequence'
+        },
+        captured_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Captured At'
+        },
+        width: {
+            type: 'integer',
+            maximum: 2048,
+            exclusiveMinimum: 0,
+            title: 'Width'
+        },
+        height: {
+            type: 'integer',
+            maximum: 2048,
+            exclusiveMinimum: 0,
+            title: 'Height'
+        },
+        image_data_url: {
+            type: 'string',
+            maxLength: 2000000,
+            title: 'Image Data Url'
+        }
+    },
+    additionalProperties: false,
+    type: 'object',
+    required: ['id', 'sequence', 'captured_at', 'width', 'height', 'image_data_url'],
+    title: 'BrowserFrame'
+} as const;
+
+export const BrowserNoteSchema = {
+    properties: {
+        id: {
+            type: 'string',
+            maxLength: 100,
+            minLength: 1,
+            title: 'Id'
+        },
+        sequence: {
+            type: 'integer',
+            exclusiveMinimum: 0,
+            title: 'Sequence'
+        },
+        text: {
+            type: 'string',
+            maxLength: 8000,
+            title: 'Text'
+        },
+        model: {
+            type: 'string',
+            maxLength: 100,
+            minLength: 1,
+            title: 'Model'
+        },
+        uncertainty: {
+            type: 'string',
+            maxLength: 2000,
+            title: 'Uncertainty',
+            default: ''
+        }
+    },
+    additionalProperties: false,
+    type: 'object',
+    required: ['id', 'sequence', 'text', 'model'],
+    title: 'BrowserNote'
+} as const;
+
 export const ChatMessageRequestSchema = {
     properties: {
         message: {
@@ -630,6 +709,59 @@ export const ChatThreadsPublicSchema = {
     title: 'ChatThreadsPublic'
 } as const;
 
+export const CompactRequestSchema = {
+    properties: {
+        summary: {
+            type: 'string',
+            maxLength: 8192,
+            title: 'Summary',
+            default: ''
+        },
+        notes: {
+            items: {
+                '$ref': '#/components/schemas/BrowserNote'
+            },
+            type: 'array',
+            maxItems: 200,
+            title: 'Notes'
+        },
+        operation_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Operation Id'
+        },
+        model: {
+            type: 'string',
+            maxLength: 100,
+            minLength: 1,
+            title: 'Model'
+        }
+    },
+    additionalProperties: false,
+    type: 'object',
+    required: ['operation_id', 'model'],
+    title: 'CompactRequest'
+} as const;
+
+export const CompactResponseSchema = {
+    properties: {
+        operation_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Operation Id'
+        },
+        summary: {
+            type: 'string',
+            maxLength: 8192,
+            title: 'Summary'
+        }
+    },
+    additionalProperties: false,
+    type: 'object',
+    required: ['operation_id', 'summary'],
+    title: 'CompactResponse'
+} as const;
+
 export const HTTPValidationErrorSchema = {
     properties: {
         detail: {
@@ -882,6 +1014,30 @@ export const ObservationPacketSchema = {
     type: 'object',
     required: ['session_id', 'source_epoch', 'revision', 'captured_at', 'delivered_at', 'frame_presented_at_ms', 'width', 'height', 'image_data_url'],
     title: 'ObservationPacket'
+} as const;
+
+export const OperationStatusSchema = {
+    properties: {
+        operation_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Operation Id'
+        },
+        state: {
+            type: 'string',
+            enum: ['active', 'settled', 'unknown'],
+            title: 'State'
+        },
+        cancelled: {
+            type: 'boolean',
+            title: 'Cancelled',
+            default: false
+        }
+    },
+    additionalProperties: false,
+    type: 'object',
+    required: ['operation_id', 'state'],
+    title: 'OperationStatus'
 } as const;
 
 export const PostAuthorSchema = {
@@ -1286,6 +1442,46 @@ export const PrivateUserCreateSchema = {
     type: 'object',
     required: ['email', 'password', 'full_name'],
     title: 'PrivateUserCreate'
+} as const;
+
+export const ReadRequestSchema = {
+    properties: {
+        operation_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Operation Id'
+        },
+        model: {
+            type: 'string',
+            maxLength: 100,
+            minLength: 1,
+            title: 'Model'
+        },
+        frame: {
+            '$ref': '#/components/schemas/BrowserFrame'
+        }
+    },
+    additionalProperties: false,
+    type: 'object',
+    required: ['operation_id', 'model', 'frame'],
+    title: 'ReadRequest'
+} as const;
+
+export const ReadResponseSchema = {
+    properties: {
+        operation_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Operation Id'
+        },
+        note: {
+            '$ref': '#/components/schemas/BrowserNote'
+        }
+    },
+    additionalProperties: false,
+    type: 'object',
+    required: ['operation_id', 'note'],
+    title: 'ReadResponse'
 } as const;
 
 export const TokenSchema = {

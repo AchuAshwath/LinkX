@@ -14,6 +14,7 @@ from starlette.staticfiles import StaticFiles
 from app.api.main import api_router
 from app.api.routes.docs import router as docs_router
 from app.core.config import settings
+from app.observation.body_limit import BrowserBodyLimit
 
 logger = logging.getLogger(__name__)
 
@@ -74,12 +75,26 @@ async def sanitize_observation_validation_error(
     for error in exc.errors():
         sanitized = dict(error)
         location = error.get("loc", ())
-        if "observation" in location or location == ("body",):
+        if _private_validation_error(request=_request, location=location):
             sanitized.pop("input", None)
             sanitized.pop("ctx", None)
         details.append(sanitized)
     return JSONResponse(status_code=422, content={"detail": details})
 
+
+def _private_validation_error(
+    *, request: Request, location: tuple[object, ...]
+) -> bool:
+    if location == ("body",):
+        return True
+    if "observation" in location:
+        return True
+    if "/ai/observation/" in request.url.path:
+        return True
+    return request.url.path.endswith("/browser-chat")
+
+
+app.add_middleware(BrowserBodyLimit)
 
 # Mount static files for media uploads
 settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
