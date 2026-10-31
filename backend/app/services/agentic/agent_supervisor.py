@@ -51,10 +51,12 @@ from app.services.agentic.tools.persistence_tools import (
 from app.services.agentic.tools.persistence_tools import (
     update_post_in_db as raw_update_post_in_db,
 )
+from app.services.ai_prompt_builder import BROWSER_SHARING_CAPABILITY_INSTRUCTION
 
 logger = logging.getLogger(__name__)
 
-BOT_AGENT_SYSTEM_PROMPT = """You are LinkX Bot, the intelligent social media growth and automation engine for X (formerly Twitter) and LinkedIn.
+BOT_AGENT_SYSTEM_PROMPT = (
+    """You are LinkX Bot, the intelligent social media growth and automation engine for X (formerly Twitter) and LinkedIn.
 
 You have access to a rich set of autonomous tools to query database state, scrape live explore feeds, curate social content, validate platform rules, and manage draft posts.
 
@@ -109,9 +111,9 @@ LinkedIn:
 </platform_specifications>
 
 <draft_editing_rules>
-RULE 1: IN-PLACE EDITING: If the user says ANYTHING about a post (edits, tone tweaks, rewrites, shortening, hashtags, feedback), you MUST call `update_draft_post` to edit the same draft in-place. DO NOT call `save_draft_post` when revising an existing post; that creates duplicates.
+RULE 1: IN-PLACE EDITING: Call `update_draft_post` only when the user explicitly asks to edit a draft, such as requesting a rewrite, tone change, shortening, or hashtag change. Questions about a post, including reading, analyzing, summarizing, or comparing shared-tab posts, are not edit requests. Do not change a draft unless the user explicitly asks for an edit. DO NOT call `save_draft_post` when revising an existing post; that creates duplicates.
 
-RULE 2: NEVER ASK FOR POST TEXT OR ID: The draft content and ID are already in your conversation history and system context. Never reply with "Please paste the post text or share the draft/post ID." Immediately rewrite and call `update_draft_post`.
+RULE 2: NEVER ASK FOR POST TEXT OR ID FOR AN EXPLICIT EDIT: When the user explicitly asks to edit a draft, use the draft content and ID already in your conversation history and system context. Never reply with "Please paste the post text or share the draft/post ID." Immediately revise it and call `update_draft_post`.
 
 RULE 3: AUTO-RESOLVE POST ID: If you call `update_draft_post`, you do NOT need to specify `post_id` if you don't have it; it auto-resolves to the active draft in this thread. Only call it ONCE with the final revised copy per turn.
 
@@ -162,6 +164,9 @@ GOOD:
 Text response: "Removed the hashtag and restructured the hook around the core metric."
 </exemplars>
 """
+    + "\n\n"
+    + BROWSER_SHARING_CAPABILITY_INSTRUCTION
+)
 
 
 @dataclass(frozen=True)
@@ -681,7 +686,8 @@ def _build_active_draft_prompt(*, ctx: BotContext) -> str:
             f"- Post ID: {target.id}\n"
             f"- Platform: {target.platform}\n"
             f"- Current Content:\n```\n{target.content}\n```\n"
-            f'When user refers to draft/post, call update_draft_post(post_id="{target.id}").'
+            f'For an explicit request to edit this draft, call update_draft_post(post_id="{target.id}"). '
+            "A shared-tab post reading request does not authorize editing this draft."
         )
     except Exception as exc:
         logger.debug("Could not inject draft prompt: %s", exc)

@@ -12,10 +12,9 @@ from sqlmodel import Session
 
 from app import crud
 from app.api.ai_chat_content import validate_chat_content
+from app.api.ai_thread_access import claim_thread as _claim_thread
 from app.api.deps import CurrentUser, SessionDep
-from app.core.config import settings
 from app.models import (
-    AIModelsPublic,
     ChatMessageRequest,
     ChatThread,
     ChatThreadCreate,
@@ -26,13 +25,15 @@ from app.models import (
     Message,
     Post,
 )
+from app.observation.thread_guard import thread_guard
 from app.services.ai_chat_runner import (
     default_chat_stream_runner,
     format_sse,
-    generate_ai_thread_title,
     observation_chat_stream_runner,
 )
-from app.services.ai_model_catalog import get_available_ai_models
+from app.services.ai_chat_runner import (
+    generate_ai_thread_title as generate_ai_thread_title,
+)
 from app.services.ai_turn_accumulator import (
     TranscriptEditPayload,
     append_or_update_draft_part,
@@ -204,15 +205,6 @@ def _collect_stream_part(
     return ""
 
 
-@router.get("/models", response_model=AIModelsPublic)
-def list_ai_models() -> Any:
-    """List available AI models from the proxy/backend with friendly labels."""
-    configured_default = settings.AI_MODEL.removeprefix("openai/")
-    models = get_available_ai_models(configured_default=configured_default)
-    models.observation_model = settings.VISION_AI_MODEL.removeprefix("openai/")
-    return models
-
-
 @router.post("/", response_model=ChatThreadDetail)
 def create_chat_thread(
     *, session: SessionDep, current_user: CurrentUser, thread_in: ChatThreadCreate
@@ -272,6 +264,10 @@ def update_chat_thread(
 ) -> Any:
     """Update chat thread metadata (title, archive status)."""
     thread = _get_owned_thread(session=session, current_user=current_user, thread_id=id)
+    token = uuid.uuid4().hex
+    changes_branch = "active_leaf_id" in thread_in.model_fields_set
+    if changes_branch:
+        _claim_thread(thread_id=id, token=token)
     try:
         return crud.update_chat_thread(
             session=session, db_thread=thread, thread_in=thread_in
@@ -281,6 +277,9 @@ def update_chat_thread(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
+    finally:
+        if changes_branch:
+            thread_guard.release(thread_id=id, token=token)
 
 
 @router.delete("/{id}", response_model=Message)
@@ -289,8 +288,13 @@ def delete_chat_thread(
 ) -> Message:
     """Delete a chat thread."""
     _get_owned_thread(session=session, current_user=current_user, thread_id=id)
-    crud.delete_chat_thread(session=session, thread_id=id)
-    return Message(message="Chat thread deleted successfully")
+    token = uuid.uuid4().hex
+    _claim_thread(thread_id=id, token=token)
+    try:
+        crud.delete_chat_thread(session=session, thread_id=id)
+        return Message(message="Chat thread deleted successfully")
+    finally:
+        thread_guard.release(thread_id=id, token=token)
 
 
 class AssistantTurnPayload(NamedTuple):
@@ -390,6 +394,7 @@ class ChatStreamContext(NamedTuple):
     user_id_str: str
     effective_prompt: str
     observation: Any | None = None
+    guard_token: str | None = None
 
 
 HEARTBEAT_INTERVAL_SECONDS = 12.0
@@ -560,6 +565,9 @@ async def _generate_chat_events(
         raise
     except Exception as exc:
         yield format_sse(event="error", data={"message": str(exc)})
+    finally:
+        if ctx.guard_token is not None:
+            thread_guard.release(thread_id=ctx.thread.id, token=ctx.guard_token)
 
 
 def _ensure_user_turn_saved(
@@ -601,6 +609,27 @@ async def chat_stream(
 ) -> StreamingResponse:
     """Server-Sent Events streaming endpoint for AI conversation."""
     thread = _get_owned_thread(session=session, current_user=current_user, thread_id=id)
+    guard_token = uuid.uuid4().hex
+    _claim_thread(thread_id=id, token=guard_token)
+    try:
+        return _start_guarded_chat(
+            session=session,
+            thread=thread,
+            body=body,
+            runtime=(str(current_user.id), guard_token),
+        )
+    except BaseException:
+        thread_guard.release(thread_id=id, token=guard_token)
+        raise
+
+
+def _start_guarded_chat(
+    *,
+    session: Session,
+    thread: ChatThread,
+    body: ChatMessageRequest,
+    runtime: tuple[str, str],
+) -> StreamingResponse:
     message_text, clean_images = validate_chat_content(body=body)
 
     crud.sync_chat_thread_model(
@@ -622,9 +651,10 @@ async def chat_stream(
         session=session,
         body=body,
         clean_images=clean_images,
-        user_id_str=str(current_user.id),
+        user_id_str=runtime[0],
         effective_prompt=effective_prompt,
         observation=body.observation,
+        guard_token=runtime[1],
     )
     events = _generate_chat_events(ctx=stream_ctx)
 

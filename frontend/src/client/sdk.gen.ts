@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { AdminReadSchedulerStatusResponse, AdminTriggerSchedulerRunResponse, AiObservationReadBrowserData, AiObservationReadBrowserResponse, AiObservationCompactBrowserData, AiObservationCompactBrowserResponse, AiObservationOperationStatusData, AiObservationOperationStatusResponse, AiObservationCancelOperationData, AiObservationCancelOperationResponse, AiThreadsListAiModelsResponse, AiThreadsCreateChatThreadData, AiThreadsCreateChatThreadResponse, AiThreadsListChatThreadsData, AiThreadsListChatThreadsResponse, AiThreadsGetChatThreadData, AiThreadsGetChatThreadResponse, AiThreadsUpdateChatThreadData, AiThreadsUpdateChatThreadResponse, AiThreadsDeleteChatThreadData, AiThreadsDeleteChatThreadResponse, AiThreadsChatStreamData, AiThreadsChatStreamResponse, AuthLinkedinConfigCheckResponse, AuthLinkedinAuthorizeResponse, AuthLinkedinCallbackData, AuthLinkedinCallbackResponse, AuthXStatusResponse, AuthXVerifyResponse, AuthXConnectData, AuthXConnectResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, LinkedinLinkedinStatusResponse, LinkedinLinkedinDisconnectResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PostsUploadMediaData, PostsUploadMediaResponse, PostsGenerateAiDraftData, PostsGenerateAiDraftResponse, PostsReadPostsData, PostsReadPostsResponse, PostsCreateNewPostData, PostsCreateNewPostResponse, PostsReadPostData, PostsReadPostResponse, PostsUpdateExistingPostData, PostsUpdateExistingPostResponse, PostsDeleteExistingPostData, PostsDeleteExistingPostResponse, PostsPublishExistingPostData, PostsPublishExistingPostResponse, PostsRetryFailedPostData, PostsRetryFailedPostResponse, PrivateCreateUserData, PrivateCreateUserResponse, TrendingGetTrendingResponse, TrendingExtractTrendingTopicsData, TrendingExtractTrendingTopicsResponse, TrendingDraftFromTrendingTopicData, TrendingDraftFromTrendingTopicResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
+import type { AdminReadSchedulerStatusResponse, AdminTriggerSchedulerRunResponse, AiBrowserChatBrowserChatData, AiBrowserChatBrowserChatResponse, AiObservationReadBrowserData, AiObservationReadBrowserResponse, AiObservationCompactBrowserData, AiObservationCompactBrowserResponse, AiObservationOperationStatusData, AiObservationOperationStatusResponse, AiObservationCancelOperationData, AiObservationCancelOperationResponse, AiThreadsListAiModelsResponse, AiThreadsCreateChatThreadData, AiThreadsCreateChatThreadResponse, AiThreadsListChatThreadsData, AiThreadsListChatThreadsResponse, AiThreadsGetChatThreadData, AiThreadsGetChatThreadResponse, AiThreadsUpdateChatThreadData, AiThreadsUpdateChatThreadResponse, AiThreadsDeleteChatThreadData, AiThreadsDeleteChatThreadResponse, AiThreadsChatStreamData, AiThreadsChatStreamResponse, AuthLinkedinConfigCheckResponse, AuthLinkedinAuthorizeResponse, AuthLinkedinCallbackData, AuthLinkedinCallbackResponse, AuthXStatusResponse, AuthXVerifyResponse, AuthXConnectData, AuthXConnectResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, LinkedinLinkedinStatusResponse, LinkedinLinkedinDisconnectResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PostsUploadMediaData, PostsUploadMediaResponse, PostsGenerateAiDraftData, PostsGenerateAiDraftResponse, PostsReadPostsData, PostsReadPostsResponse, PostsCreateNewPostData, PostsCreateNewPostResponse, PostsReadPostData, PostsReadPostResponse, PostsUpdateExistingPostData, PostsUpdateExistingPostResponse, PostsDeleteExistingPostData, PostsDeleteExistingPostResponse, PostsPublishExistingPostData, PostsPublishExistingPostResponse, PostsRetryFailedPostData, PostsRetryFailedPostResponse, PrivateCreateUserData, PrivateCreateUserResponse, TrendingGetTrendingResponse, TrendingExtractTrendingTopicsData, TrendingExtractTrendingTopicsResponse, TrendingDraftFromTrendingTopicData, TrendingDraftFromTrendingTopicResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
 
 export class AdminService {
     /**
@@ -28,6 +28,31 @@ export class AdminService {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/api/v1/admin/scheduler/run-now'
+        });
+    }
+}
+
+export class AiBrowserChatService {
+    /**
+     * Browser Chat
+     * @param data The data for the request.
+     * @param data.id
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static browserChat(data: AiBrowserChatBrowserChatData): CancelablePromise<AiBrowserChatBrowserChatResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/ai/threads/{id}/browser-chat',
+            path: {
+                id: data.id
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
         });
     }
 }
