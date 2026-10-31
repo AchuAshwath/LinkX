@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest"
+import type { QueuedTurn } from "@/components/Chat/types"
+import type { StreamEventHandlers } from "@/hooks/useAIChatStream"
 import { BrowserOperationError } from "../operationError"
+import { connectBrowserQuestion } from "../questionStream"
 import { createBrowserReadingSession } from "../session"
 
 const FIXED_NOW = Date.parse("2026-10-22T00:00:00.000Z")
@@ -17,6 +20,7 @@ function frame(id: string, sequence: number) {
 
 function createHarness() {
   let offer: ((candidate: ReturnType<typeof frame>) => boolean) | undefined
+  let endSource: (() => void) | undefined
   let stopCount = 0
   const notes: Array<{
     id: string
@@ -26,8 +30,12 @@ function createHarness() {
     uncertainty: string
   }> = []
   const capture = {
-    start(onCandidate: (candidate: ReturnType<typeof frame>) => boolean) {
+    start(
+      onCandidate: (candidate: ReturnType<typeof frame>) => boolean,
+      identity?: { onEnded?: () => void },
+    ) {
       offer = onCandidate
+      endSource = identity?.onEnded
     },
     stop() {
       stopCount += 1
@@ -84,6 +92,9 @@ function createHarness() {
     capture,
     transport,
     memory,
+    endSource() {
+      endSource?.()
+    },
     get stopCount() {
       return stopCount
     },
@@ -94,6 +105,149 @@ function createHarness() {
 }
 
 describe("BrowserReadingSession", () => {
+  it.each([
+    "capture",
+    "interruption",
+  ])("releases a rejected submitted turn after %s already ended", async (ended) => {
+    const harness = createHarness()
+    const settle = vi.fn(async (operation_id: string) => ({
+      operation_id,
+      state: "unknown" as const,
+      cancelled: false,
+    }))
+    const session = createBrowserReadingSession({
+      capture: harness.capture,
+      transport: { ...harness.transport, settle },
+      memory: harness.memory,
+      clock: { now: () => FIXED_NOW },
+    })
+    session.start("chat-a", "draft-1", "model-a")
+    const prepared = (await session.prepareQuestion("chat-a"))!
+    const handlers: StreamEventHandlers = {}
+    connectBrowserQuestion({
+      turn: {
+        browserQuestion: prepared,
+        requestId: prepared.operation_id,
+      } as QueuedTurn,
+      session,
+      handlers,
+    })
+    handlers.onBrowserDispatch?.(prepared.operation_id)
+    if (ended === "interruption")
+      await session.interruptQuestion(prepared.operation_id)
+    session.stop()
+    await Promise.resolve()
+    settle.mockClear()
+    handlers.onBrowserRejected?.(prepared.operation_id)
+    handlers.onError?.("Request rejected before processing")
+    expect(settle).not.toHaveBeenCalled()
+    expect(session.isPreparedQuestionActive(prepared.operation_id)).toBe(false)
+    expect(session.start("chat-b", "draft-2", "model-b")).toBe(true)
+    harness.offer(frame("replacement-frame", 1))
+    expect(harness.reads).toHaveLength(1)
+  })
+
+  it("rechecks an interrupted operation until the server releases the processing lane", async () => {
+    vi.useFakeTimers()
+    try {
+      const harness = createHarness()
+      let settled = false
+      const session = createBrowserReadingSession({
+        capture: harness.capture,
+        transport: {
+          ...harness.transport,
+          settle: async (operation_id) => ({
+            operation_id,
+            state: settled ? "settled" : "active",
+            cancelled: true,
+          }),
+        },
+        memory: harness.memory,
+        clock: { now: () => FIXED_NOW },
+      })
+      session.start("chat-a", "draft-1", "model-a")
+      const prepared = (await session.prepareQuestion("chat-a"))!
+      session.markQuestionDispatched(prepared.operation_id)
+      harness.offer(frame("after-question", 1))
+      await session.interruptQuestion()
+      expect(harness.reads).toHaveLength(0)
+      settled = true
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(harness.reads.map((read) => read.frame.id)).toEqual([
+        "after-question",
+      ])
+      session.stop()
+    } finally {
+      vi.clearAllTimers()
+      vi.useRealTimers()
+    }
+  })
+
+  it.each([
+    "source",
+    "preview",
+  ])("keeps a submitted question alive when the %s closes and queues replacement captures", async (closed) => {
+    const harness = createHarness()
+    const settle = vi.fn(async (operation_id: string) => ({
+      operation_id,
+      state: "active" as const,
+      cancelled: true,
+    }))
+    const session = createBrowserReadingSession({
+      capture: harness.capture,
+      transport: { ...harness.transport, settle },
+      memory: harness.memory,
+      clock: { now: () => FIXED_NOW },
+    })
+    session.start("chat-a", "draft-1", "model-a")
+    harness.offer(frame("original-frame", 1))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const prepared = (await session.prepareQuestion("chat-a"))!
+    session.markQuestionDispatched(prepared.operation_id)
+    if (closed === "source") harness.endSource()
+    else session.stop()
+
+    expect(settle).not.toHaveBeenCalled()
+    expect(session.getSnapshot().state).toBe("stopped")
+    expect(harness.memory.snapshot().notes).toEqual([])
+    expect(prepared.context.notes.map((note) => note.id)).toEqual([
+      "original-frame",
+    ])
+    expect(session.isPreparedQuestionActive(prepared.operation_id)).toBe(true)
+    expect(session.start("chat-b", "draft-2", "model-b")).toBe(true)
+    harness.offer(frame("replacement-frame", 1))
+    session.receiveNote(
+      {
+        id: "old-note",
+        sequence: 2,
+        text: "stale",
+        model: "model-a",
+        uncertainty: "",
+      },
+      prepared.operation_id,
+    )
+    expect(session.getSnapshot().noteCount).toBe(0)
+    expect(session.getSnapshot().gapCount).toBe(0)
+    expect(harness.reads).toHaveLength(1)
+
+    expect(
+      session.finishQuestion({
+        operation_id: prepared.operation_id,
+        completed_ids: [],
+        failed_ids: [],
+        unused_ids: [],
+      }),
+    ).toBe(true)
+    await Promise.resolve()
+    expect(harness.reads.map((read) => read.frame.id)).toEqual([
+      "original-frame",
+      "replacement-frame",
+    ])
+    expect(session.getSnapshot().ownerChatId).toBe("chat-b")
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    session.stop()
+  })
+
   it("cancels a question promptly when sharing stops during capture encoding", async () => {
     const harness = createHarness()
     const session = createBrowserReadingSession({
@@ -595,6 +749,8 @@ describe("BrowserReadingSession", () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(memoryNotes).toEqual([])
     expect(session.getSnapshot().state).toBe("stopped")
+    expect(session.start("chat-b", "draft-2", "model-b")).toBe(true)
+    expect(session.getSnapshot().noteCount).toBe(0)
   })
 
   it("caps admitted frame jobs and keeps text questions available at capacity", async () => {
@@ -758,5 +914,6 @@ describe("BrowserReadingSession", () => {
     expect(memoryNotes).toEqual([])
     expect(session.getSnapshot().state).toBe("stopped")
     expect(session.getSnapshot().noteCount).toBe(0)
+    expect(session.start("chat-b", "draft-2", "model-b")).toBe(true)
   })
 })
