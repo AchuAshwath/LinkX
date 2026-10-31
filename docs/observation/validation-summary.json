@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-10-26",
+  "as_of": "2026-10-31",
   "status": {
     "manual_current_feature_review": {
       "result": "user accepted current feature",
@@ -7,10 +7,10 @@
     },
     "formal_review_gate": {
       "issue": 172,
-      "status": "awaiting_user_merge_review",
+      "status": "manual_acceptance_record_pending",
       "notes": [
-        "Independent review and the post-review regression fixes are complete for the accepted demo scope; merge and issue disposition await user review.",
-        "Verify hosted checks at the current published PR heads before merging.",
+        "The bounded implementation and lifecycle correction passed independent review and validation. Merge is authorized; the specific earlier-view and broad-pending random-page scenarios remain to be recorded under #172.",
+        "Verify hosted checks at each resulting published head before merging.",
         "No terms-of-service proof is recorded."
       ]
     },
@@ -28,13 +28,13 @@
       "passed": 936,
       "warnings": 24,
       "process_exit": 0,
-      "scope": "Post-review complete backend suite; repeated on the question API layer before publishing the completeness fix."
+      "scope": "Fresh full backend suite after the lifecycle correction: 936 passed, 24 warnings."
     },
     {
       "name": "frontend_unit_and_component",
-      "passed": 377,
+      "passed": 382,
       "files": 43,
-      "scope": "Post-review combined frontend suite, including capture termination, stopped activity rendering and queue cancellation regressions."
+      "scope": "Combined frontend suite including capture close, replacement sessions, late physical completion, rejected-request ordering and settlement recovery."
     },
     {
       "name": "desktop_chrome_scroll_regression",
@@ -48,8 +48,8 @@
     },
     {
       "name": "controlled_full_system_smoke",
-      "passed": 20,
-      "scope": "Integrated capture/session/HTTP/persistence/UI checks with a scripted external provider.",
+      "passed": 24,
+      "scope": "Integrated capture/session/HTTP/persistence/UI checks, including preview/source close during a dispatched question and immediate replacement sharing, with a delayed scripted external provider.",
       "limitation": "Does not measure live-provider accuracy."
     }
   ],
@@ -67,7 +67,9 @@
     "177": "terminal stream-error handling",
     "178": "voice-input settlement and revision-fenced queued draft recovery",
     "179": "transcript scrolling and sharing menu",
-    "180": "browser-sharing capability context"
+    "180": "browser-sharing capability context",
+    "189": "deferred research/prototype: normal browser-assisted answer streaming and tool integration",
+    "190": "capture-close lifecycle, replacement sharing and operation settlement correction"
   },
   "proposed_review_branches": [
     "codex/reading-api-review",
@@ -78,7 +80,7 @@
     "codex/chat-scroll-review",
     "codex/browser-audit-review"
   ],
-  "publication_note": "PRs #182\u2013#188 form the published review stack. Parent branches retain normal merge history; no PR has been merged into master. Verify checks at each resulting head after propagation.",
+  "publication_note": "PRs #182\u2013#188 document the review stack with normal merge ancestry. Check each PR for its current merge state and verify hosted checks after propagation.",
   "publication_checkpoints": {
     "reading_api": {
       "branch": "codex/reading-api-review",
@@ -176,5 +178,24 @@
       "passed": 10,
       "total": 10
     }
+  },
+  "deferred_features": {
+    "ordinary_browser_answer_streaming": {
+      "issue": 189,
+      "current_behavior": "The dedicated JSON evaluator authors the answer and emits one final text chunk; normal tool/reasoning streaming is not yet integrated.",
+      "accepted_for_follow_up": "2026-10-31"
+    }
+  },
+  "lifecycle_follow_up": {
+    "date": "2026-10-31",
+    "issue": 190,
+    "submitted_question": "Closing capture clears retained memory and lets an already dispatched frozen request finish. Replacement frames wait for its receipt.",
+    "undispatched_question": "Capture closure during preparation invalidates a question not yet dispatched.",
+    "cleanup": "Definite rejection or authoritative completion releases old blockers; inconclusive settlement is rechecked with bounded backoff.",
+    "backend_tests_passed": 936,
+    "frontend_tests_passed": 382,
+    "controlled_system_checks_passed": 24,
+    "api_schema_changed": false,
+    "independent_lifecycle_review": "no remaining material blocker found in the reviewed correction"
   }
 }

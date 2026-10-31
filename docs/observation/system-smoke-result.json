@@ -21,6 +21,10 @@
     "Postgres stores only ordinary user/final assistant turns",
     "sharing stays active while a general-knowledge answer uses no browser evidence",
     "invalid model evaluation displays one classified error and persists no fabricated answer",
+    "preview close clears memory and allows replacement sharing during a submitted question",
+    "preview close preserves the original answer without cancelling its operation",
+    "source close clears memory and allows replacement sharing during a submitted question",
+    "source close preserves the original answer without cancelling its operation",
     "Stop and reload clear browser context without UI errors"
   ]
 }

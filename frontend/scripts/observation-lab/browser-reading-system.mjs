@@ -26,6 +26,7 @@ let userId
 let browser
 let currentPage
 const threadIds = []
+const cancelledOperations = []
 const resultPath = path.join(root, "docs/observation/system-smoke-result.json")
 
 async function jsonResponse(response) {
@@ -107,6 +108,61 @@ async function installSource(page) {
   })
 }
 
+async function checkCaptureClose({ page, input, preview, requests, mode }) {
+  await page.waitForFunction(
+    () => window.browserReadingDebug.snapshot().memory.notes.length > 0,
+    null,
+    { timeout: 35_000 },
+  )
+  await input.fill("What is the badge on the shared page?")
+  const responseReady = page.waitForResponse((response) =>
+    response.url().endsWith("/browser-chat"),
+  )
+  await input.press("Enter")
+  const response = await responseReady
+  assert.equal(response.status(), 200)
+  const operationId = requests.at(-1).request_id
+  let completed = false
+  const finished = response.finished().then(() => {
+    completed = true
+  })
+  assert.equal(completed, false)
+  if (mode === "source") await page.evaluate(() => window.__readingSource.end())
+  else {
+    await preview.hover()
+    await preview
+      .getByRole("button", { name: "Stop sharing browser tab" })
+      .click()
+  }
+  await preview.waitFor({ state: "detached" })
+  const cleared = await page.evaluate(
+    () => window.browserReadingDebug.snapshot().memory,
+  )
+  assert.equal(cleared.notes.length, 0)
+  assert.equal(cleared.summary, "")
+  await page
+    .getByRole("button", { name: "Add attachment or browser tab" })
+    .click()
+  await page.getByRole("menuitem", { name: "Browser tab", exact: true }).click()
+  await preview.waitFor({ state: "visible" })
+  await expect(
+    page.getByText(/Browser processing is still settling/),
+  ).toHaveCount(0)
+  assert.equal(cancelledOperations.includes(operationId), false)
+  await finished
+  const events = await response.text()
+  assert(events.includes("event: text_delta"))
+  assert(events.includes("The badge is P2R7."))
+  assert.equal(events.includes("event: error"), false)
+  assert.equal(cancelledOperations.includes(operationId), false)
+  checks.push(
+    `${mode} close clears memory and allows replacement sharing during a submitted question`,
+  )
+  checks.push(
+    `${mode} close preserves the original answer without cancelling its operation`,
+  )
+}
+
 try {
   adminToken = await login(
     process.env.FIRST_SUPERUSER,
@@ -139,6 +195,11 @@ try {
   const requests = []
   const readFrames = []
   page.on("request", (req) => {
+    if (
+      req.method() === "DELETE" &&
+      req.url().includes("/ai/observation/operations/")
+    )
+      cancelledOperations.push(req.url().split("/").at(-1))
     if (req.url().endsWith("/browser-chat"))
       requests.push(JSON.parse(req.postData() || "{}"))
     if (req.url().endsWith("/ai/observation/read"))
@@ -463,6 +524,8 @@ try {
   checks.push(
     "invalid model evaluation displays one classified error and persists no fabricated answer",
   )
+  for (const mode of ["preview", "source"])
+    await checkCaptureClose({ page, input, preview, requests, mode })
   await preview.hover()
   await preview
     .getByRole("button", { name: "Stop sharing browser tab" })
@@ -480,18 +543,18 @@ try {
   checks.push("Stop and reload clear browser context without UI errors")
   await writeFile(
     resultPath,
-    JSON.stringify(
+    `${JSON.stringify(
       { passed: true, model: "scripted external provider", checks },
       null,
       2,
-    ),
+    )}\n`,
   )
   console.log(JSON.stringify({ passed: true, checks }))
 } catch (error) {
   await mkdir(path.dirname(resultPath), { recursive: true })
   await writeFile(
     resultPath,
-    JSON.stringify({ passed: false, checks, error: error.message }, null, 2),
+    `${JSON.stringify({ passed: false, checks, error: error.message }, null, 2)}\n`,
   )
   if (currentPage) {
     console.error(`controlled failure URL: ${currentPage.url()}`)

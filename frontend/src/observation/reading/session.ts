@@ -92,6 +92,7 @@ const MAX_FRAME_AGE_MS = 5 * 60 * 1000
 const MAX_ADMITTED_JOBS = 200
 const MAX_IMAGE_CHARS = 2_000_000
 const MAX_EDGE = 2048
+const MAX_SETTLEMENT_ATTEMPTS = 60
 const JPEG_DATA_URL = /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/
 
 interface Generation {
@@ -128,6 +129,11 @@ interface ActiveQuestion {
   noteIds: Set<string>
   settled: boolean
   dispatched: boolean
+}
+
+interface SubmittedQuestion {
+  settled: Promise<void>
+  finish(): void
 }
 
 function makeId(): string {
@@ -243,10 +249,56 @@ export function createBrowserReadingSession(
   let question: ActiveQuestion | null = null
   let preparing = false
   const blockedOperations = new Set<string>()
+  const settlementAttempts = new Map<string, number>()
+  const settlementTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  // Submitted turns outlive capture; retain only lifecycle metadata here.
+  const submittedQuestions = new Map<string, SubmittedQuestion>()
   let sessionId = makeId()
+
+  function releaseSubmittedQuestion({
+    operationId,
+  }: Pick<ActiveQuestion, "operationId">): boolean {
+    const submitted = submittedQuestions.get(operationId)
+    if (!submitted) return false
+    submittedQuestions.delete(operationId)
+    releaseOperation(operationId)
+    submitted.finish()
+    return true
+  }
+
+  function registerSubmittedQuestion({ operationId }: ActiveQuestion): void {
+    if (submittedQuestions.has(operationId)) return
+    let finish = () => {}
+    const settled = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    submittedQuestions.set(operationId, { settled, finish })
+  }
 
   function releaseOperation(operationId: string): void {
     blockedOperations.delete(operationId)
+    clearTimeout(settlementTimers.get(operationId))
+    settlementTimers.delete(operationId)
+    settlementAttempts.delete(operationId)
+  }
+
+  function retrySettlement({
+    operationId,
+    generation: expectedGeneration,
+  }: Pick<ActiveRead, "operationId" | "generation">): void {
+    if (!options.transport.settle || settlementTimers.has(operationId)) return
+    if (!blockedOperations.has(operationId)) return
+    const attempts = settlementAttempts.get(operationId) ?? 0
+    if (attempts >= MAX_SETTLEMENT_ATTEMPTS) return
+    settlementAttempts.set(operationId, attempts + 1)
+    const timer = setTimeout(
+      () => {
+        settlementTimers.delete(operationId)
+        void settleOperation(operationId, expectedGeneration)
+      },
+      Math.min(5_000, 1_000 * (attempts + 1)),
+    )
+    settlementTimers.set(operationId, timer)
   }
 
   function hasOrphanedOperation(): boolean {
@@ -344,11 +396,14 @@ export function createBrowserReadingSession(
     expectedGeneration: Generation,
   ): void {
     if (
-      generation !== expectedGeneration ||
-      ignoredOperations.has(operationId)
-    ) {
+      discardStaleResult({
+        returnedId: result.operation_id,
+        operationId,
+        generation: expectedGeneration,
+      })
+    )
       return
-    }
+    if (ignoredOperations.has(operationId)) return
     if (result.operation_id !== operationId) {
       addGap()
       void settleOperation(operationId, expectedGeneration)
@@ -372,6 +427,10 @@ export function createBrowserReadingSession(
     expectedGeneration: Generation,
     error: unknown,
   ): void {
+    if (generation !== expectedGeneration) {
+      recoverOperationFailure(operationId, expectedGeneration, error)
+      return
+    }
     if (
       generation !== expectedGeneration ||
       ignoredOperations.has(operationId)
@@ -497,6 +556,7 @@ export function createBrowserReadingSession(
       !activeRead &&
         !activeCompaction &&
         !hasOrphanedOperation() &&
+        submittedQuestions.size === 0 &&
         !preparing &&
         !question &&
         queue.length,
@@ -509,11 +569,14 @@ export function createBrowserReadingSession(
     expectedGeneration: Generation,
   ): void {
     if (
-      generation !== expectedGeneration ||
-      ignoredOperations.has(operationId)
-    ) {
+      discardStaleResult({
+        returnedId: result.operation_id,
+        operationId,
+        generation: expectedGeneration,
+      })
+    )
       return
-    }
+    if (ignoredOperations.has(operationId)) return
     if (result.operation_id !== operationId) {
       addGap()
       void settleOperation(operationId, expectedGeneration)
@@ -528,6 +591,10 @@ export function createBrowserReadingSession(
     expectedGeneration: Generation,
     error: unknown,
   ): void {
+    if (generation !== expectedGeneration) {
+      recoverOperationFailure(operationId, expectedGeneration, error)
+      return
+    }
     if (
       generation !== expectedGeneration ||
       ignoredOperations.has(operationId)
@@ -548,6 +615,44 @@ export function createBrowserReadingSession(
       return
     }
     void settleOperation(operationId, expectedGeneration)
+  }
+
+  function discardStaleResult({
+    returnedId,
+    operationId,
+    generation: expectedGeneration,
+  }: Pick<ActiveRead, "operationId" | "generation"> & {
+    returnedId: string
+  }): boolean {
+    if (generation === expectedGeneration) return false
+    if (returnedId === operationId) releaseOperation(operationId)
+    return true
+  }
+
+  function isQuestionOperation(operationId: string): boolean {
+    if (submittedQuestions.has(operationId)) return true
+    return question?.operationId === operationId
+  }
+
+  function isUndispatchedQuestion(operationId: string): boolean {
+    if (question?.operationId !== operationId) return false
+    return !question.dispatched
+  }
+
+  function beginQuestionInterruption(operationId: string): Generation {
+    releaseSubmittedQuestion({ operationId })
+    blockedOperations.add(operationId)
+    if (question?.operationId === operationId) {
+      addGap()
+      question = null
+    }
+    publish()
+    return generation
+  }
+
+  function acceptsQuestionNote(operationId?: string): boolean {
+    if (!operationId) return true
+    return question?.operationId === operationId
   }
 
   function finishRead({
@@ -610,7 +715,10 @@ export function createBrowserReadingSession(
     } catch {
       status = null
     }
-    if (!isOperationSettled(status)) return false
+    if (!isOperationSettled(status)) {
+      retrySettlement({ operationId, generation: expectedGeneration })
+      return false
+    }
     ignoredOperations.add(operationId)
     releaseOperation(operationId)
     if (generation === expectedGeneration) {
@@ -618,9 +726,9 @@ export function createBrowserReadingSession(
       if (activeCompaction?.operationId === operationId) {
         activeCompaction = null
       }
-      publish()
-      drain(expectedGeneration)
     }
+    publish()
+    drain(generation)
     return true
   }
 
@@ -767,6 +875,10 @@ export function createBrowserReadingSession(
   async function waitForPreparationWork(
     barrier: PreparationBarrier,
   ): Promise<boolean> {
+    await waitForAbortable(
+      Promise.all([...submittedQuestions.values()].map((item) => item.settled)),
+      barrier.expectedGeneration.controller.signal,
+    )
     for (const operation of [barrier.active, barrier.compaction]) {
       if (!operation) continue
       const settled = await waitForActiveOperation(
@@ -863,7 +975,6 @@ export function createBrowserReadingSession(
       ...blockedOperations,
       activeRead?.operationId,
       activeCompaction?.operationId,
-      question?.dispatched ? question.operationId : undefined,
     ].filter((operationId): operationId is string => Boolean(operationId))
     return [...new Set(ids)]
   }
@@ -872,18 +983,11 @@ export function createBrowserReadingSession(
     operationIds: string[],
     stopGeneration: Generation,
   ): Promise<void> {
-    const statuses = await Promise.all(
-      operationIds.map(
-        (operationId) =>
-          options.transport.settle?.(operationId).catch(() => null) ?? null,
+    await Promise.all(
+      operationIds.map((operationId) =>
+        settleOperation(operationId, stopGeneration),
       ),
     )
-    if (generation !== stopGeneration) return
-    statuses.forEach((status, index) => {
-      if (isOperationSettled(status)) releaseOperation(operationIds[index])
-    })
-    publish()
-    drain(stopGeneration)
   }
 
   function stopSession(): void {
@@ -1002,7 +1106,8 @@ export function createBrowserReadingSession(
       }
     },
 
-    receiveNote(note: BrowserNote): void {
+    receiveNote(note: BrowserNote, operationId?: string): void {
+      if (!acceptsQuestionNote(operationId)) return
       if (!question) {
         addGap()
         publish()
@@ -1028,6 +1133,16 @@ export function createBrowserReadingSession(
     },
 
     finishQuestion(receipt: BrowserReceipt): boolean {
+      const submitted = releaseSubmittedQuestion({
+        operationId: receipt.operation_id,
+      })
+      if (question?.operationId !== receipt.operation_id) {
+        if (submitted) {
+          publish()
+          drain(generation)
+        }
+        return submitted
+      }
       if (!question || question.settled) return false
       const activeQuestion = question
       const valid = consumeReceipt(receipt, activeQuestion)
@@ -1039,26 +1154,17 @@ export function createBrowserReadingSession(
       return valid
     },
 
-    async interruptQuestion(): Promise<void> {
-      if (!question) return
-      const operationId = question.operationId
-      if (!question.dispatched) {
+    async interruptQuestion(
+      operationId = question?.operationId,
+    ): Promise<void> {
+      if (!operationId) return
+      if (!isQuestionOperation(operationId)) return
+      if (isUndispatchedQuestion(operationId)) {
         this.cancelPreparedQuestion(operationId)
         return
       }
-      blockedOperations.add(operationId)
-      const expectedGeneration = generation
-      addGap()
-      question = null
-      publish()
-      const safeToResume = await settleOperation(
-        operationId,
-        expectedGeneration,
-      )
-      if (generation !== expectedGeneration) return
-      publish()
-      if (!safeToResume) return
-      drain(generation)
+      const expectedGeneration = beginQuestionInterruption(operationId)
+      await settleOperation(operationId, expectedGeneration)
     },
 
     cancelPreparedQuestion(operationId: string): boolean {
@@ -1075,13 +1181,23 @@ export function createBrowserReadingSession(
       return true
     },
 
+    rejectQuestion(operationId: string): void {
+      releaseSubmittedQuestion({ operationId })
+      releaseOperation(operationId)
+      this.cancelPreparedQuestion(operationId)
+      publish()
+      drain(generation)
+    },
+
     markQuestionDispatched(operationId: string): boolean {
       if (!question || question.operationId !== operationId) return false
       question.dispatched = true
+      registerSubmittedQuestion(question)
       return true
     },
 
     isPreparedQuestionActive(operationId: string): boolean {
+      if (submittedQuestions.has(operationId)) return true
       return question?.operationId === operationId && !question.settled
     },
 

@@ -8,7 +8,9 @@ The user explicitly starts sharing a browser tab. The client samples the shared 
 
 The feature does not read page DOM or accessibility trees, and it does not control the selected tab. The current-view direct-image question path is disabled. Questions use captured images through the sequential read operation.
 
-Browser screenshots, notes, summaries, receipts, and progress metadata are not written as chat-message parts. Normal user questions and final assistant answers use the existing durable chat transcript. The browser memory clears on Stop, reload, sign-out, or session replacement. Stopping locally invalidates the session and rejects stale results; it does not promise that an already-running remote provider call can be canceled.
+Browser screenshots, notes, summaries, receipts, and progress metadata are not written as chat-message parts. Normal user questions and final assistant answers use the existing durable chat transcript. The browser memory clears when sharing stops, on reload, sign-out, or session replacement. Ending capture rejects stale results from the retained session. An already dispatched question continues using its frozen request snapshot; closing its source or preview does not cancel that chat turn. The chat Stop control explicitly cancels the question, without promising that an already-running remote provider call can be canceled. A prepared question not yet dispatched is invalidated if sharing stops during preparation.
+
+A replacement share may start while the previous submitted question finishes. Its accepted images queue until the original request releases the processing lane. Old question notes do not repopulate cleared or replacement memory. Physical read/compaction cleanup releases its local blocker only after authoritative transport completion, a definite rejection, or confirmed server settlement. Metadata reconciliation is retried with a bounded backoff; active or unknown status alone is not proof of completion.
 
 Chat ownership scopes browser context and model preference. A question freezes the already accepted pending-frame batch at Send time. It may use relevant conversation context and general knowledge while sharing. Browser-grounded answers require available browser evidence; model-declared evidence basis and valid evidence IDs are structural checks, not proof that every statement is factually grounded.
 
@@ -40,6 +42,8 @@ Preparation and image-reading operations appear as transient activity in the cha
 The transcript follows new content while the reader remains at the end. Upward navigation pauses following; reaching the end, using Scroll to end, or moving forward at the end resumes it. Switching chats initializes the destination at its latest message.
 
 ## Known limits
+
+Browser questions currently use a non-streamed structured evaluator and emit the final answer as one text chunk. They do not use the ordinary chat answer/tool stream or forward provider reasoning output. Integration into the normal response pipeline is deferred to [issue #189](https://github.com/AchuAshwath/LinkX/issues/189); the architecture comparison is documented in [the streaming research note](../research/browser-context-streaming-integration-2026-10-31.md). The capture-close lifecycle correction is tracked in [issue #190](https://github.com/AchuAshwath/LinkX/issues/190).
 
 Descriptions and compaction are lossy model outputs. Dense or small text, page changes between captures, attribution, tables, charts, and diagrams can be missed or misread. The reader cannot know a future question while capturing and does not guarantee exhaustive page coverage. A manual test of the current feature does not establish accuracy on every page or model.
 
