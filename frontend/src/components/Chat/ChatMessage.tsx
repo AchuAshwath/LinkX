@@ -9,6 +9,7 @@ import {
   prepareAssistantRenderState,
 } from "@/components/Chat/chatMessageUtils"
 import { DraftArtifactCard } from "@/components/Chat/DraftArtifactCard"
+import { BrowserActivityPart } from "@/components/Chat/parts/BrowserActivityPart"
 import { TextPart } from "@/components/Chat/parts/TextPart"
 import { ThoughtPart } from "@/components/Chat/parts/ThoughtPart"
 import { WebSearchPart } from "@/components/Chat/parts/WebSearchPart"
@@ -372,6 +373,19 @@ function canDisplayAssistantBubble(
   return isStreaming || hasVisibleContent
 }
 
+function shouldRenderAssistantThought(
+  state: ReturnType<typeof prepareAssistantRenderState>,
+  browserActivity: ChatUIMessage["browserActivity"],
+): boolean {
+  if (!state.hasThoughtOrTools) return false
+  if (!browserActivity) return true
+  return Boolean(
+    state.combinedThought ||
+      state.collectedTools.length > 0 ||
+      state.webSearchPart,
+  )
+}
+
 function AssistantMessageBubble({
   message,
   isStreaming,
@@ -393,6 +407,10 @@ function AssistantMessageBubble({
   if (!canDisplayAssistantBubble(isStreaming, state.hasVisibleContent)) {
     return null
   }
+  const showThought = shouldRenderAssistantThought(
+    state,
+    message.browserActivity,
+  )
 
   return (
     <div className="group relative flex flex-col items-start w-full">
@@ -400,13 +418,20 @@ function AssistantMessageBubble({
         <MessageContent>
           <AssistantQueuedNotice status={message.status} />
 
-          {state.hasThoughtOrTools && (
+          {message.browserActivity && (
+            <BrowserActivityPart
+              activity={message.browserActivity}
+              isStreaming={isStreaming}
+            />
+          )}
+
+          {showThought && (
             <ThoughtPart
               content={state.combinedThought}
               toolCalls={state.collectedTools}
               webSearchPart={state.webSearchPart}
               sources={state.sources}
-              isStreaming={isStreaming}
+              isStreaming={isStreaming && !message.browserActivity}
               hasResponseStarted={state.hasResponseStarted}
             />
           )}

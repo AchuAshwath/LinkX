@@ -3,6 +3,7 @@ import { act, renderHook } from "@testing-library/react"
 import type * as React from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { useAIChatFeedState } from "@/hooks/useAIChatFeedState"
+import type { BrowserReadingSession } from "@/observation/reading/session"
 
 vi.mock("@/client", async () => {
   const actual = await vi.importActual("@/client")
@@ -43,6 +44,7 @@ vi.mock("@/hooks/useAIChatStream", () => ({
   useAIChatStream: () => ({
     isStreaming: mockIsStreaming,
     streamingThreadId: mockIsStreaming ? "thread-1" : null,
+    clearObservationUsage: vi.fn(),
     startStream: mockStartStream,
     stop: mockStopStream,
   }),
@@ -63,16 +65,37 @@ function createWrapper() {
   }
 }
 
-function renderFeedHook() {
+function renderFeedHook(
+  initialThreadId: string | null = "thread-1",
+  browserReading?: BrowserReadingSession,
+) {
   return renderHook(
     () =>
       useAIChatFeedState({
         threads: [],
         selectedModelId: "gpt-4o",
-        initialThreadId: "thread-1",
+        initialThreadId: initialThreadId ?? undefined,
+        browserReading,
       }),
     { wrapper: createWrapper() },
   )
+}
+
+function createBrowserQuestion(operationId: string) {
+  return {
+    operation_id: operationId,
+    model: "model-1",
+    context: {
+      session_id: "session-1",
+      generation: 1,
+      cutoff: 0,
+      summary: "",
+      notes: [],
+      pending_frames: [],
+      current_view: null,
+      gap_count: 0,
+    },
+  }
 }
 
 describe("useAIChatFeedState - message editing stream guard", () => {
@@ -93,6 +116,112 @@ describe("useAIChatFeedState - message editing stream guard", () => {
       result.current.handleCancelEdit()
     })
     expect(result.current.editingMessageId).toBeNull()
+  })
+
+  it.each([
+    {
+      scenario: "restores the original draft when it stays empty",
+      initialDraft: "  Question  ",
+      editedDraft: undefined,
+      expectedDraft: "  Question  ",
+    },
+    {
+      scenario: "keeps later typing",
+      initialDraft: "Question",
+      editedDraft: "New question",
+      expectedDraft: "New question",
+    },
+  ])("$scenario after browser question rejection", async ({
+    initialDraft,
+    editedDraft,
+    expectedDraft,
+  }) => {
+    vi.useFakeTimers()
+    try {
+      const { result } = renderFeedHook()
+      act(() => result.current.setThreadDraft("thread-1", initialDraft))
+
+      await act(async () => {
+        await expect(
+          result.current.handleSendMessage("Question", undefined, undefined, {
+            browserQuestion: createBrowserQuestion("operation-sync"),
+          }),
+        ).resolves.toBe(true)
+      })
+      expect(result.current.threadDrafts["thread-1"]).toBe("")
+      if (editedDraft !== undefined)
+        act(() => result.current.setThreadDraft("thread-1", editedDraft))
+
+      await act(async () => vi.runAllTimersAsync())
+      expect(result.current.threadDrafts["thread-1"]).toBe(expectedDraft)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("does not restore after the draft changes and is cleared before a late failure", async () => {
+    vi.useFakeTimers()
+    let releaseStream: (() => void) | undefined
+    mockStartStream.mockImplementation(() => {
+      return new Promise<void>((resolve) => {
+        releaseStream = resolve
+      })
+    })
+    const browserReading = {
+      isPreparedQuestionActive: () => true,
+      interruptQuestion: vi.fn(),
+    } as unknown as BrowserReadingSession
+    try {
+      const { result } = renderFeedHook("thread-1", browserReading)
+      const browserQuestion = createBrowserQuestion("operation-late")
+      act(() => result.current.setThreadDraft("thread-1", "Question"))
+
+      await act(async () => {
+        await expect(
+          result.current.handleSendMessage("Question", undefined, undefined, {
+            browserQuestion,
+          }),
+        ).resolves.toBe(true)
+      })
+      act(() => result.current.setThreadDraft("thread-1", "Later text"))
+      act(() => result.current.setThreadDraft("thread-1", ""))
+
+      await act(async () => {
+        releaseStream?.()
+        await Promise.resolve()
+      })
+      await act(async () => vi.runAllTimersAsync())
+      expect(result.current.threadDrafts["thread-1"]).toBe("")
+    } finally {
+      mockStartStream.mockReset()
+      vi.useRealTimers()
+    }
+  })
+
+  it("restores a failed new-thread question only in the destination draft", async () => {
+    vi.useFakeTimers()
+    const { AiThreadsService } = await import("@/client")
+    vi.mocked(AiThreadsService.createChatThread).mockResolvedValue({
+      id: "thread-created",
+    } as never)
+    try {
+      const { result } = renderFeedHook(null)
+      act(() => result.current.setThreadDraft(null, "Question"))
+
+      await act(async () => {
+        await expect(
+          result.current.handleSendMessage("Question", undefined, undefined, {
+            browserQuestion: createBrowserQuestion("operation-new"),
+          }),
+        ).resolves.toBe(true)
+      })
+      await act(async () => vi.runAllTimersAsync())
+
+      expect(result.current.threadDrafts["new-chat"]).toBe("")
+      expect(result.current.threadDrafts["thread-created"]).toBe("Question")
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it.each([

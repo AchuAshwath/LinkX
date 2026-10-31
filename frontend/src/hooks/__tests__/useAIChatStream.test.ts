@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { useAIChatStream } from "@/hooks/useAIChatStream"
+import type { PreparedBrowserQuestion } from "@/observation/reading/types"
 
 function createMockJwt(expSecondsFromNow: number): string {
   const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }))
@@ -27,6 +28,89 @@ function createControlledResponse(
   }
 }
 
+function createBrowserHandlers() {
+  return {
+    onBrowserNote: vi.fn(),
+    onBrowserReceipt: vi.fn(),
+    onBrowserStatus: vi.fn(),
+    onBrowserDispatch: vi.fn(),
+    onBrowserActivity: vi.fn(),
+    onTextDelta: vi.fn(),
+  }
+}
+
+function expectBrowserQuestionRoute(
+  fetchSpy: ReturnType<typeof vi.fn>,
+  question: PreparedBrowserQuestion,
+) {
+  expect(fetchSpy).toHaveBeenCalledWith(
+    "/api/v1/ai/threads/thread-a/browser-chat",
+    expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        message: "What is shown?",
+        model: "model-pinned",
+        request_id: question.operation_id,
+        browser_context: question.context,
+      }),
+    }),
+  )
+}
+
+function expectBrowserEvents(
+  question: PreparedBrowserQuestion,
+  handlers: ReturnType<typeof createBrowserHandlers>,
+) {
+  expect(handlers.onBrowserDispatch).toHaveBeenCalledWith(question.operation_id)
+  expect(handlers.onBrowserActivity).toHaveBeenCalledWith({
+    state: "checking",
+    message: "Checking browser context.",
+  })
+  expect(handlers.onBrowserActivity).toHaveBeenCalledWith({
+    state: "reading",
+    message: "Reading shared view.",
+    tool_id: "frame-a",
+    tool_state: "completed",
+    view_index: 1,
+    view_count: 1,
+    note_chars: 15,
+    note_preview: "A product page",
+    preview_truncated: false,
+    duration_ms: 42,
+  })
+  expect(handlers.onBrowserActivity).toHaveBeenCalledWith({
+    state: "reading",
+    message: "Reading shared view.",
+    tool_id: "frame-failed",
+    tool_state: "failed",
+    failure_code: "output_truncated",
+    failure_message: "The model response was truncated.",
+  })
+  expect(handlers.onBrowserActivity).toHaveBeenCalledWith({
+    state: "reading",
+    message: "Reading shared view.",
+    tool_id: "frame-invalid",
+  })
+  expect(handlers.onBrowserNote).toHaveBeenCalledWith({
+    id: "frame-a",
+    sequence: 1,
+    text: "A product page",
+    model: "model-pinned",
+    uncertainty: "",
+  })
+  expect(handlers.onBrowserReceipt).toHaveBeenCalledWith({
+    operation_id: question.operation_id,
+    completed_ids: ["frame-a"],
+    failed_ids: [],
+    unused_ids: [],
+  })
+  expect(handlers.onBrowserStatus).toHaveBeenCalledWith({
+    state: "reading",
+    operation_id: question.operation_id,
+  })
+  expect(handlers.onTextDelta).toHaveBeenCalledWith("The page shows a product.")
+}
+
 async function assertAuthFailureRedirection(options: {
   setup?: () => void
   expectedMessage?: string
@@ -39,8 +123,12 @@ async function assertAuthFailureRedirection(options: {
   const { result } = renderHook(() => useAIChatStream())
 
   await act(async () => {
-    await result.current.startStream("thread-123", "Draft a post", {
-      onError,
+    await result.current.startStream({
+      threadId: "thread-123",
+      message: "Draft a post",
+      handlers: {
+        onError,
+      },
     })
   })
 
@@ -89,8 +177,12 @@ describe("useAIChatStream auth handling (Issue #128)", () => {
     const { result } = renderHook(() => useAIChatStream())
 
     await act(async () => {
-      await result.current.startStream("thread-123", "Draft a post", {
-        onError,
+      await result.current.startStream({
+        threadId: "thread-123",
+        message: "Draft a post",
+        handlers: {
+          onError,
+        },
       })
     })
 
@@ -143,8 +235,12 @@ describe("useAIChatStream auth handling (Issue #128)", () => {
     const { result } = renderHook(() => useAIChatStream())
 
     await act(async () => {
-      await result.current.startStream("thread-123", "Draft a post", {
-        onError,
+      await result.current.startStream({
+        threadId: "thread-123",
+        message: "Draft a post",
+        handlers: {
+          onError,
+        },
       })
     })
 
@@ -168,8 +264,12 @@ describe("useAIChatStream auth handling (Issue #128)", () => {
     const { result } = renderHook(() => useAIChatStream())
 
     await act(async () => {
-      await result.current.startStream("thread-123", "Draft a post", {
-        onError,
+      await result.current.startStream({
+        threadId: "thread-123",
+        message: "Draft a post",
+        handlers: {
+          onError,
+        },
       })
     })
 
@@ -197,8 +297,12 @@ describe("useAIChatStream auth handling (Issue #128)", () => {
     const { result } = renderHook(() => useAIChatStream())
 
     await act(async () => {
-      await result.current.startStream("thread-123", "Draft a post", {
-        onError,
+      await result.current.startStream({
+        threadId: "thread-123",
+        message: "Draft a post",
+        handlers: {
+          onError,
+        },
       })
     })
 
@@ -241,38 +345,217 @@ describe("useAIChatStream auth handling (Issue #128)", () => {
     const { result } = renderHook(() => useAIChatStream())
 
     await act(async () => {
-      await result.current.startStream("thread-123", "Hello", {
-        onThought,
-        onTextDelta,
-        onDone,
-        onError,
+      await result.current.startStream({
+        threadId: "thread-123",
+        message: "Hello",
+        handlers: {
+          onThought,
+          onTextDelta,
+          onDone,
+          onError,
+        },
       })
     })
 
     expect(onThought).toHaveBeenCalledWith("Thinking...")
     expect(onTextDelta).toHaveBeenCalledWith("Hello world")
     expect(onDone).toHaveBeenCalled()
+    expect(onDone).toHaveBeenCalledTimes(1)
     expect(onError).not.toHaveBeenCalled()
     expect(result.current.isStreaming).toBe(false)
   })
 
+  it("sends browser questions on the dedicated route and keeps browser events out of assistant text", async () => {
+    localStorage.setItem("access_token", createMockJwt(3600))
+    const question = browserQuestionFixture()
+    const stream = browserStreamFixture()
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: stream,
+    })
+    vi.stubGlobal("fetch", fetchSpy)
+    const handlers = createBrowserHandlers()
+    const { result } = renderHook(() => useAIChatStream())
+
+    await act(async () => {
+      await result.current.startStream({
+        threadId: "thread-a",
+        message: "What is shown?",
+        handlers,
+        model: "ignored-model",
+        browserQuestion: question,
+      })
+    })
+
+    expectBrowserQuestionRoute(fetchSpy, question)
+    expectBrowserEvents(question, handlers)
+  })
+
+  it.each([
+    {
+      name: "EOF without a done event",
+      data: 'event: text_delta\ndata: {"content":"partial"}\n\n',
+      expectedError: "Stream ended before completion.",
+      expectedText: "partial",
+    },
+    {
+      name: "an explicit error followed by close",
+      data: 'event: error\ndata: {"message":"Browser processing failed."}\n\n',
+      expectedError: "Browser processing failed.",
+    },
+    {
+      name: "an explicit error without a trailing newline",
+      data: 'event: error\ndata: {"message":"Browser processing failed."}',
+      expectedError: "Browser processing failed.",
+    },
+  ])("reports $name once without completing", async (scenario) => {
+    localStorage.setItem("access_token", createMockJwt(3600))
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(scenario.data))
+        controller.close()
+      },
+    })
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, status: 200, body: stream }),
+    )
+    const onDone = vi.fn()
+    const onError = vi.fn()
+    const onTextDelta = vi.fn()
+    const { result } = renderHook(() => useAIChatStream())
+
+    await act(async () => {
+      await result.current.startStream({
+        threadId: "thread-a",
+        message: "What is shown?",
+        handlers: { onDone, onError, onTextDelta },
+      })
+    })
+
+    expect(onDone).not.toHaveBeenCalled()
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(onError).toHaveBeenCalledWith(scenario.expectedError)
+    if (scenario.expectedText)
+      expect(onTextDelta).toHaveBeenCalledWith(scenario.expectedText)
+  })
+
+  it.each([
+    {
+      name: "EOF handling",
+      body: () =>
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.close()
+          },
+        }),
+      expectedError: "Stream ended before completion.",
+    },
+    {
+      name: "reader failure handling",
+      body: () =>
+        new ReadableStream<Uint8Array>({
+          pull() {
+            throw new Error("network read failed")
+          },
+        }),
+      expectedError: "network read failed",
+    },
+  ])("does not retry a terminal callback that throws during $name", async (scenario) => {
+    localStorage.setItem("access_token", createMockJwt(3600))
+    const body = scenario.body()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, status: 200, body }),
+    )
+    const onError = vi.fn(() => {
+      throw new Error("consumer callback failed")
+    })
+    const { result } = renderHook(() => useAIChatStream())
+
+    await act(async () => {
+      await result.current.startStream({
+        threadId: "thread-a",
+        message: "hello",
+        handlers: { onError },
+      })
+    })
+
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(onError).toHaveBeenCalledWith(scenario.expectedError)
+    expect(result.current.isStreaming).toBe(false)
+  })
+
+  it("preserves abort as the request's terminal outcome", async () => {
+    localStorage.setItem("access_token", createMockJwt(3600))
+    const body = new ReadableStream<Uint8Array>({
+      pull() {
+        throw new DOMException("Request cancelled", "AbortError")
+      },
+    })
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, status: 200, body }),
+    )
+    const onAbort = vi.fn()
+    const onDone = vi.fn()
+    const onError = vi.fn()
+    const { result } = renderHook(() => useAIChatStream())
+
+    await act(async () => {
+      await result.current.startStream({
+        threadId: "thread-a",
+        message: "hello",
+        handlers: { onAbort, onDone, onError },
+      })
+    })
+
+    expect(onAbort).toHaveBeenCalledTimes(1)
+    expect(onDone).not.toHaveBeenCalled()
+    expect(onError).not.toHaveBeenCalled()
+    expect(result.current.isStreaming).toBe(false)
+  })
+
+  it("does not complete successfully if a done event follows a stream error", async () => {
+    localStorage.setItem("access_token", createMockJwt(3600))
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode(
+            'event: text_delta\ndata: {"content":"partial answer"}\n\n' +
+              'event: error\ndata: {"message":"Browser processing failed."}\n\n' +
+              "event: done\ndata: {}\n\n",
+          ),
+        )
+        controller.close()
+      },
+    })
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, status: 200, body }),
+    )
+    const onDone = vi.fn()
+    const onError = vi.fn()
+    const onTextDelta = vi.fn()
+    const { result } = renderHook(() => useAIChatStream())
+
+    await act(async () => {
+      await result.current.startStream({
+        threadId: "thread-a",
+        message: "What is shown?",
+        handlers: { onDone, onError, onTextDelta },
+      })
+    })
+
+    expect(onTextDelta).toHaveBeenCalledWith("partial answer")
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(onDone).not.toHaveBeenCalled()
+  })
+
   it("surfaces observation usage metadata without retaining image data", async () => {
     localStorage.setItem("access_token", createMockJwt(3600))
-    const usage = {
-      estimated_input_tokens: 1200,
-      input_limit: 4000,
-      output_reserve: 700,
-      model_id: "vision-model",
-      frame_count: 1,
-      history_frames: 0,
-      revision: 4,
-      source_epoch: 2,
-      width: 1280,
-      height: 720,
-      captured_at: "2026-10-19T09:00:00Z",
-      delivered_at: "2026-10-19T09:00:01Z",
-      frame_presented_at_ms: 120,
-    }
+    const usage = observationUsageFixture()
     const encoder = new TextEncoder()
     const body = new ReadableStream({
       start(controller) {
@@ -292,8 +575,12 @@ describe("useAIChatStream auth handling (Issue #128)", () => {
     const onObservationUsage = vi.fn()
     const { result } = renderHook(() => useAIChatStream())
     await act(async () => {
-      await result.current.startStream("thread-123", "Hello", {
-        onObservationUsage,
+      await result.current.startStream({
+        threadId: "thread-123",
+        message: "Hello",
+        handlers: {
+          onObservationUsage,
+        },
       })
     })
 
@@ -324,30 +611,20 @@ describe("useAIChatStream auth handling (Issue #128)", () => {
     let completed: Promise<void> = Promise.resolve()
 
     act(() => {
-      completed = result.current.startStream("thread-123", "Hello", {
-        onObservationUsage,
-        onTextDelta,
+      completed = result.current.startStream({
+        threadId: "thread-123",
+        message: "Hello",
+        handlers: {
+          onObservationUsage,
+          onTextDelta,
+        },
       })
     })
     await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledOnce())
     act(() => result.current.clearObservationUsage())
     expect(result.current.isStreaming).toBe(true)
 
-    const usage = {
-      estimated_input_tokens: 1200,
-      input_limit: 4000,
-      output_reserve: 700,
-      model_id: "vision-model",
-      frame_count: 1,
-      history_frames: 0,
-      revision: 4,
-      source_epoch: 2,
-      width: 1280,
-      height: 720,
-      captured_at: "2026-10-19T09:00:00Z",
-      delivered_at: "2026-10-19T09:00:01Z",
-      frame_presented_at_ms: 120,
-    }
+    const usage = observationUsageFixture()
     act(() => {
       streamController?.enqueue(
         encoder.encode(
@@ -380,33 +657,27 @@ describe("useAIChatStream auth handling (Issue #128)", () => {
     let secondStream: Promise<void> = Promise.resolve()
 
     act(() => {
-      firstStream = result.current.startStream("thread-a", "First", {
-        onObservationUsage: onFirstUsage,
+      firstStream = result.current.startStream({
+        threadId: "thread-a",
+        message: "First",
+        handlers: {
+          onObservationUsage: onFirstUsage,
+        },
       })
     })
     await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1))
     act(() => {
-      secondStream = result.current.startStream("thread-b", "Second", {
-        onObservationUsage: onSecondUsage,
+      secondStream = result.current.startStream({
+        threadId: "thread-b",
+        message: "Second",
+        handlers: {
+          onObservationUsage: onSecondUsage,
+        },
       })
     })
     await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2))
 
-    const usage = {
-      estimated_input_tokens: 1200,
-      input_limit: 4000,
-      output_reserve: 700,
-      model_id: "vision-model",
-      frame_count: 1,
-      history_frames: 0,
-      revision: 4,
-      source_epoch: 2,
-      width: 1280,
-      height: 720,
-      captured_at: "2026-10-19T09:00:00Z",
-      delivered_at: "2026-10-19T09:00:01Z",
-      frame_presented_at_ms: 120,
-    }
+    const usage = observationUsageFixture()
     act(() => {
       controllers[0].enqueue(
         encoder.encode(
@@ -464,15 +735,12 @@ describe("useAIChatStream auth handling (Issue #128)", () => {
     const { result } = renderHook(() => useAIChatStream())
 
     await act(async () => {
-      await result.current.startStream(
-        "thread-123",
-        "What is on this page?",
-        {},
-        undefined,
-        undefined,
-        undefined,
-        observation,
-      )
+      await result.current.startStream({
+        threadId: "thread-123",
+        message: "What is on this page?",
+        handlers: {},
+        observation: observation,
+      })
     })
 
     expect(JSON.parse(fetchSpy.mock.calls[0][1].body)).toMatchObject({
@@ -499,7 +767,10 @@ describe("useAIChatStream auth handling (Issue #128)", () => {
     const { result } = renderHook(() => useAIChatStream())
 
     await act(async () => {
-      await result.current.startStream("thread-123", "Legacy question")
+      await result.current.startStream({
+        threadId: "thread-123",
+        message: "Legacy question",
+      })
     })
 
     const requestBody = JSON.parse(fetchSpy.mock.calls[0][1].body)
@@ -507,3 +778,143 @@ describe("useAIChatStream auth handling (Issue #128)", () => {
     expect(requestBody).not.toHaveProperty("observation")
   })
 })
+
+function browserQuestionFixture(): PreparedBrowserQuestion {
+  const question: PreparedBrowserQuestion = {
+    operation_id: "00000000-0000-4000-8000-000000000123",
+    model: "model-pinned",
+    context: {
+      session_id: "00000000-0000-4000-8000-000000000456",
+      generation: 1,
+      cutoff: 1,
+      summary: "",
+      notes: [],
+      pending_frames: [],
+      current_view: null,
+      gap_count: 0,
+    },
+  }
+  return question
+}
+
+describe("browser question waiting for background reading", () => {
+  it("shows the useful budget error message without rendering its JSON envelope", async () => {
+    localStorage.setItem("access_token", createMockJwt(3600))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 422,
+        text: async () =>
+          JSON.stringify({
+            detail: {
+              code: "input_too_large",
+              message:
+                "Your browser notes are retained. Choose a larger-context model.",
+              budget: null,
+            },
+          }),
+      }),
+    )
+    const onError = vi.fn()
+    const { result } = renderHook(() => useAIChatStream())
+    await act(async () =>
+      result.current.startStream({
+        threadId: "owner",
+        message: "Question",
+        handlers: { onError },
+        browserQuestion: browserQuestionFixture(),
+      }),
+    )
+    expect(onError).toHaveBeenCalledWith(
+      "Your browser notes are retained. Choose a larger-context model.",
+    )
+  })
+  it("shows a running question immediately but sends refreshed browser memory only after the read settles", async () => {
+    localStorage.setItem("access_token", createMockJwt(3600))
+    const question = browserQuestionFixture()
+    let release: ((context: typeof question.context) => void) | undefined
+    question.ready = () =>
+      new Promise((resolve) => {
+        release = resolve
+      })
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: browserStreamFixture(),
+    })
+    vi.stubGlobal("fetch", fetchSpy)
+    const { result } = renderHook(() => useAIChatStream())
+    let finished: Promise<void> | undefined
+    act(() => {
+      finished = result.current.startStream({
+        threadId: "owner",
+        message: "What opens at noon?",
+        handlers: {},
+        browserQuestion: question,
+      })
+    })
+    expect(result.current.isStreaming).toBe(true)
+    expect(result.current.streamingThreadId).toBe("owner")
+    expect(fetchSpy).not.toHaveBeenCalled()
+    await act(async () => {
+      release?.({
+        ...question.context,
+        notes: [
+          {
+            id: "frame-a",
+            sequence: 1,
+            text: "Aster opens at noon.",
+            uncertainty: "",
+            model: "model-pinned",
+          },
+        ],
+      })
+      await finished
+    })
+    expect(
+      JSON.parse(fetchSpy.mock.calls[0][1].body).browser_context.notes[0].text,
+    ).toBe("Aster opens at noon.")
+    expect(JSON.parse(fetchSpy.mock.calls[0][1].body)).not.toHaveProperty(
+      "ready",
+    )
+  })
+})
+
+function browserStreamFixture() {
+  const payload =
+    'event: browser_status\ndata: {"state":"reading","operation_id":"00000000-0000-4000-8000-000000000123"}\n\n' +
+    'event: browser_activity\ndata: {"state":"checking","message":"Checking browser context."}\n\n' +
+    'event: browser_activity\ndata: {"state":"reading","message":"Reading shared view.","tool_id":"frame-a","tool_state":"completed","view_index":1,"view_count":1,"note_chars":15,"note_preview":"A product page","preview_truncated":false,"duration_ms":42}\n\n' +
+    'event: browser_activity\ndata: {"state":"reading","message":"Reading shared view.","tool_id":"frame-failed","tool_state":"failed","failure_code":"output_truncated","failure_message":"The model response was truncated."}\n\n' +
+    'event: browser_activity\ndata: {"state":"reading","message":"Reading shared view.","tool_id":"frame-invalid","tool_state":"unknown","view_index":0,"view_count":1.5,"note_chars":-3,"duration_ms":-1}\n\n' +
+    'event: browser_note\ndata: {"id":"frame-a","sequence":1,"text":"A product page","model":"model-pinned","uncertainty":""}\n\n' +
+    'event: browser_receipt\ndata: {"operation_id":"00000000-0000-4000-8000-000000000123","completed_ids":["frame-a"],"failed_ids":[],"unused_ids":[]}\n\n' +
+    'event: text_delta\ndata: {"content":"The page shows a product."}\n\n' +
+    "event: done\ndata: {}\n\n"
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(payload))
+      controller.close()
+    },
+  })
+  return stream
+}
+
+function observationUsageFixture() {
+  return {
+    estimated_input_tokens: 1200,
+    input_limit: 4000,
+    output_reserve: 700,
+    model_id: "vision-model",
+    frame_count: 1,
+    history_frames: 0,
+    revision: 4,
+    source_epoch: 2,
+    width: 1280,
+    height: 720,
+    captured_at: "2026-10-19T09:00:00Z",
+    delivered_at: "2026-10-19T09:00:01Z",
+    frame_presented_at_ms: 120,
+  }
+}

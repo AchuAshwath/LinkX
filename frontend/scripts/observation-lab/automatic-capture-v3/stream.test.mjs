@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import { createCapturePipeline } from "./pipeline.mjs"
 import { createStreamSampler } from "./stream.mjs"
 
 function fixture() {
@@ -52,6 +53,7 @@ function fixture() {
     video,
     canvas,
     context,
+    environment,
     encoded: () => encoded,
     tick: (time) => {
       at = time
@@ -67,6 +69,66 @@ test("unchanged media delivery does not create repeated samples or encode images
   item.tick(500)
   assert.equal(item.frames.length, 1)
   assert.equal(item.encoded(), 0)
+})
+
+test("stationary delivery is resampled until the initial view settles", () => {
+  const item = fixture()
+  const candidates = []
+  const pipeline = createCapturePipeline({
+    now: item.environment.now,
+    options: { initialSettleMs: 500, settleMs: 300, sampleIntervalMs: 100 },
+    onCandidate: (candidate) => candidates.push(candidate),
+  })
+  const sampler = createStreamSampler({
+    video: item.video,
+    onFrame: (frame) => pipeline.offer(frame),
+    environment: item.environment,
+  })
+  sampler.start({ generation: 1, ownerChat: "A" })
+
+  for (let time = 250; time <= 3000; time += 250) item.tick(time)
+
+  assert.equal(candidates.length, 1)
+  assert.equal(candidates[0].seq > 1, true)
+  assert.equal(pipeline.stats().accepted, 1)
+})
+
+test("a changed stationary view settles once without duplicate candidates", () => {
+  const item = fixture()
+  const candidates = []
+  let pixels = new Uint8ClampedArray(80 * 40 * 4).fill(255)
+  item.context.getImageData = () => ({ data: pixels.slice() })
+  const pipeline = createCapturePipeline({
+    now: item.environment.now,
+    options: { initialSettleMs: 0, settleMs: 300, sampleIntervalMs: 100 },
+    onCandidate: (candidate) => candidates.push(candidate),
+  })
+  let videoFrameCallback
+  let callbackId = 0
+  item.video.requestVideoFrameCallback = (callback) => {
+    videoFrameCallback = callback
+    return ++callbackId
+  }
+  item.video.cancelVideoFrameCallback = () => {}
+  const sampler = createStreamSampler({
+    video: item.video,
+    onFrame: (frame) => pipeline.offer(frame),
+    environment: item.environment,
+  })
+  sampler.start({ generation: 2, ownerChat: "A" })
+  for (let time = 250; time <= 1500; time += 250) {
+    const callback = videoFrameCallback
+    callback?.(time, { presentedFrames: time / 250 })
+    item.tick(time)
+  }
+  assert.equal(candidates.length, 1)
+
+  pixels = new Uint8ClampedArray(80 * 40 * 4).fill(0)
+  for (let time = 1750; time <= 5000; time += 250) item.tick(time)
+
+  assert.equal(candidates.length, 2)
+  assert.equal(candidates[1].seq > candidates[0].seq, true)
+  assert.equal(pipeline.stats().accepted, 2)
 })
 
 test("delivered frames retain source dimensions and delivery diagnostics", () => {
@@ -124,4 +186,11 @@ test("stop releases the source canvas and rejects late video callbacks", () => {
   assert.equal(item.frames.length, 1)
   assert.equal(item.canvas.width, 0)
   assert.equal(item.sampler.stats().callbacks, 0)
+
+  item.sampler.start({ generation: 2, ownerChat: "B" })
+  late(1000, { presentedFrames: 5 })
+  assert.equal(item.sampler.stats().callbacks, 0)
+  item.tick(1000)
+  assert.equal(item.frames.length, 2)
+  assert.equal(item.frames[1].generation, 2)
 })

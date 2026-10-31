@@ -988,7 +988,11 @@ describe("AIPage component with PostgreSQL backend persistence", () => {
 
 it("makes browser tab observation available in the chat composer", async () => {
   const Component = Route.options.component as React.ComponentType
-  renderWithClient(<Component />)
+  renderWithClient(
+    <AIChatProvider>
+      <Component />
+    </AIChatProvider>,
+  )
 
   expect(
     await screen.findByRole("button", {
@@ -997,15 +1001,43 @@ it("makes browser tab observation available in the chat composer", async () => {
   ).toBeInTheDocument()
 })
 
+it("starts browser tab sharing from the chat composer", async () => {
+  installBrowserPreviewRail()
+  mockFirstNewThread()
+  window.history.replaceState({}, "", "/ai")
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined)
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {})
+  setupBrowserCapture()
+  const Component = Route.options.component as React.ComponentType
+  renderWithClient(
+    <AIChatProvider>
+      <Component />
+    </AIChatProvider>,
+  )
+
+  const preview = await selectBrowserTab()
+
+  expect(preview).toBeInTheDocument()
+  expect(
+    screen.getByRole("button", { name: "Stop sharing browser tab" }),
+  ).toBeInTheDocument()
+})
+
 it("keeps browser tab preview when a new chat creates its first thread", async () => {
   installBrowserPreviewRail()
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined)
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {})
   localStorage.setItem("access_token", "test-token")
   window.history.replaceState({}, "", "/ai")
   mockFirstNewThread()
-  const { stopTrack, trackListeners, track, stream, getPreviewStream } =
+  const { stopTrack, trackListeners, stream, getPreviewStream } =
     setupBrowserCapture()
   const Component = Route.options.component as React.ComponentType
-  renderWithClient(<Component />)
+  renderWithClient(
+    <AIChatProvider>
+      <Component />
+    </AIChatProvider>,
+  )
   await screen.findByText("What would you like to create?")
   const preview = await selectBrowserTab()
   presentPreviewFrame(preview)
@@ -1025,20 +1057,27 @@ it("keeps browser tab preview when a new chat creates its first thread", async (
   })
   vi.mocked(AiThreadsService.createChatThread).mockClear()
   vi.mocked(AiThreadsService.getChatThread).mockClear()
-  track.muted = true
-  act(() => trackListeners.get("mute")?.(new Event("mute")))
-  fireEvent.submit(form)
-  expect(AiThreadsService.createChatThread).not.toHaveBeenCalled()
-  expect(AiThreadsService.getChatThread).not.toHaveBeenCalled()
-  expect(prompt).toHaveValue("What is on this page?")
-
-  track.muted = false
-  act(() => trackListeners.get("unmute")?.(new Event("unmute")))
-  fireEvent.submit(form)
-  expect(AiThreadsService.createChatThread).not.toHaveBeenCalled()
-  expect(prompt).toHaveValue("What is on this page?")
-
-  fireEvent.loadedData(preview)
+  globalThis.fetch = vi.fn().mockImplementation(async (_url, init) => {
+    const body = JSON.parse(String(init?.body))
+    const operation_id = body.request_id
+    const events = [
+      ["browser_status", { state: "processing", operation_id }],
+      [
+        "browser_receipt",
+        { operation_id, completed_ids: [], failed_ids: [], unused_ids: [] },
+      ],
+      ["text_delta", { content: "No page details were available yet." }],
+      ["done", {}],
+    ]
+      .map(
+        ([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
+      )
+      .join("")
+    return new Response(events, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    })
+  })
   fireEvent.submit(form)
 
   await waitFor(() => {
