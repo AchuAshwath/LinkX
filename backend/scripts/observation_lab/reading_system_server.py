@@ -59,6 +59,11 @@ class ScriptedProvider:
                     )
                 }
             )
+        await asyncio.sleep(
+            min(
+                10, max(0, float(os.environ.get("READING_SMOKE_EVALUATION_DELAY", "0")))
+            )
+        )
         return _evaluation_result(payload=payload)
 
 

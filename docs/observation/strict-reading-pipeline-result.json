@@ -1,0 +1,87 @@
+{
+  "model": "openai/gpt-6-luna",
+  "call_limit": 8,
+  "source": "Synthetic JPEG feed, documentation and blank-page fixtures only.",
+  "checks": [
+    {
+      "name": "feed preserves author and main post content",
+      "passed": true
+    },
+    {
+      "name": "documentation preserves exact code labels and values",
+      "passed": true
+    },
+    {
+      "name": "blank view produces honest nonempty observation",
+      "passed": true
+    },
+    {
+      "name": "compaction retains attributed facts and exact values",
+      "passed": true
+    },
+    {
+      "name": "compaction retains unreadable-view uncertainty",
+      "passed": true
+    },
+    {
+      "name": "empty-memory question waits then reads then answers",
+      "passed": true
+    },
+    {
+      "name": "question emits actual read and completed-note activity",
+      "passed": true
+    }
+  ],
+  "requests": [
+    {
+      "call": 1,
+      "schema": "browser_read",
+      "duration_s": 4.0,
+      "returned": true
+    },
+    {
+      "call": 2,
+      "schema": "browser_read",
+      "duration_s": 3.68,
+      "returned": true
+    },
+    {
+      "call": 3,
+      "schema": "browser_read",
+      "duration_s": 2.02,
+      "returned": true
+    },
+    {
+      "call": 4,
+      "schema": "browser_compaction",
+      "duration_s": 3.2,
+      "returned": true
+    },
+    {
+      "call": 5,
+      "schema": "browser_compaction",
+      "duration_s": 1.85,
+      "returned": true
+    },
+    {
+      "call": 6,
+      "schema": "browser_evaluation",
+      "duration_s": 2.29,
+      "returned": true
+    },
+    {
+      "call": 7,
+      "schema": "browser_read",
+      "duration_s": 3.02,
+      "returned": true
+    },
+    {
+      "call": 8,
+      "schema": "browser_evaluation",
+      "duration_s": 2.68,
+      "returned": true
+    }
+  ],
+  "passed": true,
+  "calls": 8
+}

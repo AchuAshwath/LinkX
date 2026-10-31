@@ -1,0 +1,62 @@
+{
+  "model": "openai/gpt-6-luna",
+  "source": "Synthetic feed screenshot only; no user page content.",
+  "call_limit": 4,
+  "attempts": [
+    {
+      "strict_schema": false,
+      "http_status": 200,
+      "finish_reason": "stop",
+      "shape": {
+        "text": "str",
+        "uncertainty": "str"
+      }
+    },
+    {
+      "strict_schema": false,
+      "http_status": 200,
+      "finish_reason": "stop",
+      "shape": {
+        "text": "str",
+        "uncertainty": "str"
+      }
+    },
+    {
+      "strict_schema": false,
+      "http_status": 200,
+      "finish_reason": "stop",
+      "shape": {
+        "text": "str",
+        "uncertainty": "str"
+      }
+    },
+    {
+      "strict_schema": true,
+      "http_status": 200,
+      "finish_reason": "stop",
+      "shape": {
+        "text": "str",
+        "uncertainty": "str"
+      }
+    }
+  ],
+  "outcomes": [
+    {
+      "passed": true,
+      "duration_s": 8.263
+    },
+    {
+      "passed": true,
+      "duration_s": 3.969
+    },
+    {
+      "passed": true,
+      "duration_s": 2.333
+    },
+    {
+      "passed": true,
+      "duration_s": 4.102
+    }
+  ],
+  "calls": 4
+}

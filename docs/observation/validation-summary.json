@@ -1,0 +1,201 @@
+{
+  "as_of": "2026-10-31",
+  "status": {
+    "manual_current_feature_review": {
+      "result": "user accepted current feature",
+      "date": "2026-10-25"
+    },
+    "formal_review_gate": {
+      "issue": 172,
+      "status": "manual_acceptance_record_pending",
+      "notes": [
+        "The bounded implementation and lifecycle correction passed independent review and validation. Merge is authorized; the specific earlier-view and broad-pending random-page scenarios remain to be recorded under #172.",
+        "Verify hosted checks at each resulting published head before merging.",
+        "No terms-of-service proof is recorded."
+      ]
+    },
+    "not_established": [
+      "comprehensive accuracy across pages and models",
+      "cross-browser certification",
+      "legal or terms-of-service compliance",
+      "multi-worker distributed coordination",
+      "crash-safe job resumption"
+    ]
+  },
+  "validation_tiers": [
+    {
+      "name": "backend_full_suite",
+      "passed": 936,
+      "warnings": 24,
+      "process_exit": 0,
+      "scope": "Fresh full backend suite after the lifecycle correction: 936 passed, 24 warnings."
+    },
+    {
+      "name": "frontend_unit_and_component",
+      "passed": 382,
+      "files": 43,
+      "scope": "Combined frontend suite including capture close, replacement sessions, late physical completion, rejected-request ordering and settlement recovery."
+    },
+    {
+      "name": "desktop_chrome_scroll_regression",
+      "passed": 1,
+      "total": 1,
+      "browser": "installed desktop Chrome via Playwright",
+      "scope": "Transcript following, reading-position preservation, re-follow, thread switch, and stable anchor sampling after native wheel/keyboard scrolling settles.",
+      "limitation": "Sub-8-pixel upward movement is simulated deterministically; this is not cross-engine or physical-trackpad certification. Anchor capture waits for ten quiet animation frames after native scrolling; the original assertions and tolerances are unchanged.",
+      "repeated_runs_passed": 10,
+      "repeated_runs_total": 10
+    },
+    {
+      "name": "controlled_full_system_smoke",
+      "passed": 24,
+      "scope": "Integrated capture/session/HTTP/persistence/UI checks, including preview/source close during a dispatched question and immediate replacement sharing, with a delayed scripted external provider.",
+      "limitation": "Does not measure live-provider accuracy."
+    }
+  ],
+  "counting_note": "Validation tiers and historical per-layer checkpoints are separate, non-additive runs. Backend evidence is shared only when app/test file fingerprints match the fully tested layer.",
+  "issue_scope": {
+    "150": "parent browser-reading deliverable",
+    "159": "capture and session ownership",
+    "168": "image interpretation",
+    "171": "bounded browser memory",
+    "161": "question coordination and durable chat integration",
+    "172": "integrated formal review and merge gate",
+    "173": "product acceptance and scope decisions",
+    "175": "structured model-output schema",
+    "176": "browser submission and thread titles",
+    "177": "terminal stream-error handling",
+    "178": "voice-input settlement and revision-fenced queued draft recovery",
+    "179": "transcript scrolling and sharing menu",
+    "180": "browser-sharing capability context",
+    "189": "deferred research/prototype: normal browser-assisted answer streaming and tool integration",
+    "190": "capture-close lifecycle, replacement sharing and operation settlement correction"
+  },
+  "proposed_review_branches": [
+    "codex/reading-api-review",
+    "codex/question-api-review",
+    "codex/browser-memory-review",
+    "codex/browser-chat-review",
+    "codex/chat-draft-review",
+    "codex/chat-scroll-review",
+    "codex/browser-audit-review"
+  ],
+  "publication_note": "PRs #182\u2013#188 document the review stack with normal merge ancestry. Check each PR for its current merge state and verify hosted checks after propagation.",
+  "publication_checkpoints": {
+    "reading_api": {
+      "branch": "codex/reading-api-review",
+      "backend_tests_passed": 868,
+      "frontend_tests_passed": 266
+    },
+    "question_api": {
+      "branch": "codex/question-api-review",
+      "backend_tests_passed": 934,
+      "post_review_backend_tests_passed": 936
+    },
+    "memory": {
+      "branch": "codex/browser-memory-review",
+      "frontend_tests_passed": 286,
+      "focused_cases": 20
+    },
+    "activation": {
+      "branch": "codex/browser-chat-review",
+      "frontend_tests_passed": 360,
+      "v3_stream_cases": 7,
+      "post_review_frontend_tests_passed": 366
+    },
+    "final_frontend": {
+      "branch": "codex/chat-scroll-review",
+      "frontend_tests_passed": 363,
+      "chrome_cases_passed": 1,
+      "post_review_frontend_tests_passed": 377
+    },
+    "final_combined": {
+      "branch": "codex/browser-audit-review",
+      "controlled_system_checks_passed": 20,
+      "chrome_cases_passed": 1,
+      "external_provider_scripted_in_system_test": true,
+      "backend_tests_passed": 936,
+      "frontend_tests_passed": 377,
+      "v3_capture_tests_passed": 55,
+      "chrome_repeated_cases_passed": 10
+    },
+    "generator": {
+      "consecutive_host_generations_identical": true,
+      "normal_commit_hooks_enabled": true
+    }
+  },
+  "hosted_gate_follow_up": {
+    "reason": "New-file health threshold10.0; initial mixed model-test file had low cohesion/large method.",
+    "change": "Split tests into budget, evaluation, compaction and provider modules.",
+    "preserved_test_functions": 15,
+    "preserved_assertion_asts": 80,
+    "new_module_scores": [
+      10.0,
+      10.0,
+      10.0,
+      10.0
+    ],
+    "standalone_backend_tests_passed": 868,
+    "runtime_code_changed": false
+  },
+  "review_pull_requests": [
+    "https://github.com/AchuAshwath/LinkX/pull/182",
+    "https://github.com/AchuAshwath/LinkX/pull/183",
+    "https://github.com/AchuAshwath/LinkX/pull/184",
+    "https://github.com/AchuAshwath/LinkX/pull/185",
+    "https://github.com/AchuAshwath/LinkX/pull/186",
+    "https://github.com/AchuAshwath/LinkX/pull/187",
+    "https://github.com/AchuAshwath/LinkX/pull/188"
+  ],
+  "post_review_fixes": {
+    "date": "2026-10-26",
+    "question_completeness": {
+      "pull_request": 183,
+      "behavior": "Full list and complete list requests settle their accepted pending batch despite a false narrow evaluator flag; narrow and general answers may still finish early."
+    },
+    "capture_termination": {
+      "pull_request": 185,
+      "behavior": "Observe source termination before playback, reject ended/stale startup, and preserve replacement capture during reentrant owner callbacks."
+    },
+    "stopped_activity": {
+      "pull_request": 185,
+      "behavior": "Keep meaningful image activity through abort and render activity-only stopped messages without a running spinner; empty ordinary assistants remain hidden."
+    },
+    "draft_cancellation": {
+      "pull_request": 186,
+      "behavior": "Preserve newer and deliberately cleared drafts; recover untouched browser/ordinary prompts and the first cancelled ordinary prompt for a multi-turn queue."
+    },
+    "api_schema_changed": false,
+    "fresh_live_model_accuracy_study": false
+  },
+  "scroll_regression_sampling": {
+    "pull_request": 187,
+    "test_only": true,
+    "product_scroll_code_changed": false,
+    "change": "Wait for ten consecutive animation frames with stable scrollTop before capturing anchors after native scrolling.",
+    "diagnosis": "The Shift+Space browser test sampled while native keyboard scrolling was still moving; settled diagnostic runs had zero anchor drift. Existing product assertions and tolerances are unchanged.",
+    "repeat_result": {
+      "passed": 10,
+      "total": 10
+    }
+  },
+  "deferred_features": {
+    "ordinary_browser_answer_streaming": {
+      "issue": 189,
+      "current_behavior": "The dedicated JSON evaluator authors the answer and emits one final text chunk; normal tool/reasoning streaming is not yet integrated.",
+      "accepted_for_follow_up": "2026-10-31"
+    }
+  },
+  "lifecycle_follow_up": {
+    "date": "2026-10-31",
+    "issue": 190,
+    "submitted_question": "Closing capture clears retained memory and lets an already dispatched frozen request finish. Replacement frames wait for its receipt.",
+    "undispatched_question": "Capture closure during preparation invalidates a question not yet dispatched.",
+    "cleanup": "Definite rejection or authoritative completion releases old blockers; inconclusive settlement is rechecked with bounded backoff.",
+    "backend_tests_passed": 936,
+    "frontend_tests_passed": 382,
+    "controlled_system_checks_passed": 24,
+    "api_schema_changed": false,
+    "independent_lifecycle_review": "no remaining material blocker found in the reviewed correction"
+  }
+}
