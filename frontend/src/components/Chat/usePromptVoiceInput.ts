@@ -9,9 +9,11 @@ export function usePromptVoiceInput({
   updateInput: (val: string) => void
 }) {
   const baseInputRef = React.useRef(input)
+  const ignoreTranscriptRef = React.useRef(false)
 
   const handleTranscriptChange = React.useCallback(
     ({ transcript: voiceText }: { transcript: string }) => {
+      if (ignoreTranscriptRef.current) return
       if (!voiceText) return
       const base = baseInputRef.current.trim()
       const separator = base && voiceText ? " " : ""
@@ -38,6 +40,7 @@ export function usePromptVoiceInput({
     if (isVoiceListening) {
       stopVoiceListening()
     } else {
+      ignoreTranscriptRef.current = false
       startListening()
     }
   }, [
@@ -49,6 +52,7 @@ export function usePromptVoiceInput({
   ])
 
   function stopAndReset() {
+    ignoreTranscriptRef.current = true
     if (isVoiceListening) {
       stopVoiceListening()
     }
