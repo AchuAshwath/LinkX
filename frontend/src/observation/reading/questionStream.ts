@@ -18,7 +18,7 @@ export function connectBrowserQuestion({
   const current = () =>
     id ? Boolean(session?.isPreparedQuestionActive(id)) : false
   const interrupt = () => {
-    if (current()) void session?.interruptQuestion()
+    if (current()) void session?.interruptQuestion(id)
   }
   if (id && session) {
     const normal = { ...handlers }
@@ -34,15 +34,16 @@ export function connectBrowserQuestion({
       session.markQuestionDispatched(operationId)
     }
     handlers.onBrowserRejected = (operationId) => {
-      if (operationId === id) session.cancelPreparedQuestion(operationId)
+      if (operationId === id) session.rejectQuestion(operationId)
     }
     handlers.onBrowserNote = (note) => {
-      if (current()) session.receiveNote(note)
+      if (current()) session.receiveNote(note, id)
     }
     handlers.onBrowserActivity = (activity) => {
       if (current()) normal.onBrowserActivity?.(activity)
     }
     handlers.onBrowserReceipt = (receipt) => {
+      if (receipt.operation_id !== id) return
       if (!current()) return
       receiptReceived = true
       session.finishQuestion(receipt)
