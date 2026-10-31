@@ -1,4 +1,4 @@
-import { ImagePlus, Plus, Square } from "lucide-react"
+import { AppWindow, ImagePlus, PanelTopClose, Plus, Square } from "lucide-react"
 import type * as React from "react"
 import { useRef } from "react"
 
@@ -80,13 +80,15 @@ function BrowserTabMenuItem({
   return (
     <DropdownMenuItem
       onSelect={isConnected ? observationSlot.onStop : observationSlot.onStart}
+      aria-label={isConnected ? "Stop sharing browser tab" : "Browser tab"}
+      className="gap-2.5 whitespace-nowrap rounded-lg px-2.5 py-2"
     >
       {isConnected ? (
-        <Square className="size-4" />
+        <PanelTopClose className="size-4" />
       ) : (
-        <Plus className="size-4" />
+        <AppWindow className="size-4" />
       )}
-      {isConnected ? "Stop sharing browser tab" : "Browser tab"}
+      {isConnected ? "Stop sharing" : "Browser tab"}
     </DropdownMenuItem>
   )
 }
@@ -109,9 +111,14 @@ function PromptFormToolbar(props: PromptFormToolbarProps) {
                   <Plus className="size-4" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="top" className="w-48">
+              <DropdownMenuContent
+                align="start"
+                side="top"
+                className="w-52 rounded-xl p-1.5"
+              >
                 <DropdownMenuItem
                   onSelect={() => props.fileInputRef.current?.click()}
+                  className="gap-2.5 rounded-lg px-2.5 py-2"
                 >
                   <ImagePlus className="size-4" />
                   Images
