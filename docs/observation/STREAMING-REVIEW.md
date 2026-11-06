@@ -102,3 +102,22 @@ internals: drafting may use the global draft model and template fallback, scrapi
 has separate pipelines, and ordinary tool calls may run concurrently. The
 sequential browser evidence lane is preserved. These tool internals are outside
 this increment's model-consistency guarantee.
+
+## GitHub advisory-gate follow-up, 6 November
+
+After draft PR #191 opened, GitHub CodeScene reported advisory Large Method and
+Complex Conditional findings in `default_chat_stream_runner`, despite the local
+40-file branch review and single-file score of 10.0 passing. The remote check
+remains authoritative for PR readiness.
+
+The follow-up names the strict context predicate and extracts the agent stream's
+terminal error/completion handling into a small helper. The public runner remains
+the owner of choosing agent versus direct generation; an entered agent stream
+still never falls through to a replacement answer. Cancellation and generator
+close still propagate. The runner is now 66 physical lines. Forty existing
+runner/privacy/cancellation tests pass before and after the extraction; an
+independent Luna review found no behavior change. Ruff, format, mypy, frontend
+lint/build, and the local one-file safeguard pass.
+
+The complete backend suite was rerun after this extraction: 1,009 passed. Log:
+`/tmp/linkx-189-codescene-followup-tests.log`.

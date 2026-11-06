@@ -371,6 +371,22 @@ async def stream_agent_events(
 _stream_agent_supervisor_events = stream_agent_events
 
 
+async def _stream_agent_result(
+    *, agent: Any, messages: list[Any]
+) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
+    # Entering the event stream may execute a tool before producing an event.
+    try:
+        async for event in stream_agent_events(agent=agent, messages=messages):
+            yield event
+    except (asyncio.CancelledError, GeneratorExit):
+        raise
+    except Exception as exc:
+        logger.warning("Agent supervisor stream failed: %s", exc)
+        yield ("error", {"message": f"Agent error: {exc}"})
+        return
+    yield ("done", {})
+
+
 async def default_chat_stream_runner(
     *,
     message: str,
@@ -389,7 +405,8 @@ async def default_chat_stream_runner(
     user_id = kwargs.get("user_id")
     session = kwargs.get("session")
     thread_id = kwargs.get("thread_id")
-    if strict_no_fallback and not (user_id and session):
+    has_agent_context = bool(user_id and session)
+    if strict_no_fallback and not has_agent_context:
         yield ("error", {"message": "Agent context is required"})
         return
     if user_id and session:
@@ -417,19 +434,10 @@ async def default_chat_stream_runner(
                 "Agent supervisor setup failed, using direct stream: %s", exc
             )
         else:
-            try:
-                # Entering the event stream may execute a tool before producing an event.
-                async for ev in stream_agent_events(
-                    agent=agent, messages=conv_messages
-                ):
-                    yield ev
-            except (asyncio.CancelledError, GeneratorExit):
-                raise
-            except Exception as exc:
-                logger.warning("Agent supervisor stream failed: %s", exc)
-                yield ("error", {"message": f"Agent error: {exc}"})
-                return
-            yield ("done", {})
+            async for event in _stream_agent_result(
+                agent=agent, messages=conv_messages
+            ):
+                yield event
             return
 
     try:
