@@ -6,7 +6,7 @@ import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 from uuid import uuid4
 
 from pydantic import ValidationError
@@ -19,6 +19,7 @@ from app.observation.schemas import (
     BrowserNote,
     EvaluationInput,
     EvaluationResult,
+    ReadinessResult,
     ReadRequest,
 )
 from app.services.ai_observation_budget import ObservationInputBudgetError
@@ -43,6 +44,7 @@ MODEL_FAILURE_KINDS = {
     "Observation model returned invalid note data": "invalid_output",
     "Observation model returned invalid evaluation data": "invalid_output",
     "Observation model returned invalid JSON": "invalid_output",
+    "Observation model returned invalid readiness data": "invalid_output",
     "Observation model returned an invalid response": "invalid_output",
     "Observation model response is invalid": "invalid_output",
     "Observation model response is too large": "invalid_output",
@@ -70,6 +72,15 @@ EVALUATION_FAILURE_MESSAGES = {
     "evaluation_provider_error": "The answer provider is unavailable.",
     "evaluation_failed": "The answer evaluation failed.",
 }
+READINESS_FAILURE_MESSAGES = {
+    "input_budget": "The browser readiness input exceeds the model's allowance.",
+    "budget_unavailable": "The selected model's readiness input budget could not be verified.",
+    "evaluation_timeout": "Browser evidence preparation timed out.",
+    "evaluation_truncated": "The browser readiness response was truncated.",
+    "evaluation_invalid_output": "The browser readiness response was invalid.",
+    "evaluation_provider_error": "The browser readiness provider is unavailable.",
+    "evaluation_failed": "Browser evidence preparation failed.",
+}
 
 
 class MemoryRejectedError(RuntimeError):
@@ -94,6 +105,8 @@ class ReadingModel(Protocol):
 
     async def evaluate(self, *, request: EvaluationInput) -> EvaluationResult: ...
 
+    async def prepare(self, *, request: EvaluationInput) -> ReadinessResult: ...
+
 
 @dataclass(frozen=True)
 class QuestionInput:
@@ -110,6 +123,24 @@ class QuestionResult:
     completed_ids: list[str] = field(default_factory=list)
     failed_ids: list[str] = field(default_factory=list)
     unused_ids: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class PreparedQuestion:
+    context: BrowserContext
+    result: QuestionResult
+    ready: bool
+    insufficient: bool
+    answer_basis: Literal["browser", "mixed", "conversation", "general"]
+
+
+@dataclass(frozen=True)
+class PreparationState:
+    request: QuestionInput
+    context: BrowserContext
+    result: QuestionResult
+    pending_count: int
+    broad: bool
 
 
 @dataclass(frozen=True)
@@ -138,18 +169,116 @@ class QuestionRunner:
         self._model = model
         self._inspect_budget = inspect_budget
 
+    async def prepare(
+        self, *, request: QuestionInput, emit: Emit, cancelled: Callable[[], bool]
+    ) -> PreparedQuestion:
+        context = request.context.model_copy(deep=True)
+        result = request.progress or QuestionResult(
+            unused_ids=[frame.id for frame in context.pending_frames]
+        )
+        state = PreparationState(
+            request=request,
+            context=context,
+            result=result,
+            pending_count=len(context.pending_frames),
+            broad=_is_broad_request(message=request.message),
+        )
+        return await self._prepare_loop(state=state, emit=emit, cancelled=cancelled)
+
+    async def _prepare_loop(
+        self, *, state: PreparationState, emit: Emit, cancelled: Callable[[], bool]
+    ) -> PreparedQuestion:
+        basis: Literal["browser", "mixed", "conversation", "general"] = "browser"
+        for index in range(state.pending_count + 1):
+            self._check_cancelled(cancelled)
+            await self._activity(
+                emit=emit, state="checking", message="Preparing an answer."
+            )
+            evaluation_request = EvaluationInput(
+                message=state.request.message,
+                model=state.request.model,
+                context=state.context,
+                history=state.request.history,
+            )
+            readiness = await self._prepare_readiness(
+                request=evaluation_request, emit=emit
+            )
+            self._check_cancelled(cancelled)
+            basis = readiness.answer_basis
+            if basis in {"conversation", "general"}:
+                return _prepared_question(
+                    state=state,
+                    answer_basis=basis,
+                    insufficient=(
+                        readiness.decision == "insufficient"
+                        or not _valid_readiness(
+                            readiness=readiness, context=state.context
+                        )
+                    ),
+                )
+            if readiness.decision == "insufficient":
+                return _prepared_question(
+                    state=state, answer_basis=basis, insufficient=True
+                )
+            if self._can_prepare(
+                readiness=readiness,
+                state=state,
+                remaining=bool(state.context.pending_frames),
+            ):
+                return _prepared_question(
+                    state=state, answer_basis=basis, insufficient=False
+                )
+            if not state.context.pending_frames:
+                return _prepared_question(
+                    state=state, answer_basis=basis, insufficient=True
+                )
+            await self._read_next(
+                request=state.request,
+                context=state.context,
+                state=(state.result, emit, cancelled),
+                view=(index + 1, state.pending_count),
+            )
+        return _prepared_question(state=state, answer_basis=basis, insufficient=True)
+
+    async def _prepare_readiness(
+        self, *, request: EvaluationInput, emit: Emit
+    ) -> ReadinessResult:
+        if self._inspect_budget is not None:
+            budget = self._inspect_budget(request=request)
+            if budget is not None:
+                await emit("browser_budget", budget)
+        try:
+            return await self._model.prepare(request=request)
+        except Exception as error:
+            if isinstance(error, ObservationInputBudgetError):
+                raise
+            failure_code = _evaluation_failure_code(error=error)
+            raise QuestionFailure(
+                phase="readiness",
+                failure_code=failure_code,
+                message=READINESS_FAILURE_MESSAGES[failure_code],
+                exception_class=type(error).__name__,
+            ) from None
+
+    @staticmethod
+    def _can_prepare(
+        *, readiness: ReadinessResult, state: PreparationState, remaining: bool
+    ) -> bool:
+        if readiness.decision != "ready":
+            return False
+        if not _valid_readiness(readiness=readiness, context=state.context):
+            return False
+        requires_complete = readiness.requires_complete or state.broad
+        if not requires_complete:
+            return True
+        return not remaining and not state.result.failed_ids
+
     async def run(
         self, *, request: QuestionInput, emit: Emit, cancelled: Callable[[], bool]
     ) -> QuestionResult:
         context = request.context.model_copy(deep=True)
         pending = list(context.pending_frames)
-        broad = bool(
-            re.search(
-                r"\b(all|every|everything|entire|whole|(?:full|complete)\s+list|summari[sz]e|compare|comparison)\b",
-                request.message,
-                re.IGNORECASE,
-            )
-        )
+        broad = _is_broad_request(message=request.message)
         result = request.progress or QuestionResult(
             unused_ids=[frame.id for frame in pending]
         )
@@ -374,6 +503,43 @@ def _valid_evidence(*, evaluation: EvaluationResult, context: BrowserContext) ->
     if evaluation.answer_basis in {"conversation", "general"}:
         return not supplied_ids
     return bool(supplied_ids or context.summary.strip())
+
+
+def _valid_readiness(*, readiness: ReadinessResult, context: BrowserContext) -> bool:
+    if readiness.answer_basis in {"conversation", "general"}:
+        return not readiness.evidence_ids
+    known_ids = {note.id for note in context.notes}
+    if context.current_view is not None:
+        known_ids.add(context.current_view.id)
+    supplied_ids = set(readiness.evidence_ids)
+    return supplied_ids.issubset(known_ids) and bool(
+        supplied_ids or context.summary.strip()
+    )
+
+
+def _is_broad_request(*, message: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(all|every|everything|entire|whole|(?:full|complete)\s+list|summari[sz]e|compare|comparison)\b",
+            message,
+            re.IGNORECASE,
+        )
+    )
+
+
+def _prepared_question(
+    *,
+    state: PreparationState,
+    answer_basis: Literal["browser", "mixed", "conversation", "general"],
+    insufficient: bool,
+) -> PreparedQuestion:
+    return PreparedQuestion(
+        context=state.context,
+        result=state.result,
+        ready=not insufficient,
+        insufficient=insufficient,
+        answer_basis=answer_basis,
+    )
 
 
 def _terminal_insufficient(*, remaining: bool) -> bool:

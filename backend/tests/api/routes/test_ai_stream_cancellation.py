@@ -178,6 +178,39 @@ async def test_normal_stream_completion_does_not_add_stopped_marker(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("failure", ["event", "exception"])
+async def test_runner_error_after_output_saves_interrupted_turn_without_done(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+    failure: str,
+) -> None:
+    tid = _create_test_thread(client=client, headers=superuser_token_headers)
+    db_thread = db.get(ChatThread, uuid.UUID(tid))
+    assert db_thread is not None
+
+    async def failed_runner(**_kwargs: Any):
+        yield "text_delta", {"content": "Partial answer."}
+        if failure == "exception":
+            raise RuntimeError("Provider stream crashed")
+        yield "error", {"message": "Provider stream failed"}
+
+    ctx = _prepare_stream_context(session=db, thread=db_thread, user_id="user-123")
+    with patch(
+        "app.api.routes.ai_threads.default_chat_stream_runner",
+        side_effect=failed_runner,
+    ):
+        response_events = [event async for event in _generate_chat_events(ctx=ctx)]
+
+    assert any("event: error" in event for event in response_events)
+    assert not any("event: done" in event for event in response_events)
+    db.refresh(db_thread)
+    assistant_msg = db_thread.transcript["messages"][1]
+    assert assistant_msg["interrupted"] is True
+    assert _extract_assistant_text(assistant_msg) == "Partial answer."
+
+
+@pytest.mark.anyio
 async def test_running_tools_marked_interrupted_with_stopped_notice(
     client: TestClient,
     superuser_token_headers: dict[str, str],

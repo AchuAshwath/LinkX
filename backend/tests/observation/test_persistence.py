@@ -342,8 +342,18 @@ def test_completion_after_thread_deletion_does_not_recreate_data(
         assert verify.get(ChatThread, committed_thread.id) is None
 
 
-def test_cancelled_completion_does_not_append_assistant(
+@pytest.mark.parametrize(
+    ("answer", "parts", "interrupted"),
+    [
+        ("This answer must not be saved.", None, False),
+        ("", [], True),
+    ],
+)
+def test_cancelled_or_invisible_interruption_does_not_append_assistant(
     committed_thread: ChatThread,
+    answer: str,
+    parts: list[dict[str, object]] | None,
+    interrupted: bool,
 ) -> None:
     request_data = request(
         thread=committed_thread,
@@ -356,18 +366,152 @@ def test_cancelled_completion_does_not_append_assistant(
             session=session,
             request=request_data,
             completion=CompletionPayload(
-                answer="This answer must not be saved.",
+                answer=answer,
                 cancelled=lambda: True,
+                parts=parts,
+                interrupted=interrupted,
             ),
         )
 
     assert result.status == "cancelled"
+    _assert_user_only_transcript(thread_id=committed_thread.id, request=request_data)
+
+
+def _assert_user_only_transcript(
+    *, thread_id: uuid.UUID, request: TranscriptTurnRequest
+) -> None:
     with Session(engine) as verify:
-        saved = verify.get(ChatThread, committed_thread.id)
-        assert saved is not None
-        assert [message["id"] for message in saved.transcript["messages"]] == [
-            request_data.user_message_id,
+        thread = verify.get(ChatThread, thread_id)
+        assert thread is not None
+        assert [message["id"] for message in thread.transcript["messages"]] == [
+            request.user_message_id
         ]
+
+
+def _partial_parts() -> list[dict[str, object]]:
+    return [
+        {
+            "type": "text",
+            "text": "The page shows a cart. data:image/jpeg;base64,UFJJVkFURQ==",
+        },
+        {
+            "type": "tool-call",
+            "toolCallId": "lookup-1",
+            "name": "search_trends",
+            "state": "cancelled",
+            "tool": {
+                "id": "lookup-1",
+                "name": "search_trends",
+                "state": "cancelled",
+                "output": {
+                    "metadata": {
+                        "browser_context": {"notes": ["PRIVATE_NOTE"]},
+                        "image_data_url": "data:image/png;base64,PRIVATE_IMAGE",
+                        "browser_memory": "PRIVATE_MEMORY",
+                    },
+                    "safe": "Ordinary result.",
+                    "notes": "Ordinary artifact notes remain.",
+                },
+            },
+            "output": {
+                "metadata": {},
+                "safe": "Ordinary result.",
+                "notes": "Ordinary artifact notes remain.",
+            },
+        },
+    ]
+
+
+def _persisted_parts() -> list[dict[str, object]]:
+    return [
+        {"type": "text", "text": "The page shows a cart. [redacted image data]"},
+        {
+            "type": "tool-call",
+            "toolCallId": "lookup-1",
+            "name": "search_trends",
+            "state": "cancelled",
+            "tool": {
+                "id": "lookup-1",
+                "name": "search_trends",
+                "state": "cancelled",
+                "output": {
+                    "metadata": {},
+                    "safe": "Ordinary result.",
+                    "notes": "Ordinary artifact notes remain.",
+                },
+            },
+            "output": {
+                "metadata": {},
+                "safe": "Ordinary result.",
+                "notes": "Ordinary artifact notes remain.",
+            },
+        },
+    ]
+
+
+def _save_interrupted_turn(
+    *,
+    request_data: TranscriptTurnRequest,
+    parts: list[dict[str, object]],
+) -> None:
+    with Session(engine) as session:
+        begin_transcript_turn(session=session, request=request_data)
+        result = complete_transcript_turn(
+            session=session,
+            request=request_data,
+            completion=CompletionPayload(
+                answer="", cancelled=lambda: True, parts=parts, interrupted=True
+            ),
+        )
+    assert result.status == "saved"
+
+
+def test_interrupted_parts_save_once_and_replay_without_resuming(
+    committed_thread: ChatThread,
+) -> None:
+    request_data = request(
+        thread=committed_thread,
+        request_id=uuid.uuid4(),
+        text="Summarize while the stream is running.",
+    )
+    _save_interrupted_turn(request_data=request_data, parts=_partial_parts())
+    persisted_parts = _persisted_parts()
+
+    with Session(engine) as replay_session:
+        replay = begin_transcript_turn(session=replay_session, request=request_data)
+    assert replay.status == "interrupted"
+    assert replay.parts == persisted_parts
+    with Session(engine) as duplicate_completion_session:
+        duplicate = complete_transcript_turn(
+            session=duplicate_completion_session,
+            request=request_data,
+            completion=CompletionPayload(
+                answer="Do not replace the saved partial turn.",
+                cancelled=lambda: False,
+            ),
+        )
+    assert duplicate.status == "interrupted"
+    assert duplicate.interrupted
+    assert duplicate.parts == persisted_parts
+    assert duplicate.answer == "The page shows a cart. [redacted image data]"
+
+    messages = _assistant_messages(thread_id=committed_thread.id)
+    assert [message["id"] for message in messages] == [
+        request_data.user_message_id,
+        request_data.assistant_message_id,
+    ]
+    assert messages[1]["interrupted"] is True
+    assert messages[1]["parts"] == persisted_parts
+    assert "PRIVATE_NOTE" not in str(messages[1]["parts"])
+    assert "PRIVATE_MEMORY" not in str(messages[1]["parts"])
+    assert "PRIVATE_IMAGE" not in str(messages[1]["parts"])
+
+
+def _assistant_messages(*, thread_id: uuid.UUID) -> list[dict[str, object]]:
+    with Session(engine) as verify:
+        thread = verify.get(ChatThread, thread_id)
+        assert thread is not None
+        return thread.transcript["messages"]
 
 
 def test_thread_guard_owns_thread_until_matching_token_releases() -> None:

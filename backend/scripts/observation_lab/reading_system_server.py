@@ -15,21 +15,16 @@ from typing import Any
 
 # Avoid scheduler side effects before importing settings or the application.
 os.environ["SCHEDULER_ENABLED"] = "false"
+os.environ["FRONTEND_HOST"] = os.environ.get(
+    "READING_SMOKE_BASE", "http://127.0.0.1:4001"
+)
 
 logger = logging.getLogger("observation_system_harness")
-FIXED_EVALUATIONS: dict[str, dict[str, Any]] = {
-    "Exercise invalid browser evaluation": {
-        "decision": "answer",
-        "answer": "This unvalidated answer must never be displayed.",
-        "answer_basis": "invalid-basis",
-    },
-    "Explain Python tuples in one sentence.": {
-        "decision": "answer",
-        "answer": "Python tuples are immutable sequences.",
-        "evidence_ids": [],
-        "answer_basis": "general",
-        "requires_complete": False,
-    },
+INVALID_READINESS: dict[str, Any] = {
+    "decision": "answer",
+    "evidence_ids": [],
+    "answer_basis": "browser",
+    "requires_complete": False,
 }
 
 
@@ -38,6 +33,8 @@ class ScriptedProvider:
 
     def __init__(self) -> None:
         self._calls = 0
+        self.active_reads = 0
+        self.read_calls = 0
 
     async def __call__(self, *, config: Any, payload: dict[str, Any]) -> str:
         del config  # The harness must not inspect or expose configured credentials.
@@ -46,10 +43,18 @@ class ScriptedProvider:
         logger.info("scripted provider call=%d operation=%s", self._calls, operation)
 
         if operation == "read":
-            await asyncio.sleep(
-                min(30, max(0, float(os.environ.get("READING_SMOKE_READ_DELAY", "6"))))
-            )
-            return _read_result()
+            self.active_reads += 1
+            self.read_calls += 1
+            try:
+                await asyncio.sleep(
+                    min(
+                        30,
+                        max(0, float(os.environ.get("READING_SMOKE_READ_DELAY", "6"))),
+                    )
+                )
+                return _read_result()
+            finally:
+                self.active_reads -= 1
         if operation == "compact":
             return json.dumps(
                 {
@@ -64,7 +69,7 @@ class ScriptedProvider:
                 10, max(0, float(os.environ.get("READING_SMOKE_EVALUATION_DELAY", "0")))
             )
         )
-        return _evaluation_result(payload=payload)
+        return _readiness_result(payload=payload)
 
 
 def _read_result() -> str:
@@ -97,41 +102,59 @@ def _operation_for(*, payload: Mapping[str, Any]) -> str:
     return "evaluation"
 
 
-def _evaluation_result(*, payload: Mapping[str, Any]) -> str:
+def _readiness_result(*, payload: Mapping[str, Any]) -> str:
     data = _evaluation_data(payload=payload)
-    fixed = FIXED_EVALUATIONS.get(data.get("message", ""))
-    if fixed is not None:
-        return json.dumps(fixed)
+    if data.get("message") == "Exercise invalid browser evaluation":
+        return json.dumps(INVALID_READINESS)
+    return json.dumps(_readiness_payload(data=data))
+
+
+def _readiness_payload(*, data: Mapping[str, Any]) -> dict[str, Any]:
+    message = data.get("message", "")
     context = data.get("browser_context", {})
-    notes = context.get("notes", [])
     pending = context.get("pending_frames", [])
-    if isinstance(notes, list) and notes:
-        first_note = notes[0]
-        note_id = first_note.get("id", "") if isinstance(first_note, Mapping) else ""
-        result = {
-            "decision": "answer",
-            "answer": "The badge is P2R7. Water moon-basil after sunset.",
-            "evidence_ids": [note_id] if isinstance(note_id, str) and note_id else [],
-            "requires_complete": False,
-            "answer_basis": "browser",
-        }
-    elif isinstance(pending, list) and pending:
-        result = {
-            "decision": "wait",
-            "answer": "",
-            "evidence_ids": [],
-            "requires_complete": False,
-            "answer_basis": "browser",
-        }
-    else:
-        result = {
+    if isinstance(pending, list) and pending:
+        return _read_next_payload()
+    if message == "Explain Python tuples in one sentence.":
+        return _general_ready_payload()
+    return _notes_ready_payload(context=context)
+
+
+def _read_next_payload() -> dict[str, Any]:
+    return {
+        "decision": "read_next",
+        "evidence_ids": [],
+        "requires_complete": False,
+        "answer_basis": "browser",
+    }
+
+
+def _general_ready_payload() -> dict[str, Any]:
+    return {
+        "decision": "ready",
+        "evidence_ids": [],
+        "requires_complete": False,
+        "answer_basis": "general",
+    }
+
+
+def _notes_ready_payload(*, context: Mapping[str, Any]) -> dict[str, Any]:
+    notes = context.get("notes", [])
+    if not isinstance(notes, list) or not notes:
+        return {
             "decision": "insufficient",
-            "answer": "No controlled page evidence is available yet.",
             "evidence_ids": [],
             "requires_complete": False,
             "answer_basis": "browser",
         }
-    return json.dumps(result)
+    first_note = notes[0]
+    note_id = first_note.get("id", "") if isinstance(first_note, Mapping) else ""
+    return {
+        "decision": "ready",
+        "evidence_ids": [note_id] if isinstance(note_id, str) and note_id else [],
+        "requires_complete": False,
+        "answer_basis": "browser",
+    }
 
 
 def _evaluation_data(*, payload: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -181,13 +204,50 @@ def main() -> None:
     from app.api.routes import ai_browser_chat, ai_observation, ai_threads
     from app.main import app
     from app.observation.model import BrowserModel
+    from app.services.agentic import agent_supervisor
+    from tests.observation.streaming_provider import ScriptedAnswerProvider
 
-    model = BrowserModel(provider=ScriptedProvider())
+    class SystemAnswerProvider(ScriptedAnswerProvider):
+        async def _respond(self, request: Any) -> Any:
+            messages = json.loads(request.content).get("messages", [])
+            latest = messages[-1].get("content", "") if messages else ""
+            serialized = json.dumps(latest, ensure_ascii=False)
+            await asyncio.sleep(
+                min(
+                    5,
+                    max(0, float(os.environ.get("READING_SMOKE_ANSWER_DELAY", "2.5"))),
+                )
+            )
+            if "Explain Python tuples in one sentence." in serialized:
+                self.answer = "Python tuples are immutable sequences."
+            elif "Summarize everything including the shared badge" in serialized:
+                self.answer = "The badge is P2R7. Water moon-basil after sunset."
+            else:
+                self.answer = "The badge is P2R7."
+            return await super()._respond(request)
+
+    scripted = ScriptedProvider()
+    model = BrowserModel(provider=scripted)
+    answers = SystemAnswerProvider()
+    agent_supervisor.get_chat_model = answers.model  # type: ignore[attr-defined]
+
+    @app.get("/__test__/provider-state", include_in_schema=False, tags=["test"])
+    async def provider_state() -> dict[str, Any]:
+        return {"answer_requests": answers.requests}
+
+    @app.get("/__test__/provider-idle", include_in_schema=False, tags=["test"])
+    async def provider_idle() -> dict[str, int]:
+        return {
+            "active_reads": scripted.active_reads,
+            "read_calls": scripted.read_calls,
+        }
+
     ai_observation.browser_model = model
     ai_browser_chat.browser_model = model
     ai_threads.generate_ai_thread_title = _scripted_thread_title
-    logger.info("starting scripted observation server on 127.0.0.1:8000")
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    port = int(os.environ.get("READING_SMOKE_API_PORT", "8001"))
+    logger.info("starting scripted observation server on 127.0.0.1:%d", port)
+    uvicorn.run(app, host="127.0.0.1", port=port)
 
 
 if __name__ == "__main__":

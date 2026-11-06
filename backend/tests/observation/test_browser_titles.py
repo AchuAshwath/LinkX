@@ -10,26 +10,21 @@ from fastapi.testclient import TestClient
 from app.api.routes import ai_browser_chat, ai_threads
 from app.core.config import settings
 from app.main import app
-from app.observation.schemas import EvaluationResult
-from tests.observation.test_browser_api import _body, _event_data, _known_note
+from tests.observation.test_browser_api import (
+    _answer_text,
+    _body,
+    _event_data,
+    _known_note,
+)
 
 
+@pytest.mark.usefixtures("streamed_provider")
 def test_browser_chat_titles_first_turn_and_preserves_manual_rename(
     api_client: TestClient,
     auth_headers: dict[str, str],
     committed_thread: uuid.UUID,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def evaluate(*, request: Any) -> EvaluationResult:
-        assert request.message == "What is shown on this page?"
-        assert request.context.notes
-        return EvaluationResult(
-            decision="answer",
-            answer="A product page.",
-            evidence_ids=[request.context.notes[0].id],
-        )
-
-    monkeypatch.setattr(ai_browser_chat.browser_model, "evaluate", evaluate)
     generated_titles: list[str] = []
 
     async def generate_title(
@@ -50,7 +45,7 @@ def test_browser_chat_titles_first_turn_and_preserves_manual_rename(
     )
 
     assert response.status_code == 200
-    assert _event_data(response, "text_delta")[0]["content"] == "A product page."
+    assert _answer_text(response) == "A product page."
     assert _event_data(response, "done") == [{}]
     assert generated_titles == ["What is shown on this page?"]
     detail = api_client.get(path, headers=auth_headers).json()
@@ -78,19 +73,13 @@ def test_browser_chat_titles_first_turn_and_preserves_manual_rename(
     assert generated_titles == ["What is shown on this page?"]
 
 
+@pytest.mark.usefixtures("streamed_provider")
 def test_browser_title_generation_does_not_overwrite_concurrent_manual_rename(
     api_client: TestClient,
     auth_headers: dict[str, str],
     committed_thread: uuid.UUID,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def evaluate(*, request: Any) -> EvaluationResult:
-        return EvaluationResult(
-            decision="answer",
-            answer="A product page.",
-            evidence_ids=[request.context.notes[0].id],
-        )
-
     title_started = Event()
     release_title = Event()
 
@@ -104,7 +93,6 @@ def test_browser_title_generation_does_not_overwrite_concurrent_manual_rename(
         await asyncio.to_thread(release_title.wait, 5)
         return "Generated browser title"
 
-    monkeypatch.setattr(ai_browser_chat.browser_model, "evaluate", evaluate)
     monkeypatch.setattr(ai_threads, "generate_ai_thread_title", generate_title)
     title_client = TestClient(app)
     path = f"{settings.API_V1_STR}/ai/threads/{committed_thread}"
@@ -127,27 +115,19 @@ def test_browser_title_generation_does_not_overwrite_concurrent_manual_rename(
 
     assert renamed.status_code == 200
     assert response.status_code == 200
-    assert _event_data(response, "text_delta")[0]["content"] == "A product page."
+    assert _answer_text(response) == "A product page."
     assert _event_data(response, "done") == [{}]
     detail = api_client.get(path, headers=auth_headers).json()
     assert detail["title"] == "Renamed during title generation"
 
 
+@pytest.mark.usefixtures("streamed_provider")
 def test_browser_chat_title_timeout_keeps_answer_and_prompt_snippet(
     api_client: TestClient,
     auth_headers: dict[str, str],
     committed_thread: uuid.UUID,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def evaluate(*, request: Any) -> EvaluationResult:
-        assert request.message == "What is shown on this page?"
-        assert request.context.notes
-        return EvaluationResult(
-            decision="answer",
-            answer="A product page.",
-            evidence_ids=[request.context.notes[0].id],
-        )
-
     async def slow_title(
         *, user_prompt: str, assistant_response: str, model: str
     ) -> str:
@@ -157,7 +137,6 @@ def test_browser_chat_title_timeout_keeps_answer_and_prompt_snippet(
         await asyncio.Event().wait()
         return "Unreachable title"
 
-    monkeypatch.setattr(ai_browser_chat.browser_model, "evaluate", evaluate)
     monkeypatch.setattr(ai_threads, "generate_ai_thread_title", slow_title)
     monkeypatch.setattr(ai_browser_chat, "TITLE_GENERATION_TIMEOUT_SECONDS", 0.01)
     path = f"{settings.API_V1_STR}/ai/threads/{committed_thread}"
@@ -169,25 +148,19 @@ def test_browser_chat_title_timeout_keeps_answer_and_prompt_snippet(
     )
 
     assert response.status_code == 200
-    assert _event_data(response, "text_delta")[0]["content"] == "A product page."
+    assert _answer_text(response) == "A product page."
     assert _event_data(response, "done") == [{}]
     detail = api_client.get(path, headers=auth_headers).json()
     assert detail["title"] == "What is shown on this page?"
 
 
+@pytest.mark.usefixtures("streamed_provider")
 def test_browser_chat_title_persistence_failure_does_not_fail_answer(
     api_client: TestClient,
     auth_headers: dict[str, str],
     committed_thread: uuid.UUID,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def evaluate(*, request: Any) -> EvaluationResult:
-        return EvaluationResult(
-            decision="answer",
-            answer="A product page.",
-            evidence_ids=[request.context.notes[0].id],
-        )
-
     async def generate_title(
         *, user_prompt: str, assistant_response: str, model: str
     ) -> str:
@@ -199,7 +172,6 @@ def test_browser_chat_title_persistence_failure_does_not_fail_answer(
     def fail_title_persistence(**_: Any) -> None:
         raise RuntimeError("scripted title persistence failure")
 
-    monkeypatch.setattr(ai_browser_chat.browser_model, "evaluate", evaluate)
     monkeypatch.setattr(ai_threads, "generate_ai_thread_title", generate_title)
     monkeypatch.setattr(
         ai_browser_chat.crud, "apply_ai_thread_title", fail_title_persistence
@@ -212,29 +184,22 @@ def test_browser_chat_title_persistence_failure_does_not_fail_answer(
     )
 
     assert response.status_code == 200
-    assert _event_data(response, "text_delta")[0]["content"] == "A product page."
+    assert _answer_text(response) == "A product page."
     assert _event_data(response, "done") == [{}]
     detail = api_client.get(path, headers=auth_headers).json()
     assert detail["title"] == "What is shown on this page?"
 
 
+@pytest.mark.usefixtures("streamed_provider")
 def test_browser_chat_title_model_failure_does_not_fail_answer(
     api_client: TestClient,
     auth_headers: dict[str, str],
     committed_thread: uuid.UUID,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def evaluate(*, request: Any) -> EvaluationResult:
-        return EvaluationResult(
-            decision="answer",
-            answer="A product page.",
-            evidence_ids=[request.context.notes[0].id],
-        )
-
     async def fail_title(**_: Any) -> str:
         raise RuntimeError("scripted title model failure")
 
-    monkeypatch.setattr(ai_browser_chat.browser_model, "evaluate", evaluate)
     monkeypatch.setattr(ai_threads, "generate_ai_thread_title", fail_title)
     path = f"{settings.API_V1_STR}/ai/threads/{committed_thread}"
     response = api_client.post(
@@ -244,7 +209,7 @@ def test_browser_chat_title_model_failure_does_not_fail_answer(
     )
 
     assert response.status_code == 200
-    assert _event_data(response, "text_delta")[0]["content"] == "A product page."
+    assert _answer_text(response) == "A product page."
     assert _event_data(response, "done") == [{}]
     detail = api_client.get(path, headers=auth_headers).json()
     assert detail["title"] == "What is shown on this page?"

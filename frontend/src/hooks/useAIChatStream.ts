@@ -23,8 +23,8 @@ import {
 export interface StreamEventHandlers {
   onThought?: (content: string) => void
   onTextDelta?: (text: string) => void
-  onToolStart?: (name: string, input: unknown) => void
-  onToolOutput?: (name: string, output: unknown) => void
+  onToolStart?: (name: string, input: unknown, toolId?: string) => void
+  onToolOutput?: (name: string, output: unknown, toolId?: string) => void
   onDraftArtifact?: (artifact: DraftArtifact) => void
   onTrendingArtifact?: (artifact: TrendingArtifact) => void
   onObservationUsage?: (usage: ObservationUsagePayload) => void
@@ -110,11 +110,21 @@ type EventAction = (
   handlers: StreamEventHandlers,
 ) => void
 
+function deliverToolEvent(
+  data: ParsedEventData,
+  handler: StreamEventHandlers["onToolStart"],
+  details: unknown,
+): void {
+  if (!handler || !data.name) return
+  if (data.id) handler(data.name, details, data.id)
+  else handler(data.name, details)
+}
+
 const EVENT_ACTIONS: Record<string, EventAction> = {
   thought: (d, h) => h.onThought?.(d.content || ""),
   text_delta: (d, h) => h.onTextDelta?.(d.content || ""),
-  tool_start: (d, h) => d.name && h.onToolStart?.(d.name, d.input),
-  tool_output: (d, h) => d.name && h.onToolOutput?.(d.name, d.output),
+  tool_start: (d, h) => deliverToolEvent(d, h.onToolStart, d.input),
+  tool_output: (d, h) => deliverToolEvent(d, h.onToolOutput, d.output),
   draft_artifact: (d, h) => h.onDraftArtifact?.(d as unknown as DraftArtifact),
   trending_artifact: (d, h) =>
     h.onTrendingArtifact?.(d as unknown as TrendingArtifact),

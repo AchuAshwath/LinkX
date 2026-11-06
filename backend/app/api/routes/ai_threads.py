@@ -34,9 +34,9 @@ from app.services.ai_chat_runner import (
 from app.services.ai_chat_runner import (
     generate_ai_thread_title as generate_ai_thread_title,
 )
+from app.services.ai_stream_turn import StreamTurn
 from app.services.ai_turn_accumulator import (
     TranscriptEditPayload,
-    append_or_update_draft_part,
     apply_transcript_branch,
     persist_interrupted_turn,
     resolve_active_branch,
@@ -69,140 +69,6 @@ def _get_owned_thread(
             detail="Not enough permissions",
         )
     return thread
-
-
-def _handle_thought_part(
-    payload: dict[str, Any], assistant_parts: list[dict[str, Any]]
-) -> None:
-    thought_content = str(payload.get("content", ""))
-    if assistant_parts and assistant_parts[-1].get("type") == "thought":
-        assistant_parts[-1]["content"] += thought_content
-    else:
-        assistant_parts.append({"type": "thought", "content": thought_content})
-
-
-def _is_matching_tool_part(
-    *, part: dict[str, Any], tool_id: str, tool_name: str
-) -> bool:
-    """Check if a transcript part matches the target tool call."""
-    if part.get("type") not in ("tool_call", "tool-call"):
-        return False
-    if part.get("toolCallId") == tool_id or part.get("name") == tool_name:
-        return True
-    tool_data = part.get("tool")
-    return isinstance(tool_data, dict) and tool_data.get("name") == tool_name
-
-
-def _update_existing_tool_part(
-    *,
-    assistant_parts: list[dict[str, Any]],
-    tool_id: str,
-    tool_name: str,
-    output: Any,
-) -> bool:
-    """Update state and output on an existing tool part if found."""
-    for part in reversed(assistant_parts):
-        if _is_matching_tool_part(part=part, tool_id=tool_id, tool_name=tool_name):
-            part["state"] = "completed"
-            if output is not None:
-                part["output"] = output
-            tool_data = part.get("tool")
-            if isinstance(tool_data, dict):
-                tool_data["state"] = "completed"
-                tool_data["output"] = output
-            return True
-    return False
-
-
-def _handle_tool_part(
-    *,
-    event_name: str,
-    payload: dict[str, Any],
-    assistant_parts: list[dict[str, Any]],
-) -> None:
-    tool_id = str(payload.get("id") or f"call_{uuid.uuid4().hex[:8]}")
-    tool_name = str(payload.get("name") or "tool")
-    output = payload.get("output")
-
-    if event_name == "tool_output":
-        updated = _update_existing_tool_part(
-            assistant_parts=assistant_parts,
-            tool_id=tool_id,
-            tool_name=tool_name,
-            output=output,
-        )
-        if updated:
-            return
-
-    tool_item: dict[str, Any] = {
-        "id": tool_id,
-        "name": tool_name,
-        "state": "running" if event_name == "tool_start" else "completed",
-    }
-    if "input" in payload:
-        tool_item["input"] = payload["input"]
-    if output is not None:
-        tool_item["output"] = output
-
-    assistant_parts.append(
-        {
-            "type": "tool-call",
-            "toolCallId": tool_id,
-            "name": tool_name,
-            "state": tool_item["state"],
-            "tool": tool_item,
-        }
-    )
-
-
-def _handle_trending_part(
-    *, payload: dict[str, Any], assistant_parts: list[dict[str, Any]]
-) -> None:
-    topics = payload.get("topics", [])
-    assistant_parts.append(
-        {
-            "type": "trending_artifact",
-            "artifact": {
-                "topics": topics,
-                "count": payload.get("count", len(topics)),
-            },
-        }
-    )
-
-
-def _collect_stream_part(
-    *,
-    event_name: str,
-    payload: dict[str, Any],
-    assistant_parts: list[dict[str, Any]],
-) -> str:
-    """Append structured message parts and return text delta if present."""
-    if event_name == "text_delta":
-        return str(payload.get("content", ""))
-
-    part_dispatch = {
-        "thought": lambda: _handle_thought_part(payload, assistant_parts),
-        "tool_start": lambda: _handle_tool_part(
-            event_name=event_name,
-            payload=payload,
-            assistant_parts=assistant_parts,
-        ),
-        "tool_output": lambda: _handle_tool_part(
-            event_name=event_name,
-            payload=payload,
-            assistant_parts=assistant_parts,
-        ),
-        "draft_artifact": lambda: append_or_update_draft_part(
-            assistant_parts, payload=payload
-        ),
-        "trending_artifact": lambda: _handle_trending_part(
-            payload=payload, assistant_parts=assistant_parts
-        ),
-    }
-    action = part_dispatch.get(event_name)
-    if action:
-        action()
-    return ""
 
 
 @router.post("/", response_model=ChatThreadDetail)
@@ -402,6 +268,10 @@ HEARTBEAT_INTERVAL_SECONDS = 12.0
 
 async def _cancel_pending_task(*, task: asyncio.Task[Any]) -> None:
     if task.done():
+        try:
+            task.exception()
+        except asyncio.CancelledError:
+            pass
         return
     task.cancel()
     try:
@@ -489,23 +359,19 @@ def _process_stream_item(
     *,
     item: tuple[str, dict[str, Any]],
     ctx: ChatStreamContext,
-    assistant_parts: list[dict[str, Any]],
-) -> tuple[str, str | None]:
+    stream_turn: StreamTurn,
+) -> str | None:
     event_name, payload = item
     if event_name == "done":
-        return "", None
-    delta = _collect_stream_part(
-        event_name=event_name,
-        payload=payload,
-        assistant_parts=assistant_parts,
-    )
+        return None
+    stream_turn.record(event_name, payload)
     _maybe_link_draft_post(
         thread=ctx.thread,
         session=ctx.session,
         event_name=event_name,
         payload=payload,
     )
-    return delta, format_sse(event=event_name, data=payload)
+    return format_sse(event=event_name, data=payload)
 
 
 async def _persist_partial_turn_safely(
@@ -527,8 +393,7 @@ async def _generate_chat_events(
     ctx: ChatStreamContext,
 ) -> AsyncGenerator[str, None]:
     """Execute chat stream and yield formatted SSE events."""
-    accumulated_text = ""
-    assistant_parts: list[dict[str, Any]] = []
+    stream_turn = StreamTurn(allow_thought_summary=True)
 
     runner = _build_chat_runner(ctx=ctx)
     try:
@@ -536,38 +401,69 @@ async def _generate_chat_events(
             if isinstance(item, str):
                 yield item
                 continue
-            delta, sse_chunk = _process_stream_item(
+            if item[0] == "error":
+                await _save_visible_partial(ctx=ctx, stream_turn=stream_turn)
+                yield format_sse(event="error", data=item[1])
+                return
+            sse_chunk = _process_stream_item(
                 item=item,
                 ctx=ctx,
-                assistant_parts=assistant_parts,
+                stream_turn=stream_turn,
             )
-            accumulated_text += delta
             if sse_chunk:
                 yield sse_chunk
 
-        await _save_assistant_turn(
-            session=ctx.session,
-            thread=ctx.thread,
-            payload=AssistantTurnPayload(
-                body=ctx.body,
-                accumulated_text=accumulated_text,
-                assistant_parts=assistant_parts,
-            ),
-        )
+        await _finish_stream_turn(ctx=ctx, stream_turn=stream_turn)
         yield format_sse(event="done", data={})
 
     except (asyncio.CancelledError, GeneratorExit):
         await _persist_partial_turn_safely(
             ctx=ctx,
-            accumulated_text=accumulated_text,
-            assistant_parts=assistant_parts,
+            accumulated_text=stream_turn.text,
+            assistant_parts=stream_turn.terminal_parts(interrupted=True),
         )
         raise
     except Exception as exc:
+        await _save_visible_partial(ctx=ctx, stream_turn=stream_turn)
         yield format_sse(event="error", data={"message": str(exc)})
     finally:
-        if ctx.guard_token is not None:
-            thread_guard.release(thread_id=ctx.thread.id, token=ctx.guard_token)
+        _release_chat_guard(ctx=ctx)
+
+
+def _release_chat_guard(*, ctx: ChatStreamContext) -> None:
+    if ctx.guard_token is not None:
+        thread_guard.release(thread_id=ctx.thread.id, token=ctx.guard_token)
+
+
+async def _save_visible_partial(
+    *, ctx: ChatStreamContext, stream_turn: StreamTurn
+) -> None:
+    if not stream_turn.has_visible_output:
+        return
+    persist_interrupted_turn(
+        session=ctx.session,
+        thread=ctx.thread,
+        parts=stream_turn.terminal_parts(interrupted=True),
+        mark_user_stop=False,
+    )
+
+
+async def _finish_stream_turn(
+    *, ctx: ChatStreamContext, stream_turn: StreamTurn
+) -> None:
+    await _save_assistant_turn(
+        session=ctx.session,
+        thread=ctx.thread,
+        payload=AssistantTurnPayload(
+            body=ctx.body,
+            accumulated_text=stream_turn.text,
+            assistant_parts=[
+                part
+                for part in stream_turn.parts_snapshot()
+                if part.get("type") != "text"
+            ],
+        ),
+    )
 
 
 def _ensure_user_turn_saved(

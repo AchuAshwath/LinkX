@@ -7,6 +7,7 @@ import type {
   DraftArtifact,
   QueuedTurn,
   ToolCallItem,
+  ToolCallPart,
   TrendingArtifact,
 } from "@/components/Chat/types"
 import { ensureMessageParentIds } from "@/hooks/useTranscriptTree"
@@ -166,6 +167,7 @@ export interface UpdateAssistantToolStartOptions {
   assistantMsgId: string
   name: string
   input: unknown
+  toolId?: string
 }
 
 export function updateAssistantToolStart({
@@ -173,12 +175,15 @@ export function updateAssistantToolStart({
   assistantMsgId,
   name,
   input,
+  toolId,
 }: UpdateAssistantToolStartOptions): ChatUIMessage[] {
   return messages.map((msg) => {
     if (msg.id !== assistantMsgId) return msg
     const parts = [...msg.parts]
     const toolItem: ToolCallItem = {
-      id: `tool_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      id:
+        toolId ||
+        `tool_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       name,
       state: "running",
       input: input as Record<string, unknown>,
@@ -195,12 +200,27 @@ export function updateAssistantToolStart({
   })
 }
 
-function isMatchingRunningTool(part: unknown, toolName: string): boolean {
+function isRunningToolPart(part: unknown): part is ToolCallPart {
   if (!part || typeof part !== "object") return false
-  const p = part as { type?: string; name?: string; state?: string }
-  if (p.name !== toolName) return false
-  if (p.state !== "running") return false
-  return p.type === "tool-call" || p.type === "tool_call"
+  const p = part as ToolCallPart
+  const isTool = p.type === "tool-call" || p.type === "tool_call"
+  return isTool && p.state === "running"
+}
+
+function isMatchingRunningTool(
+  part: unknown,
+  toolName: string,
+  toolId?: string,
+): boolean {
+  if (!isRunningToolPart(part)) return false
+  if (toolId) return part.toolCallId === toolId || part.tool?.id === toolId
+  return part.name === toolName
+}
+
+function toolResultState(output: unknown): ToolCallItem["state"] {
+  if (typeof output !== "object" || output === null) return "completed"
+  const failed = "error" in output && Boolean(output.error)
+  return failed ? "failed" : "completed"
 }
 
 function createCompletedToolPart(
@@ -213,10 +233,11 @@ function createCompletedToolPart(
     tool?: ToolCallItem
     input?: Record<string, unknown>
   }
+  const state = toolResultState(output)
   const updatedTool: ToolCallItem = {
     id: p.toolCallId || p.tool?.id || `tool_${Date.now()}`,
     name,
-    state: "completed",
+    state,
     input: p.tool?.input || p.input,
     output: output as Record<string, unknown>,
   }
@@ -224,7 +245,7 @@ function createCompletedToolPart(
     type: "tool-call",
     toolCallId: updatedTool.id,
     name,
-    state: "completed",
+    state,
     tool: updatedTool,
     input: updatedTool.input,
     output: updatedTool.output,
@@ -236,6 +257,7 @@ export interface UpdateAssistantToolOutputOptions {
   assistantMsgId: string
   name: string
   output: unknown
+  toolId?: string
 }
 
 export function updateAssistantToolOutput({
@@ -243,12 +265,13 @@ export function updateAssistantToolOutput({
   assistantMsgId,
   name,
   output,
+  toolId,
 }: UpdateAssistantToolOutputOptions): ChatUIMessage[] {
   return messages.map((msg) => {
     if (msg.id !== assistantMsgId) return msg
     const parts = [...msg.parts]
     for (let i = parts.length - 1; i >= 0; i--) {
-      if (isMatchingRunningTool(parts[i], name)) {
+      if (isMatchingRunningTool(parts[i], name, toolId)) {
         parts[i] = createCompletedToolPart(parts[i], name, output)
         break
       }
@@ -456,7 +479,7 @@ function createContentHandlers({
           content: delta,
         }),
       })),
-    onToolStart: (name: string, input: unknown) =>
+    onToolStart: (name: string, input: unknown, toolId?: string) =>
       setMessagesByThread((prev) => ({
         ...prev,
         [targetThreadId]: updateAssistantToolStart({
@@ -464,9 +487,10 @@ function createContentHandlers({
           assistantMsgId,
           name,
           input,
+          toolId,
         }),
       })),
-    onToolOutput: (name: string, output: unknown) =>
+    onToolOutput: (name: string, output: unknown, toolId?: string) =>
       setMessagesByThread((prev) => ({
         ...prev,
         [targetThreadId]: updateAssistantToolOutput({
@@ -474,6 +498,7 @@ function createContentHandlers({
           assistantMsgId,
           name,
           output,
+          toolId,
         }),
       })),
     onTrendingArtifact: (artifact: TrendingArtifact) =>

@@ -39,7 +39,7 @@ Checkpoints are separate, not additive. See [validation-summary.json](validation
 
 The final system test uses real capture/session/HTTP/Postgres behavior and a scripted external provider. Separate live studies use synthetic screenshots. Safe metadata for the reader studies is retained in [reader shape probes](reader-shape-probe-result.json), [strict reading pipeline](strict-reading-pipeline-result.json) and [final string constraints](strict-reading-final-schema-result.json). The initial reader shape probe did not reproduce the original private invalid response; exact syntax is unknown. These samples do not guarantee transcription accuracy on arbitrary pages.
 
-The Chrome fine-scroll case translates a real wheel event into deterministic sub-8px default movement because Playwright/Chrome rounds that input at the bottom; it is not physical-trackpad or cross-engine certification. [System results](system-smoke-result.json) and the [sharing-menu record](chat-scroll-menu.json) retain their narrower test scopes.
+The Chrome fine-scroll case translates a real wheel event into deterministic sub-8px default movement because Playwright/Chrome rounds that input at the bottom; it is not physical-trackpad or cross-engine certification. [System-smoke setup and results](system-smoke.md) and the [sharing-menu record](chat-scroll-menu.json) retain their narrower test scopes.
 
 ## Issue disposition and retained research
 
