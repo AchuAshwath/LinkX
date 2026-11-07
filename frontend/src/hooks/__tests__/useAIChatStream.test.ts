@@ -158,6 +158,42 @@ describe("useAIChatStream auth handling (Issue #128)", () => {
     ;(window as any).location = originalLocation
   })
 
+  it("preserves server tool IDs when delivering SSE callbacks", async () => {
+    localStorage.setItem("access_token", createMockJwt(3600))
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode(
+            'event: tool_start\ndata: {"id":"call-one","name":"lookup","input":{}}\n\n' +
+              'event: tool_output\ndata: {"id":"call-one","name":"lookup","output":{"value":1}}\n\n' +
+              "event: done\ndata: {}\n\n",
+          ),
+        )
+        controller.close()
+      },
+    })
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, status: 200, body }),
+    )
+    const onToolStart = vi.fn()
+    const onToolOutput = vi.fn()
+    const { result } = renderHook(() => useAIChatStream())
+    await act(async () => {
+      await result.current.startStream({
+        threadId: "thread-one",
+        message: "Look up both",
+        handlers: { onToolStart, onToolOutput },
+      })
+    })
+    expect(onToolStart).toHaveBeenCalledWith("lookup", {}, "call-one")
+    expect(onToolOutput).toHaveBeenCalledWith(
+      "lookup",
+      { value: 1 },
+      "call-one",
+    )
+  })
+
   it("handles 401 response by invoking onError, clearing access_token, and redirecting to /login", async () => {
     localStorage.setItem("access_token", createMockJwt(3600))
 

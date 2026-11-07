@@ -1,5 +1,5 @@
 // Controlled full-app smoke: real capture/session/HTTP/DB, scripted external model.
-// Start reading_system_server.py on 8000 and this candidate's Vite on 4000 first.
+// Start reading_system_server.py on 8001 and this candidate's Vite on 4001 first.
 import assert from "node:assert/strict"
 import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
@@ -17,8 +17,9 @@ dotenv.config({
   override: true,
   quiet: true,
 })
-const base = "http://127.0.0.1:4000"
+const base = process.env.READING_SMOKE_BASE || "http://127.0.0.1:4001"
 const api = await request.newContext({ baseURL: base })
+const controls = await request.newContext({ baseURL: "http://127.0.0.1:8001" })
 const checks = []
 let adminToken
 let userToken
@@ -27,7 +28,38 @@ let browser
 let currentPage
 const threadIds = []
 const cancelledOperations = []
+const runDate = "2026-11-06"
 const resultPath = path.join(root, "docs/observation/system-smoke-result.json")
+
+function eventsOf(text, name) {
+  return text
+    .split("\n\n")
+    .filter((block) => block.startsWith(`event: ${name}\n`))
+    .map((block) => JSON.parse(block.split("\ndata: ")[1]))
+}
+
+async function waitForProviderIdle({ page }) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    await expect
+      .poll(
+        async () =>
+          (await jsonResponse(await controls.get("/__test__/provider-idle")))
+            .active_reads,
+        { timeout: 15_000 },
+      )
+      .toBe(0)
+    const before = await jsonResponse(
+      await controls.get("/__test__/provider-idle"),
+    )
+    await page.waitForTimeout(500)
+    const after = await jsonResponse(
+      await controls.get("/__test__/provider-idle"),
+    )
+    if (before.read_calls === after.read_calls && after.active_reads === 0)
+      return
+  }
+  assert.fail("Scripted background image reads did not settle")
+}
 
 async function jsonResponse(response) {
   assert(response.ok(), `HTTP ${response.status()}`)
@@ -126,7 +158,11 @@ async function checkCaptureClose({ page, input, preview, requests, mode }) {
   const finished = response.finished().then(() => {
     completed = true
   })
-  assert.equal(completed, false)
+  assert.equal(
+    completed,
+    false,
+    "the scripted answer must still be streaming when capture closes",
+  )
   if (mode === "source") await page.evaluate(() => window.__readingSource.end())
   else {
     await preview.hover()
@@ -151,8 +187,9 @@ async function checkCaptureClose({ page, input, preview, requests, mode }) {
   assert.equal(cancelledOperations.includes(operationId), false)
   await finished
   const events = await response.text()
-  assert(events.includes("event: text_delta"))
-  assert(events.includes("The badge is P2R7."))
+  const deltas = eventsOf(events, "text_delta").map((event) => event.content)
+  assert(deltas.length >= 2)
+  assert.equal(deltas.join(""), "The badge is P2R7.")
   assert.equal(events.includes("event: error"), false)
   assert.equal(cancelledOperations.includes(operationId), false)
   checks.push(
@@ -311,6 +348,16 @@ try {
   checks.push("question uses temporary notes through real browser-chat runner")
   await page.getByText("Shared Page Details", { exact: true }).waitFor()
   await firstFinished
+  const firstEvents = await firstResponse.text()
+  const firstDeltas = eventsOf(firstEvents, "text_delta").map(
+    (event) => event.content,
+  )
+  assert(
+    firstDeltas.length >= 2,
+    "the final agent answer must contain real chunks",
+  )
+  assert.equal(firstDeltas.join(""), "The badge is P2R7.")
+  assert.equal(eventsOf(firstEvents, "error").length, 0)
   const namedThread = await jsonResponse(
     await api.get(`/api/v1/ai/threads/${owner}`, {
       headers: headers(userToken),
@@ -422,6 +469,14 @@ try {
   assert(requests[1].browser_context.pending_frames.length <= 2)
   assert(batchEvents.includes("event: browser_note"))
   assert(batchEvents.includes("event: browser_receipt"))
+  const batchDeltas = eventsOf(batchEvents, "text_delta").map(
+    (event) => event.content,
+  )
+  assert(batchDeltas.length >= 2)
+  assert.equal(
+    batchDeltas.join(""),
+    "The badge is P2R7. Water moon-basil after sunset.",
+  )
   await page
     .getByText("The badge is P2R7.", { exact: false })
     .last()
@@ -478,6 +533,14 @@ try {
   )
   await input.press("Enter")
   assert.equal((await generalResponse).status(), 200)
+  const generalEvents = await generalResponse.then((response) =>
+    response.text(),
+  )
+  const generalDeltas = eventsOf(generalEvents, "text_delta").map(
+    (event) => event.content,
+  )
+  assert(generalDeltas.length >= 2)
+  assert.equal(generalDeltas.join(""), "Python tuples are immutable sequences.")
   await page
     .getByText("Python tuples are immutable sequences.", { exact: true })
     .waitFor()
@@ -487,6 +550,18 @@ try {
   )
   checks.push(
     "sharing stays active while a general-knowledge answer uses no browser evidence",
+  )
+  const providerState = await jsonResponse(
+    await controls.get("/__test__/provider-state"),
+  )
+  assert(providerState.answer_requests.length >= 3)
+  const firstPrompt = providerState.answer_requests[0].messages
+    .map((message) => JSON.stringify(message.content))
+    .join(" ")
+  assert(firstPrompt.includes("What is the badge on the shared page?"))
+  assert(firstPrompt.includes("Controlled shared page. Badge P2R7"))
+  checks.push(
+    "normal ChatOpenAI answer requests contain the original question and prepared browser evidence",
   )
   await input.fill("Exercise invalid browser evaluation")
   const failureResponse = page.waitForResponse((response) =>
@@ -540,11 +615,17 @@ try {
   await page.reload()
   assert.equal(await preview.count(), 0)
   assert.deepEqual(errors, [])
+  await waitForProviderIdle({ page })
   checks.push("Stop and reload clear browser context without UI errors")
   await writeFile(
     resultPath,
     `${JSON.stringify(
-      { passed: true, model: "scripted external provider", checks },
+      {
+        passed: true,
+        run_date: runDate,
+        model: "scripted external provider",
+        checks,
+      },
       null,
       2,
     )}\n`,
@@ -554,7 +635,7 @@ try {
   await mkdir(path.dirname(resultPath), { recursive: true })
   await writeFile(
     resultPath,
-    `${JSON.stringify({ passed: false, checks, error: error.message }, null, 2)}\n`,
+    `${JSON.stringify({ passed: false, run_date: runDate, checks, error: error.message }, null, 2)}\n`,
   )
   if (currentPage) {
     console.error(`controlled failure URL: ${currentPage.url()}`)
@@ -562,7 +643,7 @@ try {
       path: path.join(root, "docs/observation/system-smoke-failure.png"),
     })
   }
-  console.error(error.message)
+  console.error(error.stack ?? error.message)
   process.exitCode = 1
 } finally {
   await browser?.close()
@@ -577,4 +658,5 @@ try {
       headers: headers(adminToken),
     })
   await api.dispose()
+  await controls.dispose()
 }

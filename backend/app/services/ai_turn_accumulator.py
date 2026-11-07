@@ -29,32 +29,57 @@ def _append_thought_delta(parts: list[dict[str, Any]], *, thought: str) -> None:
     parts.append({"type": "thought", "content": thought})
 
 
-def _is_matching_tool_part(
-    *, part: dict[str, Any], tool_id: str, tool_name: str
-) -> bool:
+class ToolIdentity(NamedTuple):
+    id: str | None
+    name: str
+
+
+def _tool_field(*, part: dict[str, Any], key: str, nested_key: str) -> Any:
+    value = part.get(key)
+    if value is not None:
+        return value
+    tool = part.get("tool")
+    return tool.get(nested_key) if isinstance(tool, dict) else None
+
+
+def _is_matching_tool_part(*, part: dict[str, Any], identity: ToolIdentity) -> bool:
     if not isinstance(part, dict) or part.get("type") not in ("tool_call", "tool-call"):
         return False
-    if part.get("toolCallId") == tool_id or part.get("name") == tool_name:
-        return True
-    tool_data = part.get("tool")
-    return isinstance(tool_data, dict) and tool_data.get("name") == tool_name
+    if identity.id is not None:
+        return bool(
+            _tool_field(part=part, key="toolCallId", nested_key="id") == identity.id
+        )
+    return bool(_tool_field(part=part, key="name", nested_key="name") == identity.name)
 
 
 def _complete_tool_fields(part: dict[str, Any], output: Any) -> None:
-    part["state"] = "completed"
+    state = _tool_result_state(output=output)
+    part["state"] = state
     if output is not None:
         part["output"] = output
     tool_data = part.get("tool")
     if isinstance(tool_data, dict):
-        tool_data["state"] = "completed"
+        tool_data["state"] = state
         tool_data["output"] = output
 
 
+def _tool_result_state(*, output: Any) -> str:
+    if isinstance(output, dict) and output.get("error"):
+        return "failed"
+    return "completed"
+
+
 def _update_existing_tool_part(
-    parts: list[dict[str, Any]], *, tool_id: str, tool_name: str, output: Any
+    parts: list[dict[str, Any]],
+    *,
+    identity: ToolIdentity,
+    output: Any,
 ) -> bool:
     for part in reversed(parts):
-        if _is_matching_tool_part(part=part, tool_id=tool_id, tool_name=tool_name):
+        if _is_matching_tool_part(
+            part=part,
+            identity=identity,
+        ):
             _complete_tool_fields(part, output)
             return True
     return False
@@ -63,13 +88,21 @@ def _update_existing_tool_part(
 def _append_tool_call(
     parts: list[dict[str, Any]], *, event: str, data: dict[str, Any]
 ) -> None:
-    t_id = str(data.get("id") or "call")
+    raw_id = data.get("id")
+    has_explicit_id = raw_id is not None
+    t_id = str(raw_id) if has_explicit_id else "call"
     t_name = str(data.get("name") or "tool")
     if event == "tool_output" and _update_existing_tool_part(
-        parts, tool_id=t_id, tool_name=t_name, output=data.get("output")
+        parts,
+        identity=ToolIdentity(t_id if has_explicit_id else None, t_name),
+        output=data.get("output"),
     ):
         return
-    st = "running" if event == "tool_start" else "completed"
+    st = (
+        "running"
+        if event == "tool_start"
+        else _tool_result_state(output=data.get("output"))
+    )
     parts.append(
         {
             "type": "tool-call",
@@ -254,7 +287,10 @@ def persist_interrupted_turn(
         return
     accumulated_text = str(kwargs.get("accumulated_text", ""))
     thread_id = kwargs.get("thread_id")
-    _format_stopped_turn_parts(parts=parts, accumulated_text=accumulated_text)
+    if kwargs.get("mark_user_stop", True):
+        _format_stopped_turn_parts(parts=parts, accumulated_text=accumulated_text)
+    else:
+        _mark_running_tools_interrupted(parts)
     target = thread or _resolve_target_thread(session=session, thread_id=thread_id)
     if not target:
         return

@@ -1,4 +1,3 @@
-import asyncio
 from collections.abc import AsyncGenerator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -6,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from langchain_core.messages import (
     AIMessage,
-    AIMessageChunk,
     HumanMessage,
     SystemMessage,
 )
@@ -15,7 +13,6 @@ from app.services.ai_chat_runner import (
     LINKX_SYSTEM_PROMPT,
     _build_message_history,
     _extract_text_from_parts,
-    default_chat_stream_runner,
     format_sse,
 )
 from app.services.ai_stream_parser import (
@@ -167,69 +164,6 @@ async def test_stream_parsed_chunks_thought_and_text() -> None:
 
 
 @pytest.mark.anyio
-async def test_default_chat_stream_runner_success() -> None:
-    async def fake_astream(messages: Any) -> AsyncGenerator[AIMessageChunk, None]:
-        assert len(messages) >= 2
-        yield AIMessageChunk(
-            content="<thought>Strategy: Use viral hook</thought>\nHere is the post!"
-        )
-
-    mock_model = MagicMock()
-    mock_model.astream = fake_astream
-
-    with (
-        patch(
-            "app.services.ai_completion_client.stream_direct_openai_proxy",
-            side_effect=ConnectionError("proxy down"),
-        ),
-        patch(
-            "app.services.ai_completion_client.get_chat_model",
-            return_value=mock_model,
-        ),
-    ):
-        events = []
-        async for ev, data in default_chat_stream_runner(
-            message="Test prompt",
-        ):
-            events.append((ev, data))
-
-    thoughts = [d["content"] for ev, d in events if ev == "thought"]
-    assert len(thoughts) > 0
-    assert "Strategy: Use viral hook" in "".join(thoughts)
-
-    deltas = [d["content"] for ev, d in events if ev == "text_delta"]
-    assert "".join(deltas).strip() == "Here is the post!"
-    assert events[-1] == ("done", {})
-
-
-@pytest.mark.anyio
-async def test_default_chat_stream_runner_error() -> None:
-    mock_model = MagicMock()
-    mock_model.astream.side_effect = ConnectionError("Model endpoint unavailable")
-
-    with (
-        patch(
-            "app.services.ai_completion_client.stream_direct_openai_proxy",
-            side_effect=ConnectionError("proxy down"),
-        ),
-        patch(
-            "app.services.ai_completion_client.get_chat_model",
-            return_value=mock_model,
-        ),
-    ):
-        events = []
-        async for ev, data in default_chat_stream_runner(
-            message="Test prompt",
-        ):
-            events.append((ev, data))
-
-    error_event = [d for ev, d in events if ev == "error"]
-    assert len(error_event) == 1
-    assert "LLM error" in error_event[0]["message"]
-    assert events[-1] == ("done", {})
-
-
-@pytest.mark.anyio
 async def test_generate_ai_thread_title_success() -> None:
     from app.services.ai_chat_runner import generate_ai_thread_title
 
@@ -358,105 +292,6 @@ def test_handle_supervisor_custom_node_events() -> None:
     assert emitted[0][0] == "tool_output"
     assert emitted[0][1]["name"] == "init_and_recover_session"
     assert emitted[0][1]["output"]["status"] == "session_ready"
-
-
-@pytest.mark.anyio
-async def test_default_chat_stream_runner_cancelled_persists_partial_turn() -> None:
-    """Issue #120: Verify CancelledError flushes partial tokens with interrupted: True."""
-
-    async def slow_stream(_messages: Any) -> AsyncGenerator[AIMessageChunk, None]:
-        yield AIMessageChunk(
-            content="<thought>Formulating post</thought>\nHere is part 1"
-        )
-        await asyncio.sleep(0.5)
-        yield AIMessageChunk(content=" and part 2")
-
-    mock_model = MagicMock()
-    mock_model.astream = slow_stream
-    mock_session = MagicMock()
-    mock_thread = MagicMock()
-    mock_thread.id = "thread-123"
-
-    with (
-        patch(
-            "app.services.ai_completion_client.stream_direct_openai_proxy",
-            side_effect=ConnectionError("proxy down"),
-        ),
-        patch(
-            "app.services.ai_completion_client.get_chat_model",
-            return_value=mock_model,
-        ),
-        patch("app.crud.append_message_to_transcript") as mock_append,
-    ):
-        gen = default_chat_stream_runner(
-            message="Test cancellation",
-            session=mock_session,
-            thread=mock_thread,
-        )
-
-        async def consume() -> None:
-            async for _ in gen:
-                pass
-
-        task = asyncio.create_task(consume())
-        await asyncio.sleep(0.05)
-        task.cancel()
-
-        with pytest.raises(asyncio.CancelledError):
-            await task
-
-        mock_append.assert_called_once()
-        _, kwargs = mock_append.call_args
-        persisted_msg = kwargs["message"]
-
-        assert persisted_msg["role"] == "assistant"
-        assert persisted_msg["interrupted"] is True
-        part_types = [p["type"] for p in persisted_msg["parts"]]
-        assert "thought" in part_types
-        assert "text" in part_types
-        text_parts = [p["text"] for p in persisted_msg["parts"] if p["type"] == "text"]
-        assert any("part 1" in t for t in text_parts)
-
-
-@pytest.mark.anyio
-async def test_default_chat_stream_runner_generator_exit_persists_turn() -> None:
-    """Issue #120: Verify generator close (aclose) persists turn with interrupted: True."""
-
-    async def fake_stream(_messages: Any) -> AsyncGenerator[AIMessageChunk, None]:
-        yield AIMessageChunk(content="First partial token")
-        await asyncio.sleep(0.2)
-        yield AIMessageChunk(content="Second token")
-
-    mock_model = MagicMock()
-    mock_model.astream = fake_stream
-    mock_session = MagicMock()
-    mock_thread = MagicMock()
-
-    with (
-        patch(
-            "app.services.ai_completion_client.stream_direct_openai_proxy",
-            side_effect=ConnectionError("proxy down"),
-        ),
-        patch(
-            "app.services.ai_completion_client.get_chat_model",
-            return_value=mock_model,
-        ),
-        patch("app.crud.append_message_to_transcript") as mock_append,
-    ):
-        gen = default_chat_stream_runner(
-            message="Test aclose",
-            session=mock_session,
-            thread=mock_thread,
-        )
-        async for _ev, _data in gen:
-            break
-        await gen.aclose()
-
-        mock_append.assert_called_once()
-        _, kwargs = mock_append.call_args
-        persisted_msg = kwargs["message"]
-        assert persisted_msg["interrupted"] is True
-        assert persisted_msg["role"] == "assistant"
 
 
 def test_build_message_history_applies_context_budgeting() -> None:

@@ -119,6 +119,13 @@ class EvaluationResult(StrictModel):
     answer_basis: Literal["browser", "conversation", "general", "mixed"] = "browser"
 
 
+class ReadinessResult(StrictModel):
+    decision: Literal["read_next", "ready", "insufficient"]
+    evidence_ids: list[str] = Field(max_length=200)
+    requires_complete: bool
+    answer_basis: Literal["browser", "mixed", "conversation", "general"]
+
+
 class BrowserChatRequest(StrictModel):
     message: str = Field(min_length=1, max_length=25000)
     model: str = Field(min_length=1, max_length=100)

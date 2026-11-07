@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from collections.abc import AsyncGenerator, AsyncIterator, Callable
+from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import asdict, dataclass, field
 from typing import Any, NoReturn
 from uuid import UUID, uuid4
@@ -17,6 +17,7 @@ from app.api.routes import ai_threads
 from app.api.routes.ai_threads import _get_owned_thread
 from app.core.db import engine
 from app.models import ChatThread
+from app.observation.answer import BrowserAnswerRequest, stream_browser_answer
 from app.observation.broker import (
     Invocation,
     InvocationRequest,
@@ -41,6 +42,7 @@ from app.observation.schemas import BrowserChatRequest, EvaluationInput
 from app.observation.thread_guard import thread_guard
 from app.services.ai_chat_runner import format_sse
 from app.services.ai_observation_budget import ObservationInputBudgetError
+from app.services.ai_stream_turn import StreamTurn, replay_stream_parts
 from app.services.ai_turn_accumulator import resolve_active_branch
 
 router = APIRouter(prefix="/ai/threads", tags=["ai-browser-chat"])
@@ -55,15 +57,14 @@ TRANSCRIPT_SAVE_MESSAGE = (
 def _save_question_answer(
     *,
     turn: TranscriptTurnRequest,
-    result: QuestionResult,
-    cancelled: Callable[[], bool],
+    completion: CompletionPayload,
 ) -> str:
     try:
         with Session(engine) as session:
             saved = complete_transcript_turn(
                 session=session,
                 request=turn,
-                completion=CompletionPayload(answer=result.answer, cancelled=cancelled),
+                completion=completion,
             )
     except Exception as error:
         raise QuestionFailure(
@@ -79,7 +80,7 @@ def _save_question_answer(
             message=TRANSCRIPT_SAVE_MESSAGE,
             exception_class="TranscriptTurnNotSaved",
         )
-    return saved.answer or result.answer
+    return saved.answer or completion.answer
 
 
 def _is_ai_title_eligible(*, thread: ChatThread | None) -> bool:
@@ -120,25 +121,18 @@ class BrowserQuestionJob:
     completed_ids: list[str] = field(default_factory=list)
     result: QuestionResult | None = None
     completed: bool = False
+    streamed: StreamTurn = field(default_factory=StreamTurn)
 
     async def run(self, invocation: Invocation) -> QuestionResult:
         try:
-
-            async def emit(event: str, data: dict[str, Any]) -> None:
-                if invocation.cancelled:
-                    raise asyncio.CancelledError
-                if event == "browser_note":
-                    self.completed_ids.append(data["id"])
-                self.events.put_nowait((event, data))
-
             self.result = QuestionResult(
                 unused_ids=[
                     frame.id for frame in self.body.browser_context.pending_frames
                 ]
             )
-            self.result = await QuestionRunner(
-                model=browser_model, inspect_budget=browser_model.preflight
-            ).run(
+            prepared = await QuestionRunner(
+                model=browser_model, inspect_budget=browser_model.preflight_readiness
+            ).prepare(
                 request=QuestionInput(
                     message=self.body.message,
                     model=self.body.model,
@@ -146,18 +140,84 @@ class BrowserQuestionJob:
                     history=self.history,
                     progress=self.result,
                 ),
-                emit=emit,
+                emit=lambda event, data: self.emit(
+                    invocation=invocation, event=event, data=data
+                ),
                 cancelled=lambda: invocation.cancelled,
             )
+            self.result = prepared.result
+            await self.stream_answer(invocation=invocation, prepared=prepared)
+            self.result.answer = self.streamed.text
             self.result.answer = _save_question_answer(
                 turn=self.turn,
-                result=self.result,
-                cancelled=lambda: invocation.cancelled,
+                completion=self.completion(invocation=invocation),
             )
             self.completed = True
             return self.result
+        except BaseException as error:
+            save_failed = (
+                isinstance(error, QuestionFailure) and error.phase == "transcript_save"
+            )
+            if self.streamed.has_visible_output and not save_failed:
+                _save_question_answer(
+                    turn=self.turn,
+                    completion=self.completion(invocation=invocation, interrupted=True),
+                )
+            raise
         finally:
             thread_guard.release(thread_id=self.turn.thread_id, token=self.guard_token)
+
+    async def emit(
+        self, *, invocation: Invocation, event: str, data: dict[str, Any]
+    ) -> None:
+        if invocation.cancelled:
+            raise asyncio.CancelledError
+        if event == "browser_note":
+            self.completed_ids.append(data["id"])
+        self.events.put_nowait((event, data))
+
+    async def stream_answer(self, *, invocation: Invocation, prepared: Any) -> None:
+        request = BrowserAnswerRequest(
+            owner_id=self.owner_id,
+            thread_id=self.turn.thread_id,
+            message=self.body.message,
+            model=self.body.model,
+            context=prepared.context,
+            history=self.history,
+            insufficient=prepared.insufficient,
+            answer_basis=prepared.answer_basis,
+        )
+        async for event, data in stream_browser_answer(
+            request=request, cancelled=lambda: invocation.cancelled
+        ):
+            if invocation.cancelled:
+                raise asyncio.CancelledError
+            if event == "error":
+                raise QuestionFailure(
+                    phase="answer",
+                    failure_code="answer_stream_failed",
+                    message="The answer stream was interrupted.",
+                    exception_class="AgentStreamError",
+                )
+            self.streamed.record(event, data)
+            await self.emit(invocation=invocation, event=event, data=data)
+        if not self.streamed.has_visible_output:
+            raise QuestionFailure(
+                phase="answer",
+                failure_code="empty_answer",
+                message="The model did not return an answer.",
+                exception_class="EmptyAgentStream",
+            )
+
+    def completion(
+        self, *, invocation: Invocation, interrupted: bool = False
+    ) -> CompletionPayload:
+        return CompletionPayload(
+            answer=self.streamed.text,
+            parts=self.streamed.terminal_parts(interrupted=interrupted),
+            interrupted=interrupted,
+            cancelled=lambda: invocation.cancelled,
+        )
 
     async def generate_title(self) -> None:
         if self.result is None or not self.completed:
@@ -286,8 +346,7 @@ async def _result_events(
     if task.cancelled():
         yield format_sse(event="error", data={"message": "Browser request was stopped"})
         return
-    result = task.result()
-    yield format_sse(event="text_delta", data={"content": result.answer})
+    task.result()
     try:
         await asyncio.wait_for(
             job.generate_title(), timeout=TITLE_GENERATION_TIMEOUT_SECONDS
@@ -299,8 +358,10 @@ async def _result_events(
     yield format_sse(event="done", data={})
 
 
-async def _replay_answer(answer: str) -> AsyncGenerator[str, None]:
-    yield format_sse(event="text_delta", data={"content": answer})
+async def _replay_answer(*, prior: TranscriptTurnResult) -> AsyncGenerator[str, None]:
+    parts = prior.parts or [{"type": "text", "text": prior.answer or ""}]
+    for event, data in replay_stream_parts(parts=parts):
+        yield format_sse(event=event, data=data)
     yield format_sse(event="done", data={})
 
 
@@ -348,7 +409,7 @@ def _admit_turn(
         messages=(thread.transcript or {}).get("messages", []),
         active_leaf_id=thread.active_leaf_id,
     )
-    budget = browser_model.preflight(
+    budget = browser_model.preflight_readiness(
         request=EvaluationInput(
             message=body.message,
             model=body.model,
@@ -383,7 +444,7 @@ def _prepare_browser_chat(*, start: BrowserChatStart) -> StreamingResponse:
     started, budget = _admit_turn(
         session=session,
         thread=start.thread,
-        body=start.body,
+        body=start.body.model_copy(deep=True),
         turn=start.turn,
     )
     if started.status == "completed":
@@ -391,7 +452,7 @@ def _prepare_browser_chat(*, start: BrowserChatStart) -> StreamingResponse:
             thread_id=start.thread.id,
             token=start.guard_token,
         )
-        return _response(events=_replay_answer(started.answer or ""))
+        return _response(events=_replay_answer(prior=started))
     if started.status != "started":
         raise HTTPException(
             status_code=409,
@@ -400,7 +461,7 @@ def _prepare_browser_chat(*, start: BrowserChatStart) -> StreamingResponse:
 
     job = BrowserQuestionJob(
         owner_id=start.current_user.id,
-        body=start.body,
+        body=start.body.model_copy(deep=True),
         turn=start.turn,
         history=started.history,
         guard_token=start.guard_token,

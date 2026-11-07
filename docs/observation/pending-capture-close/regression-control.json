@@ -1,0 +1,6 @@
+{
+  "passed": false,
+  "checks": [],
+  "error": "Closing sharing must not cancel the dispatched question before image 2",
+  "run_date": "2026-11-06"
+}

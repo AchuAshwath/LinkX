@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import threading
 import uuid
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -196,6 +196,15 @@ class BotContext:
                 except Exception:
                     pass
                 raise
+
+
+@dataclass(frozen=True)
+class AgentOptions:
+    """Optional per-request prompt preparation and invocation-time tool wrapping."""
+
+    prepare_messages: Callable[..., list[Any]] | None = None
+    wrap_tools: Callable[..., list[BaseTool]] | None = None
+    disable_retries: bool = False
 
 
 def _resolve_by_post_id(*, ctx: BotContext, post_id: str) -> Post | None:
@@ -698,17 +707,55 @@ def build_bot_agent(
     *,
     ctx: BotContext,
     model: str | None = None,
+    options: AgentOptions | None = None,
 ) -> Any:
     """Compile a LangGraph ReAct agent equipped with LinkX tools."""
     chat_model = get_chat_model(model=model, streaming=True)
+    if options is not None and options.disable_retries:
+        chat_model = _without_automatic_retries(model=chat_model)
     tools = build_bot_tools(ctx=ctx)
+    if options is not None and options.wrap_tools is not None:
+        tools = options.wrap_tools(tools=tools)
     prompt_text = BOT_AGENT_SYSTEM_PROMPT + _build_active_draft_prompt(ctx=ctx)
+    prompt: Any = SystemMessage(content=prompt_text)
+    prepare_messages = options.prepare_messages if options is not None else None
+    if prepare_messages is not None:
+
+        def prepare_prompt(state: Any) -> list[Any]:
+            messages = state.get("messages", [])
+            return prepare_messages(
+                messages=[SystemMessage(content=prompt_text), *messages],
+                tools=tools,
+            )
+
+        prompt = prepare_prompt
 
     return create_react_agent(
         model=chat_model,
         tools=tools,
-        prompt=SystemMessage(content=prompt_text),
+        prompt=prompt,
     )
+
+
+def _without_automatic_retries(*, model: Any) -> Any:
+    if not hasattr(model, "model_copy"):
+        return model
+    root_client = getattr(model, "root_client", None)
+    root_async_client = getattr(model, "root_async_client", None)
+    updates: dict[str, Any] = {"max_retries": 0, "request_timeout": 45}
+    if root_client is not None:
+        root_client = root_client.with_options(max_retries=0, timeout=45)
+        updates.update(
+            root_client=root_client,
+            client=root_client.chat.completions,
+        )
+    if root_async_client is not None:
+        root_async_client = root_async_client.with_options(max_retries=0, timeout=45)
+        updates.update(
+            root_async_client=root_async_client,
+            async_client=root_async_client.chat.completions,
+        )
+    return model.model_copy(update=updates)
 
 
 # Legacy aliases for backwards compatibility

@@ -1,0 +1,117 @@
+{
+  "passed": true,
+  "provider": "barrier-controlled synthetic fixture",
+  "checks": [
+    {
+      "mode": "preview",
+      "passed": true,
+      "events": [
+        {
+          "phase": "read_started",
+          "label": "warmup"
+        },
+        {
+          "phase": "read_completed",
+          "label": "warmup"
+        },
+        {
+          "phase": "readiness",
+          "decision": "read_next"
+        },
+        {
+          "phase": "read_started",
+          "label": "first"
+        },
+        {
+          "phase": "read_completed",
+          "label": "first"
+        },
+        {
+          "phase": "readiness",
+          "decision": "read_next"
+        },
+        {
+          "phase": "read_started",
+          "label": "second"
+        },
+        {
+          "phase": "read_completed",
+          "label": "second"
+        },
+        {
+          "phase": "readiness",
+          "decision": "ready"
+        }
+      ]
+    },
+    {
+      "mode": "source",
+      "passed": true,
+      "events": [
+        {
+          "phase": "read_started",
+          "label": "warmup"
+        },
+        {
+          "phase": "read_completed",
+          "label": "warmup"
+        },
+        {
+          "phase": "readiness",
+          "decision": "read_next"
+        },
+        {
+          "phase": "read_started",
+          "label": "first"
+        },
+        {
+          "phase": "read_completed",
+          "label": "first"
+        },
+        {
+          "phase": "readiness",
+          "decision": "read_next"
+        },
+        {
+          "phase": "read_started",
+          "label": "second"
+        },
+        {
+          "phase": "read_completed",
+          "label": "second"
+        },
+        {
+          "phase": "readiness",
+          "decision": "ready"
+        }
+      ]
+    },
+    {
+      "mode": "chat-stop",
+      "passed": true,
+      "events": [
+        {
+          "phase": "read_started",
+          "label": "warmup"
+        },
+        {
+          "phase": "read_completed",
+          "label": "warmup"
+        },
+        {
+          "phase": "readiness",
+          "decision": "read_next"
+        },
+        {
+          "phase": "read_started",
+          "label": "first"
+        },
+        {
+          "phase": "read_completed",
+          "label": "first"
+        }
+      ]
+    }
+  ],
+  "run_date": "2026-11-06"
+}

@@ -34,14 +34,17 @@ from app.services.ai_prompt_builder import (
     build_message_history,
 )
 from app.services.ai_stream_parser import (
+    CLOSE_THOUGHT_RE,
     StreamContext,
+    consume_outside_thought,
+    consume_tag_buffer,
     extract_fallback_text_from_thought,
     process_buffer_step,
     recover_unclosed_thought_at_eof,
     stream_parsed_chunks,
 )
+from app.services.ai_tool_events import ToolEventFilter
 from app.services.ai_turn_accumulator import (
-    _append_stream_part,
     _append_tool_call,
     _persist_interrupted_turn,
     persist_interrupted_turn,
@@ -54,6 +57,7 @@ __all__ = [
     "_extract_images_from_parts",
     "_extract_text_from_parts",
     "_handle_supervisor_event",
+    "stream_agent_events",
     "_persist_interrupted_turn",
     "build_message_history",
     "default_chat_stream_runner",
@@ -160,6 +164,39 @@ def _process_model_chunk(
     return emitted_events, thought_buffer, in_thought
 
 
+def _process_browser_model_chunk(
+    *, chunk: Any, buffer: str, in_thought: bool
+) -> tuple[list[tuple[str, dict[str, Any]]], str, bool]:
+    content = getattr(chunk, "content", None)
+    if not isinstance(content, str) or not content:
+        return [], buffer, in_thought
+    current = buffer + content
+    events: list[tuple[str, dict[str, Any]]] = []
+    while current:
+        emitted, partial, current, in_thought = _browser_buffer_step(
+            buffer=current, in_thought=in_thought
+        )
+        if emitted:
+            events.append(("text_delta", {"content": emitted}))
+        if partial:
+            break
+    return events, current, in_thought
+
+
+def _browser_buffer_step(
+    *, buffer: str, in_thought: bool
+) -> tuple[str, bool, str, bool]:
+    if not in_thought:
+        return consume_outside_thought(buffer)
+    _, partial, remaining, next_state = consume_tag_buffer(
+        buffer,
+        CLOSE_THOUGHT_RE,
+        15,
+        next_in_thought=False,
+    )
+    return "", partial, remaining, next_state
+
+
 def _handle_custom_node_event(
     event: dict[str, Any],
 ) -> list[tuple[str, dict[str, Any]]]:
@@ -208,6 +245,21 @@ def _handle_supervisor_event(
         return evs, buf, False
     if kind == "on_tool_end":
         return _handle_tool_end_events(event), thought_buffer, in_thought
+    if kind == "on_tool_error":
+        return (
+            [
+                (
+                    "tool_output",
+                    {
+                        "id": str(event.get("run_id", "")),
+                        "name": str(event.get("name", "")),
+                        "output": {"error": "The tool could not complete."},
+                    },
+                )
+            ],
+            thought_buffer,
+            in_thought,
+        )
     if kind == "on_chat_model_stream":
         return _process_model_chunk(
             event.get("data", {}).get("chunk"), thought_buffer, in_thought
@@ -215,6 +267,22 @@ def _handle_supervisor_event(
     if kind == "on_custom_event":
         return _handle_custom_node_event(event), thought_buffer, in_thought
     return [], thought_buffer, in_thought
+
+
+def _handle_browser_stream_event(
+    *, event: dict[str, Any], ctx: StreamContext
+) -> list[tuple[str, dict[str, Any]]]:
+    if event.get("event") != "on_chat_model_stream":
+        emitted, ctx.buffer, ctx.in_thought = _handle_supervisor_event(
+            event, ctx.buffer, ctx.in_thought
+        )
+        return emitted
+    emitted, ctx.buffer, ctx.in_thought = _process_browser_model_chunk(
+        chunk=event.get("data", {}).get("chunk"),
+        buffer=ctx.buffer,
+        in_thought=ctx.in_thought,
+    )
+    return emitted
 
 
 def _recover_remaining_buffer(
@@ -249,24 +317,74 @@ def _drain_supervisor_eof(
     return _recover_remaining_buffer(ctx=ctx) + _recover_fallback_text(ctx=ctx)
 
 
-async def _stream_agent_supervisor_events(
+def _recover_browser_eof(*, ctx: StreamContext) -> list[tuple[str, dict[str, Any]]]:
+    if ctx.in_thought:
+        return []
+    ctx.buffer = _without_partial_thought_tag(ctx.buffer)
+    return _recover_remaining_buffer(ctx=ctx)
+
+
+def _without_partial_thought_tag(buffer: str) -> str:
+    tag_start = buffer.rfind("<")
+    if tag_start < 0:
+        return buffer
+    suffix = buffer[tag_start + 1 :].lstrip()
+    if suffix.startswith("/"):
+        suffix = suffix[1:].lstrip()
+    supported_tags = ("thought", "thinking", "think")
+    is_partial_tag = any(tag.startswith(suffix.lower()) for tag in supported_tags)
+    return buffer[:tag_start] if is_partial_tag else buffer
+
+
+async def stream_agent_events(
     *,
     agent: Any,
     messages: list[Any],
+    promote_thought_fallback: bool = True,
 ) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
     """Process LangGraph agent stream events and yield chat SSE tuples."""
     ctx = StreamContext()
+    tool_events = ToolEventFilter()
 
     async for event in agent.astream_events({"messages": messages}, version="v2"):
-        events, ctx.buffer, ctx.in_thought = _handle_supervisor_event(
-            event, ctx.buffer, ctx.in_thought
-        )
+        if not tool_events.should_emit(event=event):
+            continue
+        if promote_thought_fallback:
+            events, ctx.buffer, ctx.in_thought = _handle_supervisor_event(
+                event, ctx.buffer, ctx.in_thought
+            )
+        else:
+            events = _handle_browser_stream_event(event=event, ctx=ctx)
         for ev in events:
             ctx.record_event(event_type=ev[0], content=ev[1].get("content", ""))
             yield ev
 
-    for ev in _drain_supervisor_eof(ctx=ctx):
+    remaining = (
+        _drain_supervisor_eof(ctx=ctx)
+        if promote_thought_fallback
+        else _recover_browser_eof(ctx=ctx)
+    )
+    for ev in remaining:
         yield ev
+
+
+_stream_agent_supervisor_events = stream_agent_events
+
+
+async def _stream_agent_result(
+    *, agent: Any, messages: list[Any]
+) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
+    # Entering the event stream may execute a tool before producing an event.
+    try:
+        async for event in stream_agent_events(agent=agent, messages=messages):
+            yield event
+    except (asyncio.CancelledError, GeneratorExit):
+        raise
+    except Exception as exc:
+        logger.warning("Agent supervisor stream failed: %s", exc)
+        yield ("error", {"message": f"Agent error: {exc}"})
+        return
+    yield ("done", {})
 
 
 async def default_chat_stream_runner(
@@ -276,7 +394,8 @@ async def default_chat_stream_runner(
     model: str | None = None,
     **kwargs: Any,
 ) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
-    """Stream AI chat conversation tokens, tool executions, and artifacts with cancellation persistence."""
+    """Stream AI chat events; the route owns transcript persistence."""
+    strict_no_fallback = bool(kwargs.get("strict_no_fallback", False))
     messages = _build_message_history(
         transcript=transcript,
         current_message=message,
@@ -286,9 +405,10 @@ async def default_chat_stream_runner(
     user_id = kwargs.get("user_id")
     session = kwargs.get("session")
     thread_id = kwargs.get("thread_id")
-    thread = kwargs.get("thread")
-    parts: list[dict[str, Any]] = []
-
+    has_agent_context = bool(user_id and session)
+    if strict_no_fallback and not has_agent_context:
+        yield ("error", {"message": "Agent context is required"})
+        return
     if user_id and session:
         try:
             from app.services.agentic.agent_supervisor import (
@@ -306,38 +426,31 @@ async def default_chat_stream_runner(
                 model=model,
             )
             conv_messages = [m for m in messages if not isinstance(m, SystemMessage)]
-            async for ev in _stream_agent_supervisor_events(
+        except Exception as exc:
+            if strict_no_fallback:
+                yield ("error", {"message": f"Agent error: {exc}"})
+                return
+            logger.warning(
+                "Agent supervisor setup failed, using direct stream: %s", exc
+            )
+        else:
+            async for event in _stream_agent_result(
                 agent=agent, messages=conv_messages
             ):
-                _append_stream_part(parts, event=ev[0], data=ev[1])
-                yield ev
-            yield ("done", {})
+                yield event
             return
-        except (asyncio.CancelledError, GeneratorExit):
-            _persist_interrupted_turn(
-                session=session, thread=thread, thread_id=thread_id, parts=parts
-            )
-            raise
-        except Exception as exc:
-            parts.clear()
-            logger.warning(
-                "Agent supervisor error, falling back to direct stream: %s", exc
-            )
 
     try:
         async for event in stream_parsed_chunks(
             stream_raw_chat_completion(messages=messages, model=model),
             delay=0.0,
         ):
-            _append_stream_part(parts, event=event[0], data=event[1])
             yield event
     except (asyncio.CancelledError, GeneratorExit):
-        _persist_interrupted_turn(
-            session=session, thread=thread, thread_id=thread_id, parts=parts
-        )
         raise
     except Exception as exc:
         yield ("error", {"message": f"LLM error: {exc}"})
+        return
 
     yield ("done", {})
 

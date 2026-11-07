@@ -13,6 +13,7 @@ from sqlmodel import Session, select
 
 from app.crud import generate_thread_title
 from app.models import ChatThread
+from app.services.ai_stream_turn import sanitize_stream_parts
 from app.services.ai_turn_accumulator import resolve_active_branch
 
 
@@ -36,21 +37,56 @@ class TranscriptTurnRequest:
 class CompletionPayload:
     answer: str
     cancelled: Callable[[], bool]
+    parts: list[dict[str, Any]] | None = None
+    interrupted: bool = False
 
 
 @dataclass(frozen=True)
 class TranscriptTurnResult:
-    status: Literal["started", "completed", "conflict", "missing"]
+    status: Literal["started", "completed", "interrupted", "conflict", "missing"]
     user_message_id: str
     assistant_message_id: str
     history: list[dict[str, Any]]
     answer: str | None = None
+    parts: list[dict[str, Any]] | None = None
 
 
 @dataclass(frozen=True)
 class TranscriptCompletionResult:
-    status: Literal["saved", "already_completed", "cancelled", "conflict", "missing"]
+    status: Literal[
+        "saved", "already_completed", "interrupted", "cancelled", "conflict", "missing"
+    ]
     answer: str | None = None
+    parts: list[dict[str, Any]] | None = None
+    interrupted: bool = False
+
+
+@dataclass(frozen=True)
+class _TurnResultValues:
+    history: list[dict[str, Any]] | None = None
+    answer: str | None = None
+    parts: list[dict[str, Any]] | None = None
+
+
+@dataclass(frozen=True)
+class _CompletionParts:
+    parts: list[dict[str, Any]]
+    answer: str
+    visible: bool
+
+
+@dataclass(frozen=True)
+class _CompletionState:
+    thread: ChatThread
+    transcript: dict[str, Any]
+    messages: list[dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class _CompletionWrite:
+    request: TranscriptTurnRequest
+    completion: CompletionPayload
+    parts: _CompletionParts
 
 
 def _locked_thread(*, session: Session, thread_id: uuid.UUID) -> ChatThread | None:
@@ -101,17 +137,18 @@ def _maybe_title_thread(*, thread: ChatThread, user_text: str) -> None:
 
 def _result(
     *,
-    status: Literal["started", "completed", "conflict", "missing"],
+    status: Literal["started", "completed", "interrupted", "conflict", "missing"],
     request: TranscriptTurnRequest,
-    history: list[dict[str, Any]] | None = None,
-    answer: str | None = None,
+    values: _TurnResultValues | None = None,
 ) -> TranscriptTurnResult:
+    values = values or _TurnResultValues()
     return TranscriptTurnResult(
         status=status,
         user_message_id=request.user_message_id,
         assistant_message_id=request.assistant_message_id,
-        history=history or [],
-        answer=answer,
+        history=copy.deepcopy(values.history or []),
+        answer=values.answer,
+        parts=sanitize_stream_parts(parts=values.parts or []),
     )
 
 
@@ -123,19 +160,24 @@ def _existing_turn_result(
 ) -> TranscriptTurnResult | None:
     if user is None and assistant is None:
         return None
-    completed = (
+    matching_assistant = (
         assistant is not None
         and assistant.get("role") == "assistant"
         and assistant.get("parent_id") == request.user_message_id
         and _matches_user_message(message=user, request=request)
     )
-    if not completed:
+    if not matching_assistant:
         return _result(status="conflict", request=request)
     assert assistant is not None
+    interrupted = bool(assistant.get("interrupted"))
+    parts = _sanitized_message_parts(message=assistant)
     return _result(
-        status="completed",
+        status="interrupted" if interrupted else "completed",
         request=request,
-        answer=_answer_text(assistant),
+        values=_TurnResultValues(
+            answer=_answer_text({"parts": parts}),
+            parts=parts,
+        ),
     )
 
 
@@ -185,7 +227,11 @@ def begin_transcript_turn(
     thread.updated_at = datetime.now(timezone.utc)
     session.add(thread)
     session.commit()
-    return _result(status="started", request=request, history=history_copy)
+    return _result(
+        status="started",
+        request=request,
+        values=_TurnResultValues(history=history_copy),
+    )
 
 
 def _find_completion_target(
@@ -211,11 +257,112 @@ def _existing_completion_result(
         assistant.get("role") == "assistant"
         and assistant.get("parent_id") == request.user_message_id
     ):
+        parts = _sanitized_message_parts(message=assistant)
         return TranscriptCompletionResult(
-            status="already_completed",
-            answer=_answer_text(assistant),
+            status="interrupted"
+            if assistant.get("interrupted")
+            else "already_completed",
+            answer=_answer_text({"parts": parts}),
+            parts=parts,
+            interrupted=bool(assistant.get("interrupted")),
         )
     return TranscriptCompletionResult(status="conflict")
+
+
+def _sanitized_message_parts(*, message: dict[str, Any]) -> list[dict[str, Any]]:
+    parts = message.get("parts", [])
+    if not isinstance(parts, list):
+        return []
+    return sanitize_stream_parts(parts=parts)
+
+
+def _completion_parts(*, completion: CompletionPayload) -> _CompletionParts:
+    raw_parts = completion.parts
+    if raw_parts is None:
+        raw_parts = [{"type": "text", "text": completion.answer}]
+    parts = sanitize_stream_parts(parts=raw_parts)
+    answer = _answer_text({"parts": parts})
+    visible = any(
+        isinstance(part, dict)
+        and part.get("type")
+        in {
+            "text",
+            "thought",
+            "tool-call",
+            "tool_call",
+            "draft_artifact",
+            "trending_artifact",
+        }
+        and (part.get("type") != "text" or bool(part.get("text")))
+        for part in parts
+    )
+    return _CompletionParts(parts=parts, answer=answer, visible=visible)
+
+
+def _completion_state(
+    *, session: Session, request: TranscriptTurnRequest
+) -> _CompletionState | None:
+    thread = _locked_thread(session=session, thread_id=request.thread_id)
+    if thread is None:
+        return None
+    transcript = copy.deepcopy(thread.transcript or {})
+    return _CompletionState(
+        thread=thread,
+        transcript=transcript,
+        messages=list(transcript.get("messages", [])),
+    )
+
+
+def _store_assistant_completion(
+    *,
+    session: Session,
+    state: _CompletionState,
+    write: _CompletionWrite,
+) -> TranscriptCompletionResult:
+    request = write.request
+    completion = write.completion
+    result = write.parts
+    state.messages.append(
+        {
+            "id": request.assistant_message_id,
+            "role": "assistant",
+            "parent_id": request.user_message_id,
+            "parts": result.parts,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            **({"interrupted": True} if completion.interrupted else {}),
+        }
+    )
+    state.transcript["messages"] = state.messages
+    state.transcript["active_leaf_id"] = request.assistant_message_id
+    state.thread.transcript = state.transcript
+    state.thread.active_leaf_id = request.assistant_message_id
+    state.thread.message_count = len(state.messages)
+    state.thread.updated_at = datetime.now(timezone.utc)
+    session.add(state.thread)
+    session.commit()
+    return TranscriptCompletionResult(
+        status="saved",
+        answer=result.answer,
+        parts=copy.deepcopy(result.parts),
+        interrupted=completion.interrupted,
+    )
+
+
+def _completion_rejection(
+    *,
+    state: _CompletionState,
+    request: TranscriptTurnRequest,
+    completion: CompletionPayload,
+    result: _CompletionParts,
+) -> Literal["conflict", "cancelled"] | None:
+    target = _find_completion_target(thread=state.thread, request=request)
+    if target is None or state.thread.active_leaf_id != request.user_message_id:
+        return "conflict"
+    if completion.interrupted and not result.visible:
+        return "cancelled"
+    if completion.cancelled() and not completion.interrupted:
+        return "cancelled"
+    return None
 
 
 def complete_transcript_turn(
@@ -225,45 +372,31 @@ def complete_transcript_turn(
     completion: CompletionPayload,
 ) -> TranscriptCompletionResult:
     """Append one assistant text only while the request user remains the active leaf."""
-    thread = _locked_thread(session=session, thread_id=request.thread_id)
-    if thread is None:
+    state = _completion_state(session=session, request=request)
+    if state is None:
         session.rollback()
         return TranscriptCompletionResult(status="missing")
 
-    transcript = copy.deepcopy(thread.transcript or {})
-    messages = list(transcript.get("messages", []))
-    by_id = _message_map(messages)
     existing = _existing_completion_result(
-        assistant=by_id.get(request.assistant_message_id),
+        assistant=_message_map(state.messages).get(request.assistant_message_id),
         request=request,
     )
     if existing is not None:
         session.rollback()
         return existing
 
-    target = _find_completion_target(thread=thread, request=request)
-    if target is None or thread.active_leaf_id != request.user_message_id:
+    result = _completion_parts(completion=completion)
+    rejection = _completion_rejection(
+        state=state,
+        request=request,
+        completion=completion,
+        result=result,
+    )
+    if rejection is not None:
         session.rollback()
-        return TranscriptCompletionResult(status="conflict")
-
-    assistant_message = {
-        "id": request.assistant_message_id,
-        "role": "assistant",
-        "parent_id": request.user_message_id,
-        "parts": [{"type": "text", "text": completion.answer}],
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    messages.append(assistant_message)
-    transcript["messages"] = messages
-    transcript["active_leaf_id"] = request.assistant_message_id
-    thread.transcript = transcript
-    thread.active_leaf_id = request.assistant_message_id
-    thread.message_count = len(messages)
-    thread.updated_at = datetime.now(timezone.utc)
-    session.add(thread)
-    if completion.cancelled():
-        session.rollback()
-        return TranscriptCompletionResult(status="cancelled")
-
-    session.commit()
-    return TranscriptCompletionResult(status="saved", answer=completion.answer)
+        return TranscriptCompletionResult(status=rejection)
+    return _store_assistant_completion(
+        session=session,
+        state=state,
+        write=_CompletionWrite(request=request, completion=completion, parts=result),
+    )

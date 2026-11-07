@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from collections.abc import Generator
 from typing import Any
@@ -11,6 +12,12 @@ from app.core.config import settings
 from app.core.db import engine
 from app.main import app
 from app.models import ChatThread, User
+from app.observation.model import BrowserModel
+from app.services.agentic import agent_supervisor
+from tests.observation.streaming_provider import (
+    ReadinessProvider,
+    ScriptedAnswerProvider,
+)
 from tests.utils.utils import get_superuser_token_headers
 
 
@@ -27,11 +34,39 @@ def auth_headers(api_client: TestClient) -> dict[str, str]:
 
 @pytest.fixture(autouse=True)
 def preflight_model_input(monkeypatch: pytest.MonkeyPatch) -> None:
-    def preflight(*, request: Any) -> None:
+    def preflight(_self: BrowserModel, *, request: Any) -> None:
         assert request.context is not None
         return None
 
-    monkeypatch.setattr(ai_browser_chat.browser_model, "preflight", preflight)
+    monkeypatch.setattr(BrowserModel, "preflight_readiness", preflight)
+
+
+@pytest.fixture(autouse=True)
+def deterministic_agent_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "litellm.get_model_info",
+        lambda _: {
+            "max_input_tokens": 16000,
+            "max_output_tokens": 4000,
+            "supports_vision": True,
+        },
+    )
+    monkeypatch.setattr("litellm.token_counter", lambda **_: 100)
+
+
+@pytest.fixture
+def streamed_provider(monkeypatch: pytest.MonkeyPatch):
+    answer_provider = ScriptedAnswerProvider()
+    readiness_provider = ReadinessProvider()
+    monkeypatch.setattr(
+        ai_browser_chat,
+        "browser_model",
+        BrowserModel(provider=readiness_provider),
+    )
+    answer_provider.readiness_requests = readiness_provider.requests
+    monkeypatch.setattr(agent_supervisor, "get_chat_model", answer_provider.model)
+    yield answer_provider
+    asyncio.run(answer_provider.aclose())
 
 
 @pytest.fixture(autouse=True)

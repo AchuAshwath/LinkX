@@ -4,7 +4,11 @@ import type * as React from "react"
 import { describe, expect, it, vi } from "vitest"
 import type { ChatUIMessage, QueuedTurn } from "@/components/Chat/types"
 import { useAIChatFeedState } from "@/hooks/useAIChatFeedState"
-import { buildStreamHandlers } from "@/hooks/useChatTurnSender"
+import {
+  buildStreamHandlers,
+  updateAssistantToolOutput,
+  updateAssistantToolStart,
+} from "@/hooks/useChatTurnSender"
 import { attachBrowserActivity } from "@/observation/reading/activity"
 import { connectBrowserQuestion } from "@/observation/reading/questionStream"
 import type { BrowserReadingSession } from "@/observation/reading/session"
@@ -101,6 +105,61 @@ async function startOrdinaryQueueFeed() {
 }
 
 describe("chat turn boundary regressions", () => {
+  it("correlates parallel same-name tool results by the server call ID", () => {
+    let messages: ChatUIMessage[] = [
+      { id: "answer", role: "assistant", parts: [], status: "streaming" },
+    ]
+    for (const toolId of ["call-one", "call-two"])
+      messages = updateAssistantToolStart({
+        messages,
+        assistantMsgId: "answer",
+        name: "lookup",
+        input: {},
+        toolId,
+      })
+    messages = updateAssistantToolOutput({
+      messages,
+      assistantMsgId: "answer",
+      name: "lookup",
+      toolId: "call-one",
+      output: { value: "first result" },
+    })
+    expect(messages[0].parts[0]).toMatchObject({
+      toolCallId: "call-one",
+      state: "completed",
+      output: { value: "first result" },
+    })
+    expect(messages[0].parts[1]).toMatchObject({
+      toolCallId: "call-two",
+      state: "running",
+    })
+  })
+  it("closes a failed tool card when the model continues answering", () => {
+    const messages: ChatUIMessage[] = [
+      {
+        id: "answer",
+        role: "assistant",
+        parts: [],
+        status: "streaming",
+      },
+    ]
+    const running = updateAssistantToolStart({
+      messages,
+      assistantMsgId: "answer",
+      name: "lookup",
+      input: {},
+    })
+    const updated = updateAssistantToolOutput({
+      messages: running,
+      assistantMsgId: "answer",
+      name: "lookup",
+      output: { error: "The tool could not complete." },
+    })
+    expect(updated[0].parts[0]).toMatchObject({
+      state: "failed",
+      tool: { state: "failed" },
+    })
+  })
   it("retains browser activity when an empty assistant turn is aborted", () => {
     const assistant: ChatUIMessage = {
       id: "assistant-browser",

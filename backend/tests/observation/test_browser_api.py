@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
+from pytest import FixtureRequest
 from sqlmodel import Session
 
 from app import crud
@@ -21,7 +22,7 @@ from app.core.db import engine
 from app.main import app
 from app.models import ChatThread, User, UserCreate
 from app.observation.model import ObservationModelError
-from app.observation.schemas import BrowserNote, EvaluationResult
+from app.observation.schemas import BrowserNote, ReadinessResult
 from app.services.ai_observation_budget import (
     ObservationInputBudget,
     ObservationInputBudgetError,
@@ -89,6 +90,10 @@ def _event_data(response: Any, event_name: str) -> list[dict[str, Any]]:
     return events
 
 
+def _answer_text(response: Any) -> str:
+    return "".join(event["content"] for event in _event_data(response, "text_delta"))
+
+
 def _thread_transcript(thread_id: uuid.UUID) -> dict[str, Any]:
     with Session(engine) as session:
         thread = session.get(ChatThread, thread_id)
@@ -102,29 +107,25 @@ class BrowserApiHarness:
     headers: dict[str, str]
     thread_id: uuid.UUID
     monkeypatch: pytest.MonkeyPatch
+    streamed_provider: Any
 
 
 @pytest.fixture
-def browser_api_harness(
-    api_client: TestClient,
-    auth_headers: dict[str, str],
-    committed_thread: uuid.UUID,
-    monkeypatch: pytest.MonkeyPatch,
-) -> BrowserApiHarness:
+def browser_api_harness(request: FixtureRequest) -> BrowserApiHarness:
     return BrowserApiHarness(
-        client=api_client,
-        headers=auth_headers,
-        thread_id=committed_thread,
-        monkeypatch=monkeypatch,
+        client=request.getfixturevalue("api_client"),
+        headers=request.getfixturevalue("auth_headers"),
+        thread_id=request.getfixturevalue("committed_thread"),
+        monkeypatch=request.getfixturevalue("monkeypatch"),
+        streamed_provider=request.getfixturevalue("streamed_provider"),
     )
 
 
 def test_post_read_overflow_keeps_note_receipt_and_reports_actionable_budget_error(
-    api_client: TestClient,
-    auth_headers: dict[str, str],
-    committed_thread: uuid.UUID,
-    monkeypatch: pytest.MonkeyPatch,
+    browser_api_harness: BrowserApiHarness,
 ) -> None:
+    harness = browser_api_harness
+
     async def read(*, request: Any) -> BrowserNote:
         return BrowserNote(
             id=request.frame.id,
@@ -133,26 +134,30 @@ def test_post_read_overflow_keeps_note_receipt_and_reports_actionable_budget_err
             model=request.model,
         )
 
-    async def evaluate(*, request: Any) -> EvaluationResult:
+    def preflight_readiness(*, request: Any) -> None:
         if request.context.notes:
             raise ObservationInputBudgetError(
                 "not exposed raw",
                 reason="input_too_large",
                 budget=ObservationInputBudget("test-model", 4_000, 2_000, 2_000, 2_001),
             )
-        return EvaluationResult(decision="wait")
 
-    monkeypatch.setattr(ai_browser_chat.browser_model, "read", read)
-    monkeypatch.setattr(ai_browser_chat.browser_model, "evaluate", evaluate)
-    response = api_client.post(
-        f"{settings.API_V1_STR}/ai/threads/{committed_thread}/browser-chat",
-        headers=auth_headers,
+    harness.monkeypatch.setattr(ai_browser_chat.browser_model, "read", read)
+    harness.monkeypatch.setattr(
+        ai_browser_chat.browser_model, "preflight_readiness", preflight_readiness
+    )
+    response = harness.client.post(
+        f"{settings.API_V1_STR}/ai/threads/{harness.thread_id}/browser-chat",
+        headers=harness.headers,
         json=_body(pending=[_frame("retained-frame")]),
     )
     assert response.status_code == 200
     assert _event_data(response, "browser_receipt")[0]["completed_ids"] == [
         "retained-frame"
     ]
+    assert _event_data(response, "text_delta") == []
+    assert harness.streamed_provider.requests == []
+    assert len(harness.streamed_provider.readiness_requests) == 1
     error = _event_data(response, "error")[0]
     assert "browser notes are retained" in error["message"]
     assert error["code"] == "input_too_large"
@@ -161,14 +166,12 @@ def test_post_read_overflow_keeps_note_receipt_and_reports_actionable_budget_err
 
 
 def test_pending_frame_is_read_then_answered_without_persisting_browser_data(
-    api_client: TestClient,
-    auth_headers: dict[str, str],
-    committed_thread: uuid.UUID,
-    monkeypatch: pytest.MonkeyPatch,
+    browser_api_harness: BrowserApiHarness,
 ) -> None:
+    harness = browser_api_harness
     frame_id = "pending-frame"
     note_text = "The page asks for a shipping address."
-    scripted = {"reads": 0, "evaluations": 0}
+    scripted = {"reads": 0}
 
     async def read(*, request: Any) -> BrowserNote:
         scripted["reads"] += 1
@@ -180,39 +183,27 @@ def test_pending_frame_is_read_then_answered_without_persisting_browser_data(
             uncertainty="",
         )
 
-    async def evaluate(*, request: Any) -> EvaluationResult:
-        scripted["evaluations"] += 1
-        if request.context.notes:
-            assert request.context.notes[0].id == frame_id
-            return EvaluationResult(
-                decision="answer",
-                answer="It asks for a shipping address.",
-                evidence_ids=[frame_id],
-            )
-        return EvaluationResult(decision="wait")
-
-    monkeypatch.setattr(ai_browser_chat.browser_model, "read", read)
-    monkeypatch.setattr(ai_browser_chat.browser_model, "evaluate", evaluate)
+    harness.monkeypatch.setattr(ai_browser_chat.browser_model, "read", read)
+    harness.streamed_provider.answer = "It asks for a shipping address."
     payload = _body(pending=[_frame(frame_id)])
     frame_data_url = payload["browser_context"]["pending_frames"][0]["image_data_url"]
-    response = api_client.post(
-        f"{settings.API_V1_STR}/ai/threads/{committed_thread}/browser-chat",
-        headers=auth_headers,
+    response = harness.client.post(
+        f"{settings.API_V1_STR}/ai/threads/{harness.thread_id}/browser-chat",
+        headers=harness.headers,
         json=payload,
     )
 
     assert response.status_code == 200
-    assert scripted == {"reads": 1, "evaluations": 2}
+    assert scripted == {"reads": 1}
+    assert len(harness.streamed_provider.readiness_requests) == 2
     assert _event_data(response, "browser_note")[0]["text"] == note_text
     receipt = _event_data(response, "browser_receipt")[0]
     assert receipt["completed_ids"] == [frame_id]
     assert receipt["failed_ids"] == []
     assert receipt["unused_ids"] == []
-    assert _event_data(response, "text_delta")[0]["content"] == (
-        "It asks for a shipping address."
-    )
+    assert _answer_text(response) == "It asks for a shipping address."
 
-    transcript = _thread_transcript(committed_thread)
+    transcript = _thread_transcript(harness.thread_id)
     messages = transcript["messages"]
     assert [message["role"] for message in messages] == ["user", "assistant"]
     serialized = json.dumps(transcript)
@@ -221,25 +212,23 @@ def test_pending_frame_is_read_then_answered_without_persisting_browser_data(
     assert payload["browser_context"]["session_id"] not in serialized
     assert frame_data_url not in serialized
 
-    replay = api_client.post(
-        f"{settings.API_V1_STR}/ai/threads/{committed_thread}/browser-chat",
-        headers=auth_headers,
+    replay = harness.client.post(
+        f"{settings.API_V1_STR}/ai/threads/{harness.thread_id}/browser-chat",
+        headers=harness.headers,
         json=payload,
     )
     assert replay.status_code == 200
-    assert _event_data(replay, "text_delta")[0]["content"] == (
-        "It asks for a shipping address."
-    )
-    assert scripted == {"reads": 1, "evaluations": 2}
-    assert len(_thread_transcript(committed_thread)["messages"]) == 2
+    assert _answer_text(replay) == "It asks for a shipping address."
+    assert scripted == {"reads": 1}
+    assert len(harness.streamed_provider.readiness_requests) == 2
+    assert len(harness.streamed_provider.requests) == 1
+    assert len(_thread_transcript(harness.thread_id)["messages"]) == 2
 
 
 def test_answer_can_return_early_and_receipt_marks_pending_frames_unused(
-    api_client: TestClient,
-    auth_headers: dict[str, str],
-    committed_thread: uuid.UUID,
-    monkeypatch: pytest.MonkeyPatch,
+    browser_api_harness: BrowserApiHarness,
 ) -> None:
+    harness = browser_api_harness
     note = {
         "id": "existing-note",
         "sequence": 3,
@@ -247,39 +236,32 @@ def test_answer_can_return_early_and_receipt_marks_pending_frames_unused(
         "model": "test-model",
         "uncertainty": "",
     }
-    scripted = {"evaluations": 0, "reads": 0}
-
-    async def evaluate(*, request: Any) -> EvaluationResult:
-        scripted["evaluations"] += 1
-        assert request.context.notes[0].id == "existing-note"
-        return EvaluationResult(
-            decision="answer",
-            answer="There is a checkout button.",
-            evidence_ids=["existing-note"],
-        )
+    scripted = {"reads": 0}
 
     async def read(*, request: Any) -> BrowserNote:
         scripted["reads"] += 1
         assert request.frame.id == "unused-frame"
         raise AssertionError("early answer should leave this frame unused")
 
-    monkeypatch.setattr(ai_browser_chat.browser_model, "evaluate", evaluate)
-    monkeypatch.setattr(ai_browser_chat.browser_model, "read", read)
-    response = api_client.post(
-        f"{settings.API_V1_STR}/ai/threads/{committed_thread}/browser-chat",
-        headers=auth_headers,
+    harness.streamed_provider.answer = "There is a checkout button."
+    harness.monkeypatch.setattr(ai_browser_chat.browser_model, "read", read)
+    response = harness.client.post(
+        f"{settings.API_V1_STR}/ai/threads/{harness.thread_id}/browser-chat",
+        headers=harness.headers,
         json=_body(notes=[note], pending=[_frame("unused-frame", sequence=4)]),
     )
 
     assert response.status_code == 200
-    assert scripted == {"evaluations": 1, "reads": 0}
+    assert scripted == {"reads": 0}
+    assert len(harness.streamed_provider.readiness_requests) == 1
     assert _event_data(response, "browser_receipt")[0] == {
         "operation_id": json.loads(response.request.content)["request_id"],
         "completed_ids": [],
         "failed_ids": [],
         "unused_ids": ["unused-frame"],
     }
-    transcript = _thread_transcript(committed_thread)
+    assert _answer_text(response) == "There is a checkout button."
+    transcript = _thread_transcript(harness.thread_id)
     assert [message["role"] for message in transcript["messages"]] == [
         "user",
         "assistant",
@@ -352,11 +334,11 @@ def test_provider_failure_saves_no_assistant_message(
     committed_thread: uuid.UUID,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def fail_evaluation(*, request: Any) -> EvaluationResult:
+    async def fail_readiness(*, request: Any) -> ReadinessResult:
         assert request.message == payload["message"]
         raise RuntimeError("scripted provider failure")
 
-    monkeypatch.setattr(ai_browser_chat.browser_model, "evaluate", fail_evaluation)
+    monkeypatch.setattr(ai_browser_chat.browser_model, "prepare", fail_readiness)
     payload = _body()
     response = api_client.post(
         f"{settings.API_V1_STR}/ai/threads/{committed_thread}/browser-chat",
@@ -369,7 +351,7 @@ def test_provider_failure_saves_no_assistant_message(
         {
             "operation_id": payload["request_id"],
             "code": "evaluation_failed",
-            "message": "The answer evaluation failed.",
+            "message": "Browser evidence preparation failed.",
         }
     ]
     messages = _thread_transcript(committed_thread)["messages"]
@@ -377,20 +359,18 @@ def test_provider_failure_saves_no_assistant_message(
     assert payload["message"] in json.dumps(messages)
 
 
-def test_evaluation_failure_logs_only_safe_diagnostics(
+def test_readiness_failure_logs_only_safe_diagnostics(
     browser_api_harness: BrowserApiHarness,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     operation_id = uuid.uuid4()
     secret = "PRIVATE_EVALUATOR_PAYLOAD"
 
-    async def fail_evaluation(**_kwargs: Any) -> EvaluationResult:
-        raise ObservationModelError(
-            "Observation model returned invalid evaluation data"
-        )
+    async def fail_readiness(**_kwargs: Any) -> ReadinessResult:
+        raise ObservationModelError("Observation model returned invalid readiness data")
 
     browser_api_harness.monkeypatch.setattr(
-        ai_browser_chat.browser_model, "evaluate", fail_evaluation
+        ai_browser_chat.browser_model, "prepare", fail_readiness
     )
     body = _body(request_id=operation_id)
     body["message"] = secret
@@ -405,7 +385,7 @@ def test_evaluation_failure_logs_only_safe_diagnostics(
     assert error == {
         "operation_id": str(operation_id),
         "code": "evaluation_invalid_output",
-        "message": "The answer evaluation returned invalid data.",
+        "message": "The browser readiness response was invalid.",
     }
     assert str(operation_id) in caplog.text
     assert "failure_code=evaluation_invalid_output" in caplog.text
@@ -419,21 +399,21 @@ def test_evaluation_failure_logs_only_safe_diagnostics(
         (
             ObservationModelError("Observation model response was truncated"),
             "evaluation_truncated",
-            "The answer evaluation response was truncated.",
+            "The browser readiness response was truncated.",
         ),
         (
             TimeoutError(),
             "evaluation_timeout",
-            "The answer evaluation timed out.",
+            "Browser evidence preparation timed out.",
         ),
         (
             ObservationModelError("Observation model provider is unavailable"),
             "evaluation_provider_error",
-            "The answer provider is unavailable.",
+            "The browser readiness provider is unavailable.",
         ),
     ],
 )
-def test_evaluation_failures_have_stable_safe_sse_categories(
+def test_readiness_failures_have_stable_safe_sse_categories(
     browser_api_harness: BrowserApiHarness,
     exception: Exception,
     failure_code: str,
@@ -441,11 +421,11 @@ def test_evaluation_failures_have_stable_safe_sse_categories(
 ) -> None:
     operation_id = uuid.uuid4()
 
-    async def fail_evaluation(**_kwargs: Any) -> EvaluationResult:
+    async def fail_readiness(**_kwargs: Any) -> ReadinessResult:
         raise exception
 
     browser_api_harness.monkeypatch.setattr(
-        ai_browser_chat.browser_model, "evaluate", fail_evaluation
+        ai_browser_chat.browser_model, "prepare", fail_readiness
     )
     response = browser_api_harness.client.post(
         f"{settings.API_V1_STR}/ai/threads/{browser_api_harness.thread_id}/browser-chat",
@@ -468,23 +448,15 @@ def test_evaluation_failures_have_stable_safe_sse_categories(
 def test_transcript_save_failure_is_distinguished_and_does_not_leak_exception(
     browser_api_harness: BrowserApiHarness,
     caplog: pytest.LogCaptureFixture,
+    streamed_provider: Any,
 ) -> None:
     operation_id = uuid.uuid4()
     secret = "PRIVATE_DATABASE_DETAIL"
 
-    async def answer(**_kwargs: Any) -> EvaluationResult:
-        return EvaluationResult(
-            decision="answer",
-            answer="A general answer.",
-            answer_basis="general",
-        )
-
     def fail_save(**_kwargs: Any) -> Any:
         raise RuntimeError(secret)
 
-    browser_api_harness.monkeypatch.setattr(
-        ai_browser_chat.browser_model, "evaluate", answer
-    )
+    streamed_provider.answer = "A general answer."
     browser_api_harness.monkeypatch.setattr(
         ai_browser_chat, "complete_transcript_turn", fail_save
     )
@@ -495,6 +467,7 @@ def test_transcript_save_failure_is_distinguished_and_does_not_leak_exception(
     )
 
     assert response.status_code == 200
+    assert _answer_text(response) == "A general answer."
     assert _event_data(response, "error")[0] == {
         "operation_id": str(operation_id),
         "code": "transcript_unsaved",
@@ -516,7 +489,7 @@ def test_preflight_budget_rejection_creates_no_turn_or_model_calls(
     committed_thread: uuid.UUID,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    calls = {"preflight": 0, "read": 0, "evaluate": 0}
+    calls = {"preflight": 0, "read": 0}
 
     def reject_budget(*, request: Any) -> None:
         assert request.message
@@ -528,14 +501,12 @@ def test_preflight_budget_rejection_creates_no_turn_or_model_calls(
         calls["read"] += 1
         raise AssertionError("preflight must reject before reading a frame")
 
-    async def evaluate(*, request: Any) -> EvaluationResult:
-        assert request.message
-        calls["evaluate"] += 1
-        raise AssertionError("preflight must reject before evaluation")
-
-    monkeypatch.setattr(ai_browser_chat.browser_model, "preflight", reject_budget)
+    monkeypatch.setattr(
+        ai_browser_chat.browser_model,
+        "preflight_readiness",
+        reject_budget,
+    )
     monkeypatch.setattr(ai_browser_chat.browser_model, "read", read)
-    monkeypatch.setattr(ai_browser_chat.browser_model, "evaluate", evaluate)
     response = api_client.post(
         f"{settings.API_V1_STR}/ai/threads/{committed_thread}/browser-chat",
         headers=auth_headers,
@@ -543,13 +514,14 @@ def test_preflight_budget_rejection_creates_no_turn_or_model_calls(
     )
 
     assert response.status_code == 422
-    assert calls == {"preflight": 1, "read": 0, "evaluate": 0}
+    assert calls == {"preflight": 1, "read": 0}
     assert _thread_transcript(committed_thread)["messages"] == []
 
 
 def test_normal_chat_is_blocked_while_browser_question_is_active(
     committed_thread: uuid.UUID,
     monkeypatch: pytest.MonkeyPatch,
+    streamed_provider: Any,
 ) -> None:
     browser_client = TestClient(app)
     normal_client = TestClient(app)
@@ -557,15 +529,16 @@ def test_normal_chat_is_blocked_while_browser_question_is_active(
     started = Event()
     release = Event()
 
-    async def hold_evaluation(*, request: Any) -> EvaluationResult:
+    async def hold_readiness(*, request: Any) -> ReadinessResult:
         assert request.message == payload["message"]
         assert request.context.notes[0].id == "known-note"
         started.set()
         await asyncio.to_thread(release.wait, 5)
-        return EvaluationResult(
-            decision="answer",
-            answer="Browser question finished.",
+        return ReadinessResult(
+            decision="ready",
             evidence_ids=["known-note"],
+            answer_basis="browser",
+            requires_complete=False,
         )
 
     async def fake_normal_stream(**kwargs: Any):
@@ -573,7 +546,8 @@ def test_normal_chat_is_blocked_while_browser_question_is_active(
         yield "text_delta", {"content": "Normal chat should be blocked."}
         yield "done", {}
 
-    monkeypatch.setattr(ai_browser_chat.browser_model, "evaluate", hold_evaluation)
+    streamed_provider.answer = "Browser question finished."
+    monkeypatch.setattr(ai_browser_chat.browser_model, "prepare", hold_readiness)
     monkeypatch.setattr(ai_threads, "default_chat_stream_runner", fake_normal_stream)
     payload = _body(notes=[_known_note()])
     browser_path = f"{settings.API_V1_STR}/ai/threads/{committed_thread}/browser-chat"
@@ -596,14 +570,13 @@ def test_normal_chat_is_blocked_while_browser_question_is_active(
 
     assert normal.status_code == 409
     assert browser.status_code == 200
-    assert _event_data(browser, "text_delta")[0]["content"] == (
-        "Browser question finished."
-    )
+    assert _answer_text(browser) == "Browser question finished."
 
 
 def test_duplicate_http_request_cannot_release_active_browser_guard(
     committed_thread: uuid.UUID,
     monkeypatch: pytest.MonkeyPatch,
+    streamed_provider: Any,
 ) -> None:
     browser_client = TestClient(app)
     duplicate_client = TestClient(app)
@@ -613,22 +586,24 @@ def test_duplicate_http_request_cannot_release_active_browser_guard(
     release = Event()
     payload = _body(notes=[_known_note()])
 
-    async def hold_evaluation(*, request: Any) -> EvaluationResult:
+    async def hold_readiness(*, request: Any) -> ReadinessResult:
         assert request.message == payload["message"]
         assert request.context.notes[0].id == "known-note"
         started.set()
         await asyncio.to_thread(release.wait, 5)
-        return EvaluationResult(
-            decision="answer",
-            answer="Done.",
+        return ReadinessResult(
+            decision="ready",
             evidence_ids=["known-note"],
+            answer_basis="browser",
+            requires_complete=False,
         )
 
     async def fake_normal_stream(**_: Any):
         yield "text_delta", {"content": "unreachable"}
         yield "done", {}
 
-    monkeypatch.setattr(ai_browser_chat.browser_model, "evaluate", hold_evaluation)
+    streamed_provider.answer = "Done."
+    monkeypatch.setattr(ai_browser_chat.browser_model, "prepare", hold_readiness)
     monkeypatch.setattr(ai_threads, "default_chat_stream_runner", fake_normal_stream)
     browser_path = f"{settings.API_V1_STR}/ai/threads/{committed_thread}/browser-chat"
     normal_path = f"{settings.API_V1_STR}/ai/threads/{committed_thread}/chat"

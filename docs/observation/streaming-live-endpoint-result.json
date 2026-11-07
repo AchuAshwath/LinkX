@@ -1,0 +1,398 @@
+{
+  "passed": true,
+  "date": "2026-11-02T11:15:46.350123+00:00",
+  "model": "openai/gpt-5.6-luna",
+  "scope": "Real browser-chat endpoint and normal selected-model agent, synthetic text notes; no screenshot accuracy claim",
+  "answer_chunks": 90,
+  "first_answer_ms": 10841,
+  "last_answer_ms": 12411,
+  "done_ms": 15730,
+  "event_timing": [
+    {
+      "event": "browser_status",
+      "at_ms": 5830
+    },
+    {
+      "event": "browser_budget",
+      "at_ms": 5830
+    },
+    {
+      "event": "browser_activity",
+      "at_ms": 5830
+    },
+    {
+      "event": "browser_budget",
+      "at_ms": 5830
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 10841
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 10841
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 10842
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 10850
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 10859
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 10889
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 10902
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 10902
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 10934
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 10950
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 10975
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11049
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11054
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11059
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11060
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11074
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11074
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11111
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11152
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11153
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11217
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11220
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11220
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11220
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11231
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11231
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11260
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11275
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11300
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11322
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11322
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11353
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11367
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11382
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11405
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11437
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11437
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11456
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11474
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11497
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11497
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11522
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11546
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11569
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11597
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11597
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11624
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11636
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11663
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11688
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11688
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11709
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11725
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11754
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11754
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11774
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11827
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11827
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11849
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11849
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11886
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11911
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11920
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11936
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11936
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11960
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 11985
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 12013
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 12045
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 12045
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 12053
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 12078
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 12088
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 12121
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 12128
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 12186
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 12189
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 12199
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 12205
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 12215
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 12255
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 12255
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 12277
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 12288
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 12371
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 12371
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 12371
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 12372
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 12379
+    },
+    {
+      "event": "text_delta",
+      "at_ms": 12411
+    },
+    {
+      "event": "browser_receipt",
+      "at_ms": 13417
+    },
+    {
+      "event": "done",
+      "at_ms": 15730
+    }
+  ],
+  "required_facts_present": true,
+  "one_saved_turn_pair": true
+}
